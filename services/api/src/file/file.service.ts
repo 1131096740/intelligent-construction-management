@@ -2079,6 +2079,33 @@ export class FileService {
     businessId: string,
     actorUserId: string
   ) {
+    await this.assertApprovalFormBusinessAccess(businessType, businessId, actorUserId, true);
+  }
+
+  /**
+   * 审批中心“我可查看”与办理中审批单共用这一查看权：申请人、已处理人、
+   * 项目归档读取岗位和全局财务/领导可查看流程；查看权不等于办理权。
+   */
+  async assertCanViewApprovalFlow(businessType: string, businessId: string, actorUserId: string): Promise<void> {
+    await this.assertApprovalFormBusinessAccess(businessType, businessId, actorUserId, false);
+  }
+
+  async canViewApprovalFlow(businessType: string, businessId: string, actorUserId: string): Promise<boolean> {
+    try {
+      await this.assertApprovalFormBusinessAccess(businessType, businessId, actorUserId, false);
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenException || error instanceof BadRequestException) return false;
+      throw error;
+    }
+  }
+
+  private async assertApprovalFormBusinessAccess(
+    businessType: string,
+    businessId: string,
+    actorUserId: string,
+    requireApproved: boolean
+  ) {
     if (businessType === "contract_version") {
       return this.assertCanDownloadContractApprovalForm(businessId, actorUserId);
     }
@@ -2096,14 +2123,14 @@ export class FileService {
         where: { businessType, businessId },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }]
       });
-      if (!instance || instance.status !== "approved") {
+      if (!instance || (requireApproved && instance.status !== "approved")) {
         throw new BadRequestException("当前业务尚未完成审批，暂不能下载审批单");
       }
       // Company transfers expose both sides only to company finance/leaders or
       // finance authorized for BOTH projects, matching their source evidence.
       if (businessType === "company_transfer") {
         const row = await tx.companyTransfer.findUniqueOrThrow({ where: { id: businessId } });
-        if (row.status !== "approved") throw new BadRequestException("互转审批尚未通过");
+        if (requireApproved && row.status !== "approved") throw new BadRequestException("互转审批尚未通过");
         if ((await companyTransferRoles(tx, actorUserId)).some(role => ["finance_staff", "finance_director", "chairman", "general_manager"].includes(role))) return;
         const projects = [row.sourceProjectId, row.destinationProjectId];
         if (projects.every(Boolean) && (await Promise.all(projects.map(project => this.hasProjectRole(tx, actorUserId, project!, ["finance_staff", "finance_director"])))).every(Boolean)) return;

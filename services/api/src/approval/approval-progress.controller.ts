@@ -24,13 +24,15 @@ export class ApprovalProgressController {
   constructor(private readonly progress: ApprovalProgressService) {}
 
   @Get()
-  list(@CurrentUser() user: AuthenticatedUser, @Query("cursor") cursor?: string, @Query("businessType") businessType?: string, @Query("businessId") businessId?: string) {
-    return this.progress.list(user.id, cursor, businessType, businessId);
+  list(@CurrentUser() user: AuthenticatedUser, @Query("cursor") cursor?: string, @Query("businessType") businessType?: string,
+    @Query("businessId") businessId?: string, @Query("view") view?: string) {
+    // view=viewable 只返回有查看权但非本人参与的流程；默认仍是本人参与范围。
+    return this.progress.list(user.id, cursor, businessType, businessId, view === "viewable" ? "viewable" : "participant");
   }
 
   @Get(":instanceId")
-  detail(@Param("instanceId") id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.progress.detail(id, user.id);
+  detail(@Param("instanceId") id: string, @CurrentUser() user: AuthenticatedUser, @Query("view") view?: string) {
+    return this.progress.detail(id, user.id, view === "viewable");
   }
 
   @Post(":instanceId/remind")

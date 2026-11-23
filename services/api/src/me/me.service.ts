@@ -16,7 +16,7 @@ import { principalReturnWorkItems } from "./principal-return-work-items";
 import { generalRequestWorkItems } from "../general-procurement/general-procurement-request-work-items";
 import { generalRequestActor } from "../general-procurement/general-procurement-request-access";
 import {scopedSpotDutyNodeIndexes, SPOT_APPROVAL_DUTY_RESOURCE} from "../approval/spot-approval-duty-access";
-import { activeApprovalNodeIndexes, hasVersionedApprovalNodes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
+import { activeApprovalNodeIndexes, hasVersionedApprovalNodes, isApprovalDutyComplete, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import {companyTransferWorkItems} from "../company-transfer/company-transfer-workitems";
 import {contractHandlingWorkItems} from "../contract-ledger/contract-handling-workitems";
 import { addContractRelationshipSummaries } from "../contract-ledger/contract-relationship-summary";
@@ -27,6 +27,7 @@ import { Prisma, type ContractVersion } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import {
   canPerform,
+  isApprovalOverdue,
   resolveEffectiveRoleKeys,
   type BusinessAction,
   type RoleKey
@@ -85,12 +86,11 @@ function isNonInsideContractSubject(signingSubjectType: string) {
   return signingSubjectType === "affiliate" || signingSubjectType === "upward";
 }
 
+/** 审批中心四视图：委托并入待审批、逾期为筛选；我参与的与我可查看由审批进度接口提供。 */
 export type ApprovalCenterViewKey =
   | "pendingApproval"
   | "startedByMe"
-  | "handledByMe"
-  | "delegatedToMe"
-  | "overdueReminder";
+  | "handledByMe";
 export type WorkItemKind =
   | "draft"
   | "contract_takeover"
@@ -121,6 +121,14 @@ export interface WorkItem {
   tone: WorkbenchCardTone;
   ageDays?: number;
   agingStatus?: "current" | "long_running" | "stale";
+  applicantName?: string;
+  businessStatus?: string;
+  /** 超过统一审批 SLA（48小时）未动作，仅用于审批中心筛选。 */
+  overdue?: boolean;
+  /** 当前账号此刻是否持有有效职责可办理；查看权不等于办理权。 */
+  canHandle?: boolean;
+  /** 并联轮完成职责数/必需职责数，用于摘要。 */
+  parallelCompletion?: { completed: number; total: number };
 }
 
 export interface FundsPendingReadBudget {
@@ -642,13 +650,8 @@ export class MeService {
 
     const started = await this.approvalWorkItems(scopes, userId, "started", evaluatedAt);
     const handledByMe = await this.handledApprovalWorkItems(scopes, userId);
-    const delegatedToMe = (
-      await this.approvalWorkItems(scopes, userId, "delegated", evaluatedAt)
-    ).filter(
-      (item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index
-    );
 
-    await addContractRelationshipSummaries(this.prisma,[...pending,...blocked,...started,...draftResult.items,...handledByMe,...delegatedToMe]);
+    await addContractRelationshipSummaries(this.prisma,[...pending,...blocked,...started,...draftResult.items,...handledByMe]);
 
     return {
       generatedAt: evaluatedAt.toISOString(),
@@ -670,11 +673,10 @@ export class MeService {
         }
       },
       approvalCenter: {
+        // 委托待办已在 pending 中按当前职责产生，不再单列视图；逾期由 overdue 筛选。
         pendingApproval: pending.filter((item) => item.type === "approval").slice(0, 30),
         startedByMe: started.slice(0, 30),
-        handledByMe,
-        delegatedToMe,
-        overdueReminder: []
+        handledByMe
       }
     };
   }
@@ -700,7 +702,7 @@ export class MeService {
         blocked: queueMeta([]), started: queueMeta([]), drafts: queueMeta([])
       },
       approvalCenter: { pendingApproval: pending.filter(item => item.type === "approval").slice(0, pageSize),
-        startedByMe: [], handledByMe: [], delegatedToMe: [], overdueReminder: [] }
+        startedByMe: [], handledByMe: [] }
     };
   }
 
@@ -2473,6 +2475,7 @@ export class MeService {
     })) as ApprovalInstanceForWorkItem[];
     const roleKeysByProject = new Map(scopes.map((scope) => [scope.projectId, scope.roleKeys]));
     const details = await this.approvalBusinessDetails(instances);
+    const applicantNames = await this.applicantNamesById(instances.map(instance => instance.applicantUserId));
     const items: WorkItem[] = [];
 
     for (const instance of instances) {
@@ -2522,7 +2525,12 @@ export class MeService {
         stayedText: this.stayedText(instance.updatedAt),
         nextAction: mode === "started" ? "查看审批进度" : "处理当前审批",
         targetPath: detail.targetPath,
-        tone: mode === "started" ? "primary" : "warning"
+        tone: mode === "started" ? "primary" : "warning",
+        applicantName: applicantNames.get(instance.applicantUserId),
+        businessStatus: instance.status,
+        overdue: isApprovalOverdue(instance.updatedAt, evaluatedAt),
+        canHandle: mode !== "started",
+        parallelCompletion: this.parallelCompletion(instance.frozenNodes)
       });
     }
 
@@ -2558,6 +2566,8 @@ export class MeService {
     const instanceById = new Map(instances.map((instance) => [instance.id, instance]));
     const visibleProjectIds = new Set(scopes.map((scope) => scope.projectId));
     const details = await this.approvalBusinessDetails(instances);
+    const applicantNames = await this.applicantNamesById(instances.map(instance => instance.applicantUserId));
+    const evaluatedAt = new Date();
     const seen = new Set<string>();
     const items: WorkItem[] = [];
 
@@ -2587,7 +2597,12 @@ export class MeService {
         stayedText: this.stayedText(log.createdAt),
         nextAction: "查看业务详情",
         targetPath: detail.targetPath,
-        tone: "success"
+        tone: "success",
+        applicantName: applicantNames.get(instance.applicantUserId),
+        businessStatus: instance.status,
+        overdue: isApprovalOverdue(instance.updatedAt, evaluatedAt),
+        canHandle: false,
+        parallelCompletion: this.parallelCompletion(instance.frozenNodes)
       });
       if (items.length >= 30) {
         break;
@@ -2823,6 +2838,21 @@ export class MeService {
         ...where
       }
     });
+  }
+
+  private parallelCompletion(frozenNodes: unknown): { completed: number; total: number } | undefined {
+    if (!isParallelApprovalRound(frozenNodes)) return undefined;
+    return {
+      completed: frozenNodes.filter(node => isApprovalDutyComplete(node)).length,
+      total: frozenNodes.length
+    };
+  }
+
+  private async applicantNamesById(ids: Array<string | null | undefined>): Promise<Map<string, string>> {
+    const unique = Array.from(new Set(ids.filter((id): id is string => typeof id === "string" && id.length > 0)));
+    if (!unique.length || typeof this.prisma.user?.findMany !== "function") return new Map();
+    const users = await this.prisma.user.findMany({ where: { id: { in: unique } }, select: { id: true, name: true } });
+    return new Map(users.map(user => [user.id, user.name]));
   }
 
   private async countApprovalTodos(scopes: ProjectRoleScope[], userId: string) {

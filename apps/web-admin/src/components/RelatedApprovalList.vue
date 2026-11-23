@@ -2,6 +2,11 @@
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { fetchRelatedApprovals, type ApprovalProgress } from "../api/approval-progress.api";
 import ApprovalProgressPanel from "./ApprovalProgressPanel.vue";
+const props = defineProps<{
+  view?: "participant" | "viewable";
+  introText?: string;
+  emptyText?: string;
+}>();
 const items = ref<ApprovalProgress[]>([]);
 const cursor = ref<string | null>(null);
 const selected = ref("");
@@ -22,7 +27,7 @@ async function load(more = false) {
     const visited = new Set<string>();
     for (;;) {
       if (scanCursor) visited.add(scanCursor);
-      const result = await fetchRelatedApprovals(scanCursor ? { cursor: scanCursor } : {}, request.signal);
+      const result = await fetchRelatedApprovals(scanCursor ? { cursor: scanCursor, view: props.view } : { view: props.view }, request.signal);
       if (own !== generation) return;
       if (result.nextCursor && visited.has(result.nextCursor)) throw new Error("审批列表翻页异常，请刷新后重试");
       if (result.items.length || !result.nextCursor) {
@@ -44,7 +49,7 @@ onBeforeUnmount(() => { generation++; controller?.abort(); controller = null; })
 </script>
 <template>
   <section class="related-approvals">
-    <p>查看你发起或参与的全部审批，包括尚未轮到、已经处理和已结束的流程。</p>
+    <p>{{ introText ?? "查看你发起或参与的全部审批，包括尚未轮到、已经处理和已结束的流程。" }}</p>
     <t-button
       :loading="loading"
       @click="load()"
@@ -57,7 +62,7 @@ onBeforeUnmount(() => { generation++; controller?.abort(); controller = null; })
       :message="error"
     />
     <p v-if="!loading && !error && !items.length">
-      暂无与你相关的审批流程。
+      {{ emptyText ?? "暂无与你相关的审批流程。" }}
     </p>
     <t-card
       v-for="item in items"
@@ -65,7 +70,10 @@ onBeforeUnmount(() => { generation++; controller?.abort(); controller = null; })
       :bordered="true"
     >
       <strong>{{ item.title }} · {{ item.businessCode }}</strong>
-      <p>{{ item.projectName }} · {{ item.applicant.name }}发起 · {{ item.currentNodeName }}</p>
+      <p>{{ item.projectName }} · {{ item.applicant.name }}发起 · {{ item.currentNodeName }}<span v-if="item.parallelCompletion"> · 并联完成 {{ item.parallelCompletion.completed }}/{{ item.parallelCompletion.total }}</span></p>
+      <p v-if="item.viewerOnly">
+        仅可查看进度与催办，不显示办理按钮。
+      </p>
       <t-button
         variant="text"
         @click="selected = selected === item.id ? '' : item.id"
@@ -76,6 +84,7 @@ onBeforeUnmount(() => { generation++; controller?.abort(); controller = null; })
         v-if="selected === item.id"
         :instance-id="item.id"
         :refresh-key="String(refreshVersion)"
+        :viewer="view === 'viewable'"
       />
     </t-card>
     <t-button

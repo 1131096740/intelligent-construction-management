@@ -9,7 +9,7 @@ const nodes = [
   { name: '项目经理', mode: 'any', roleKeys: ['project_manager'], candidateUserIdsByRole: { project_manager: ['later'] } }
 ];
 
-function fixture() {
+function fixture(files?: unknown) {
   const users = [
     { id: 'owner', name: '张志娟', isActive: true, phone: '13800000001' },
     { id: 'first', name: '综合主管', isActive: true, phone: '13800000002' },
@@ -38,8 +38,50 @@ function fixture() {
   const receipt = {status:"accepted",message:"短信已提交发送"};
   const sms = {available:()=>true,send:jest.fn(async()=>receipt),sendDutyIntent:jest.fn(async()=>receipt)};
   const pilot = { isEnabled: jest.fn(() => true) };
-  return { users, insideTransaction: () => insideTransaction, service: new ApprovalProgressService(client as unknown as PrismaService, sms as unknown as ApprovalSmsService, undefined, pilot as never), db, instance, sms, logs, pilot };
+  return { users, insideTransaction: () => insideTransaction, service: new ApprovalProgressService(client as unknown as PrismaService, sms as unknown as ApprovalSmsService, undefined, pilot as never, files as never), db, instance, sms, logs, pilot };
 }
+
+describe('审批中心四视图可见性', () => {
+  it('管理查看人可读取非本人参与的进度，但标记仅查看且无办理权', async () => {
+    const files = { canViewApprovalFlow: jest.fn(async () => true) };
+    const { service } = fixture(files);
+    await expect(service.detail('flow', 'stranger')).rejects.toThrow('审批流程不存在或无权查看');
+    const viewed = await service.detail('flow', 'stranger', true);
+    expect(viewed.viewerOnly).toBe(true);
+    expect(viewed.canHandle).toBe(false);
+    expect(files.canViewApprovalFlow).toHaveBeenCalledWith('expense_claim', 'claim', 'stranger');
+  });
+
+  it('流程相关人保留办理权，我方可查看列表排除本人已参与的流程', async () => {
+    const files = { canViewApprovalFlow: jest.fn(async () => true) };
+    const { service } = fixture(files);
+    const own = await service.detail('flow', 'first');
+    expect(own.viewerOnly).toBe(false);
+    expect(own.canHandle).toBe(true);
+
+    const viewable = await service.list('stranger', undefined, undefined, undefined, 'viewable');
+    expect(viewable.items.map(item => item.id)).toEqual(['flow']);
+    expect(viewable.items[0].viewerOnly).toBe(true);
+    const participant = await service.list('first', undefined, undefined, undefined, 'viewable');
+    expect(participant.items).toEqual([]);
+  });
+
+  it('并联轮按职责展示已签人与未签留空，并给出并联完成数', async () => {
+    const { service, instance, logs } = fixture();
+    instance.frozenNodes = [
+      { name: '合同部主管', mode: 'any', roleKeys: ['contract_director'], protocolVersion: 1, executionMode: 'parallel',
+        approvedRoleKeys: ['contract_director'], candidateUserIdsByRole: { contract_director: ['first'] } },
+      { name: '项目经理', mode: 'any', roleKeys: ['project_manager'], protocolVersion: 1, executionMode: 'parallel',
+        approvedRoleKeys: [], candidateUserIdsByRole: { project_manager: ['later'] } }
+    ] as never;
+    logs.push({ id: 'approve-1', approvalInstanceId: 'flow', actorUserId: 'first', action: 'approve',
+      approvedRoleKey: 'contract_director', createdAt: new Date(), metadata: { approverName: '主管甲' } } as unknown as ApprovalActionLog);
+    const progress = await service.detail('flow', 'first');
+    expect(progress.parallelCompletion).toEqual({ completed: 1, total: 2 });
+    expect(progress.nodes[0].signatures).toEqual([expect.objectContaining({ name: '主管甲', role: 'contract_director' })]);
+    expect(progress.nodes[1].signatures).toEqual([]);
+  });
+});
 
 describe('统一审批进度', () => {
   it('尚未轮到的审批人能读取全部节点、当前待办人及催办能力', async () => {
@@ -237,10 +279,14 @@ describe('参与范围与节点变化', () => {
     expect(sms.send).not.toHaveBeenCalled();
   });
   it('已经审批的人仍能查看后续进度，审批结束后可以回看但不能催办', async () => {
-    const { service, instance } = fixture();
+    const { service, instance, logs } = fixture();
     instance.currentNodeIndex = 1;
     expect((await service.detail('flow', 'first')).pendingRecipients.map(p => p.id)).toEqual(['later']);
     instance.status = 'approved';
+    logs.push({ id: 'approve-node-1', approvalInstanceId: 'flow', actorUserId: 'first', action: 'approve',
+      approvedRoleKey: 'comprehensive_director', createdAt: new Date() } as ApprovalActionLog);
+    logs.push({ id: 'approve-node-2', approvalInstanceId: 'flow', actorUserId: 'later', action: 'approve',
+      approvedRoleKey: 'project_manager', createdAt: new Date() } as ApprovalActionLog);
     const detail = await service.detail('flow', 'first');
     expect(detail.nodes.map(n => n.status)).toEqual(['已通过', '已通过']);
     expect(detail.canRemind).toBe(false);

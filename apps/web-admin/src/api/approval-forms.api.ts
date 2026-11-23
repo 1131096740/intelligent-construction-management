@@ -18,7 +18,7 @@ export async function listApprovalDocuments(cursor?: string): Promise<{ items: A
   return response.json();
 }
 
-export async function approvalDocumentCapability(businessType: string, businessId: string): Promise<{ available: boolean }> {
+export async function approvalDocumentCapability(businessType: string, businessId: string): Promise<{ available: boolean; incomplete?: boolean }> {
   const response = await apiFetch(`/approval-forms/${encodeURIComponent(businessType)}/${encodeURIComponent(businessId)}/capability`);
   if (!response.ok) throw new Error("审批单下载权限读取失败，请刷新后重试");
   return response.json();

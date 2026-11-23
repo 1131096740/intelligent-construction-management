@@ -14,6 +14,7 @@ import { assertOrdinaryApplicantCannotReview } from "./approval-self-review";
 import { IndependentApprovalProgressService } from "./independent-approval-progress.service";
 import { SpotProcurementPilotService } from "../spot-procurement/spot-procurement-pilot.service";
 import { ApprovalSmsService, approvalDutyRichTemplateEnabled } from "./approval-sms.service";
+import { FileService } from "../file/file.service";
 
 const ACTIVE = new Set(["in_progress", "approval_pending"]);
 const COOLDOWN_MS = 60_000;
@@ -26,24 +27,32 @@ const LABELS: Record<string, string> = {
   contract_work_completion: "履约确认审批"
 };
 type Db = Prisma.TransactionClient;
+const ROUND_BOUNDARY_ACTIONS = new Set(["submit", "resubmit", "reject", "return_to_applicant", "withdraw", "terminate", "void", "payer_changed_reapproval"]);
+/** 审批单与签字只取最近一次提交/驳回/退回之后的当前轮，旧轮签字不得补入新轮。 */
+function currentApprovalRoundApprovals<T extends { action: string }>(logs: readonly T[]): T[] {
+  let boundary = -1;
+  logs.forEach((log, index) => { if (ROUND_BOUNDARY_ACTIONS.has(log.action)) boundary = index; });
+  return logs.slice(boundary + 1).filter(log => log.action === "approve");
+}
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const strings = (value: unknown): string[] => Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 
 @Injectable()
 export class ApprovalProgressService {
-  constructor(private readonly prisma: PrismaService, private readonly sms: ApprovalSmsService, @Optional() private readonly independent?: IndependentApprovalProgressService, @Optional() private readonly pilot?: SpotProcurementPilotService) {}
+  constructor(private readonly prisma: PrismaService, private readonly sms: ApprovalSmsService, @Optional() private readonly independent?: IndependentApprovalProgressService, @Optional() private readonly pilot?: SpotProcurementPilotService, @Optional() private readonly files?: FileService) {}
 
-  async list(actorId: string, cursor?: string, businessType?: string, businessId?: string) {
-    if (this.independent && (cursor?.startsWith("independent-cursor:") || (businessType && this.independent.supports(businessType)))) {
+  async list(actorId: string, cursor?: string, businessType?: string, businessId?: string, view: "participant" | "viewable" = "participant") {
+    const viewable = view === "viewable";
+    if (!viewable && this.independent && (cursor?.startsWith("independent-cursor:") || (businessType && this.independent.supports(businessType)))) {
       return this.independent.list(actorId, cursor, businessType, businessId);
     }
-    const page = await this.listInstances(actorId, cursor, businessType, businessId);
-    if (page.nextCursor || businessType || !this.independent) return page;
+    const page = await this.listInstances(actorId, cursor, businessType, businessId, viewable);
+    if (viewable || page.nextCursor || businessType || !this.independent) return page;
     const remaining = await this.independent.list(actorId, undefined, undefined, businessId, 30 - page.items.length);
     return { items: [...page.items, ...remaining.items], nextCursor: remaining.nextCursor };
   }
 
-  private async listInstances(actorId: string, cursor?: string, businessType?: string, businessId?: string) {
+  private async listInstances(actorId: string, cursor?: string, businessType?: string, businessId?: string, viewableOnly = false) {
     const items: Awaited<ReturnType<ApprovalProgressService["detail"]>>[] = [];
     let nextCursor = cursor;
     let scanned = 0;
@@ -56,7 +65,10 @@ export class ApprovalProgressService {
       if (!rows.length) return { items, nextCursor: null };
       for (const instance of rows) {
         nextCursor = instance.id;
-        try { items.push(await this.detail(instance.id, actorId)); }
+        try {
+          const item = await this.detail(instance.id, actorId, viewableOnly);
+          if (!viewableOnly || item.viewerOnly) items.push(item);
+        }
         catch (error) { if (!(error instanceof NotFoundException)) throw error; }
         if (items.length === 30 || ++scanned >= 200) return { items, nextCursor };
       }
@@ -69,12 +81,12 @@ export class ApprovalProgressService {
     return result.items.length > 0;
   }
 
-  async detail(id: string, actorId: string) {
-    if (id.startsWith("independent:") && this.independent) return this.independent.detail(id, actorId);
-    const evidenceId = this.independent ? await this.independentEvidenceId(id) : null;
+  async detail(id: string, actorId: string, allowViewer = false) {
+    if (!allowViewer && id.startsWith("independent:") && this.independent) return this.independent.detail(id, actorId);
+    const evidenceId = !allowViewer && this.independent ? await this.independentEvidenceId(id) : null;
     if (evidenceId) return this.independent!.detail(evidenceId, actorId);
-    const context = await this.context(this.prisma, id, actorId);
-    return this.project(context);
+    const context = await this.context(this.prisma, id, actorId, allowViewer);
+    return this.project(context, actorId);
   }
 
   async remindBusiness(businessType: string, businessId: string, actorId: string) {
@@ -85,7 +97,7 @@ export class ApprovalProgressService {
     }
     const instance = await this.prisma.approvalInstance.findFirst({ where: { businessType, businessId, status: { in: [...ACTIVE] } }, orderBy: { createdAt: "desc" } });
     if (!instance) throw new NotFoundException("审批流程不存在或无权查看");
-    const progress = await this.detail(instance.id, actorId);
+    const progress = await this.detail(instance.id, actorId, true);
     return this.remind(instance.id, actorId, randomUUID(), progress.reminderToken);
   }
 
@@ -99,13 +111,13 @@ export class ApprovalProgressService {
     // Reserve durably before crossing the SMS boundary. A lost reply/crash must never automatically resend.
     const reservation = await this.prisma.$transaction(async tx => {
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalInstance" WHERE "id" = ${id} FOR UPDATE`);
-      const context = await this.context(tx, id, actorId);
+      const context = await this.context(tx, id, actorId, true);
       const existing = context.logs.find(l => l.id === requestId);
       if (existing) {
         if (existing.actorUserId !== actorId || object(existing.metadata).kind !== "sms_request") throw new ConflictException("催办请求已被使用，请刷新后重试");
         return null;
       }
-      const progress = this.project(context);
+      const progress = this.project(context, actorId);
       if (expectedToken !== progress.reminderToken) throw new ConflictException("审批进度或待审批人已变化，请刷新后重新确认催办对象");
       if (!progress.canRemind) throw new ConflictException(progress.reminderUnavailableReason ?? "当前不能催办");
       const recipientIds = selectedRecipientIds ?? progress.remindableRecipients.map(user => user.id);
@@ -119,15 +131,15 @@ export class ApprovalProgressService {
       } });
       return { nodeIndex: context.instance.currentNodeIndex, dutyIndexes, recipientIds };
     });
-    if (!reservation) return this.detail(id, actorId);
+    if (!reservation) return this.detail(id, actorId, true);
     const results: Array<{ userId: string; status: string; message: string }> = [];
     for (const userId of reservation.recipientIds) {
       const message = await this.prisma.$transaction(async tx => {
         await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ApprovalInstance" WHERE "id" = ${id} FOR UPDATE`);
-        const context = await this.context(tx, id, actorId);
+        const context = await this.context(tx, id, actorId, true);
         const user = context.pending.find(u => u.id === userId);
         if (!user || context.instance.currentNodeIndex !== reservation.nodeIndex) return null;
-        const duties = this.project(context).nodes.filter((node, index) =>
+        const duties = this.project(context, actorId).nodes.filter((node, index) =>
           reservation.dutyIndexes.includes(index) && node.pending.some(person => person.id === userId));
         if (!duties.length) return null;
         const label = LABELS[context.instance.businessType];
@@ -155,7 +167,7 @@ export class ApprovalProgressService {
     await this.prisma.approvalActionLog.create({ data: {
       approvalInstanceId: id, actorUserId: actorId, action: "remind", metadata: { kind: "sms_result", requestId, results }
     } });
-    return this.detail(id, actorId);
+    return this.detail(id, actorId, true);
   }
 
   // Formal evidence is an artifact of an existing review, not a second workflow or a new pending task.
@@ -242,7 +254,7 @@ export class ApprovalProgressService {
     }
   }
 
-  private async context(db: Db, id: string, actorId: string) {
+  private async context(db: Db, id: string, actorId: string, allowViewer = false) {
     const instance = await db.approvalInstance.findUnique({ where: { id } });
     if (!instance) throw new NotFoundException("审批流程不存在或无权查看");
     const business = await this.business(db, instance);
@@ -342,7 +354,13 @@ export class ApprovalProgressService {
       const actor = await generalRequestActor(db as Prisma.TransactionClient, new ProjectVisibilityService(this.prisma), actorId, projectId);
       if (generalRequestCanRead({ applicantUserId: business.applicantUserId }, actor)) participants.add(actorId);
     }
-    if (!participants.has(actorId)) throw new NotFoundException("审批流程不存在或无权查看");
+    const participant = participants.has(actorId);
+    if (!participant) {
+      // 可见范围与可办理分离：管理查看人只读进度，不进入任何职责候选。
+      const viewerAllowed = allowViewer && this.files
+        ? await this.files.canViewApprovalFlow(instance.businessType, instance.businessId, actorId) : false;
+      if (!viewerAllowed) throw new NotFoundException("审批流程不存在或无权查看");
+    }
     const activeIndexes = activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex);
     const current = rawNodes[instance.currentNodeIndex];
     const businessUnavailable = (instance.businessType === "project_financing_quota" && project?.isActive !== true) || (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) && !this.pilot?.isEnabled(projectId)) ||
@@ -376,15 +394,26 @@ export class ApprovalProgressService {
         throw error;
       }
     }) : [];
-    return { instance, business, project, rawNodes, nodeIds, byId, pending, logs, businessUnavailable };
+    return { instance, business, project, rawNodes, nodeIds, byId, pending, logs, businessUnavailable, participant };
   }
 
-  private project(context: Awaited<ReturnType<ApprovalProgressService["context"]>>) {
+  private project(context: Awaited<ReturnType<ApprovalProgressService["context"]>>, actorId: string) {
     const { instance, rawNodes, nodeIds, byId, pending, logs, business, project } = context;
     const person = (id: string) => ({ id, name: byId.get(id)?.name ?? "历史人员（姓名缺失）" });
     const requests = logs.filter(l => l.action === "remind" && object(l.metadata).kind === "sms_request");
     const active = ACTIVE.has(instance.status);
     const parallel = isParallelApprovalRound(instance.frozenNodes);
+    // 当前轮有效签字：旧轮（驳回/重提之前）的签字不得继续展示或计入完成数。
+    const roundApprovals = currentApprovalRoundApprovals(logs);
+    const signaturesFor = (node: FrozenApprovalNode) => roundApprovals
+      .filter(log => strings(node.roleKeys).includes(log.approvedRoleKey ?? ""))
+      .map(log => ({
+        id: log.id,
+        name: (() => { const frozen = object(log.metadata).approverName;
+          return typeof frozen === "string" && frozen.trim() ? frozen : person(log.actorUserId).name; })(),
+        role: log.approvedRoleKey ?? "",
+        signedAt: log.createdAt.toISOString()
+      }));
     const pendingByDuty = nodeIds.map((ids, index) =>
       (parallel || index === instance.currentNodeIndex) && (!parallel || !isApprovalDutyComplete(rawNodes[index] as unknown as Record<string, unknown>))
         ? pending.filter(user => ids.includes(user.id)) : []);
@@ -408,18 +437,32 @@ export class ApprovalProgressService {
       projectName: project?.name ?? "非项目费用", applicant: person(instance.applicantUserId), status: instance.status,
       createdAt: instance.createdAt.toISOString(), currentNodeIndex: instance.currentNodeIndex,
       currentNodeName: active ? (parallel ? "并联审批" : String(rawNodes[instance.currentNodeIndex]?.name ?? "待核对审批节点")) : "流程已结束",
-      nodes: rawNodes.map((node, index) => ({
-        name: typeof node.name === "string" ? node.name : "审批节点", mode: node.mode === "all" ? "会签" : "或签",
-        status: parallel ? (isApprovalDutyComplete(node as unknown as Record<string, unknown>) ? "已通过" : !active ? "已结束" : nodeIds[index].length ? (nodeIds[index].some(id => pending.some(user => user.id === id)) ? "处理中" : "待其他有权人员") : "待配置") : index < instance.currentNodeIndex || instance.status === "approved" ? "已通过" : index === instance.currentNodeIndex ? (active ? "处理中" : instance.status === "rejected" ? "已驳回" : "已结束") : (active ? "未开始" : "未执行"),
-        participants: nodeIds[index].map(id => {
-          const evidence = parallel && isApprovalDutyComplete(node as unknown as Record<string, unknown>)
-            ? logs.find(log => log.action === "approve" && log.actorUserId === id && strings(node.roleKeys).includes(log.approvedRoleKey ?? "")) : null;
-          const frozenName = object(evidence?.metadata).approverName;
-          return {id, name: typeof frozenName === "string" && frozenName.trim() ? frozenName : person(id).name};
-        }), legacyRoster: !parallel && !isGovernedFrozenApprovalNode(node),
-        pending: pendingByDuty[index].map(u => person(u.id))
-      })),
+      nodes: rawNodes.map((node, index) => {
+        const signatures = signaturesFor(node);
+        // 以实际职责签字判断已通过，不再用“第N节点以前都已通过”的序号推断。
+        const status = parallel
+          ? (isApprovalDutyComplete(node as unknown as Record<string, unknown>) ? "已通过" : !active ? "已结束" : nodeIds[index].length ? (nodeIds[index].some(id => pending.some(user => user.id === id)) ? "处理中" : "待其他有权人员") : "待配置")
+          : signatures.length > 0 ? "已通过"
+            : index === instance.currentNodeIndex ? (active ? "处理中" : instance.status === "rejected" ? "已驳回" : "已结束")
+              : (active ? "未开始" : "未执行");
+        return {
+          name: typeof node.name === "string" ? node.name : "审批节点", mode: node.mode === "all" ? "会签" : "或签",
+          status, signatures,
+          participants: nodeIds[index].map(id => {
+            const evidence = parallel && isApprovalDutyComplete(node as unknown as Record<string, unknown>)
+              ? logs.find(log => log.action === "approve" && log.actorUserId === id && strings(node.roleKeys).includes(log.approvedRoleKey ?? "")) : null;
+            const frozenName = object(evidence?.metadata).approverName;
+            return {id, name: typeof frozenName === "string" && frozenName.trim() ? frozenName : person(id).name};
+          }), legacyRoster: !parallel && !isGovernedFrozenApprovalNode(node),
+          pending: pendingByDuty[index].map(u => person(u.id))
+        };
+      }),
       pendingRecipients: pending.map(u => person(u.id)),
+      parallelCompletion: parallel
+        ? { completed: rawNodes.filter(node => isApprovalDutyComplete(node as unknown as Record<string, unknown>)).length, total: rawNodes.length }
+        : undefined,
+      viewerOnly: !context.participant,
+      canHandle: active && pending.some(user => user.id === actorId),
       remindableRecipients,
       canRemind: active && remindableRecipients.length > 0 && this.sms.available(),
       reminderUnavailableReason: !active ? "流程已结束" : context.businessUnavailable ? (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) ? "本项目尚未启用零采试点，暂不能催办" : "当前业务未处于可审批状态，暂不能催办") : !pending.length ? "当前没有有效待审批人" : !this.sms.available() ? "短信服务尚未启用" : !remindableRecipients.length ? "刚刚已催办，请稍后再试" : null,

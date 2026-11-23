@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import ApprovalDocumentDownload from "./approval/ApprovalDocumentDownload.vue";
 import { fetchApprovalProgress, fetchRelatedApprovals, remindApprovalBySms, ApprovalProgressApiError, type ApprovalProgress, type ApprovalPerson } from "../api/approval-progress.api";
 
-const props = defineProps<{ instanceId?: string; businessType?: string; businessId?: string; refreshKey?: string }>();
+const props = defineProps<{ instanceId?: string; businessType?: string; businessId?: string; refreshKey?: string; viewer?: boolean }>();
+const progressView = () => props.viewer ? "viewable" as const : "participant" as const;
 const flows = ref<ApprovalProgress[]>([]);
 const loading = ref(false);
 const sending = ref(false);
@@ -20,11 +22,11 @@ async function load() {
   loading.value = true;
   try {
     const result: ApprovalProgress[] = [];
-    if (props.instanceId) result.push(await fetchApprovalProgress(props.instanceId));
+    if (props.instanceId) result.push(await fetchApprovalProgress(props.instanceId, progressView()));
     else if (props.businessType && props.businessId) {
       let cursor: string | undefined;
       do {
-        const page = await fetchRelatedApprovals({ businessType: props.businessType, businessId: props.businessId, cursor });
+        const page = await fetchRelatedApprovals({ businessType: props.businessType, businessId: props.businessId, cursor, view: progressView() });
         if (own !== generation) return;
         result.push(...page.items);
         cursor = page.nextCursor ?? undefined;
@@ -90,7 +92,7 @@ async function remind(flow: ApprovalProgress) {
   } finally { sending.value = false; }
 }
 
-watch(() => [props.instanceId, props.businessType, props.businessId, props.refreshKey], () => { void load(); }, { immediate: true });
+watch(() => [props.instanceId, props.businessType, props.businessId, props.refreshKey, props.viewer], () => { void load(); }, { immediate: true });
 </script>
 
 <template>
@@ -128,6 +130,12 @@ watch(() => [props.instanceId, props.businessType, props.businessId, props.refre
       <h3>{{ flow.title }} · {{ flow.businessCode }}</h3>
       <p>{{ flow.projectName }} · {{ flow.applicant.name }}发起 · {{ time(flow.createdAt) }}</p>
       <p><strong>当前：{{ flow.currentNodeName }}</strong><span v-if="flow.pendingRecipients.length"> · 等待{{ names(flow.pendingRecipients) }}</span></p>
+      <p v-if="flow.parallelCompletion">
+        并联完成 {{ flow.parallelCompletion.completed }}/{{ flow.parallelCompletion.total }} 项职责
+      </p>
+      <p v-if="flow.viewerOnly">
+        你当前只有查看权，没有办理按钮；办理仍在业务详情页由当前有效职责完成。
+      </p>
       <ol class="approval-progress__nodes">
         <li
           v-for="(node, index) in flow.nodes"
@@ -138,9 +146,26 @@ watch(() => [props.instanceId, props.businessType, props.businessId, props.refre
           <p v-if="node.pending.length">
             待处理：{{ names(node.pending) }}
           </p>
+          <p v-if="node.signatures?.length">
+            已签字：{{ node.signatures.map(signature => `${signature.name}（${time(signature.signedAt)}）`).join('、') }}
+          </p>
+          <p v-else-if="flow.status === 'in_progress' || flow.status === 'approval_pending'">
+            未签（审批中，审批单对应位置留空）
+          </p>
           <small v-if="node.legacyRoster">此历史节点未保存人员名单，以上为当前岗位人员；实际处理人以处理记录为准。</small>
         </li>
       </ol>
+      <div
+        v-if="flow.businessType && flow.businessId"
+        class="approval-progress__document"
+      >
+        <ApprovalDocumentDownload
+          :business-type="flow.businessType"
+          :business-id="flow.businessId"
+          :refresh-key="`${flow.id}:${flow.status}`"
+        />
+        <small>当前轮审批单：已签节点显示签字，未签留空；办理中下载带水印并记录下载。</small>
+      </div>
       <t-checkbox-group
         v-if="flow.canRemind && eligibleRecipients(flow).length > 1"
         :value="selectedRecipients(flow).map(user => user.id)"
@@ -215,6 +240,7 @@ watch(() => [props.instanceId, props.businessType, props.businessId, props.refre
 .approval-progress__nodes li { border-left: 3px solid var(--jg-color-brand); padding-left: var(--jg-space-md); }
 .approval-progress p { margin: var(--jg-space-sm) 0; }
 .approval-progress small { color: var(--jg-color-text-secondary); }
+.approval-progress__document { display: grid; gap: var(--jg-space-xs); align-items: start; }
 .approval-progress details { margin-top: var(--jg-space-md); }
 .approval-progress ul { padding-left: var(--jg-space-lg); }
 </style>
