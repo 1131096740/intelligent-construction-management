@@ -313,7 +313,6 @@ const busy = ref(false);
 const message = ref("");
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let downloadCapabilityRequestId = 0;
-let downloadTicketPromise: Promise<void> | null = null;
 
 const versionId = computed(() => props.workbench?.version.id ?? "");
 const currentDocumentContentRevision = computed(

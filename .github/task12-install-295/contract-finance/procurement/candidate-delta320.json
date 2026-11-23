@@ -147,7 +147,7 @@
   {
     "path": "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
     "expected": "f2deb46a706d86173a9d59b665d0813cce10502b65711e480a2c38d7d83e00d9",
-    "candidate": "50e167bbc0180225e89f84d8fb46201696ef820bdcbcce89739f91a707139cad"
+    "candidate": "56a780e5052e90d6c04bdaf5cdccdd456ef2bfa51b970dfd0bf788ff7c5420ee"
   },
   {
     "path": "apps/web-admin/src/pages/archives/archive-list.config.test.ts",
@@ -222,7 +222,7 @@
   {
     "path": "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
     "expected": "e866635efd2f93e4b7d9a5da6bc2cf5a4343aac3fe8c85490a273d1b0ecfa15a",
-    "candidate": "644323f363a34a80c12762a5f6c703d9d5d3e1012c84c5341ff154c21a65152f"
+    "candidate": "f747eaf0568d8fb43410fb5b38e9b4366a26de159064f8b21931d27550a12c42"
   },
   {
     "path": "apps/web-admin/src/pages/contracts/workbench/contract-workbench-capability-gates.structure.test.ts",
@@ -362,7 +362,7 @@
   {
     "path": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
     "expected": "b39180b0f37a54de0edd172cf6521183930bada012397d9d5e0580e3909b1ecc",
-    "candidate": "c78af25bd0e2f4e2036cceb361e52361e65816eddcb1300a7817a22851749091"
+    "candidate": "bfd006edf2194af5fcc75272bf508cd9bcf3a4ec63a20b8c380ebc4df7f7798f"
   },
   {
     "path": "apps/web-admin/src/routes/index.test.ts",

@@ -498,7 +498,7 @@ onMounted(loadProjects);
           <template #company="{ row }">
             {{ row.values.costBearingCompanyName || "待核对" }} / {{ row.values.payerCompanyName || "来源待核对" }}
           </template>
-          <template #review="{ row }">待核实</template>
+          <template #review>待核实</template>
           <template #issues="{ row }">
             <span v-if="!row.issues.length">—</span>
             <t-tag v-for="issue in row.issues" :key="issue.code" :theme="issue.severity === 'error' ? 'danger' : 'warning'" variant="light">

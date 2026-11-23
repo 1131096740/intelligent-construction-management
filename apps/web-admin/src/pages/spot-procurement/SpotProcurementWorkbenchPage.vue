@@ -214,13 +214,15 @@ const columns = computed(() => {
     .map((key) => byKey.get(key))
     .filter((column): column is (typeof baseColumns)[number] => Boolean(column))
     .filter((column) => visible.has(column.colKey))
-    .map((column) => ({
-      ...column,
-      width: preferences.value.columnWidths[column.colKey] ?? column.width,
-      sorter: column.colKey === "updatedAt"
+    .map(({ colKey, title, width, align }) => ({
+      colKey,
+      title,
+      width: preferences.value.columnWidths[colKey] ?? width,
+      ...(align ? { align } : {}),
+      sorter: colKey === "updatedAt"
     }));
   return [
-    ...ordered.map(({ required: _required, ...column }) => column),
+    ...ordered,
     { colKey: "operation", title: "操作", width: 80, fixed: "right" as const }
   ];
 });

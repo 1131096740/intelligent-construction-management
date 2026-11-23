@@ -230,8 +230,7 @@ import {
   archivePackageSuccessMessage,
   archiveRules,
   archiveSummaryItems,
-  emptyArchiveLedgerFilters,
-  filterArchiveLedgerRows
+  emptyArchiveLedgerFilters
 } from "./archive-list.config";
 
 const router = useRouter();
