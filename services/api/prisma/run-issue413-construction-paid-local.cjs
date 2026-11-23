@@ -40,7 +40,14 @@ function resolvePostgresImage() {
   const cached = listing.split("\n").map((line) => line.trim().split(/\s+/u))
     .find(([, ref]) => ref === "postgres:16");
   if (!cached) throw new Error("本机缺少已缓存镜像 postgres:16，请先准备隔离 PostgreSQL 16 镜像");
-  return { id: `sha256:${cached[0]}`, ref: cached[1] };
+  const fullId = docker(
+    ["image", "inspect", "--format", "{{.Id}}", `sha256:${cached[0]}`],
+    { quiet: true }
+  ).stdout;
+  if (!/^sha256:[a-f0-9]{64}$/u.test(fullId)) {
+    throw new Error("无法固定隔离 PostgreSQL 16 镜像的完整标识");
+  }
+  return { id: fullId, ref: cached[1] };
 }
 
 async function main() {
