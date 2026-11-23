@@ -3716,7 +3716,76 @@ model PaymentExecution {
   historicalWageSummaryLinks     HistoricalWageSummaryPaymentExecutionLink[]
   fundMovements                  FundMovement[]                              @relation("FundMovementPaymentExecution")
   fundMovementLegs               FundMovementLeg[]                           @relation("FundMovementLegPaymentExecution")
+  refunds                        PaymentExecutionRefund[]
+  corrections                    PaymentExecutionCorrection[]
 }
+
+// #400：实际退款是与原实付并列的真实资金事实，不覆盖原 PaymentExecution。
+// 累计退款上限由事务与服务校验，并由迁移中的数据库触发器兜底。
+model PaymentExecutionRefund {
+  id                 String   @id @default(uuid())
+  idempotencyKey     String   @unique
+  paymentExecutionId String
+  paymentRequestId   String
+  projectId          String
+  accountId          String?
+  fundRegistrationId String?
+  amountCents        BigInt
+  receivedAt         DateTime @db.Date
+  reason             String
+  evidenceReference  String?
+  recordedByUserId   String
+  payloadFingerprint String
+  createdAt          DateTime @default(now())
+
+  execution PaymentExecution @relation(fields: [paymentExecutionId], references: [id], onDelete: Restrict)
+
+  @@index([paymentExecutionId, receivedAt])
+  @@index([paymentRequestId])
+  @@index([accountId])
+  @@index([recordedByUserId, createdAt])
+}
+
+// #400：实付更正采用“反转 + 重登”影子事实：原 PaymentExecution 不改，
+// 更正保存 original / reversal / correction 三段冻结快照，财务主管确认后
+// 只重算付款、结算与资金投影。
+model PaymentExecutionCorrection {
+  id                   String    @id @default(uuid())
+  idempotencyKey       String    @unique
+  paymentExecutionId   String
+  paymentRequestId     String
+  projectId            String
+  status               String    @default("pending_confirm")
+  correctionReason     String
+  selfReviewReason     String?
+  reviewNote           String?
+  originalAmountCents  BigInt
+  correctedAmountCents BigInt
+  amountDeltaCents     BigInt
+  originalPaidAt       DateTime  @db.Date
+  correctedPaidAt      DateTime  @db.Date
+  originalSnapshot     Json
+  reversalSnapshot     Json
+  correctionSnapshot   Json
+  fundRegistrationId   String?
+  requestedByUserId    String
+  confirmedByUserId    String?
+  confirmedAt          DateTime?
+  confirmationKey      String?   @unique
+  payloadFingerprint   String
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  execution PaymentExecution @relation(fields: [paymentExecutionId], references: [id], onDelete: Restrict)
+
+  @@index([paymentExecutionId, status])
+  @@index([paymentRequestId])
+  @@index([status, createdAt])
+}
+
+// POL-13D v7: a server-issued, immutable observation of one verified bank
+// transaction. It freezes the complete active payer-verification authority
+// together with the transaction amount, direction, time, and source identity.
 
 // POL-13D v7: a server-issued, immutable observation of one verified bank
 // transaction. It freezes the complete active payer-verification authority

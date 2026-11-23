@@ -7,14 +7,14 @@
     "nestRouteManifest": "docs/product/manifests/nest-business-routes.json"
   },
   "summary": {
-    "apiModuleCount": 50,
-    "exportedFunctionCount": 773,
-    "transportWrapperCount": 749,
+    "apiModuleCount": 51,
+    "exportedFunctionCount": 774,
+    "transportWrapperCount": 750,
     "pureExportCount": 24,
-    "mainRequestBindingCount": 823,
+    "mainRequestBindingCount": 824,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 779,
-    "productionConsumerCount": 660,
+    "requestEdgeCount": 780,
+    "productionConsumerCount": 661,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 421,
-    "reachableProductionModuleCount": 402
+    "productionModuleCount": 423,
+    "reachableProductionModuleCount": 404
   },
   "wrappers": [
     {
@@ -7094,7 +7094,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7719,
+          "sourceLine": 7720,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -7126,7 +7126,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7703,
+          "sourceLine": 7704,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -7156,7 +7156,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7703,
+          "sourceLine": 7704,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -7186,7 +7186,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6091,
+          "sourceLine": 6092,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -7215,7 +7215,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7703,
+          "sourceLine": 7704,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -7400,7 +7400,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7746,
+          "sourceLine": 7747,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -7429,7 +7429,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7733,
+          "sourceLine": 7734,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -7458,7 +7458,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7761,
+          "sourceLine": 7762,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -7487,7 +7487,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7703,
+          "sourceLine": 7704,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -18066,6 +18066,33 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchFinancialCorrectionCapability",
+      "apiFile": "apps/web-admin/src/api/payment-financial.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 34,
+          "method": "GET",
+          "path": "/payment-financial/entry/capability?type=:param&id=:param",
+          "normalizedPath": "/payment-financial/entry/capability",
+          "normalizedKey": "GET /payment-financial/entry/capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchFinancialCorrectionCapability"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/corrections/FinancialCorrectionEntryPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {

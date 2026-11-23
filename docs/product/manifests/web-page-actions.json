@@ -12,12 +12,12 @@
     "registeredActionCount": 470,
     "pageActionCount": 100,
     "backgroundActionCount": 370,
-    "reachableVueFileCount": 232,
-    "routeRootCount": 76,
-    "totalVueFileCount": 245,
-    "parsedVueFileCount": 245,
-    "reachableProductionModuleCount": 402,
-    "templateEventDirectiveCount": 1555,
+    "reachableVueFileCount": 233,
+    "routeRootCount": 77,
+    "totalVueFileCount": 246,
+    "parsedVueFileCount": 246,
+    "reachableProductionModuleCount": 404,
+    "templateEventDirectiveCount": 1559,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 461,
     "candidateProductionMutationConsumerCount": 461,
@@ -26,10 +26,10 @@
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 421,
-    "reachableProductionModuleCount": 402,
-    "totalVueFileCount": 245,
-    "parsedVueFileCount": 245
+    "totalProductionModuleCount": 423,
+    "reachableProductionModuleCount": 404,
+    "totalVueFileCount": 246,
+    "parsedVueFileCount": 246
   },
   "actions": [
     {
@@ -7433,7 +7433,7 @@
         "event": "call",
         "handler": "abandonContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 2016,
+        "sourceLine": 2014,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7498,7 +7498,7 @@
         "event": "call",
         "handler": "applyContractTakeoverBatchAbandonmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1974,
+        "sourceLine": 1972,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7563,7 +7563,7 @@
         "event": "call",
         "handler": "applyContractTakeoverExcelImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1935,
+        "sourceLine": 1933,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7628,7 +7628,7 @@
         "event": "call",
         "handler": "attachContractTakeoverEvidenceFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 2080,
+        "sourceLine": 2078,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7693,7 +7693,7 @@
         "event": "call",
         "handler": "attachHistoricalPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 2093,
+        "sourceLine": 2091,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7758,7 +7758,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverChangeBaselineWithCapability",
         "kind": "background_call",
-        "sourceLine": 2067,
+        "sourceLine": 2065,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7823,7 +7823,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverContractSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2132,
+        "sourceLine": 2130,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7888,7 +7888,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverFinanceSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2145,
+        "sourceLine": 2143,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7953,7 +7953,7 @@
         "event": "call",
         "handler": "createContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 1887,
+        "sourceLine": 1885,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8018,7 +8018,7 @@
         "event": "call",
         "handler": "createContractTakeoverDraftsFromImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1911,
+        "sourceLine": 1909,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8083,7 +8083,7 @@
         "event": "call",
         "handler": "createContractTakeoverFileDownloadTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 2251,
+        "sourceLine": 2249,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8148,7 +8148,7 @@
         "event": "call",
         "handler": "returnContractTakeoverForFinanceSupplementWithCapability",
         "kind": "background_call",
-        "sourceLine": 2054,
+        "sourceLine": 2052,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8213,7 +8213,7 @@
         "event": "call",
         "handler": "precheckContractTakeoverImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1899,
+        "sourceLine": 1897,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8278,7 +8278,7 @@
         "event": "call",
         "handler": "previewContractTakeoverBatchAbandonmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1960,
+        "sourceLine": 1958,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8343,7 +8343,7 @@
         "event": "call",
         "handler": "previewContractTakeoverExcelImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1923,
+        "sourceLine": 1921,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8473,7 +8473,7 @@
         "event": "call",
         "handler": "returnContractTakeoverForSupplementWithCapability",
         "kind": "background_call",
-        "sourceLine": 2041,
+        "sourceLine": 2039,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8538,7 +8538,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverCompanyEntityCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2230,
+        "sourceLine": 2228,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8603,7 +8603,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2201,
+        "sourceLine": 2199,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8668,7 +8668,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverImportBatchWithCapability",
         "kind": "background_call",
-        "sourceLine": 1947,
+        "sourceLine": 1945,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8733,7 +8733,7 @@
         "event": "call",
         "handler": "saveContractTakeoverContractSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2106,
+        "sourceLine": 2104,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8798,7 +8798,7 @@
         "event": "call",
         "handler": "saveContractTakeoverFinanceSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2119,
+        "sourceLine": 2117,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8863,7 +8863,7 @@
         "event": "call",
         "handler": "submitContractTakeoverCompanyEntityCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2215,
+        "sourceLine": 2213,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8928,7 +8928,7 @@
         "event": "call",
         "handler": "submitContractTakeoverCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2188,
+        "sourceLine": 2186,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8993,7 +8993,7 @@
         "event": "call",
         "handler": "submitContractTakeoverReviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 2029,
+        "sourceLine": 2027,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9058,7 +9058,7 @@
         "event": "call",
         "handler": "updateContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 2003,
+        "sourceLine": 2001,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9123,7 +9123,7 @@
         "event": "call",
         "handler": "uploadContractTakeoverPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1989,
+        "sourceLine": 1987,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9190,7 +9190,7 @@
         "event": "call",
         "handler": "withdrawContractTakeoverContractSideConfirmationWithCapability",
         "kind": "background_call",
-        "sourceLine": 2158,
+        "sourceLine": 2156,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9255,7 +9255,7 @@
         "event": "call",
         "handler": "withdrawContractTakeoverFinanceSideConfirmationWithCapability",
         "kind": "background_call",
-        "sourceLine": 2173,
+        "sourceLine": 2171,
         "sourceColumn": 0
       },
       "semantic": "business_write",

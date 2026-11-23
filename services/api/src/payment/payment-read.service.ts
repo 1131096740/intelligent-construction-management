@@ -1,7 +1,7 @@
 import { sensitiveBusinessReadAllowed, hasSensitiveLedgerReadRole } from "../auth/sensitive-business-read";
 import type { Prisma } from "@prisma/client";
 import { contractProxyPaidForContract } from "../contract-ledger/contract-proxy-capacity";
-import { downstreamContractRelationship, CONTRACT_RELATIONSHIP_LABELS } from "@jiangkong/shared-domain";
+import { chinaDateOnly, downstreamContractRelationship, CONTRACT_RELATIONSHIP_LABELS } from "@jiangkong/shared-domain";
 import { contractClassifications } from "../contract-ledger/contract-classification-read";
 import { registeredPaymentInstalled } from "../database/registered-payment-catalog";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
@@ -549,7 +549,7 @@ export class PaymentReadService {
         ...historicalTakeovers.map((takeover) => takeover.contractId)
       ])
     ];
-    const [settlements, projects, contracts, executions, approvalInstances] = await Promise.all([
+    const [settlements, projects, contracts, executions, refunds, corrections, approvalInstances] = await Promise.all([
       settlementIds.length
         ? this.prisma.settlement.findMany({ where: { id: { in: settlementIds } } })
         : Promise.resolve([]),
@@ -565,6 +565,8 @@ export class PaymentReadService {
       paymentIds.length
         ? this.prisma.paymentExecution.findMany({ where: { paymentRequestId: { in: paymentIds } } })
         : Promise.resolve([]),
+      this.readPaymentRefunds(paymentIds),
+      this.readPaymentCorrectionDeltas(paymentIds),
       paymentIds.length && approvalClient.approvalInstance
         ? approvalClient.approvalInstance.findMany({
             where: {
@@ -606,6 +608,20 @@ export class PaymentReadService {
       paidByPaymentId.set(
         execution.paymentRequestId,
         (paidByPaymentId.get(execution.paymentRequestId) ?? 0n) + execution.amountCents
+      );
+    }
+    const refundedByPaymentId = new Map<string, bigint>();
+    for (const refund of refunds) {
+      refundedByPaymentId.set(
+        refund.paymentRequestId,
+        (refundedByPaymentId.get(refund.paymentRequestId) ?? 0n) + refund.amountCents
+      );
+    }
+    const correctionDeltaByPaymentId = new Map<string, bigint>();
+    for (const correction of corrections) {
+      correctionDeltaByPaymentId.set(
+        correction.paymentRequestId,
+        (correctionDeltaByPaymentId.get(correction.paymentRequestId) ?? 0n) + correction.amountDeltaCents
       );
     }
     const takeoverById = new Map(
@@ -659,7 +675,10 @@ export class PaymentReadService {
         : returnedForRevision
           ? "returned_for_revision"
           : "formal_ledger";
-      const paidAmountCents = paidByPaymentId.get(payment.id) ?? payment.paidAmountCents;
+      const grossPaidAmountCents = paidByPaymentId.get(payment.id) ?? payment.paidAmountCents;
+      const refundedAmountCents = refundedByPaymentId.get(payment.id) ?? 0n;
+      const correctionDeltaCents = correctionDeltaByPaymentId.get(payment.id) ?? 0n;
+      const paidAmountCents = grossPaidAmountCents + correctionDeltaCents - refundedAmountCents;
       const payableAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
       const approval = this.approvalStatusView(
         returnedForRevision ? "returned_for_revision" : payment.status
@@ -717,6 +736,9 @@ export class PaymentReadService {
         lifecycleUpdatedAt: payment.updatedAt.toISOString(),
         requestedAmountCents: moneyCentsToApi(payment.requestedAmountCents),
         paidAmountCents: moneyCentsToApi(paidAmountCents),
+        grossPaidAmountCents: moneyCentsToApi(grossPaidAmountCents),
+        refundedAmountCents: moneyCentsToApi(refundedAmountCents),
+        correctionDeltaCents: moneyCentsToApi(correctionDeltaCents),
         ...(signedBasis
           ? {
               capacitySuspended: suspensionApplies,
@@ -1081,6 +1103,10 @@ export class PaymentReadService {
       executions.map((execution) => execution.amountCents),
       "付款实付金额"
     );
+    const refundRows = await this.readPaymentRefunds([payment.id]);
+    const refundedAmountCents = refundRows.reduce((sum, row) => sum + row.amountCents, 0n);
+    const correctionRows = await this.readPaymentCorrectionDeltas([payment.id]);
+    const correctionDeltaCents = correctionRows.reduce((sum, row) => sum + row.amountDeltaCents, 0n);
     const executionAllocations = await this.prisma.$queryRaw<Array<{
       id: string; paymentExecutionId: string; settlementId: string | null; stageName: string | null;
       stageType: string; allocationType: string; amountCents: bigint; allocationOrder: number;
@@ -1133,7 +1159,7 @@ export class PaymentReadService {
         })
       : null;
     const returnedForRevision = payment.status === "draft" && Boolean(latestReturnAction);
-    const paidAmountCents = executions.length > 0 ? executionAmountCents : payment.paidAmountCents;
+    const paidAmountCents = executionAmountCents + correctionDeltaCents - refundedAmountCents;
     const payableAmountCents = payment.approvedAmountCents ?? payment.requestedAmountCents;
     const approval = this.approvalStatusView(
       returnedForRevision ? "returned_for_revision" : payment.status
@@ -1439,8 +1465,19 @@ export class PaymentReadService {
               }
             ]
           : []),
-        { label: "已付金额", value: this.formatMoney(paidAmountCents) }
+        { label: "已付金额", value: this.formatMoney(paidAmountCents) },
+        ...(refundedAmountCents > 0n
+          ? [
+              { label: "已退金额", value: this.formatMoney(refundedAmountCents) },
+              { label: "原实付合计", value: this.formatMoney(executionAmountCents) }
+            ]
+          : [])
       ],
+      paidAmountCents: moneyCentsToApi(paidAmountCents),
+      grossPaidAmountCents: moneyCentsToApi(executionAmountCents),
+      refundedAmountCents: moneyCentsToApi(refundedAmountCents),
+      correctionDeltaCents: moneyCentsToApi(correctionDeltaCents),
+      refunds: refundRows.map(row => ({ id: row.id, paymentExecutionId: row.paymentExecutionId, amountCents: moneyCentsToApi(row.amountCents), receivedAt: chinaDateOnly(row.receivedAt), fundRegistrationId: row.fundRegistrationId })),
       approvalSteps: this.approvalSteps(payment.status),
       executionSteps: this.executionSteps(
         payment.status,
@@ -2433,6 +2470,31 @@ export class PaymentReadService {
 
     const actions: DetailActionReadModel[] = [...workflowActions];
 
+    if (
+      paidAmountCents > 0n &&
+      ["approved_pending_payment", "partially_paid", "paid"].includes(status) &&
+      roleKeys.some((role) => ["finance_staff", "finance_director", "comprehensive_director"].includes(role))
+    ) {
+      actions.push(
+        detailAction({
+          key: "record_refund",
+          label: "登记实际退款",
+          kind: "normal",
+          roleKeys,
+          skipRoleCheck: true,
+          enabled: true
+        }),
+        detailAction({
+          key: "correct_payment_execution",
+          label: "更正已确认实付",
+          kind: "normal",
+          roleKeys,
+          skipRoleCheck: true,
+          enabled: true
+        })
+      );
+    }
+
     if ((status === "approved_pending_payment" || status === "partially_paid") && !executionComplete) {
       actions.push(
         detailAction({
@@ -2695,6 +2757,43 @@ export class PaymentReadService {
     }
 
     return `${ratioBps / 100}%`;
+  }
+
+  /** 旧测试/合成客户端没有退款表时按无退款读取；真实 Prisma 客户端始终查询事实。 */
+  private async readPaymentRefunds(paymentIds: string[]): Promise<Array<{
+    id: string; paymentRequestId: string; paymentExecutionId: string; amountCents: bigint;
+    receivedAt: Date; fundRegistrationId: string | null;
+  }>> {
+    if (!paymentIds.length) return [];
+    const client = (this.prisma as unknown as {
+      paymentExecutionRefund?: {
+        findMany(args: {
+          where: { paymentRequestId: { in: string[] } };
+          select: { id: true; paymentRequestId: true; paymentExecutionId: true; amountCents: true; receivedAt: true; fundRegistrationId: true };
+          orderBy?: Array<{ receivedAt: "asc" } | { id: "asc" }>;
+        }): Promise<Array<{ id: string; paymentRequestId: string; paymentExecutionId: string; amountCents: bigint; receivedAt: Date; fundRegistrationId: string | null }>>;
+      };
+    }).paymentExecutionRefund;
+    if (!client?.findMany) return [];
+    return client.findMany({
+      where: { paymentRequestId: { in: paymentIds } },
+      select: { id: true, paymentRequestId: true, paymentExecutionId: true, amountCents: true, receivedAt: true, fundRegistrationId: true },
+      orderBy: [{ receivedAt: "asc" }, { id: "asc" }]
+    });
+  }
+
+  private async readPaymentCorrectionDeltas(paymentIds: string[]): Promise<Array<{ paymentRequestId: string; amountDeltaCents: bigint }>> {
+    if (!paymentIds.length) return [];
+    const client = (this.prisma as unknown as {
+      paymentExecutionCorrection?: {
+        findMany(args: {
+          where: { paymentRequestId: { in: string[] }; status: string };
+          select: { paymentRequestId: true; amountDeltaCents: true };
+        }): Promise<Array<{ paymentRequestId: string; amountDeltaCents: bigint }>>;
+      };
+    }).paymentExecutionCorrection;
+    if (!client?.findMany) return [];
+    return client.findMany({ where: { paymentRequestId: { in: paymentIds }, status: "confirmed" }, select: { paymentRequestId: true, amountDeltaCents: true } });
   }
 
   private formatMoney(amountCents: bigint): string {
