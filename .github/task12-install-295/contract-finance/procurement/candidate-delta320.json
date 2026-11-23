@@ -430,6 +430,11 @@
     "candidate": "f3a1ca916a9a5f7c5f1bfe8d47b2009d53f5d63bd8e3502ff1f0ebb2dd239989"
   },
   {
+    "path": "services/api/package.json",
+    "expected": "a16f8f2250a8ef9e52ae85913cf22341e2cb2314bdba4a8df2dae49cdc6a60bd",
+    "candidate": "485be706a0368853131cd26baf2e3f8a29691072a634b2970ace0c7f40756a80"
+  },
+  {
     "path": "services/api/prisma/database-dynamic-gate-manifest.json",
     "expected": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
     "candidate": "5e35796144515672fe7c82fc88a22d7d772052ebe9048dc8ae769f8a118c41bc"
