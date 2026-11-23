@@ -6,13 +6,30 @@ BEGIN;
 -- repayment rows are backfilled with their source company so the original A-B
 -- checks keep exactly the same meaning.
 ALTER TABLE public."CompanyTransfer"
-  ADD COLUMN "repaymentDebtorCompanyId" TEXT REFERENCES public."CompanyEntity"("id") ON DELETE RESTRICT;
+  ADD COLUMN "repaymentDebtorCompanyId" TEXT;
 
-UPDATE public."CompanyTransfer"
-SET "repaymentDebtorCompanyId" = "sourceCompanyId"
-WHERE "kind" = 'repayment';
+DO $preflight$
+BEGIN
+  IF NOT EXISTS (
+    SELECT FROM pg_catalog.pg_trigger
+    WHERE tgrelid = 'public."CompanyTransfer"'::regclass AND tgname = 'CompanyTransfer_guard'
+      AND tgfoid = 'public.guard_company_transfer()'::regprocedure
+      AND tgtype = 31 AND tgenabled = 'O' AND NOT tgisinternal AND tgnargs = 0 AND tgqual IS NULL
+  ) THEN
+    RAISE EXCEPTION 'company_transfer_repayment_backfill_guard_missing';
+  END IF;
+END
+$preflight$;
 
+-- Use the table rewrite under ALTER TABLE's exclusive lock to initialize the
+-- new column. The row guards continue to enforce normal writes and no old
+-- approval decision or debt capacity is evaluated again during the backfill.
 ALTER TABLE public."CompanyTransfer"
+  ALTER COLUMN "repaymentDebtorCompanyId" TYPE TEXT USING (
+    CASE WHEN "kind" = 'repayment' THEN "sourceCompanyId" ELSE NULL END
+  ),
+  ADD CONSTRAINT "CompanyTransfer_repaymentDebtorCompanyId_fkey"
+    FOREIGN KEY ("repaymentDebtorCompanyId") REFERENCES public."CompanyEntity"("id") ON DELETE RESTRICT,
   ADD CONSTRAINT "CompanyTransfer_repayment_debtor_shape" CHECK (
     ("kind" = 'repayment' AND "repaymentDebtorCompanyId" IS NOT NULL
       AND "repaymentDebtorCompanyId" <> "destinationCompanyId")
