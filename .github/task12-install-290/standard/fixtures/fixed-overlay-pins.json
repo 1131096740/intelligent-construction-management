@@ -27,10 +27,10 @@
   },
   "services/api/prisma/contract-bank-runtime-fixture.cjs": {
     "base": "5a66b1783cc597983a08e8381f9df34afeacf36e71681bd5e982a363247fd171",
-    "patch": "e3c8daa803f55c5146f3878c4628aeb136b2059dea7b9e50fa730f6c0af2bf49",
-    "result": "f8a52c20be644145418a7b643b8bb279589a94b1000bbdd9861750afebc4693b"
+    "patch": "29f20d644720472f75dd634f51f3c69fa99b4a13818e0704f89a935c517c73da",
+    "result": "594c180e22acc8453dc5ea5f758baa03e95b98047019a676d34db7b505d503b8"
   },
   "services/api/prisma/task398-owned-280-business-read-baseline.json": {
-    "verbatim": "d9406ad3c45b4b77db171eca6bdf7a5cbad285dd107988f5ab6f33051b5beb60"
+    "verbatim": "88b44411322e857b9c1b3f6a562ca7655d998a41fd15db8449b8e79ae4b309b2"
   }
 }

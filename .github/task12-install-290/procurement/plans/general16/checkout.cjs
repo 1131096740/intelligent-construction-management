@@ -144,7 +144,7 @@ const prismaFixtures = {
   'run-task398-shared-standard-local.cjs':'7c98f45b904d99200aebf49d92daf8137c30aea205f20970c90d4d12ffcdbae4',
   'contract-bank-runtime-fixture.cjs':'f8a52c20be644145418a7b643b8bb279589a94b1000bbdd9861750afebc4693b',
   'task12-expense-receipt-retained-seed.json':'19a02261145cce67ef8250e89020e1aa55b1015f30d19d7e97c3acb979a761b8',
-  'task398-owned-280-business-read-baseline.json':'d9406ad3c45b4b77db171eca6bdf7a5cbad285dd107988f5ab6f33051b5beb60',
+  'task398-owned-280-business-read-baseline.json':'88b44411322e857b9c1b3f6a562ca7655d998a41fd15db8449b8e79ae4b309b2',
 };
 const specFixtures = {
   'payment-execution-concurrency.spec.ts':'73a99d8c3ea900b463679a3a0851cceea88ebd3f9cbcdd260cc25b0d3e62e02c',
