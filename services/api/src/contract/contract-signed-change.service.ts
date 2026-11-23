@@ -5,6 +5,7 @@ import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
 import { fundBalanceWitnessBinding, signFundBalanceWitness } from "../fund-account/fund-balance-witness-signing";
+import { assessContractBalance, formatContractBalanceYuan, readContractBalancePosition } from "./contract-balance-warning";
 import { resolveGovernedFinalArchiveAccess } from "./contract-final-archive-access";
 import { ContractFormalFileService } from "./contract-formal-file.service";
 import type { ReviewSignedContractChangeDto, SubmitSignedContractChangeDto } from "./dto/signed-contract-change.dto";
@@ -38,11 +39,18 @@ export class ContractSignedChangeService {
       const originalAmountYuan = this.baseAmount(version);
       const latest = changes.find(row => row.baseVersionId === version.id && row.status === "approved");
       const latestAgreement = changes.find(row => row.status === "approved" && row.paymentAgreementText !== null);
+      const effectiveAmountYuan = latest ? latest.effectiveAmountYuan?.toFixed(4) ?? null : originalAmountYuan;
+      const balance = await readContractBalancePosition(tx, contract.id);
+      const balanceAssessment = assessContractBalance(effectiveAmountYuan, balance);
       return {
         baseVersionId: version.id,
         originalAmountYuan,
-        effectiveAmountYuan: latest ? latest.effectiveAmountYuan?.toFixed(4) ?? null : originalAmountYuan,
+        effectiveAmountYuan,
         currentPaymentAgreementText: latestAgreement?.paymentAgreementText ?? null,
+        totalEffectiveSettlementYuan: formatContractBalanceYuan(balance.totalEffectiveSettlementCents),
+        cumulativePaidYuan: formatContractBalanceYuan(balance.cumulativePaidCents),
+        belowSettled: balanceAssessment.belowSettled,
+        belowPaid: balanceAssessment.belowPaid,
         canSubmit: access.canUpload,
         canReview: access.canConfirm,
         canDownloadOriginals: access.canUpload || access.canConfirm,
@@ -80,6 +88,30 @@ export class ContractSignedChangeService {
             ${summary}::text,${paymentAgreementText}::text,${amountDeltaYuan}::text,${binding.expires}::text,${proof}::text
           )
         `;
+        // The prompt never blocks registration; record the comparison snapshot
+        // so a deliberately below-balance supplement remains auditable.
+        const effectiveAmountYuan = change.effectiveAmountYuan?.toFixed(4) ?? null;
+        const balance = await readContractBalancePosition(tx, contract.id);
+        const balanceAssessment = assessContractBalance(effectiveAmountYuan, balance);
+        if (balanceAssessment.belowSettled || balanceAssessment.belowPaid) {
+          await tx.auditLog.create({
+            data: {
+              actorUserId,
+              action: "contract.signed_change.balance_check",
+              businessType: "contract_version",
+              businessId: version.id,
+              metadata: {
+                changeId: change.id,
+                contractId: contract.id,
+                effectiveAmountYuan,
+                totalEffectiveSettlementYuan: formatContractBalanceYuan(balance.totalEffectiveSettlementCents),
+                cumulativePaidYuan: formatContractBalanceYuan(balance.cumulativePaidCents),
+                belowSettled: balanceAssessment.belowSettled,
+                belowPaid: balanceAssessment.belowPaid
+              }
+            }
+          });
+        }
         return this.readRow(change);
       } catch (error) {
         if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2010") throw error;

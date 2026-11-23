@@ -429,6 +429,134 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       data: { amountYuan: 1 } })).rejects.toThrow();
   });
 
+  it("returns the registration-time settled/paid comparison and still accepts a truthful below-balance supplement", async () => {
+    await owner.settlement.create({ data: {
+      id: "linea-legacy-settlement", projectId: ids.project, contractId: ids.contractA,
+      contractVersionId: ids.versionA, paymentTermsVersionId: "linea-terms-a",
+      code: "LINEA-JS-LEGACY-001", periodLabel: "隔离已结算一期", status: "effective",
+      amountCents: 100_000n, payableAmountCents: 100_000n, paidAmountCents: 0n
+    } });
+    const voucherFileId = "linea-payment-voucher";
+    await owner.fileObject.create({ data: {
+      id: voucherFileId, bucket: "private-local", objectKey: "uploads/line-a/payment-voucher.pdf",
+      originalName: "隔离付款凭证.pdf", mimeType: "application/pdf", sizeBytes: 1,
+      uploadedByUserId: ids.staff, contentSha256: "a".repeat(64), storageStatus: "active"
+    } });
+    await owner.paymentExecution.create({ data: {
+      id: "linea-payment-execution-1", idempotencyKey: randomUUID(),
+      paymentRequestId: signedPaymentId, paymentSubjectType: "our_company",
+      companyEntityIdSnapshot: ids.company, companyEntityNameSnapshot: "隔离参与公司",
+      companyEntityCreditCodeSnapshot: "91350100LINEA00001", amountCents: 50_000n,
+      paidAt: new Date(), executedByUserId: ids.finance, voucherFileId
+    } });
+
+    const before = await call("staff", `/contracts/${ids.versionA}/signed-changes`);
+    expect(before.body).toMatchObject({
+      effectiveAmountYuan: "10500.0000",
+      totalEffectiveSettlementYuan: "1000.0000",
+      cumulativePaidYuan: "500.0000",
+      belowSettled: false,
+      belowPaid: false
+    });
+
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    const pdfBytes = Buffer.from(await pdf.save());
+    const form = new FormData();
+    form.append("file", new Blob([pdfBytes], { type: "application/pdf" }), "低额补充协议.pdf");
+    const upload = await fetch(`${base}/files`, {
+      method: "POST", headers: { authorization: `Bearer ${tokens.get("staff")}` }, body: form
+    });
+    expect(upload.status).toBe(201);
+    const uploaded = await upload.json() as { id: string };
+
+    const low = await call("staff", `/contracts/${ids.versionA}/signed-changes`, {
+      fileId: uploaded.id, summary: "如实登记减额至低于累计结算与实付", amountDeltaYuan: "-10300.0000"
+    });
+    expect(low.status).toBe(201);
+    expect(low.body).toMatchObject({ status: "pending_review", effectiveAmountYuan: "200.0000" });
+
+    const duplicate = await callRaw("staff", `/contracts/${ids.versionA}/signed-changes`, {
+      fileId: uploaded.id, summary: "重复提交", amountDeltaYuan: "0"
+    });
+    expect(duplicate.status).toBe(409);
+
+    const flagged = await call("director", `/contracts/${ids.versionA}/signed-changes`);
+    expect(flagged.body).toMatchObject({
+      effectiveAmountYuan: "10500.0000", belowSettled: false, belowPaid: false
+    });
+
+    const denied = await callRaw("staff", `/contracts/${ids.versionA}/signed-changes/${low.body.id}/review`, {
+      decision: "approve"
+    });
+    expect(denied.status).toBe(403);
+
+    const approved = await call("director", `/contracts/${ids.versionA}/signed-changes/${low.body.id}/review`, {
+      decision: "approve"
+    });
+    expect(approved.body.status).toBe("approved");
+
+    const after = await call("director", `/contracts/${ids.versionA}/signed-changes`);
+    expect(after.body).toMatchObject({
+      effectiveAmountYuan: "200.0000", totalEffectiveSettlementYuan: "1000.0000",
+      cumulativePaidYuan: "500.0000", belowSettled: true, belowPaid: true
+    });
+
+    const audit = await owner.auditLog.findFirst({
+      where: { businessId: ids.versionA, action: "contract.signed_change.balance_check" },
+      orderBy: { createdAt: "desc" }
+    });
+    expect(audit?.actorUserId).toBe(ids.staff);
+    expect(audit?.metadata).toMatchObject({
+      changeId: low.body.id, contractId: ids.contractA, effectiveAmountYuan: "200.0000",
+      totalEffectiveSettlementYuan: "1000.0000", cumulativePaidYuan: "500.0000",
+      belowSettled: true, belowPaid: true
+    });
+
+    const detail = await call("manager", `/contracts/${ids.contractA}?versionId=${ids.versionA}`);
+    const prompt = (detail.body.settlementPayment.summary as Array<{ label: string; value: string }>)
+      .find(row => row.label === "合同金额提示");
+    expect(prompt?.value).toContain("累计生效结算");
+    expect(prompt?.value).toContain("累计实付");
+  });
+
+  it("keeps the original tax value until a correction passes supervisor review", async () => {
+    const submitted = await call("staff", `/contracts/${ids.versionA}/tax-revisions`, {
+      invoiceType: "vat_general", taxRate: "6", explanation: "原发票类型与税率填错，申请更正"
+    });
+    expect(submitted.status).toBe(201);
+    expect(submitted.body.status).toBe("pending_contract_confirmation");
+
+    const pending = await call("staff", `/contracts/${ids.versionA}/tax-revisions`);
+    expect(pending.body.current).toMatchObject({ invoiceType: "vat_special", taxRate: "9" });
+
+    const before = await call("director", `/contracts/${ids.contractA}?versionId=${ids.versionA}`);
+    expect(readBaseInfo(before.body, "发票类型")).toBe("增值税专用发票");
+    expect(readBaseInfo(before.body, "合同税率")).toBe("9%");
+
+    const approved = await call("director", `/contracts/${ids.versionA}/tax-revisions/${submitted.body.id}/review`, {
+      decision: "approve"
+    });
+    expect(approved.status).toBe(201);
+    expect(approved.body.status).toBe("confirmed");
+
+    const afterList = await call("staff", `/contracts/${ids.versionA}/tax-revisions`);
+    expect(afterList.body.current).toMatchObject({ invoiceType: "vat_general", taxRate: "6" });
+    const correction = afterList.body.revisions.find((row: { id: string }) => row.id === submitted.body.id);
+    expect(correction).toMatchObject({
+      kind: "correction", status: "confirmed",
+      before: { invoiceType: "vat_special", taxRate: "9" },
+      proposed: { invoiceType: "vat_general", taxRate: "6" }
+    });
+
+    const detail = await call("director", `/contracts/${ids.contractA}?versionId=${ids.versionA}`);
+    expect(readBaseInfo(detail.body, "发票类型")).toBe("增值税普通发票");
+    expect(readBaseInfo(detail.body, "合同税率")).toBe("6%");
+    expect(await owner.auditLog.count({
+      where: { businessId: ids.versionA, action: "contract.tax_correction.confirm" }
+    })).toBe(1);
+  });
+
   it("does not block real work confirmation when the framework contract has no total price", async () => {
     const draft = await call("staff", `/contracts/${ids.versionC}/work-completion-drafts`, {
       work: "隔离真库框架合同已完成工作", amountYuan: "300.0123", requestKey: "linea-work-003"

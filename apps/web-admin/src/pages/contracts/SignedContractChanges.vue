@@ -147,6 +147,11 @@
             placeholder="仅约定变化时填写，合同部主管复核通过后生效"
           />
         </label>
+        <t-alert
+          v-if="balanceWarning"
+          theme="warning"
+          :message="balanceWarning.message"
+        />
         <t-button
           type="submit"
           :loading="busy"
@@ -159,7 +164,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import type { UploadFile } from "tdesign-vue-next";
 import { normalizeBusinessAmount } from "@jiangkong/shared-domain";
 import { formatUnknownApiError } from "../../api/error-message";
@@ -172,6 +177,7 @@ import {
   type SignedContractChange,
   type SignedContractChanges
 } from "../../api/core-flow-read.api";
+import { signedChangeBalanceWarning } from "./signed-change-balance";
 
 const props = defineProps<{ versionId: string; disabled?: boolean; openRequested?: boolean }>();
 const visible = ref(false);
@@ -192,6 +198,9 @@ const reviewReasonSelf = ref("");
 const downloadReason = ref("");
 const password = ref("");
 const reviewOptions = [{ label: "通过", value: "approve" }, { label: "驳回", value: "reject" }];
+const balanceWarning = computed(() => detail.value
+  ? signedChangeBalanceWarning(detail.value, delta.value)
+  : null);
 const statusLabels = { pending_review: "待复核", approved: "已生效", rejected: "已驳回" };
 let generation = 0;
 

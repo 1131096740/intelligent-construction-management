@@ -4270,7 +4270,7 @@
         "POST /approval-forms/:param/:param/download"
       ],
       "bindingCount": 1,
-      "productionConsumerCount": 1,
+      "productionConsumerCount": 2,
       "causalVerified": true
     },
     {
@@ -6211,7 +6211,7 @@
         "POST /approval-forms/:param/:param/download"
       ],
       "bindingCount": 1,
-      "productionConsumerCount": 1,
+      "productionConsumerCount": 2,
       "causalVerified": true
     },
     {
@@ -6582,7 +6582,7 @@
         "POST /approval-forms/:param/:param/download"
       ],
       "bindingCount": 1,
-      "productionConsumerCount": 1,
+      "productionConsumerCount": 2,
       "causalVerified": true
     },
     {

@@ -410,6 +410,10 @@ export interface SignedContractChanges {
   originalAmountYuan: string | null;
   currentPaymentAgreementText: string | null;
   effectiveAmountYuan: string | null;
+  totalEffectiveSettlementYuan: string;
+  cumulativePaidYuan: string;
+  belowSettled: boolean;
+  belowPaid: boolean;
   canSubmit: boolean;
   canReview: boolean;
   canDownloadOriginals: boolean;
