@@ -62,12 +62,12 @@
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.test.ts",
     "expected": "33395aaa091223d42dd2e7cd1ddcb2a5d80af7277189ec688d8d0e1eabfc5469",
-    "candidate": "cc400dc6be381790f380c37bde4d3526618605100f1c410a3a743c15a21e1e16"
+    "candidate": "ba89af856b926dc1f72a0aaea8da9bfdb5af234f9a5315e282672c64aa79ca51"
   },
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.ts",
     "expected": "c83128b15dbd395bae3875c5994c11e54b13ec426b6959b3e677371bb49a303f",
-    "candidate": "0fb536fd844edc30408c51fa49eb75907b5b135a44d4d404755c01acceaa93ba"
+    "candidate": "5605a763efe116f06e5c079da30a0ba582eb25cdb2efcf45e659f3902479c70d"
   },
   {
     "path": "apps/web-admin/src/api/expense-claim.api.test.ts",
@@ -292,7 +292,7 @@
   {
     "path": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
     "expected": "e59191cb43679ab0564d1fd0ebc1f13b2db9f2163e7ebb62e03a08f9195ab715",
-    "candidate": "c1c1f3cd202ba887af5bca177d4b1a170457a15742b3bb14c950ec964e629cb6"
+    "candidate": "fe184c0df3121986c393d768515d3f7a08967e64ced1bc383afcdda1d4fd0a01"
   },
   {
     "path": "apps/web-admin/src/pages/payments/PaymentListPage.vue",
@@ -532,7 +532,7 @@
   {
     "path": "services/api/src/approval/approval-form.service.ts",
     "expected": "031b17311e634ad97b838f71dd155734def4b2a2f3c307bf347e644427a6dedd",
-    "candidate": "8c7a92ea382383ae737fcdbc9aedf0b021a91cbf224fb5b2e27085692bfd8e72"
+    "candidate": "0d081117b2b892ccae5fff928a9e96553e5c3d7580d3caba5e6b7a23bdb6dd7c"
   },
   {
     "path": "services/api/src/approval/approval-progress.controller.ts",
@@ -547,7 +547,7 @@
   {
     "path": "services/api/src/approval/approval-progress.service.ts",
     "expected": "7db2f18e02d05e265173db1a012e2055d82f5db1a8a8543b45d7a95e2a5e6ff0",
-    "candidate": "2b5eb82e027d753b6120bfc3de109a99ee7bfb4e2a7066392f863e90becef93e"
+    "candidate": "a1179666fcf0d1e9539b7cd04ad131786258116dfb04bb7452db1ca716663169"
   },
   {
     "path": "services/api/src/approval/approval-review-identity.spec.ts",
@@ -612,12 +612,17 @@
   {
     "path": "services/api/src/auth/guards/permission.guard.ts",
     "expected": "8ccc2c3808ddd45837ed115202395a4f87dcc51aa4e015f4590b4f97e40021f1",
-    "candidate": "988c7d28f5032f65ba66c09e3f0e79f42108108cae5e71bda9728c9465bbcad4"
+    "candidate": "35e48906f1a219759c7e00624d24772400c73d15908ea97bb73c469e64de08b8"
   },
   {
     "path": "services/api/src/auth/ledger-read-positions.ts",
     "expected": "cbec20e44ac756cbd9a0c77e92b3cbe9cf7f374ea38e2a7998caea14458ca1c9",
     "candidate": "3eca99bb1d2a7c8085ce95d3b99fb4d2bfae10a1470b03889bae05455ca9c0e9"
+  },
+  {
+    "path": "services/api/src/business-entry-definition/business-entry-transaction.service.ts",
+    "expected": "f9671a49640d50876aa677841619b8733af9a44bb715da58b25bb96b964835d3",
+    "candidate": "b3a15daf2a822c13a00a42d1b688ae4ab29aa150bf7685d9b545cc3b31f5a69c"
   },
   {
     "path": "services/api/src/company-transfer/company-transfer-correction.service.ts",
@@ -1100,6 +1105,11 @@
     "candidate": "5af7622faaa3e42580b7b5f5aad18a5a11c12be69666097b7fc7499da2dfcb99"
   },
   {
+    "path": "services/api/src/payment/dto/assign-payment-approval.dto.ts",
+    "expected": "8a5cc12315ea131b29388a3aa0b69ff7587a04e2ebac204f49d843209bcb30ba",
+    "candidate": "b122a89e4c24dc04e31c95d1bdde8acfed0d9372ae78af2a67654ce065488aa9"
+  },
+  {
     "path": "services/api/src/payment/dto/create-payment-request.dto.ts",
     "expected": "01c66c49fb21c24ea1b453bdcb4f9f664332884a5e9a9baa90ea4a19bea9a926",
     "candidate": "8e5a70009ad4733baea0dc6b3b5e511ee1b5c6aaa6f75a8de7830a594e9e19a7"
@@ -1110,6 +1120,11 @@
     "candidate": "e89a74bea1a47dcb49dfb2e32e9da0d16653e1bcf0695c3a4994b2ec3861b665"
   },
   {
+    "path": "services/api/src/payment/payment-approval-amount-business-entry-policy.ts",
+    "expected": "43f2616bc85f033f7870805cedfd13657beefe723983dd0fb60ded72541ed7ca",
+    "candidate": "053f6a05ff63ba8a2f316ea501a472926e36ce00c6d7a16bebc9eef9487a3d07"
+  },
+  {
     "path": "services/api/src/payment/payment-approval-notification.service.spec.ts",
     "expected": "e70d08db2eece621c703eb116faf61e8b9a9e3dd33ff14508b8b3e047d845856",
     "candidate": "32f1eb124bf1d9aa31073e1880a9cdcb06edff164b98d90cc4af7df66a07dadd"
@@ -1117,7 +1132,7 @@
   {
     "path": "services/api/src/payment/payment-approval-notification.service.ts",
     "expected": "4452fc10504fba4abe2b05d14bd6367b1df4e62d41633611266cf46dfaecaa33",
-    "candidate": "717755fade42a4edc2731616bbf562029459dafb053bde31514c8cda4a673e02"
+    "candidate": "79ad1ad92d43c82f249b2f442c4c86a4bedf820600f4e02f522168fa429ba001"
   },
   {
     "path": "services/api/src/payment/payment-operating-source.adapter.spec.ts",
@@ -1132,12 +1147,12 @@
   {
     "path": "services/api/src/payment/payment-read.service.spec.ts",
     "expected": "a6043b569703db85112a1dc2c3e245600c596021f92707c4f65520a428c93558",
-    "candidate": "842b835d4b4ceec92c1b11cd742a1f182fea70bfa341a2ffb28595f0f843f8c4"
+    "candidate": "8826313bfba354c35f8d9c8e6093f9335369eb3e4b774f5a75d9ccd6c000b284"
   },
   {
     "path": "services/api/src/payment/payment-read.service.ts",
     "expected": "7d2378c22ec148759df4848beb7ddc684537735390815d112eb4cda3170d9197",
-    "candidate": "ec29e09db3a292fb92ef894c03321b2fbe358e4e7b3e3781c156427beb348377"
+    "candidate": "a5e4bef54464d3c695798e61d95fa9731488a82160ede6a9ca13f8a8d5cbad71"
   },
   {
     "path": "services/api/src/payment/payment-request-business-entry-definition.ts",
@@ -1152,7 +1167,7 @@
   {
     "path": "services/api/src/payment/payment-request.service.ts",
     "expected": "0a283f62d03fc5f22fe776d1a9da00b9becf80a2cdff44808fa1d944f96fd74f",
-    "candidate": "d46b3c3bcb5cf3d846ff4f9af7b482dfe6eafe88083ddb993c833ae8181938d1"
+    "candidate": "122bcf2fba4f09d1f168bf7d873eea227e7cd49c48022ce2bcc99e5ea57c7250"
   },
   {
     "path": "services/api/src/payment/payment.controller.spec.ts",
@@ -1162,7 +1177,7 @@
   {
     "path": "services/api/src/payment/payment.controller.ts",
     "expected": "f07f64ef4776f6d22fdf015f756b77fb2f59fbcac22255aa87ff4840fa6d0dbf",
-    "candidate": "2d84946b6b4a7f74079726de48cb4dcbd9d45f85e6276bd01b035bb56ee47f11"
+    "candidate": "47f5483b5a90080c521f43c3607c85ecea3386e6604aedec82acdc084abee31f"
   },
   {
     "path": "services/api/src/payment/payment.module.ts",
@@ -1183,6 +1198,11 @@
     "path": "services/api/src/payment/registered-payment-existing-source.ts",
     "expected": "b0ff04dc42b0fcfe19431bc961e5d4c3bcbf3481f798d5badc7ab5e42f7b79c1",
     "candidate": "70549d2a098be57375b3e3dd004ca3021723dfd6871f0a837489253b369c24aa"
+  },
+  {
+    "path": "services/api/src/payment/registered-payment-notification.service.ts",
+    "expected": "eba13bba0f91056b3b73a9b328203ef0869e702960c6dd4d4a67ac125f9b1df5",
+    "candidate": "989b6ebdd27a1ddd9d7ddc0a9727aaf53be7912dffee71a8570eef0127a0ad9f"
   },
   {
     "path": "services/api/src/payment/settlement-payment-capacity.ts",
