@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 54,
-    "exportedFunctionCount": 796,
-    "transportWrapperCount": 772,
+    "exportedFunctionCount": 798,
+    "transportWrapperCount": 774,
     "pureExportCount": 24,
-    "mainRequestBindingCount": 846,
+    "mainRequestBindingCount": 848,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 802,
-    "productionConsumerCount": 681,
+    "requestEdgeCount": 804,
+    "productionConsumerCount": 683,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -6853,7 +6853,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5980,
+          "sourceLine": 6105,
           "method": "POST",
           "path": "/files/download-package",
           "normalizedPath": "/files/download-package",
@@ -7314,7 +7314,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7720,
+          "sourceLine": 7845,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -7346,9 +7346,9 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7704,
+          "sourceLine": 7829,
           "method": "GET",
-          "path": "/contracts/ledger-export",
+          "path": "/contracts/ledger-export?:param",
           "normalizedPath": "/contracts/ledger-export",
           "normalizedKey": "GET /contracts/ledger-export",
           "bodyKind": "none",
@@ -7376,7 +7376,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7704,
+          "sourceLine": 7829,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -7406,7 +7406,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6092,
+          "sourceLine": 6217,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -7435,7 +7435,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7704,
+          "sourceLine": 7829,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -7527,7 +7527,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5951,
+          "sourceLine": 6076,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -7620,7 +7620,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7747,
+          "sourceLine": 7872,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -7649,7 +7649,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7734,
+          "sourceLine": 7859,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -7678,7 +7678,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7762,
+          "sourceLine": 7887,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -7707,7 +7707,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7704,
+          "sourceLine": 7829,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -7727,6 +7727,34 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "downloadSignedSettlementLedgerExport",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "none",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 7829,
+          "method": "GET",
+          "path": "/settlements/signed-ledger-export?:param",
+          "normalizedPath": "/settlements/signed-ledger-export",
+          "normalizedKey": "GET /settlements/signed-ledger-export",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadSignedSettlementLedgerExport",
+              "downloadWorkbook"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -9755,6 +9783,34 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/contracts/SignedContractChanges.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchSignedSettlementLedger",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 80,
+          "method": "GET",
+          "path": "/settlements/signed-ledger",
+          "normalizedPath": "/settlements/signed-ledger",
+          "normalizedKey": "GET /settlements/signed-ledger",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchSignedSettlementLedger",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
