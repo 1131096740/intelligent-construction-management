@@ -26,6 +26,12 @@ export const fundsWorkbenchRoleKeys = [
   "comprehensive_director"
 ] as const satisfies readonly RoleKey[];
 
+export const otherProjectPaymentRoleKeys = [
+  "comprehensive_director",
+  "finance_staff",
+  "finance_director"
+] as const satisfies readonly RoleKey[];
+
 export const fundMovementRoleKeys = [
   "finance_staff",
   "finance_director"
@@ -197,7 +203,8 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     label: "费用与报销",
     items: [
       { label: "综合采购申请", path: "/综合采购申请" },
-      { label: "费用与报销工作台", path: "/费用与报销工作台" }
+      { label: "费用与报销工作台", path: "/费用与报销工作台" },
+      { label: "其他项目付款", path: "/其他项目付款", requiredRoleKeys: otherProjectPaymentRoleKeys }
     ]
   },
   {
@@ -628,6 +635,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         path: "费用与报销/:claimId",
         component: () => import("../pages/expense-claims/ExpenseClaimDetailPage.vue"),
         meta: { title: "费用与报销详情", activeNavigationPath: "/费用与报销工作台" }
+      },
+      {
+        path: "其他项目付款",
+        component: () => import("../pages/other-project-payment/OtherProjectPaymentPage.vue"),
+        meta: { title: "其他项目付款", requiredRoleKeys: otherProjectPaymentRoleKeys }
       },
       {
         path: "零星采购收货/:procurementId",

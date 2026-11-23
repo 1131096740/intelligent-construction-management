@@ -36,6 +36,7 @@ import {
 } from "./expense-claim-operating-source.adapter";
 import { renderExpenseClaimFinalPaymentPdf } from "./expense-claim-final-payment-pdf";
 import { freezeExpenseClaimEntryInTransaction } from "./expense-claim-entry.adapter";
+import { projectClaimPaymentCapacity } from "./other-project-payment";
 import { EXPENSE_CLAIM_ENTRY_DEFINITION } from "./expense-claim-entry.definition";
 import type { CreateExpenseClaimDto, ExpenseClaimLineDto } from "./dto/create-expense-claim.dto";
 import type { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
@@ -427,6 +428,26 @@ export class ExpenseClaimService {
       })
     ]);
     const attachmentFileIds = attachments.map((attachment) => attachment.fileId);
+    const paymentExecutionIds = paymentExecutions.map((execution) => execution.id);
+    const paymentRefunds = paymentExecutionIds.length
+      ? await this.prisma.paymentExecutionRefund.findMany({
+        where: {
+          executionType: "expense_claim_payment_execution",
+          expenseClaimPaymentExecutionId: { in: paymentExecutionIds }
+        },
+        select: {
+          id: true, expenseClaimPaymentExecutionId: true, amountCents: true, receivedAt: true,
+          reason: true, evidenceReference: true, accountId: true, recordedByUserId: true, createdAt: true
+        },
+        orderBy: [{ receivedAt: "asc" }, { createdAt: "asc" }]
+      })
+      : [];
+    const refundedCents = paymentRefunds.reduce((total, refund) => total + refund.amountCents, 0n);
+    const paymentCapacity = projectClaimPaymentCapacity({
+      payableCents: claim.companyPayableAmountCents,
+      fundedCents: claim.fundedAmountCents,
+      refundedCents
+    });
     const attachmentUploaderIds = [...new Set(attachments.map((attachment) => attachment.attachedByUserId))];
     const [files, attachmentUploaders] = await Promise.all([
       attachmentFileIds.length
@@ -491,8 +512,28 @@ export class ExpenseClaimService {
         canRecordLoanDisbursement: claim.claimType === "loan" && ["approved_pending_disbursement", "partially_disbursed"].includes(claim.status) && roles.includes("finance_staff"),
         canRecordLoanRepayment: claim.claimType === "loan" && roles.includes("finance_staff"),
         canConfirmLoanRepayment: claim.claimType === "loan" && roles.includes("finance_director"),
-        canReverseLoanRepayment: claim.claimType === "loan" && roles.includes("finance_director")
+        canReverseLoanRepayment: claim.claimType === "loan" && roles.includes("finance_director"),
+        canRecordRefund: claim.claimType === "incidental_expense" &&
+          ["approved_pending_payment", "partially_paid", "paid"].includes(claim.status) &&
+          ["finance_staff", "finance_director", "comprehensive_director"].some((role) => roles.includes(role as RoleKey)),
+        canCorrectAmount: claim.claimType === "incidental_expense" &&
+          ["approved_pending_payment", "partially_paid", "paid"].includes(claim.status) &&
+          roles.includes("finance_director")
       },
+      paymentCapacity: {
+        payableCents: moneyCentsToApi(paymentCapacity.payableCents),
+        fundedAmountCents: moneyCentsToApi(paymentCapacity.fundedCents),
+        refundedCents: moneyCentsToApi(paymentCapacity.refundedCents),
+        netPaidCents: moneyCentsToApi(paymentCapacity.netPaidCents),
+        remainingPayableCents: moneyCentsToApi(paymentCapacity.remainingPayableCents),
+        overpaidCents: moneyCentsToApi(paymentCapacity.overpaidCents),
+        status: paymentCapacity.status,
+        costConfirmed: claim.status !== "draft" && claim.companyPayableAmountCents > 0n
+      },
+      paymentRefunds: paymentRefunds.map((refund) => ({
+        ...refund,
+        amountCents: moneyCentsToApi(refund.amountCents)
+      })),
       paymentExecutions: paymentExecutions.map(({ registeredOperationalPayment, ...execution }) => ({
         ...execution,
         amountCents: moneyCentsToApi(execution.amountCents),
@@ -1352,7 +1393,19 @@ export class ExpenseClaimService {
         };
       }
       if (!["approved_pending_payment", "partially_paid"].includes(claim.status)) throw new BadRequestException("当前费用申请不可登记实际支付");
-      if (amountCents > claim.companyPayableAmountCents - claim.fundedAmountCents) throw new BadRequestException("补付金额超过当前待付金额");
+      const refundedBefore = await tx.paymentExecutionRefund.aggregate({
+        where: {
+          executionType: "expense_claim_payment_execution",
+          expenseClaimExecution: { is: { expenseClaimId: claim.id } }
+        },
+        _sum: { amountCents: true }
+      });
+      const capacityBefore = projectClaimPaymentCapacity({
+        payableCents: claim.companyPayableAmountCents,
+        fundedCents: claim.fundedAmountCents,
+        refundedCents: refundedBefore._sum?.amountCents ?? 0n
+      });
+      if (amountCents > capacityBefore.remainingPayableCents) throw new BadRequestException("补付金额超过当前待付金额");
       const voucher = await tx.fileObject.findUnique({ where: { id: voucherFileId }, select: { id: true, uploadedByUserId: true } });
       if (!voucher) throw new NotFoundException("补付凭证不存在");
       if (voucher.uploadedByUserId !== actorUserId) throw new BadRequestException("补付凭证必须由登记人本人上传");
@@ -1390,7 +1443,11 @@ export class ExpenseClaimService {
             })
           : null;
       const fundedAmountCents = claim.fundedAmountCents + amountCents;
-      const status = fundedAmountCents === claim.companyPayableAmountCents ? "paid" : "partially_paid";
+      const status = projectClaimPaymentCapacity({
+        payableCents: claim.companyPayableAmountCents,
+        fundedCents: fundedAmountCents,
+        refundedCents: refundedBefore._sum?.amountCents ?? 0n
+      }).status;
       await tx.expenseClaim.update({ where: { id: claim.id }, data: { fundedAmountCents, status } });
       if (claim.projectId) {
         await this.appendOperatingExpenseClaimPaymentExecution(
