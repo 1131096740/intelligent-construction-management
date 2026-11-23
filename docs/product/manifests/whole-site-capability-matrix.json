@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "e1b36f0bab1862991f0e4b4b773c29ec77236bfd5c8f9ff1bc76d5eacd8d5341",
+      "sha256": "8303b2bb8bd9508f28fdfe3a0c9aa46e8fc7495c075c307326ba1fc18b491675",
       "status": "ready",
       "summary": {
         "apiModuleCount": 50,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "717d4b2f6bcd438d7e9a3af7878cf28b4b804791ed27700a6d116a7e652e754f",
+      "sha256": "a207838d981bf04656f7d1c567b797d65cb4666d37d54a7bf74b58d24ce22f4c",
       "status": "ready",
       "summary": {
         "registeredActionCount": 458,
@@ -52,8 +52,8 @@
         "routeRootCount": 76,
         "totalVueFileCount": 241,
         "parsedVueFileCount": 241,
-        "reachableProductionModuleCount": 396,
-        "templateEventDirectiveCount": 1536,
+        "reachableProductionModuleCount": 398,
+        "templateEventDirectiveCount": 1538,
         "propCallbackDirectiveCount": 8,
         "coveredProductionMutationConsumerCount": 447,
         "candidateProductionMutationConsumerCount": 447,
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "32bca226dc3454d2109c3c3b677eabca79432de6dc84cfc6ac65cd37f7222a2a",
+      "sha256": "98b69ad1450b950c193d0eca4cef23db3349f8c502ccc3b7a0286e02f3418789",
       "status": "ready",
       "summary": {
         "routeCount": 818,
@@ -4489,7 +4489,9 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/SignedContractChanges.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -4529,7 +4531,9 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/EffectiveContractTaxFacts.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -17448,9 +17452,11 @@
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "downloadApprovalForm",
           "productionConsumers": [
+            "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
           ],
           "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
           ],
           "causalVerified": true,
@@ -17474,9 +17480,11 @@
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "downloadApprovalForm",
           "productionConsumers": [
+            "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
           ],
           "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue"
           ],
           "causalVerified": true,
@@ -17500,9 +17508,11 @@
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "downloadApprovalForm",
           "productionConsumers": [
+            "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
           ],
           "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue"
           ],
           "causalVerified": true,
@@ -25075,7 +25085,9 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/SignedContractChanges.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -25141,7 +25153,9 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/SignedContractChanges.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -25276,7 +25290,9 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/EffectiveContractTaxFacts.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -25342,7 +25358,9 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/EffectiveContractTaxFacts.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],

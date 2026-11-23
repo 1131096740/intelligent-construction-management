@@ -4774,7 +4774,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5665,
+            "sourceLine": 5669,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",

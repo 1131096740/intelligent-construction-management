@@ -8,6 +8,8 @@ import {
   fetchContractDetail,
   downloadPrivateFileByTicket,
   fetchContractChangeEligibility,
+  fetchContractTaxRevisions,
+  fetchSignedContractChanges,
   fetchContractLedger,
   fetchContractLifecycleLedger,
   fetchContractWorkbenchLedger,
@@ -16,6 +18,10 @@ import {
   fetchDraftRetentionPreview,
   fetchPaymentDetail,
   fetchPaymentLedger,
+  reviewContractTaxRevision,
+  reviewSignedContractChange,
+  submitContractTaxRevision,
+  submitSignedContractChange,
   fetchPaymentLifecycleLedger,
   fetchPaymentContractOptions,
   fetchSettlementDetail,
@@ -412,6 +418,45 @@ describe("core flow read API client", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "/api/contracts/HT-2026-001?versionId=version-ended%2F1"
     );
+  });
+
+  it("uses the unified signed-change and tax entry routes with current wrapper payloads", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "ok" })
+    } as Response);
+
+    await fetchSignedContractChanges("version/1");
+    await submitSignedContractChange("version/1", {
+      fileId: "file-1", summary: "补充协议", amountDeltaYuan: "-100.0000",
+      paymentAgreementText: "验收后付款"
+    });
+    await reviewSignedContractChange("version/1", "change/1", { decision: "reject", reason: "请核对原件" });
+    await fetchContractTaxRevisions("version/1");
+    await submitContractTaxRevision("version/1", {
+      invoiceType: "vat_special", taxRate: "9", explanation: "补充原空税率"
+    });
+    await reviewContractTaxRevision("version/1", "revision/1", { decision: "approve" });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/contracts/version%2F1/signed-changes",
+      "/api/contracts/version%2F1/signed-changes",
+      "/api/contracts/version%2F1/signed-changes/change%2F1/review",
+      "/api/contracts/version%2F1/tax-revisions",
+      "/api/contracts/version%2F1/tax-revisions",
+      "/api/contracts/version%2F1/tax-revisions/revision%2F1/review"
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        fileId: "file-1", summary: "补充协议", amountDeltaYuan: "-100.0000",
+        paymentAgreementText: "验收后付款"
+      })
+    }));
+    expect(fetchMock.mock.calls[5]?.[1]).toEqual(expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ decision: "approve" })
+    }));
   });
 
   it("uses contractVersionId routes for contract change eligibility and creation", async () => {

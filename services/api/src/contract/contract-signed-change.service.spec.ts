@@ -36,8 +36,14 @@ describe("ContractSignedChangeService", () => {
         findFirst: jest.fn().mockResolvedValue(version),
         update: jest.fn()
       },
-      paymentRequest: { update: jest.fn() },
-      settlement: { update: jest.fn() },
+      paymentRequest: { update: jest.fn(), findMany: jest.fn().mockResolvedValue([{ id: "payment" }]) },
+      paymentExecution: { findMany: jest.fn().mockResolvedValue([{ amountCents: 2_500n }]) },
+      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([{ amountCents: 500n }]) },
+      contractTakeover: { findFirst: jest.fn().mockResolvedValue({
+        historicalSettledCents: 1_000n, historicalPaidCents: 300n, historicalProxyPaidCents: 0n
+      }) },
+      auditLog: { create: jest.fn() },
+      settlement: { update: jest.fn(), findMany: jest.fn().mockResolvedValue([{ id: "settlement", amountCents: 5_000n }]) },
       contractFormalFile: {
         create: jest.fn().mockResolvedValue(appendix),
         findUnique: jest.fn().mockResolvedValue(appendix),
@@ -189,11 +195,65 @@ describe("ContractSignedChangeService", () => {
     await expect(service.list("version", "staff")).resolves.toMatchObject({
       originalAmountYuan: "100.0123", effectiveAmountYuan: "100.0123",
       currentPaymentAgreementText: null,
+      totalEffectiveSettlementYuan: "60.0000",
+      cumulativePaidYuan: "33.0000",
+      belowSettled: false,
+      belowPaid: false,
       changes: [expect.objectContaining({ status: "pending_review", appendixFileId: "file" })]
     });
     tx.$queryRaw.mockResolvedValue([{ ...row, status: "approved", appendixFileId: "file" }]);
     await expect(service.list("version", "staff")).resolves.toMatchObject({
       originalAmountYuan: "100.0123", effectiveAmountYuan: "100.0122", currentPaymentAgreementText: "阶段验收后付款"
+    });
+  });
+
+  it("returns the registration-time settled/paid comparison without blocking below-balance input", async () => {
+    const { service, tx, row } = fixture();
+    tx.$queryRaw.mockResolvedValue([{ ...row, appendixFileId: "file" }]);
+    tx.settlement.findMany.mockResolvedValue([{ id: "settlement", amountCents: 20_000n }]);
+    tx.paymentExecution.findMany.mockResolvedValue([{ amountCents: 15_000n }]);
+    await expect(service.list("version", "staff")).resolves.toMatchObject({
+      effectiveAmountYuan: "100.0123",
+      totalEffectiveSettlementYuan: "210.0000",
+      cumulativePaidYuan: "158.0000",
+      belowSettled: true,
+      belowPaid: true
+    });
+  });
+
+  it("records an auditable snapshot when a registered change is below settled/paid but still submits", async () => {
+    const { service, tx, row, formalFiles } = fixture();
+    tx.$queryRaw.mockResolvedValueOnce([{ database: "db", role: "app", xid: "1", backend: "2", expires: "1700000000" }])
+      .mockResolvedValueOnce([row]);
+    tx.settlement.findMany.mockResolvedValue([{ id: "settlement", amountCents: 20_000n }]);
+    tx.paymentExecution.findMany.mockResolvedValue([{ amountCents: 15_000n }]);
+    const oldKey = process.env.CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY;
+    process.env.CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY = "a".repeat(64);
+    try {
+      await expect(service.submit("version", "staff", {
+        fileId: "file", summary: "低于累计结算的如实登记", amountDeltaYuan: "-0.0001"
+      })).resolves.toMatchObject({ status: "pending_review", effectiveAmountYuan: "100.0122" });
+    } finally {
+      if (oldKey === undefined) delete process.env.CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY;
+      else process.env.CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY = oldKey;
+    }
+    expect(formalFiles.inspectOwnedStoredPdf).toHaveBeenCalledWith("file", "staff");
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorUserId: "staff",
+        action: "contract.signed_change.balance_check",
+        businessType: "contract_version",
+        businessId: "version",
+        metadata: expect.objectContaining({
+          changeId: "change",
+          contractId: "contract",
+          effectiveAmountYuan: "100.0122",
+          totalEffectiveSettlementYuan: "210.0000",
+          cumulativePaidYuan: "158.0000",
+          belowSettled: true,
+          belowPaid: true
+        })
+      })
     });
   });
 });

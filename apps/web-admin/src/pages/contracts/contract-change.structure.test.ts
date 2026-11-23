@@ -89,6 +89,8 @@ describe("contract change Web closure", () => {
     expect(signedChanges).toContain("当前合同金额");
     expect(signedChanges).toContain("变更后金额");
     expect(signedChanges).toContain("normalizeBusinessAmount(delta.value.trim(), { allowNegative: true })");
+    expect(signedChanges).toContain("signedChangeBalanceWarning(detail.value, delta.value)");
+    expect(signedChanges).toContain("balanceWarning.message");
     expect(signedChanges).toContain("submitSignedContractChange(details.baseVersionId, {");
     expect(signedChanges).toContain("...(paymentAgreementText ? { paymentAgreementText } : {})");
   });
