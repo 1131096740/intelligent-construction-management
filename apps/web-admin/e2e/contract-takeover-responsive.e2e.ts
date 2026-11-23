@@ -26,6 +26,18 @@ const takeover = {
   companyEntityName: "建工智管公司",
   contractTypeKey: "labor_subcontract",
   amountCents: "3000000",
+  relationship: "inside",
+  relationshipLabel: "表内（内部单位）",
+  frameworkNoTotal: false,
+  historicalFactStatus: "pending_verification",
+  historicalFactStatusLabel: "待核对",
+  historicalPaidTotalCents: "0",
+  historicalOverpaidCents: "0",
+  historicalOverpaymentKind: "none",
+  historicalOverpaymentLabel: "未超付",
+  historicalReceiptsCents: "0",
+  historicalOverReceivedCents: "0",
+  historicalOverReceivedPendingVerification: false,
   paymentTermsOriginalText: "按月结算，归档后付款",
   paymentStages: [],
   invoiceType: null,
@@ -319,11 +331,33 @@ async function loginWithMocks(
   await page.route("**/api/approval-delegations/user-options", (route) =>
     route.fulfill({ contentType: "application/json", body: "[]" })
   );
+  await page.route(
+    /\/api\/approval-forms\/(?:contract_takeover_correction|contract_tax_fact_revision)\/[^/]+\/capability$/u,
+    (route) => route.fulfill({ json: { available: false } })
+  );
   await page.route("**/api/projects/*/contract-takeovers**", (route) => {
     const url = new URL(route.request().url());
     const projectId = url.pathname.split("/")[3] ?? "";
     const projectTakeovers = options.takeoversByProject?.[projectId] ?? [takeoverFixture];
     const requestedTakeoverId = url.pathname.match(/\/contract-takeovers\/([^/]+)$/u)?.[1];
+    const handoverId = url.pathname.match(/\/contract-takeovers\/([^/]+)\/handover$/u)?.[1];
+    if (handoverId) {
+      const fixture = projectTakeovers.find((item) => item.id === handoverId) ?? takeoverFixture;
+      return route.fulfill({ json: {
+        projectId,
+        takeoverId: handoverId,
+        contractId: "contract-responsive",
+        takeoverStatus: fixture.takeoverStatus,
+        takeoverLevel: fixture.takeoverLevel,
+        takeoverLevelLabel: `${fixture.takeoverLevel}级`,
+        requiresHandover: fixture.takeoverLevel === "C" || fixture.takeoverLevel === null,
+        registered: false,
+        revision: null,
+        assignments: [],
+        history: [],
+        actorDuty: null
+      } });
+    }
     const body = url.pathname.endsWith("/capability")
       ? { projectId, availableActions: [
           ...(roleKeys.some((role) => ["contract_staff", "contract_director"].includes(role)) ? ["save_contract_side", "create_takeover", "update_takeover", "submit_correction"] : []),
@@ -1158,7 +1192,7 @@ test("shows the contract confirmation action only after finance review passed", 
   });
 });
 
-test("keeps the signed-in session when a sensitive download password is incorrect", async ({
+test("申请私有资料下载被拒时保留登录状态且无需密码", async ({
   page
 }) => {
   await page.route("**/api/files/file-downloadable-1/download-ticket-capability", (route) => route.fulfill({ json: { availableActions: ["create_private_file_download_ticket"], action: { key: "create_private_file_download_ticket", enabled: true } } }));
@@ -1167,9 +1201,9 @@ test("keeps the signed-in session when a sensitive download password is incorrec
   await page.route("**/api/files/file-downloadable-1/download-ticket", (route) => {
     downloadTicketRequests += 1;
     return route.fulfill({
-      status: 400,
+      status: 403,
       contentType: "application/json",
-      body: JSON.stringify({ message: "当前密码不正确，请重新输入" })
+      body: JSON.stringify({ message: "当前账号无权下载此资料" })
     });
   });
   await page.route("**/api/auth/refresh", (route) => {
@@ -1181,14 +1215,12 @@ test("keeps the signed-in session when a sensitive download password is incorrec
   await page.goto("/历史合同接管");
   await page.locator(".ledger-panel").getByText("详情", { exact: true }).click();
   const detail = page.locator(".detail-panel");
-  await detail.getByPlaceholder("下载前需校验当前登录密码").fill("wrong-password");
-  await detail
-    .getByPlaceholder("例如：复核历史付款凭证")
-    .fill("生产验收：错误密码不应退出登录");
   await detail.getByRole("button", { name: "安全下载资料" }).click();
-  await page.getByRole("button", { name: "确认下载", exact: true }).click();
+  const dialog = page.locator(".t-dialog").filter({ hasText: "确认安全下载资料" });
+  await expect(dialog.locator("input, textarea")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "确认下载", exact: true }).click();
 
-  await expect(page.getByText("当前密码不正确，请重新输入", { exact: true })).toBeVisible();
+  await expect(page.getByText("当前账号无权下载此资料", { exact: true })).toBeVisible();
   await expect(page).toHaveURL(/\/%E5%8E%86%E5%8F%B2%E5%90%88%E5%90%8C%E6%8E%A5%E7%AE%A1$/u);
   await expect(page.getByText("合同负责人 · 合同员、合同部主管", { exact: true })).toBeVisible();
   expect(downloadTicketRequests).toBe(1);

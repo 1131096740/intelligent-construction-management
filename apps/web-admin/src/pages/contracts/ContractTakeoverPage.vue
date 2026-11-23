@@ -1682,7 +1682,7 @@
     <SensitiveActionDialog
       v-model="evidenceDownloadConfirmVisible"
       title="确认安全下载资料"
-      description="系统将校验当前登录密码，并记录下载人、接管合同、资料和下载原因。"
+      description="系统会核验当前账号的单据访问权限，并记录本次下载。"
       confirm-text="确认下载"
       :loading="evidenceDownloading"
       :error="evidenceDownloadConfirmError"
@@ -3381,15 +3381,15 @@ const selectedBaseInfo = computed(() => {
     { label: "历史事实状态", value: row.historicalFactStatusLabel },
     {
       label: "历史已付/结算/超付",
-      value: `${centsTextToYuanText(row.historicalPaidTotalCents)} / ${centsTextToYuanText(
+      value: `${centsTextToYuanText(row.takeover.historicalPaidTotalCents)} / ${centsTextToYuanText(
         row.takeover.historicalSettledCents
-      )} / ${centsTextToYuanText(row.historicalOverpaidCents)}（${row.historicalOverpaymentLabel}）`
+      )} / ${centsTextToYuanText(row.takeover.historicalOverpaidCents)}（${row.historicalOverpaymentLabel}）`
     },
     ...(row.takeover.relationship === "upward"
       ? [{
           label: "对上历史实收/超收",
-          value: `${centsTextToYuanText(row.historicalReceiptsCents)} / ${centsTextToYuanText(
-            row.historicalOverReceivedCents
+          value: `${centsTextToYuanText(row.takeover.historicalReceiptsCents)} / ${centsTextToYuanText(
+            row.takeover.historicalOverReceivedCents
           )}（保留事实，待核对，不自动退款）`
         }]
       : []),

@@ -10,6 +10,11 @@
     "candidate": "965cd31e7c26cd317d8d3ea7091a3aa6bf205490b303222dd83bc0f6f3084065"
   },
   {
+    "path": "apps/web-admin/e2e/contract-takeover-responsive.e2e.ts",
+    "expected": "a1cfbf7ecfc2a943edab5c1c95fb4e2e55f0de3f595c5f66fb83cbcb3554591f",
+    "candidate": "eeca6404316cb5a86ba058edbdf2aae4aace2d0b308a0dc1a6018debb5fc5374"
+  },
+  {
     "path": "apps/web-admin/e2e/helpers/approval-progress-mocks.ts",
     "expected": "25aaafe0f1445a86370c2d8c54caa4d5b133230af0cc22b8daa56257fbfa7d85",
     "candidate": "19ec360d66a4206b4286f3a6c112e94cfc1f65f7da8cbf3c00eb417c331446e7"
@@ -172,7 +177,7 @@
   {
     "path": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
     "expected": "5a8a9089ee2fac4aa07a36c0ce2a6c3081a92c41b1b1b69bdb7133a5d38cb470",
-    "candidate": "3e7938af117c3841b36f18dd633bb54ac46ff71a060351c94064fdd7995d2386"
+    "candidate": "52bc15b8480e9a4ae93463c2c23ae8849c58949ac78452f5384109dc8197afaf"
   },
   {
     "path": "apps/web-admin/src/pages/contracts/components/ContractTakeoverDualConfirmationCard.vue",
