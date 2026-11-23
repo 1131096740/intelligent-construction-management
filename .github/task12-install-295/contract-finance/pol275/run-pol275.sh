@@ -61,6 +61,14 @@ else
   check "$evidence" aada0a6d3aa800ed5269419314f9a090cc3dd1230c54562423cba155088f10b6
   check "$pol/collision-observation.cjs" 650f65bc653c2f2bd31b010dd008f175306969811b68b4837ffa94916b0d792b
 fi
+# The predecessor checkout can be mode 0600 under the caller's umask.
+# Copy only the verified fixture bytes for the non-root container.
+install -m 0644 "$evidence" "$work/pol275-original-evidence.cjs"
+if [[ $lane == warm ]]; then
+  install -m 0644 "$pol/warm-current.spec.ts" "$work/warm-current.spec.ts"
+else
+  install -m 0644 "$pol/collision-observation.cjs" "$work/collision-observation.cjs"
+fi
 check "$common/installer.cjs" acbfcdde2af4fa653595e8b1f3ce1fbd7b9d5cfd60859eaf30b1ed655f715632
 cp "$common/installer.cjs" "$work/installer.cjs"
 patch --batch --fuzz=0 --silent "$work/installer.cjs" "$plan/installer-pol275.patch"
@@ -77,7 +85,7 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003600_fund_balance_notice_lock/migration.sql,dst=/qualification/terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
-  --mount "type=bind,src=$evidence,dst=/qualification/workspace/services/api/prisma/pol275-original-evidence.cjs,readonly"
+  --mount "type=bind,src=$work/pol275-original-evidence.cjs,dst=/qualification/workspace/services/api/prisma/pol275-original-evidence.cjs,readonly"
   --mount "type=bind,src=$plan/pol275-entry.cjs,dst=/qualification/pol275-entry.cjs,readonly")
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
@@ -85,9 +93,9 @@ done
 args+=(--mount "type=bind,src=$work/installer.cjs,dst=/qualification/installer.cjs,readonly")
 if [[ $lane == warm ]]; then
   args+=(--mount "type=bind,src=$work/pol275.cjs,dst=/qualification/pol275.cjs,readonly"
-    --mount "type=bind,src=$pol/warm-current.spec.ts,dst=/qualification/workspace/services/api/src/database/clearing-reconciliation-concurrency.spec.ts,readonly")
+    --mount "type=bind,src=$work/warm-current.spec.ts,dst=/qualification/workspace/services/api/src/database/clearing-reconciliation-concurrency.spec.ts,readonly")
 else
-  args+=(--mount "type=bind,src=$pol/collision-observation.cjs,dst=/qualification/collision-observation.cjs,readonly")
+  args+=(--mount "type=bind,src=$work/collision-observation.cjs,dst=/qualification/collision-observation.cjs,readonly")
 fi
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
