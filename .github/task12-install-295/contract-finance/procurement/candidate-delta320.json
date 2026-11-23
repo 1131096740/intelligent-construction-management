@@ -1,5 +1,25 @@
 [
   {
+    "path": "apps/web-admin/e2e/approval-progress.e2e.ts",
+    "expected": "22d3b8a9120e1feb4db98f2a02ecc594de35e0b575726e80873b6913f06c4d17",
+    "candidate": "965cd31e7c26cd317d8d3ea7091a3aa6bf205490b303222dd83bc0f6f3084065"
+  },
+  {
+    "path": "apps/web-admin/e2e/helpers/approval-progress-mocks.ts",
+    "expected": "25aaafe0f1445a86370c2d8c54caa4d5b133230af0cc22b8daa56257fbfa7d85",
+    "candidate": "19ec360d66a4206b4286f3a6c112e94cfc1f65f7da8cbf3c00eb417c331446e7"
+  },
+  {
+    "path": "apps/web-admin/src/api/approval-forms.api.ts",
+    "expected": "2e8d51c52d14086d902363c9b1d881318462393b4eee4222ee4fee35b6ffc081",
+    "candidate": "b30cb3bd1e4303927c3882ed3e65f0820331cdaefb26fefa78007b5f549c4426"
+  },
+  {
+    "path": "apps/web-admin/src/api/approval-progress.api.ts",
+    "expected": "bb4ddce4aed3ff60653a13be8ad2b6ae3e04ce4032c874b79f520b5c8037970a",
+    "candidate": "df18508b31a05ec482e55bfa92313d7b143e954853394e95158b846c997e13d4"
+  },
+  {
     "path": "apps/web-admin/src/api/core-flow-read.api.test.ts",
     "expected": "33395aaa091223d42dd2e7cd1ddcb2a5d80af7277189ec688d8d0e1eabfc5469",
     "candidate": "ad9f5b5052316d91430cb83bb6102e5c4dc0f3ef4d5ca919444cd45911c19cab"
@@ -7,12 +27,37 @@
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.ts",
     "expected": "c83128b15dbd395bae3875c5994c11e54b13ec426b6959b3e677371bb49a303f",
-    "candidate": "fdca8bcb18dd44b36fec4ee211cbf3e8f13a148acfc93c9dc09d0fcc6fc1ea16"
+    "candidate": "0d4000df9e9c95fb264b22d0586fcba3085ce4758e41c7b65e36c0cb7917dd5f"
+  },
+  {
+    "path": "apps/web-admin/src/app/navigation-work-item-badges.test.ts",
+    "expected": "43450fce7dbcee35ee97ea66f05b83d5f417f90b105f3a41c7351f6444df51bd",
+    "candidate": "9cab2da6dceac3b3e99c010cffe85f6840817bf9f748df5c1402ec4b8eae6c2c"
+  },
+  {
+    "path": "apps/web-admin/src/components/ApprovalProgressPanel.vue",
+    "expected": "b9f5398d01884e43601e6a309952591ddabe7661ca536e353429400e75d1d974",
+    "candidate": "cb0768672eb22826ee7966c521052f0bbdfb2b10043453a7e8adc0fde07f08f1"
   },
   {
     "path": "apps/web-admin/src/components/ContractRelationshipLedger.vue",
     "expected": "a49a95c2b13d5e1b3a298f0a316dd0b2bcae7a8f7fa807a2913b8cf3b9cd7c70",
     "candidate": "d8c8c24ad0e4549463883e483db5d910d231db45999efb61aac1bb07f5133089"
+  },
+  {
+    "path": "apps/web-admin/src/components/RelatedApprovalList.vue",
+    "expected": "fa7807e457e92f94aace04a3794a1a7907e656dad41f3baeab96498e4070ee3b",
+    "candidate": "a2722100767605a7ddc73797fd8968db4226991e00696b84ce6f8f8ab04f1e98"
+  },
+  {
+    "path": "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
+    "expected": "260d5a2d4d89177d8a1c83aca6e95ddadd5a311b72cff131c08ff71593cb01f3",
+    "candidate": "243c44c5c52ce742889f0cd25e09ffce93b7d2c694aa0f61b7eb9dd797d547c7"
+  },
+  {
+    "path": "apps/web-admin/src/pages/approval-center/ApprovalCenterPage.vue",
+    "expected": "07d7ff86126cbd885ac2b72ab15145edc1339e9d05bd558491b756584d7aa0bd",
+    "candidate": "7231224fcbff7d8fc8332764f2f49d16f9b30a20836cd04a494f008e328ddcdf"
   },
   {
     "path": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
@@ -43,6 +88,11 @@
     "path": "apps/web-admin/src/pages/contracts/contract-lifecycle-capability-gates.structure.test.ts",
     "expected": "ee29f234ac85b020f4779557630d6b9d062e59318d610ce5b9de7d3575f1c789",
     "candidate": "a9d085a29b3c0e83d02930afaf67dca4528dc9f9c7f88181804301aca542c5ae"
+  },
+  {
+    "path": "apps/web-admin/src/pages/home/home.config.test.ts",
+    "expected": "8f54f065db100140c851b09f7341a2b2cc58fbfc6935d7ca176e845abe83c669",
+    "candidate": "5b94f63a1546557fece839ec0e389ba40f7734d0dea9a91bd8cf3b9af66f7201"
   },
   {
     "path": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
@@ -92,7 +142,7 @@
   {
     "path": "package.json",
     "expected": "2f4cfb8c1ca43f6ce236873a22baa84c1dfb8ca1c580648ac5c632649de8b088",
-    "candidate": "7618fce516ea591be8ed8a14dcbc7e25c69261e1e06e5d649c124ba3dbfc74ce"
+    "candidate": "4c7759c5dce3153233959d3bf27416068797bca9be663124d538a4630a88c857"
   },
   {
     "path": "packages/shared-domain/src/contract-relationship-ledger.ts",
@@ -102,7 +152,7 @@
   {
     "path": "packages/shared-domain/src/operating-projection-export.ts",
     "expected": "c1154de32481863ebf25b32feeb8475f65be662fae7dc0cc73f677c0361e95a6",
-    "candidate": "b27192e86c0edcc5571c7269d047b76786384ec2e91ee45f757f43cc7e858427"
+    "candidate": "c0e41e5862ba748f04248dc0adab7d02c35e17a36e8990524d51280447c80d69"
   },
   {
     "path": "services/api/prisma/database-dynamic-gate-manifest.json",
@@ -160,14 +210,29 @@
     "candidate": "dd96c44ecb84dbf031155b8d59683b81ac7da069b769a8edec0eaf782ade23c1"
   },
   {
+    "path": "services/api/src/approval/approval-form.service.spec.ts",
+    "expected": "5f42c450c0515fb809ea0fcfbf259c27281edc30da0c2e645a8e5c825e650c6a",
+    "candidate": "bbbec9ee187673828d4462880c8c0aa7e989e4a40ef396d8f7708fc5e2a14ba9"
+  },
+  {
+    "path": "services/api/src/approval/approval-form.service.ts",
+    "expected": "031b17311e634ad97b838f71dd155734def4b2a2f3c307bf347e644427a6dedd",
+    "candidate": "9739ee16f5eb458e4972b24c35faff327227ba71d93726a774229b547eb3b817"
+  },
+  {
+    "path": "services/api/src/approval/approval-progress.controller.ts",
+    "expected": "064cb37c7cf53b221614a438a7c61903d346f5133b3390e0a5a1441c48a0ce22",
+    "candidate": "8058c0f10e067f0d9483e57d98177c7fe65d4f79e7ec4dce0e2828fc859ad2bd"
+  },
+  {
     "path": "services/api/src/approval/approval-progress.service.spec.ts",
     "expected": "f7a810593df5fa3cae91c8233d34840cc757bbac405586353394f3aaa19b32fe",
-    "candidate": "91b92d23ae480743b48598861b83e92afc4d9507cf61149ed24699a83f81db92"
+    "candidate": "58961de016f6c599a9812ef822642cc87964361b3dc8c602a9e9bb222d297842"
   },
   {
     "path": "services/api/src/approval/approval-progress.service.ts",
     "expected": "7db2f18e02d05e265173db1a012e2055d82f5db1a8a8543b45d7a95e2a5e6ff0",
-    "candidate": "e1893d00d6ff09dcec306099b591df8bd09bd0e27eb5b144fe0d90282bcfab51"
+    "candidate": "2b5eb82e027d753b6120bfc3de109a99ee7bfb4e2a7066392f863e90becef93e"
   },
   {
     "path": "services/api/src/approval/approval-review-identity.spec.ts",
@@ -188,6 +253,11 @@
     "path": "services/api/src/approval/audit-duty-notification-delivery.ts",
     "expected": "21567fb5659dfe37e5a71470ca5650dea7d1395979e7669fe5f4f2f90a080ad0",
     "candidate": "40017e852db29daa4ec4f9e82535a3e936c7b45a9699d52f47f0d4d8dbb56467"
+  },
+  {
+    "path": "services/api/src/approval/independent-approval-progress.service.ts",
+    "expected": "dfb9efe364f08a0ed27cbd35e921fad6d60916e7fa201b5d0e1ed956cf85a1d8",
+    "candidate": "0055981d91f695e5f95cfd34e2ffff2c477dd6e859e7e2f98f991cd8ea5b84b5"
   },
   {
     "path": "services/api/src/approval/project-approval-assignments.ts",
@@ -342,12 +412,12 @@
   {
     "path": "services/api/src/file/file.service.spec.ts",
     "expected": "40c5addfc6f940ba2fbfd091a094e520b954b1712d4a4edb87592189b2dd2f02",
-    "candidate": "37887bcb21a4834563d3c1d47585425909b3caf618a09b784c5de57579e9f31b"
+    "candidate": "56ff4973009924a4970437001a123c22a078140a6f5bb1c53747a3c90c391ed8"
   },
   {
     "path": "services/api/src/file/file.service.ts",
     "expected": "ee4604a5117ad40f14a27739633a265b37881702bd610ae45781a99ff389a7dd",
-    "candidate": "3b3408a0874655efa06639d2b9c05e465321cf88e10172d7bb18d89c107d2a13"
+    "candidate": "1c8d7ff386f0fd69a2784068b320acecd7c8f9953ad39e76dc6169e7a5365818"
   },
   {
     "path": "services/api/src/file/personnel-private-file-access.service.spec.ts",
@@ -392,12 +462,12 @@
   {
     "path": "services/api/src/me/me.service.spec.ts",
     "expected": "682eeebac883267ff89882c2b63b8853bdb88d4163dd8527da496f8c85e6d755",
-    "candidate": "7b30e8d7d967a406bb93c525aa36811ce4f2b6258bbb97fad4811a1c11ceb821"
+    "candidate": "95a37251f749246bc78414c745defd6be74bf4978d310c3e70ec96e5d6c90ab5"
   },
   {
     "path": "services/api/src/me/me.service.ts",
     "expected": "439db3745de0160d9db7dc5819bdf2f73c2ac0c595d8f8b5250e83d54aba5b25",
-    "candidate": "1603df8f204b7b2950b5423218f561709c8e72987d61102fe1dcbd1adc31c6d6"
+    "candidate": "e4bda7415d17f78452b339b9e89e35bafdb6e5e9434444be2f6f9a89551ab266"
   },
   {
     "path": "services/api/src/necessary-expense-reserve/necessary-expense-reserve-file-access.spec.ts",
@@ -407,12 +477,12 @@
   {
     "path": "services/api/src/operating-ledger/operating-ledger.module.spec.ts",
     "expected": "3efeaf976b77d9b5b68671af84c896baaa74ce169eaa2241727b265d04d35004",
-    "candidate": "392f2cbb7d6c31182832f51419f7967003ab0142a51c2333fa533a4c2644db1e"
+    "candidate": "1dc9d1a00dc7b049197e712b29ff103bdd83f7d8abf7a69a4fa8e52510ee5d5f"
   },
   {
     "path": "services/api/src/operating-ledger/operating-ledger.module.ts",
     "expected": "6519260a9fa649dc647ade0f391984291cfff589879574d571bd347fd8ecb6f7",
-    "candidate": "88e97f3f157350a8842d2ba2369e9fda3eb063721ff234904acf1b2e8afcb919"
+    "candidate": "4d0246152c9806da0c5a1d9ccc962a0a8d7c3a3009c933f4426d0b80317760e0"
   },
   {
     "path": "services/api/src/operating-ledger/operating-ledger.service.spec.ts",
@@ -437,7 +507,7 @@
   {
     "path": "services/api/src/operating-projection/operating-projection.reducer.ts",
     "expected": "f0a1f1fb47106a66dfbf21ce4bb0dcb9433e874cb26110c85faf57eaf5d6693c",
-    "candidate": "73f00b1bed39ee84dcd75323e684d0aaa06347199f2e81bb2cac018c66df2439"
+    "candidate": "16f2311238ecf03adbd68773b0936c412396157a0834bc3478a294e54688b613"
   },
   {
     "path": "services/api/src/operational-write-freeze/operational-write-freeze.guard.spec.ts",
@@ -465,9 +535,14 @@
     "candidate": "717755fade42a4edc2731616bbf562029459dafb053bde31514c8cda4a673e02"
   },
   {
+    "path": "services/api/src/payment/payment-operating-source.adapter.spec.ts",
+    "expected": "4bb00e4fe252e01958d770368f3555289080b35eb8267acb4b1c463b60cce7fb",
+    "candidate": "b20ad1bff4cf47d43eb02da5adac7e078d696b23f3926d280a69f62a2dc9336f"
+  },
+  {
     "path": "services/api/src/payment/payment-operating-source.adapter.ts",
     "expected": "bdb65e534f76d069eb7089f53c1e1d429d5a3666aa6868567ac72c82dc798768",
-    "candidate": "410d24a480f18771b667bd16657f953bc1e1a4c2211e67b29cce2e0614d5a4be"
+    "candidate": "05f69584ae6601ddf7e70175d476b395aeb35db2a89587ac616300b02d22ca08"
   },
   {
     "path": "services/api/src/payment/payment-read.service.spec.ts",
@@ -493,6 +568,11 @@
     "path": "services/api/src/payment/payment-request.service.ts",
     "expected": "0a283f62d03fc5f22fe776d1a9da00b9becf80a2cdff44808fa1d944f96fd74f",
     "candidate": "6a07ec8e37da433c53e98094823d1203ab0d8a8c9c9fbd921dd87b2e74500604"
+  },
+  {
+    "path": "services/api/src/payment/registered-payment-domain.ts",
+    "expected": "fabdc71ab393cf3eb80f5a6c39075f1326f28ef0e3a184e8aacf9ecb2ef682cc",
+    "candidate": "0c942f8296e926f7224dee178812885dffcad2d1b35f53ab1b4f7f7263774e58"
   },
   {
     "path": "services/api/src/payment/registered-payment-execution.http.spec.ts",
@@ -523,6 +603,11 @@
     "path": "services/api/src/project/project.service.ts",
     "expected": "352ec201dcaa4ee99cfc33181046901bb9a389d4028243f53c40f7753ec65e27",
     "candidate": "85f2f1c59be63a2b6fcce56cd6b8f7e169458b764b4f709b95dc027cceb80f22"
+  },
+  {
+    "path": "services/api/src/settlement/settlement-operating-source.adapter.ts",
+    "expected": "6e1134b08b50c90f557439bc2387a4de6e079e0ed8b2bce95554155bcfd6ed72",
+    "candidate": "c529d69eec81b81034df294309dcd6dfe5b6d42368d468257810f37336f9a2f0"
   },
   {
     "path": "services/api/src/settlement/settlement-read.service.spec.ts",
