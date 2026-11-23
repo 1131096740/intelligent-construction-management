@@ -137,6 +137,14 @@ ALTER TABLE "ExpenseClaim"
     FOREIGN KEY ("actualPurchaseBatchId") REFERENCES "ActualPurchaseBatch"("id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 CREATE INDEX "ExpenseClaim_actual_batch_idx" ON "ExpenseClaim"("actualPurchaseBatchId");
 
+-- 退款事实泛化：三类实付共用只增退款；既有 PaymentExecution 行语义不变。
+ALTER TABLE "PaymentExecutionRefund"
+  ALTER COLUMN "paymentExecutionId" DROP NOT NULL,
+  ALTER COLUMN "paymentRequestId" DROP NOT NULL,
+  ADD COLUMN IF NOT EXISTS "executionType" TEXT NOT NULL DEFAULT 'payment_execution',
+  ADD COLUMN IF NOT EXISTS "spotProcurementPaymentExecutionId" TEXT,
+  ADD COLUMN IF NOT EXISTS "expenseClaimPaymentExecutionId" TEXT;
+
 -- 批次原事实只读；只允许成本确认和更正投影推进有效金额/成本版本。
 -- ENFORCEMENT-BEGIN
 -- 同一采购申请不再只允许一笔活动付款：批次内可多次付款；旧 v1 路径保留原限制。
@@ -365,14 +373,6 @@ $$;
 CREATE TRIGGER "ExpenseClaimPaymentExecution_actual_batch_capacity"
 BEFORE INSERT ON "ExpenseClaimPaymentExecution"
 FOR EACH ROW EXECUTE FUNCTION public."jg_actual_purchase_batch_claim_capacity_guard"();
-
--- 退款事实泛化：三类实付共用只增退款；既有 PaymentExecution 行语义不变。
-ALTER TABLE "PaymentExecutionRefund"
-  ALTER COLUMN "paymentExecutionId" DROP NOT NULL,
-  ALTER COLUMN "paymentRequestId" DROP NOT NULL,
-  ADD COLUMN IF NOT EXISTS "executionType" TEXT NOT NULL DEFAULT 'payment_execution',
-  ADD COLUMN IF NOT EXISTS "spotProcurementPaymentExecutionId" TEXT,
-  ADD COLUMN IF NOT EXISTS "expenseClaimPaymentExecutionId" TEXT;
 
 CREATE INDEX "PaymentExecutionRefund_spot_execution_idx"
   ON "PaymentExecutionRefund"("spotProcurementPaymentExecutionId", "receivedAt");

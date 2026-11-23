@@ -1327,12 +1327,11 @@ function readForward320({sourceTree,migrations,tails}) {
   need(typeof sourceTree==='string' && /^[0-9a-f]{40}$/u.test(sourceTree) &&
     typeof migrations==='string' && path.isAbsolute(migrations) &&
     Array.isArray(tails) && tails.length===33,'FORWARD_320_SOURCE');
-  let previous=39;
+  let previous='20261119003900';
   const rows=tails.map(row => {
-    const match=row && typeof row.name==='string' ? /^2026111900(\d{2})00_[a-z0-9_]+$/u.exec(row.name) : null;
-    const minute=match?Number(match[1]):-1;
-    need(minute>previous && typeof row.sha256==='string' && /^[0-9a-f]{64}$/u.test(row.sha256),'FORWARD_320_TAIL_SEQUENCE');
-    previous=minute;
+    const match=row && typeof row.name==='string' ? /^(\d{14})_[a-z0-9_]+$/u.exec(row.name) : null;
+    need(match && match[1]>previous && typeof row.sha256==='string' && /^[0-9a-f]{64}$/u.test(row.sha256),'FORWARD_320_TAIL_SEQUENCE');
+    previous=match[1];
     return {name:row.name,sha256:row.sha256};
   });
   const sql=rows.map(row => {

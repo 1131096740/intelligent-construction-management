@@ -22,7 +22,7 @@ const predecessor295Sha256='b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77
 if(current320) {
   assert.equal(ledger.length,328,'CONTRACT_FINANCE_CURRENT_320_LEDGER_COUNT');
   assert.equal(ledgerHash(ledger.slice(0,295)),predecessor295Sha256,'CONTRACT_FINANCE_CURRENT_320_PREDECESSOR');
-  assert.equal(digest,'8ae65298af51d4aa109ece4c8ea6db8cfbd921858213525f092b904a309faa49',
+  assert.equal(digest,'08b255ea515c2c3f04995d8686379ffd1c19b5c35718373802a55f8ecf8c8a6b',
     'CONTRACT_FINANCE_CURRENT_320_LEDGER_DIGEST');
 } else {
   assert.ok(ledger.length===294||ledger.length===295,'CONTRACT_FINANCE_HOSTED_LEDGER_COUNT');

@@ -25,7 +25,6 @@
 const { randomBytes, randomUUID } = require("node:crypto");
 const { mkdirSync, mkdtempSync, writeFileSync } = require("node:fs");
 const { spawnSync } = require("node:child_process");
-const { tmpdir } = require("node:os");
 const path = require("node:path");
 
 const repoRoot = path.resolve(__dirname, "../../../..");
@@ -34,7 +33,8 @@ const { createCommandRuntime } = require(path.join(prismaDir, "money-bigint-runn
 const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } =
   require(path.join(prismaDir, "local-staged-ci-dynamic.cjs"));
 
-const drillRoot = process.env.DRILL_ROOT || path.join(tmpdir(), "jg-am424-drill");
+const drillRoot = process.env.DRILL_ROOT;
+if (!drillRoot) throw new Error("DRILL_ROOT is required");
 mkdirSync(path.join(drillRoot, "home/.cache"), { recursive: true });
 const legacySchema = process.env.LEGACY_SCHEMA;
 const image = process.env.PG_IMAGE || "postgres:16";
@@ -66,6 +66,11 @@ async function main() {
   if (!endpoint.startsWith("unix://")) throw new Error("DRILL_LOCAL_DOCKER_ONLY");
   docker(["image", "inspect", "--format", "{{.Id}}", image], { quiet: true });
 
+  // Reserve the run before Docker starts so failed startup can be inspected by name.
+  writeFileSync(path.join(drillRoot, "container-ownership.json"),
+    JSON.stringify({ runId, containerName, endpoint }, null, 2),
+    { mode: 0o600, flag: "wx" });
+
   const containerId = docker(["run", "--detach", "--rm", "--pull=never", "--name", containerName,
     "--label", `${CI_DYNAMIC_MIGRATION_LABEL}=${runId}`,
     "--env", "POSTGRES_USER=jiangkong", "--env", `POSTGRES_PASSWORD=${password}`,
@@ -89,7 +94,7 @@ async function main() {
     runId, containerId, containerName, endpoint, port: Number(port), database, password, ownerUrl,
     legacySchema, startedAt: new Date().toISOString()
   };
-  writeFileSync(path.join(drillRoot, "container.json"), JSON.stringify(state, null, 2), { mode: 0o600 });
+  writeFileSync(path.join(drillRoot, "container.json"), JSON.stringify(state, null, 2), { mode: 0o600, flag: "wx" });
 
   const { command: stagedCommand } = createCommandRuntime({ defaultCwd: repoRoot });
   const migration = createCiDynamicMigrationFixture({
@@ -118,7 +123,7 @@ async function main() {
   await migration.migrate({ databaseUrl: ownerUrl, runtimeEnv: env, schemaPath: legacySchema });
   const handle = migration.getStagedSetupHandle(database);
   if (handle) writeFileSync(path.join(drillRoot, "staged-handle.json"),
-    JSON.stringify({ plan: handle.plan, setup: handle.setup }, null, 2), { mode: 0o600 });
+    JSON.stringify({ plan: handle.plan, setup: handle.setup }, null, 2), { mode: 0o600, flag: "wx" });
 
   console.log(JSON.stringify({
     status: "LEGACY_261_APPLIED",

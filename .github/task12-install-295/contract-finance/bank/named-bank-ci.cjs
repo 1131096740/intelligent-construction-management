@@ -15,7 +15,7 @@ const file='src/database/project-affiliate-company-contract-db.spec.ts';
 const args=process.argv.slice(2);
 const current320=args[0]==='--current-320';
 const runArgs=current320?args.slice(1):args;
-const candidateDigest320='8ae65298af51d4aa109ece4c8ea6db8cfbd921858213525f092b904a309faa49';
+const candidateDigest320='08b255ea515c2c3f04995d8686379ffd1c19b5c35718373802a55f8ecf8c8a6b';
 const receipt={status:'STOPPED',scope:'NAMED_BANK_ORIGINAL_FULL_12',backupRestore:'NOT_EXECUTED',business:'NOT_ENTERED',stages:[]};
 function verifyExecutionFiles() {
   const raw=fs.readFileSync(path.join(prefix,'execution-files.json'));

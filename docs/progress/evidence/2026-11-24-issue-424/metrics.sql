@@ -41,6 +41,11 @@ SELECT 'I|orphan_execution_request|'||count(*) FROM "PaymentExecution" e LEFT JO
 SELECT 'I|request_paid_mismatch|'||count(*) FROM "PaymentRequest" r WHERE r."paidAmountCents"<>(SELECT coalesce(sum(e."amountCents"),0) FROM "PaymentExecution" e WHERE e."paymentRequestId"=r.id);
 SELECT 'I|settlement_paid_mismatch|'||count(*) FROM "Settlement" s WHERE s."paidAmountCents"<>(SELECT coalesce(sum(r."paidAmountCents"),0) FROM "PaymentRequest" r WHERE r."settlementId"=s.id);
 SELECT 'I|line_sum_mismatch|'||count(*) FROM "Settlement" s WHERE s."amountCents"<>(SELECT coalesce(sum(l."amountCents"),0) FROM "SettlementLine" l WHERE l."settlementId"=s.id);
-SELECT 'I|lineage_cross_contract|'||count(*) FROM "ContractVersion" v JOIN "ContractVersion" b ON b.id=v."baseVersionId" WHERE b."contractId"<>v."contractId";
+SELECT 'I|invalid_base_version|' || count(*)
+FROM "ContractVersion" v LEFT JOIN "ContractVersion" b ON b.id=v."baseVersionId"
+WHERE v."baseVersionId" IS NOT NULL AND (b.id IS NULL OR b."contractId"<>v."contractId");
+SELECT 'I|invalid_superseded_version|' || count(*)
+FROM "ContractVersion" v LEFT JOIN "ContractVersion" previous ON previous.id=v."supersedesVersionId"
+WHERE v."supersedesVersionId" IS NOT NULL AND (previous.id IS NULL OR previous."contractId"<>v."contractId");
 SELECT 'I|audit_total|'||count(*)||'|actorDistinct|'||count(distinct "actorUserId") FROM "AuditLog";
 SELECT 'I|file_hash_distinct|'||count(distinct "contentSha256")||'|files|'||count(*) FROM "FileObject";

@@ -28,7 +28,7 @@
 git status --porcelain                # 必须为空
 ls -d services/api/prisma/migrations/*/ | wc -l   # 328
 docker image inspect --format '{{.Id}}' postgres:16
-docker ps -q                          # 记录开始前的运行容器，结束时必须恢复为空
+docker ps -q                          # 记录开始前的运行容器，仅用于区分并行演练
 test "${NODE_ENV:-}" != production
 ```
 
@@ -63,7 +63,7 @@ DRILL_ROOT="$DRILL_ROOT" LEGACY_SCHEMA="$PREFIX/schema.prisma" \
   node docs/progress/evidence/2026-11-24-issue-424/build-legacy-replica.cjs
 ```
 
-脚本只创建自己的容器（标签 `jg.local-ci-dynamic-migration`），输出
+脚本在启动前将本轮容器名、标签值和本地 Docker 地址写入 `container-ownership.json`。若启动或就绪检查失败，按记录的容器名和标签核对归属，再清理本轮容器。脚本只创建自己的容器（标签 `jg.local-ci-dynamic-migration`），输出
 `LEGACY_261_APPLIED` 和 `containerId`，并把连接信息写入
 `$DRILL_ROOT/container.json`（0600，含随机密码，演练结束必须删除）。
 
@@ -105,8 +105,8 @@ select 'PaymentExecution',count(*) from "PaymentExecution";
 ## 4. 只读基线与可恢复备份
 
 ```bash
-docker exec -i "$CID" psql -U jiangkong -d "$DB" -X -A -t \
-  -f docs/progress/evidence/2026-11-24-issue-424/metrics.sql > "$DRILL_ROOT/metrics-pre.txt"
+docker exec -i "$CID" psql -U jiangkong -d "$DB" -X -A -t -v ON_ERROR_STOP=1 -f - \
+  < docs/progress/evidence/2026-11-24-issue-424/metrics.sql > "$DRILL_ROOT/metrics-pre.txt"
 docker exec "$CID" pg_dump -Fc -U jiangkong -d "$DB" > "$DRILL_ROOT/pre.dump"
 shasum -a 256 "$DRILL_ROOT/pre.dump"
 ```
@@ -123,8 +123,8 @@ shasum -a 256 "$DRILL_ROOT/pre.dump"
 docker exec "$CID" createdb -U jiangkong jg424_restore_pre
 docker exec -i "$CID" pg_restore -U jiangkong -d jg424_restore_pre --exit-on-error \
   < "$DRILL_ROOT/pre.dump"
-docker exec -i "$CID" psql -U jiangkong -d jg424_restore_pre -X -A -t \
-  -f docs/progress/evidence/2026-11-24-issue-424/metrics.sql > "$DRILL_ROOT/metrics-restore-pre.txt"
+docker exec -i "$CID" psql -U jiangkong -d jg424_restore_pre -X -A -t -v ON_ERROR_STOP=1 -f - \
+  < docs/progress/evidence/2026-11-24-issue-424/metrics.sql > "$DRILL_ROOT/metrics-restore-pre.txt"
 diff -u "$DRILL_ROOT/metrics-pre.txt" "$DRILL_ROOT/metrics-restore-pre.txt"
 ```
 
@@ -150,7 +150,7 @@ export DATABASE_URL="postgresql://jiangkong:<从 container.json 读取>@127.0.0.
 
 ```bash
 pnpm --filter @jiangkong/api exec prisma migrate deploy \
-  --schema services/api/prisma/schema.prisma
+  --schema prisma/schema.prisma
 ```
 
 预期在 `20261118221000` 失败（错误为 `query returned no rows`：干净重放没有
@@ -162,7 +162,7 @@ docker exec -i "$CID" psql -U jiangkong -d "$DB" -v ON_ERROR_STOP=1 -f - \
 pnpm --filter @jiangkong/api exec prisma migrate resolve --rolled-back \
   20261118221000_contract_legacy_guard_relation_namespace
 pnpm --filter @jiangkong/api exec prisma migrate deploy \
-  --schema services/api/prisma/schema.prisma
+  --schema prisma/schema.prisma
 ```
 
 shim 只复现生产安装器对三个函数体的精确前后态；前态不匹配会拒绝执行。它不写业务
@@ -176,9 +176,10 @@ shim 只复现生产安装器对三个函数体的精确前后态；前态不匹
 ERROR: NORMAL_ARCHIVE_ASSIGNMENT_INSTALL_SCOPE
 ```
 
-原因：`public.jg_contract_direct_upward_closure_v2` 必须恰有一行安装闭包，而该行
-没有任何仓库内迁移写入，只由生产归档安装链（`.github/task12-install-295/contract-finance`）
-在真实角色、TLS、资源证明下产生。**不得**手工插入伪造闭包行，也不得用
+原因：`public.jg_contract_direct_upward_closure_v2` 必须恰有一行安装闭包。
+较早的迁移定义受控安装例程，普通 Prisma 重放不会调用该例程。应从新的隔离副本运行
+仓库的归档安装链（`.github/task12-install-295/contract-finance`），该链在适用的
+历史前缀使用专用数据库角色、TLS 和实际安装读回生成闭包，再顺序迁移。**不得**手工插入伪造闭包行，也不得用
 `migrate resolve --applied` 假装应用；那会让后续校验、审计和文件归属全部失真。
 
 处置：把失败尝试标记为回滚，保留干净的 277 迁移账：
@@ -199,13 +200,13 @@ from _prisma_migrations;
 ```
 
 本次实测：`277 / 2 / 0`，无重复 finished 名称。若真实授权环境已执行生产归档安装器，
-应在其后用同一条 `migrate deploy` 继续 278–328；安装器执行前不得继续。
+可在已授权的隔离环境复验 278。后续逐段验证，以当前候选的逐段回执定位后值偏差。安装器执行前不得继续。
 
 ## 6. 迁移后校验
 
 ```bash
-docker exec -i "$CID" psql -U jiangkong -d "$DB" -X -A -t \
-  -f docs/progress/evidence/2026-11-24-issue-424/metrics.sql > "$DRILL_ROOT/metrics-post.txt"
+docker exec -i "$CID" psql -U jiangkong -d "$DB" -X -A -t -v ON_ERROR_STOP=1 -f - \
+  < docs/progress/evidence/2026-11-24-issue-424/metrics.sql > "$DRILL_ROOT/metrics-post.txt"
 diff -u "$DRILL_ROOT/metrics-pre.txt" "$DRILL_ROOT/metrics-post.txt"
 ```
 
@@ -224,17 +225,17 @@ docker exec "$CID" pg_dump -Fc -U jiangkong -d "$DB" > "$DRILL_ROOT/post.dump"
 docker exec "$CID" createdb -U jiangkong jg424_restore_post
 docker exec -i "$CID" pg_restore -U jiangkong -d jg424_restore_post --exit-on-error \
   < "$DRILL_ROOT/post.dump"
-docker exec -i "$CID" psql -U jiangkong -d jg424_restore_post -X -A -t \
-  -f docs/progress/evidence/2026-11-24-issue-424/metrics.sql > "$DRILL_ROOT/metrics-restore-post.txt"
+docker exec -i "$CID" psql -U jiangkong -d jg424_restore_post -X -A -t -v ON_ERROR_STOP=1 -f - \
+  < docs/progress/evidence/2026-11-24-issue-424/metrics.sql > "$DRILL_ROOT/metrics-restore-post.txt"
 diff -u "$DRILL_ROOT/metrics-post.txt" "$DRILL_ROOT/metrics-restore-post.txt"
 ```
 
 判据：`diff` 为空。生产恢复还必须核对角色/ACL、扩展、数据库级 GUC、文件存储
 （COS 对象版本）与业务时间点；本演练只覆盖数据库逻辑内容。
 
-## 8. 切换演练
+## 8. 数据库连接权限与增量恢复预演
 
-1) 冻结写入：撤销应用角色的 CONNECT（生产还应停应用写入/通知发送，并终止应用会话）：
+1) 检查新连接能否被拒绝。以下命令只用于本演练新建的虚构数据库。正式冻写验收还需停止应用写入、排空连接池并验证已有写事务无法继续提交。
 
 ```bash
 APP_ROLE=$(node -p "require('$DRILL_ROOT/staged-handle.json').plan.appName")
@@ -247,7 +248,7 @@ docker exec "$CID" psql -U jiangkong -d "$DB" -tAc \
 owner 仍可连接（迁移/核对会话）；重新跑 `metrics.sql` 必须与冻结前一致；迁移账
 不得有 pending 行。
 
-2) 开放写入并制造切换后增量：
+2) 在本演练新建库中恢复初始连接权限，使用 owner SQL 构造恢复校验数据。执行前核对初始 ACL 与以下 GRANT 一致。正式开放验收需由应用身份走公开写入口。
 
 ```bash
 docker exec "$CID" psql -U jiangkong -d "$DB" -c \
@@ -256,10 +257,10 @@ docker exec -i "$CID" psql -U jiangkong -d "$DB" -v ON_ERROR_STOP=1 \
   -f - < docs/progress/evidence/2026-11-24-issue-424/increment.sql
 ```
 
-`increment.sql` 写入一张新合同/版本（`numericProtocolVersion=2`、
+`increment.sql` 适用于独立虚构副本，固定标识的插入在一个事务内执行。标识冲突时整笔失败，已有记录保留。此处用于恢复比较，应用重跑的业务幂等仍需独立验证。脚本写入一张新合同/版本（`numericProtocolVersion=2`、
 `amountYuan=1234.5678`）、一份结算草稿、一个资金账户和两条审计。判据：
 `Contract 80→81`、`ContractVersion 107→108`、`Settlement 120→121`、
-`RegisteredFundAccount 0→1`、`AuditLog 20000→20002`；旧表摘要不变。
+`RegisteredFundAccount 0→1`、`AuditLog 20000→20002`；未涉及的旧表摘要保持一致。涉及新增行的表需按原记录范围另行比较。
 
 3) 切换后备份并恢复：重复第 7 节（文件名改 `postcut.dump`），除增量外
 `diff` 为空；增量必须存在于恢复副本。
@@ -272,8 +273,8 @@ docker exec -i "$CID" psql -U jiangkong -d "$DB" -v ON_ERROR_STOP=1 \
 docker exec "$CID" createdb -U jiangkong jg424_rollback_pre
 docker exec -i "$CID" pg_restore -U jiangkong -d jg424_rollback_pre --exit-on-error \
   < "$DRILL_ROOT/pre.dump"
-docker exec -i "$CID" psql -U jiangkong -d jg424_rollback_pre -X -A -t \
-  -f docs/progress/evidence/2026-11-24-issue-424/metrics.sql > "$DRILL_ROOT/metrics-rollback-pre.txt"
+docker exec -i "$CID" psql -U jiangkong -d jg424_rollback_pre -X -A -t -v ON_ERROR_STOP=1 -f - \
+  < docs/progress/evidence/2026-11-24-issue-424/metrics.sql > "$DRILL_ROOT/metrics-rollback-pre.txt"
 diff -u "$DRILL_ROOT/metrics-pre.txt" "$DRILL_ROOT/metrics-rollback-pre.txt"
 ```
 
@@ -299,14 +300,11 @@ diff -u "$DRILL_ROOT/metrics-pre.txt" "$DRILL_ROOT/metrics-rollback-pre.txt"
 
 ```bash
 docker rm -f -v "$CID"
-docker ps -q                              # 必须为空
-docker ps -aq --filter label=jg.local-ci-dynamic-migration   # 必须为空
-docker volume ls | grep jg424             # 必须为空
-rm -rf "$DRILL_ROOT"                      # 含 container.json/密码/临时迁移副本
+docker ps -aq --no-trunc --filter "id=$CID"   # 本演练容器必须无输出
 ```
 
 删除前确认容器 ID 与 `container.json` 一致；只删除本演练容器，不接管、不重启、
-不删除其它历史容器或工作树。
+不删除其它历史容器或工作树。按本轮记录核对关联卷，随后清理已确认归属本轮的演练目录，其中包括含凭据的临时文件。
 
 ## 11. 失败处理矩阵
 
@@ -320,7 +318,7 @@ rm -rf "$DRILL_ROOT"                      # 含 container.json/密码/临时迁�
 | 备份恢复 `diff` 非空 | 备份不可信；保留现场，重新备份/恢复；不得继续切换 |
 | 冻结后应用仍可连接 | 检查 PUBLIC/角色 CONNECT 与连接池；重新冻结并复验 |
 | 切换后增量缺失 | 立即停写，查事务/outbox/审计；保留新事实，前向修复 |
-| 容器/磁盘残留 | 只按本演练标签/ID 删除；复核 `docker ps -q` 与卷列表 |
+| 容器/磁盘残留 | 只按本演练标签/ID 删除；按记录的容器 ID 与卷名复核 |
 
 ## 12. 未覆盖与前置限制
 

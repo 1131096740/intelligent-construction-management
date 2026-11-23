@@ -1,12 +1,4 @@
 BEGIN;
-SET LOCAL session_replication_role = replica;
-DELETE FROM "AuditLog" WHERE id LIKE 'cutover-audit-%';
-DELETE FROM "RegisteredFundAccount" WHERE id LIKE '99999999-%';
-DELETE FROM "Settlement" WHERE id LIKE '99999999-%';
-DELETE FROM "PaymentTermsVersion" WHERE id LIKE '99999999-%';
-DELETE FROM "ContractVersion" WHERE id LIKE '99999999-%';
-DELETE FROM "Contract" WHERE id LIKE '99999999-%';
-SET LOCAL session_replication_role = origin;
 INSERT INTO "Contract" (id,"projectId",code,name,counterparty,"createdAt","updatedAt","companyEntityId","companyEntityName","contractTypeKey",source)
 VALUES ('99999999-0000-4000-8000-000000000001',(SELECT id FROM "Project" ORDER BY code LIMIT 1),'HT-CUT-0001','切换后新增合同','切换演练相对方','2026-11-24 01:00:00','2026-11-24 01:00:00',(SELECT id FROM "CompanyEntity" ORDER BY name LIMIT 1),(SELECT name FROM "CompanyEntity" ORDER BY name LIMIT 1),'construction','system');
 INSERT INTO "ContractVersion" (id,"contractId","versionNo","changeType",status,"amountCents","effectiveAt","createdAt","updatedAt","clauseSnapshot","templateSnapshot","draftData","amountLimitType","taxMode","taxFactStatus","taxFactRevision","signingSubjectType","documentContentRevision","numericProtocolVersion","amountYuan")
