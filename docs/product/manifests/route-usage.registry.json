@@ -3,25 +3,25 @@
   "authorizationScope": "route_usage_classification_only",
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
-    "routeCount": 795,
-    "classificationOverrideCount": 217,
-    "derivedProductionPageCount": 578,
-    "classificationOverrideSha256": "0a2fd4a64ac6dd5849580374cad2f65619772d0cb50fe34e0bbc965ab1b30f1a",
-    "consumerSurfaceOverrideSha256": "9e1bbbd9bcc569c12da5c2fe1d64d1c6a81e97dab6f16e5051bbb2596fb94bc0",
+    "routeCount": 818,
+    "classificationOverrideCount": 219,
+    "derivedProductionPageCount": 598,
+    "classificationOverrideSha256": "c9fa58aa6c3f2730e5982ea856a0d3c9dacb5e4f859419960058a85b0852ed92",
+    "consumerSurfaceOverrideSha256": "8017c10ac9a6885c3788a4040a7bab499970525899cc4cd40c8159e6f13d1355",
     "usageCounts": {
-      "page": 596,
+      "page": 617,
       "external_takeover": 70,
-      "exit_candidate": 90,
+      "exit_candidate": 91,
       "internal_task": 39,
-      "unclassified": 0
+      "unclassified": 1
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 649,
+      "web_api_wrapper": 669,
       "auth_store": 5,
-      "signed_ticket_delivery": 1,
+      "signed_ticket_delivery": 2,
       "machine_probe": 2,
       "operator_endpoint": 37,
-      "none": 101
+      "none": 103
     }
   },
   "overrides": [
@@ -1326,6 +1326,18 @@
       "path": "/payment-executions/notifications",
       "usage": "internal_task",
       "reason": "task16_current_company_role_own_directed_notification_status_read_only_no_dispatch_no_web_consumer_task37_global_ui_pending_not_production_usage_proof"
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/:contractVersionId/change-eligibility",
+      "usage": "exit_candidate",
+      "reason": "contract_change_draft_flow_replaced_by_signed_supplementary_agreement_zero_web_production_calls_candidate_only"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/signed-contract-settlements/:id/attachments/:fileId/download",
+      "usage": "page",
+      "reason": "signed_settlement_attachment_ticket_followup_delivery_consumed_by_web_payment_basis_and_signed_registration"
     }
   ],
   "consumerSurfaceOverrides": [
@@ -1576,6 +1588,20 @@
       "path": "/payment-executions/notifications",
       "consumerSurface": "operator_endpoint",
       "reason": "task16_current_company_role_own_directed_notification_status_read_only_no_dispatch_no_web_consumer_task37_global_ui_pending_not_production_usage_proof"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/signed-contract-settlements/:id/attachments/:fileId/download",
+      "consumerSurface": "signed_ticket_delivery",
+      "reason": "backend_authorized_short_lived_signed_settlement_attachment_ticket_delivery",
+      "ticketFollowups": [
+        {
+          "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+          "wrapper": "readSignedSettlementAttachment",
+          "method": "GET",
+          "ticketField": "downloadUrl"
+        }
+      ]
     }
   ]
 }

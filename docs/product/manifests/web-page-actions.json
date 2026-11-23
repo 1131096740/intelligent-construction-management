@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "ready",
+  "status": "blocked",
   "scope": {
     "registry": "docs/product/manifests/web-page-actions.registry.json",
     "webApiManifest": "docs/product/manifests/web-api-wrappers.json",
@@ -9,27 +9,27 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 445,
+    "registeredActionCount": 444,
     "pageActionCount": 88,
-    "backgroundActionCount": 357,
-    "reachableVueFileCount": 223,
-    "routeRootCount": 75,
-    "totalVueFileCount": 236,
-    "parsedVueFileCount": 236,
-    "reachableProductionModuleCount": 390,
-    "templateEventDirectiveCount": 1502,
+    "backgroundActionCount": 356,
+    "reachableVueFileCount": 228,
+    "routeRootCount": 76,
+    "totalVueFileCount": 241,
+    "parsedVueFileCount": 241,
+    "reachableProductionModuleCount": 396,
+    "templateEventDirectiveCount": 1536,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 431,
     "candidateProductionMutationConsumerCount": 431,
     "acceptedProductionMutationConsumerCount": 431,
-    "productionMutationConsumerPairCount": 431,
-    "blockerCount": 0
+    "productionMutationConsumerPairCount": 447,
+    "blockerCount": 16
   },
   "evidence": {
-    "totalProductionModuleCount": 409,
-    "reachableProductionModuleCount": 390,
-    "totalVueFileCount": 236,
-    "parsedVueFileCount": 236
+    "totalProductionModuleCount": 415,
+    "reachableProductionModuleCount": 396,
+    "totalVueFileCount": 241,
+    "parsedVueFileCount": 241
   },
   "actions": [
     {
@@ -1902,7 +1902,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5588,
+              "sourceLine": 5664,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -1948,7 +1948,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5588,
+              "sourceLine": 5664,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2171,7 +2171,7 @@
         "event": "call",
         "handler": "delegateContractApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1395,
+        "sourceLine": 1331,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2236,7 +2236,7 @@
         "event": "call",
         "handler": "downloadContractApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 1365,
+        "sourceLine": 1301,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2303,7 +2303,7 @@
         "event": "confirm",
         "handler": "confirmContractReviewApprove",
         "kind": "event",
-        "sourceLine": 1015,
+        "sourceLine": 1014,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2371,7 +2371,7 @@
         "event": "confirm",
         "handler": "confirmContractReviewReject",
         "kind": "event",
-        "sourceLine": 1028,
+        "sourceLine": 1027,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2439,7 +2439,7 @@
         "event": "call",
         "handler": "transferContractApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 1380,
+        "sourceLine": 1316,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2504,7 +2504,7 @@
         "event": "confirm",
         "handler": "confirmContractWithdrawal",
         "kind": "event",
-        "sourceLine": 1040,
+        "sourceLine": 1039,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -2571,7 +2571,7 @@
         "event": "call",
         "handler": "associateContractArchiveFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1470,
+        "sourceLine": 1406,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2636,7 +2636,7 @@
         "event": "call",
         "handler": "confirmContractArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1485,
+        "sourceLine": 1421,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2701,7 +2701,7 @@
         "event": "call",
         "handler": "generateContractPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1500,
+        "sourceLine": 1436,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2766,7 +2766,7 @@
         "event": "call",
         "handler": "uploadContractArchivePrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1454,
+        "sourceLine": 1390,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -3096,7 +3096,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5588,
+              "sourceLine": 5664,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3140,7 +3140,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5588,
+              "sourceLine": 5664,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3725,71 +3725,6 @@
             "localCallChain": [
               "executeFocusedBillRemainderCancellation",
               "executeContractBillRemainderCancellation"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "contract-change.create-draft",
-      "usage": "background",
-      "routePaths": [
-        "/合同管理/:contractId"
-      ],
-      "ownerRoutePaths": [
-        "/合同管理/:contractId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "createContractChangeDraftWithCapability",
-        "kind": "background_call",
-        "sourceLine": 1607,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "create_contract_change_draft",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "createContractChangeDraft",
-          "method": "POST",
-          "path": "/contracts/:param/change-drafts",
-          "normalizedKey": "POST /contracts/:param/change-drafts",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/contracts/:contractVersionId/change-drafts",
-            "normalizedKey": "POST /contracts/:param/change-drafts",
-            "controller": "ContractController",
-            "handler": "createChangeDraft",
-            "sourceFile": "services/api/src/contract/contract.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "contract.create"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "createContractChangeDraftWithCapability",
-              "createContractChangeDraft"
             ]
           },
           "ticketFollowups": []
@@ -4768,7 +4703,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5588,
+              "sourceLine": 5664,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -4812,7 +4747,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5588,
+              "sourceLine": 5664,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5823,7 +5758,7 @@
         "event": "call",
         "handler": "downloadContractPrivateFileByTicket",
         "kind": "background_call",
-        "sourceLine": 1640,
+        "sourceLine": 1555,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -5857,10 +5792,12 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+            "apps/web-admin/src/pages/contracts/SignedContractChanges.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+            "apps/web-admin/src/pages/contracts/SignedContractChanges.vue"
           ],
           "causalVerified": true,
           "causalProof": {
@@ -5872,7 +5809,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5588,
+              "sourceLine": 5664,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5901,10 +5838,12 @@
             "requiredProjectAction": null
           },
           "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+            "apps/web-admin/src/pages/contracts/SignedContractChanges.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+            "apps/web-admin/src/pages/contracts/SignedContractChanges.vue"
           ],
           "causalVerified": true,
           "causalProof": {
@@ -5916,7 +5855,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5588,
+              "sourceLine": 5664,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5940,7 +5879,7 @@
         "event": "call",
         "handler": "createContractFileDownloadTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 1628,
+        "sourceLine": 1543,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6005,7 +5944,7 @@
         "event": "call",
         "handler": "associateContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1542,
+        "sourceLine": 1478,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6070,7 +6009,7 @@
         "event": "call",
         "handler": "confirmContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1591,
+        "sourceLine": 1527,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6135,7 +6074,7 @@
         "event": "call",
         "handler": "returnContractFinalFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1576,
+        "sourceLine": 1512,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6200,7 +6139,7 @@
         "event": "call",
         "handler": "uploadContractFinalPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1514,
+        "sourceLine": 1450,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6915,7 +6854,7 @@
         "event": "call",
         "handler": "approveGovernedContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1424,
+        "sourceLine": 1360,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -6980,7 +6919,7 @@
         "event": "call",
         "handler": "approveLegacyContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1410,
+        "sourceLine": 1346,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7045,7 +6984,7 @@
         "event": "call",
         "handler": "completeContractSealWithCapability",
         "kind": "background_call",
-        "sourceLine": 1439,
+        "sourceLine": 1375,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9653,7 +9592,7 @@
         "event": "confirm",
         "handler": "confirmSigningMaterialChange",
         "kind": "event",
-        "sourceLine": 1184,
+        "sourceLine": 1183,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -14843,7 +14782,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5588,
+              "sourceLine": 5664,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -14887,7 +14826,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5588,
+              "sourceLine": 5664,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -16100,7 +16039,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5588,
+              "sourceLine": 5664,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -16144,7 +16083,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5588,
+              "sourceLine": 5664,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -19098,7 +19037,7 @@
         "event": "confirm",
         "handler": "confirmPaymentApprovalApprove",
         "kind": "event",
-        "sourceLine": 706,
+        "sourceLine": 708,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -19163,7 +19102,7 @@
         "event": "confirm",
         "handler": "confirmPaymentApprovalReject",
         "kind": "event",
-        "sourceLine": 721,
+        "sourceLine": 723,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -19228,7 +19167,7 @@
         "event": "call",
         "handler": "abandonPaymentRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 2125,
+        "sourceLine": 2127,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19293,7 +19232,7 @@
         "event": "call",
         "handler": "downloadPaymentApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 2149,
+        "sourceLine": 2151,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19358,7 +19297,7 @@
         "event": "call",
         "handler": "delegatePaymentApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 2137,
+        "sourceLine": 2139,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19423,7 +19362,7 @@
         "event": "call",
         "handler": "downloadPaymentPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 2222,
+        "sourceLine": 2224,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19488,7 +19427,7 @@
         "event": "call",
         "handler": "recordPaymentFinanceWithCapability",
         "kind": "background_call",
-        "sourceLine": 2172,
+        "sourceLine": 2174,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19553,7 +19492,7 @@
         "event": "call",
         "handler": "recordPaymentPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 2184,
+        "sourceLine": 2186,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19654,7 +19593,7 @@
         "event": "call",
         "handler": "generatePaymentPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 2163,
+        "sourceLine": 2165,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19719,7 +19658,7 @@
         "event": "call",
         "handler": "transferPaymentApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 2201,
+        "sourceLine": 2203,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19784,7 +19723,7 @@
         "event": "call",
         "handler": "withdrawPaymentApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 2213,
+        "sourceLine": 2215,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -19849,7 +19788,7 @@
         "event": "confirm",
         "handler": "confirmPaymentExecution",
         "kind": "event",
-        "sourceLine": 736,
+        "sourceLine": 738,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -19986,7 +19925,7 @@
         "event": "call",
         "handler": "createPaymentRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 762,
+        "sourceLine": 871,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27452,7 +27391,7 @@
         "event": "call",
         "handler": "copySettlementDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 416,
+        "sourceLine": 426,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -33354,7 +33293,153 @@
     "unresolvedRoutes": [],
     "writeWithoutServerCapability": [],
     "clientRoleOrStatusGates": [],
-    "uncoveredMutationWrappers": [],
+    "uncoveredMutationWrappers": [
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "reviewWorkCompletion",
+        "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue",
+        "normalizedKeys": [
+          "POST /contracts/:param/work-completions/:param/approval"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "reviseWorkCompletionDraft",
+        "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue",
+        "normalizedKeys": [
+          "PATCH /contracts/:param/work-completions/:param"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "saveWorkCompletionDraft",
+        "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue",
+        "normalizedKeys": [
+          "POST /contracts/:param/work-completion-drafts"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "submitWorkCompletion",
+        "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue",
+        "normalizedKeys": [
+          "POST /contracts/:param/work-completions/:param/submission"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "reviewContractTaxRevision",
+        "sourceFile": "apps/web-admin/src/pages/contracts/EffectiveContractTaxFacts.vue",
+        "normalizedKeys": [
+          "POST /contracts/:param/tax-revisions/:param/review"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "submitContractTaxRevision",
+        "sourceFile": "apps/web-admin/src/pages/contracts/EffectiveContractTaxFacts.vue",
+        "normalizedKeys": [
+          "POST /contracts/:param/tax-revisions"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "reviewSignedContractChange",
+        "sourceFile": "apps/web-admin/src/pages/contracts/SignedContractChanges.vue",
+        "normalizedKeys": [
+          "POST /contracts/:param/signed-changes/:param/review"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "submitSignedContractChange",
+        "sourceFile": "apps/web-admin/src/pages/contracts/SignedContractChanges.vue",
+        "normalizedKeys": [
+          "POST /contracts/:param/signed-changes"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "uploadPrivateFile",
+        "sourceFile": "apps/web-admin/src/pages/contracts/SignedContractChanges.vue",
+        "normalizedKeys": [
+          "POST /files"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+        "wrapper": "downloadPrivateFileByTicket",
+        "sourceFile": "apps/web-admin/src/pages/payments/SignedSettlementPaymentBasisPanel.vue",
+        "normalizedKeys": [
+          "POST /files/:param/download-ticket"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+        "wrapper": "readSignedSettlementAttachment",
+        "sourceFile": "apps/web-admin/src/pages/payments/SignedSettlementPaymentBasisPanel.vue",
+        "normalizedKeys": [
+          "POST /projects/:param/signed-contract-settlements/:param/attachments/:param/download-ticket"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+        "wrapper": "readSignedSettlementAttachment",
+        "sourceFile": "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue",
+        "normalizedKeys": [
+          "POST /projects/:param/signed-contract-settlements/:param/attachments/:param/download-ticket"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+        "wrapper": "reviewSignedSettlement",
+        "sourceFile": "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue",
+        "normalizedKeys": [
+          "POST /projects/:param/signed-contract-settlements/:param/review"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+        "wrapper": "saveSignedSettlement",
+        "sourceFile": "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue",
+        "normalizedKeys": [
+          "PATCH /projects/:param/signed-contract-settlements/:param",
+          "POST /projects/:param/signed-contract-settlements"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+        "wrapper": "submitSignedSettlement",
+        "sourceFile": "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue",
+        "normalizedKeys": [
+          "POST /projects/:param/signed-contract-settlements/:param/submission"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+        "wrapper": "uploadSignedSettlementFile",
+        "sourceFile": "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue",
+        "normalizedKeys": [
+          "POST /projects/:param/signed-contract-settlements/files"
+        ]
+      }
+    ],
     "parseIssues": [],
     "dynamicEventIssues": [],
     "unresolvedComponentForwards": []

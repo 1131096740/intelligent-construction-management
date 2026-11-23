@@ -11329,8 +11329,9 @@ test("multi-duty SMS retry binds to the failed attempt and enforces the same cur
   const api = "apps/web-admin/src/api/multi-duty-sms.api.ts";
   const controller = "services/api/src/contract/contract.controller.ts";
   const service = "services/api/src/contract/contract-duty-notification.service.ts";
-  const [panelSource, apiSource, controllerSource, serviceSource] = await Promise.all(
-    [panel, api, controller, service].map(file => readFile(file, "utf8"))
+  const completionService = "services/api/src/contract/contract-work-completion-notification.service.ts";
+  const [panelSource, apiSource, controllerSource, serviceSource, completionServiceSource] = await Promise.all(
+    [panel, api, controller, service, completionService].map(file => readFile(file, "utf8"))
   );
   const company = "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue";
   const companyController = "services/api/src/company-transfer/company-transfer.controller.ts";
@@ -11377,6 +11378,7 @@ test("multi-duty SMS retry binds to the failed attempt and enforces the same cur
     ];`,
     extraFiles: {
       [panel]: panelSource, [api]: apiSource, [controller]: controllerSource, [service]: serviceSource,
+      [completionService]: completionServiceSource,
       [company]: await readFile(company, "utf8"),
       [companyController]: await readFile(companyController, "utf8"),
       [companyService]: companyServiceSource,
