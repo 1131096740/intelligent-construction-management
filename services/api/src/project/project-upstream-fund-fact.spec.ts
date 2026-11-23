@@ -120,6 +120,22 @@ describe("ProjectService upstream fund facts", () => {
             settledAt: new Date("2026-07-31T00:00:00.000Z")
           }
         ])
+      },
+      paymentRequest: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "payment-request-1",
+            code: "FK-2026-001",
+            sourceType: "settlement",
+            status: "approved_pending_payment",
+            contractId: "contract-1",
+            contractVersionId: "contract-version-1",
+            settlementId: "settlement-1",
+            requestedAmountCents: 50000n,
+            approvedAmountCents: 50000n,
+            paidAmountCents: 20000n
+          }
+        ])
       }
     };
     const service = new ProjectService(prisma as never);
@@ -154,11 +170,28 @@ describe("ProjectService upstream fund facts", () => {
           id: "upstream-settlement-1",
           approvedAmountCents: "50000"
         })
+      ],
+      affiliatePaymentRequests: [
+        expect.objectContaining({
+          id: "payment-request-1",
+          code: "FK-2026-001",
+          approvedAmountCents: "50000",
+          paidAmountCents: "20000",
+          remainingAmountCents: "30000"
+        })
       ]
     });
     expect(prisma.invoiceRecord.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { projectId: "project-1", status: "active", invalidatedAt: null }
+      })
+    );
+    expect(prisma.paymentRequest.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          projectId: "project-1",
+          paymentSubjectType: "affiliate"
+        })
       })
     );
   });
@@ -743,7 +776,7 @@ describe("ProjectService upstream fund facts", () => {
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
-  it("does not let a pending settlement increase authorize remittance confirmation", async () => {
+  it("allows a remittance to overpay its confirmed settlement and reports the excess (OPS-05)", async () => {
     const pendingRemittance = fundFact({
       factType: "affiliate_remittance_to_company",
       affiliateSettlementFactId: "settlement-fact-1",
@@ -810,19 +843,25 @@ describe("ProjectService upstream fund facts", () => {
     const auth = { confirmPassword: jest.fn().mockResolvedValue(undefined) };
     const service = new ProjectService(prisma as never, undefined, auth as never);
 
-    await expect(
-      service.confirmUpstreamFundFact(
-        "project-1",
-        "fund-fact-1",
-        "finance-1",
-        {
-          confirmationPassword: "current-password",
-          confirmationActionId: "remittance-pending-settlement-mask-confirm"
-        },
-        confirmedAt
-      )
-    ).rejects.toThrow("施工企业结算有效金额不能低于已登记拨款金额");
-    expect(tx.projectUpstreamFundFact.updateMany).not.toHaveBeenCalled();
+    const result = await service.confirmUpstreamFundFact(
+      "project-1",
+      "fund-fact-1",
+      "finance-1",
+      {
+        confirmationPassword: "current-password",
+        confirmationActionId: "remittance-pending-settlement-mask-confirm"
+      },
+      confirmedAt
+    );
+
+    expect(result).toMatchObject({
+      status: "confirmed",
+      settlementCoverage: {
+        overpaidCents: "10000",
+        overpaid: true
+      }
+    });
+    expect(tx.projectUpstreamFundFact.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it("requires a finance director to confirm oral notification facts", async () => {
@@ -929,7 +968,7 @@ describe("ProjectService upstream fund facts", () => {
     expect(tx.projectUpstreamFundFact.updateMany).toHaveBeenCalledTimes(1);
   });
 
-  it("does not let a pending settlement increase authorize remittance registration", async () => {
+  it("allows registering a remittance that overpays its settlement and reports the excess (OPS-05)", async () => {
     const tx = {
  contractProxyExecution:{findMany:jest.fn().mockResolvedValue([])},
  upwardReceiptMatch:{findMany:jest.fn().mockResolvedValue([])},
@@ -1005,25 +1044,38 @@ describe("ProjectService upstream fund facts", () => {
     const prisma = {
       $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx))
     };
-    const service = new ProjectService(prisma as never);
+    const service = new ProjectService(
+      prisma as never,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      upstreamFundEntrySnapshotService() as never
+    );
 
-    await expect(
-      service.recordUpstreamFundFact("project-1", "finance-1", {
-        factType: "affiliate_remittance_to_company",
-        basisType: "oral",
-        occurredAt: "2026-07-29T00:00:00.000Z",
-        amountCents: "20000",
-        counterpartyName: "我方公司",
-        companyEntityId: "company-1",
-        affiliateCompanyContractId: "company-contract-1",
-        affiliateSettlementFactId: "settlement-fact-1",
-        invoiceRecordId: "invoice-1",
-        idempotencyKey: "remittance-pending-settlement-mask-record"
-      })
-    ).rejects.toThrow("施工企业结算有效金额不能低于已登记拨款金额");
-    expect(tx.projectUpstreamFundFact.create).not.toHaveBeenCalled();
-    expect(tx.projectParticipatingCompany.findFirst).not.toHaveBeenCalled();
-    expect(tx.auditLog.create).not.toHaveBeenCalled();
+    const result = await service.recordUpstreamFundFact("project-1", "finance-1", {
+      factType: "affiliate_remittance_to_company",
+      basisType: "oral",
+      occurredAt: "2026-07-29T00:00:00.000Z",
+      amountCents: "20000",
+      counterpartyName: "我方公司",
+      companyEntityId: "company-1",
+      affiliateCompanyContractId: "company-contract-1",
+      affiliateSettlementFactId: "settlement-fact-1",
+      invoiceRecordId: "invoice-1",
+      idempotencyKey: "remittance-pending-settlement-mask-record"
+    });
+
+    expect(result).toMatchObject({
+      settlementCoverage: {
+        overpaidCents: "10000",
+        overpaid: true
+      }
+    });
+    expect(tx.projectUpstreamFundFact.create).toHaveBeenCalledTimes(1);
+    expect(tx.projectParticipatingCompany.findFirst).toHaveBeenCalled();
+    expect(tx.auditLog.create).toHaveBeenCalled();
   });
 
   it.each([false, true])("replays the same upstream registration and rejects changed amounts (direct verified remittance: %s)", async direct => {

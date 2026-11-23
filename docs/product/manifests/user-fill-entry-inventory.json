@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 444,
+    "activeBusinessActionCount": 451,
     "technicalActionCount": 10,
-    "activeBindingCount": 542,
+    "activeBindingCount": 550,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
@@ -123,14 +123,31 @@
       "causalVerified": true
     },
     {
-      "id": "archive.create-private-file-download-ticket",
+      "id": "archive.download-package",
       "status": "unified_candidate",
-      "usage": "page_action",
+      "usage": "background",
       "routePaths": [
         "/资料库"
       ],
       "sourceFile": "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
-      "capabilityKind": "detail_action",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "GET /files/download-package-capability",
+        "POST /files/download-package"
+      ],
+      "bindingCount": 2,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "archive.download-private-attachment",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/资料库"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
+      "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /files/:param/download-ticket"
       ],
@@ -932,12 +949,12 @@
     {
       "id": "contract-document.download-ticket",
       "status": "unified_candidate",
-      "usage": "page_action",
+      "usage": "background",
       "routePaths": [
         "/合同工作台/:contractId"
       ],
       "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
-      "capabilityKind": "detail_action",
+      "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /files/:param/download-ticket"
       ],
@@ -5224,6 +5241,102 @@
       "causalVerified": true
     },
     {
+      "id": "project.construction-payment.correction-confirm",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/construction-payment-corrections/:param/:param/confirmation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "project.construction-payment.correction-request",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/construction-payment-corrections"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "project.construction-payment.downstream-evidence-upload",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/affiliate-payment-facts/file-uploads"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "project.construction-payment.downstream-record",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/affiliate-payment-facts"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "project.construction-payment.remittance-evidence-upload",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/upstream-fund-facts/file-uploads"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "project.construction-payment.remittance-record",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/upstream-fund-facts"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "project.create",
       "status": "unified_candidate",
       "usage": "background",
@@ -5398,7 +5511,7 @@
         "POST /projects/:param/upstream-fund-facts/file-uploads"
       ],
       "bindingCount": 1,
-      "productionConsumerCount": 1,
+      "productionConsumerCount": 2,
       "causalVerified": true
     },
     {
@@ -5414,7 +5527,7 @@
         "POST /projects/:param/upstream-fund-facts"
       ],
       "bindingCount": 1,
-      "productionConsumerCount": 1,
+      "productionConsumerCount": 2,
       "causalVerified": true
     },
     {

@@ -746,8 +746,11 @@ describe("ProjectService", () => {
       projectUpstreamFundFact: {
         count: jest.fn()
           .mockResolvedValueOnce(2)
-          .mockResolvedValueOnce(1)
+          .mockResolvedValueOnce(1),
+        findMany: jest.fn().mockResolvedValue([])
       },
+      projectAffiliatePaymentFact: { findMany: jest.fn().mockResolvedValue([]) },
+      projectAffiliateSettlementFact: { findMany: jest.fn().mockResolvedValue([]) },
       contract: { count: jest.fn().mockResolvedValue(2) },
       settlement: { count: jest.fn().mockResolvedValue(3) },
       paymentRequest: { count: jest.fn().mockResolvedValue(4) }
@@ -819,11 +822,18 @@ describe("ProjectService", () => {
         effectiveSettlementAmountCents: null,
         payableSettlementAmountCents: null,
         operatingIncomeCents: "30000000",
-        affiliateDownstreamPaymentCents: null,
+        affiliateDownstreamPaymentCents: "0",
         operatingCostCents: "8800000",
         grossProfitCents: "21200000"
       }),
       ownerBalance: { settlementYuan: "100.0000", receivedYuan: "20.0000", outstandingYuan: "80.0000", advanceYuan: "0.0000" },
+      constructionEnterprisePaid: {
+        paidCents: "0",
+        downstreamCents: "0",
+        remittanceCents: "0",
+        overpaidCents: "0",
+        externalPaymentMetric: "project_external_payment"
+      },
       upstreamFunds: expect.objectContaining({
         unreconciledReceiptDifferenceCents: "5000",
         writtenCount: 2,

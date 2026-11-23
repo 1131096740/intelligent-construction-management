@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 50,
-    "exportedFunctionCount": 763,
-    "transportWrapperCount": 739,
+    "exportedFunctionCount": 767,
+    "transportWrapperCount": 743,
     "pureExportCount": 24,
-    "mainRequestBindingCount": 813,
+    "mainRequestBindingCount": 817,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 769,
-    "productionConsumerCount": 650,
+    "requestEdgeCount": 773,
+    "productionConsumerCount": 654,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 417,
-    "reachableProductionModuleCount": 398
+    "productionModuleCount": 419,
+    "reachableProductionModuleCount": 400
   },
   "wrappers": [
     {
@@ -6041,6 +6041,34 @@
       "unreachableConsumers": []
     },
     {
+      "name": "confirmConstructionPaymentCorrection",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 86,
+          "method": "POST",
+          "path": "/projects/:param/construction-payment-corrections/:param/:param/confirmation",
+          "normalizedPath": "/projects/:param/construction-payment-corrections/:param/:param/confirmation",
+          "normalizedKey": "POST /projects/:param/construction-payment-corrections/:param/:param/confirmation",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmConstructionPaymentCorrection",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "confirmContractArchive",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -6603,7 +6631,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5729,
+          "sourceLine": 5845,
           "method": "POST",
           "path": "/files/download-package",
           "normalizedPath": "/files/download-package",
@@ -7064,7 +7092,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7439,
+          "sourceLine": 7555,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -7096,7 +7124,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7423,
+          "sourceLine": 7539,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -7126,7 +7154,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7423,
+          "sourceLine": 7539,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -7156,7 +7184,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5839,
+          "sourceLine": 5955,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -7185,7 +7213,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7423,
+          "sourceLine": 7539,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -7215,7 +7243,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2888,
+          "sourceLine": 2925,
           "method": "POST",
           "path": "/operating-projections/export",
           "normalizedPath": "/operating-projections/export",
@@ -7277,7 +7305,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5700,
+          "sourceLine": 5816,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -7311,7 +7339,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3822,
+          "sourceLine": 3938,
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
@@ -7370,7 +7398,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7466,
+          "sourceLine": 7582,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -7399,7 +7427,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7453,
+          "sourceLine": 7569,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -7428,7 +7456,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7481,
+          "sourceLine": 7597,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -7457,7 +7485,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7423,
+          "sourceLine": 7539,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -7949,6 +7977,62 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/audit/AuditLogPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchConstructionEnterprisePaid",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 80,
+          "method": "GET",
+          "path": "/projects/:param/construction-enterprise-paid",
+          "normalizedPath": "/projects/:param/construction-enterprise-paid",
+          "normalizedKey": "GET /projects/:param/construction-enterprise-paid",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchConstructionEnterprisePaid",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchConstructionPaymentCorrectionCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 80,
+          "method": "GET",
+          "path": "/projects/:param/construction-payment-corrections/capability",
+          "normalizedPath": "/projects/:param/construction-payment-corrections/capability",
+          "normalizedKey": "GET /projects/:param/construction-payment-corrections/capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchConstructionPaymentCorrectionCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -8570,7 +8654,8 @@
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
       ],
       "unreachableConsumers": []
     },
@@ -8684,7 +8769,8 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -9072,7 +9158,8 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -9103,7 +9190,8 @@
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
       ],
       "unreachableConsumers": []
     },
@@ -10546,7 +10634,8 @@
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
       ],
       "unreachableConsumers": []
     },
@@ -10893,7 +10982,8 @@
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
       ],
       "unreachableConsumers": []
     },
@@ -11037,6 +11127,34 @@
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
       "productionConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "requestConstructionPaymentCorrection",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 86,
+          "method": "POST",
+          "path": "/projects/:param/construction-payment-corrections",
+          "normalizedPath": "/projects/:param/construction-payment-corrections",
+          "normalizedKey": "POST /projects/:param/construction-payment-corrections",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "requestConstructionPaymentCorrection",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -12239,7 +12357,8 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+        "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -12377,7 +12496,8 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []

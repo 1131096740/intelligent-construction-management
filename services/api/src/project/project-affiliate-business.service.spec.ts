@@ -1191,7 +1191,7 @@ describe("ProjectAffiliateBusinessService", () => {
     ).rejects.toThrow("付款对象必须与施工企业对下合同相对方完全一致");
   });
 
-  it("does not let another pending settlement increase mask the decrease being confirmed", async () => {
+  it("confirms a settlement decrease that leaves registered payments overpaid (OPS-05)", async () => {
     const confirmedAt = new Date("2026-07-29T04:00:00.000Z");
     const pendingDecrease = settlementFact({
       id: "settlement-decrease-1",
@@ -1220,6 +1220,7 @@ describe("ProjectAffiliateBusinessService", () => {
       companyEntityVersion: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest
         .fn()
+        .mockResolvedValueOnce([{ id: "project-1" }])
         .mockResolvedValueOnce([{ id: "settlement-decrease-1" }])
         .mockResolvedValueOnce([{ id: "settlement-ledger-1" }])
         .mockResolvedValueOnce([{ id: "budget-1", isActive: true, name: "签批人甲" }])
@@ -1296,8 +1297,8 @@ describe("ProjectAffiliateBusinessService", () => {
         },
         confirmedAt
       )
-    ).rejects.toThrow("施工企业结算有效金额不能低于已登记付款金额");
-    expect(tx.projectAffiliateSettlementFact.updateMany).not.toHaveBeenCalled();
+    ).resolves.toMatchObject({ status: "confirmed" });
+    expect(tx.projectAffiliateSettlementFact.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it("requires a finance director to confirm an oral payment and freezes the signature", async () => {
@@ -1343,6 +1344,9 @@ describe("ProjectAffiliateBusinessService", () => {
         findFirst: jest.fn().mockResolvedValue(paymentFact()),
         updateMany: jest.fn().mockResolvedValue({ count: 1 })
       },
+      projectUpstreamFundFact: {
+        findMany: jest.fn().mockResolvedValue([])
+      },
       auditLog: { create: jest.fn() }
     };
     const prisma = {
@@ -1375,7 +1379,8 @@ describe("ProjectAffiliateBusinessService", () => {
         "supplement_evidence",
         "record_correction",
         "record_reversal"
-      ]
+      ],
+      settlementCoverage: { overpaidCents: "0", overpaid: false }
     });
     expect(auth.confirmPassword).toHaveBeenCalledWith(
       "finance-director-1",

@@ -1916,8 +1916,30 @@ export interface OperatingProjectionAggregateReadModel {
   }>;
 }
 
+export interface ProjectConstructionEnterprisePaidSummaryReadModel {
+  paidCents: string;
+  downstreamCents: string;
+  remittanceCents: string;
+  overpaidCents: string;
+  externalPaymentMetric?: "project_external_payment";
+}
+
+export interface ProjectConstructionEnterprisePaidEntryReadModel {
+  id: string;
+  sourceType: "project_affiliate_payment_fact" | "project_upstream_fund_fact";
+  kind: "downstream_payment" | "affiliate_remittance_to_company";
+  counterpartyName: string;
+  occurredAt: string;
+  amountCents: string;
+  direction: "increase" | "decrease";
+  settlementLedgerId: string | null;
+  paymentKind: string | null;
+  overpaidCents: string;
+}
+
 export interface ProjectOperatingOverviewReadModel {
   ownerBalance?: { settlementYuan: string; receivedYuan: string; outstandingYuan: string; advanceYuan: string } | null;
+  constructionEnterprisePaid?: ProjectConstructionEnterprisePaidSummaryReadModel;
   project: ProjectOptionReadModel;
   cash: {
     actualReceiptsCents: string | null;
@@ -2040,7 +2062,22 @@ export interface ConfirmProjectUpstreamFundFactPayload {
   confirmationActionId: string;
 }
 
+export interface ProjectAffiliatePaymentRequestOptionReadModel {
+  id: string;
+  code: string;
+  sourceType: "settlement" | "contract_advance" | "contract_due";
+  status: string;
+  contractId: string;
+  contractVersionId: string;
+  settlementId: string | null;
+  requestedAmountCents: string;
+  approvedAmountCents: string;
+  paidAmountCents: string;
+  remainingAmountCents: string;
+}
+
 export interface ProjectUpstreamFundReferenceOptionsReadModel {
+  affiliatePaymentRequests?: ProjectAffiliatePaymentRequestOptionReadModel[];
   projectId: string;
   affiliateCompanyContracts: Array<{
     id: string;
@@ -3135,6 +3172,85 @@ export function confirmProjectAffiliatePaymentFact(
 ) {
   return postJson<ProjectAffiliatePaymentFactReadModel>(
     `/projects/${encodeURIComponent(projectId)}/affiliate-payment-facts/${encodeURIComponent(factId)}/confirmation`,
+    body
+  );
+}
+
+export interface RequestConstructionPaymentCorrectionPayload {
+  sourceType: "downstream_payment" | "affiliate_remittance_to_company";
+  originalFactId: string;
+  correctionReason: string;
+  idempotencyKey: string;
+  amountCents?: string;
+  occurredAt?: string;
+  counterpartyName?: string;
+  contractLedgerId?: string;
+  settlementLedgerId?: string;
+  paymentRequestId?: string;
+  companyEntityId?: string;
+  affiliateCompanyContractId?: string;
+  affiliateSettlementFactId?: string;
+  invoiceRecordId?: string;
+  evidenceFileId?: string;
+  description?: string;
+}
+
+export interface ConstructionPaymentCorrectionReadModel {
+  sourceType: "downstream_payment" | "affiliate_remittance_to_company";
+  originalFactId: string;
+  reversalFactId: string;
+  replacementFactId: string;
+  correctionMode: "reversal_and_re_register";
+  status: "pending_confirm";
+  availableAction: "confirm_construction_payment_correction";
+}
+
+export interface ConfirmConstructionPaymentCorrectionPayload {
+  confirmationPassword: string;
+  confirmationActionId: string;
+  selfReviewReason?: string;
+}
+
+export function fetchConstructionEnterprisePaid(
+  projectId: string,
+  input: { cursor?: string; pageSize?: number } = {}
+) {
+  const query = new URLSearchParams();
+  if (input.cursor) query.set("cursor", input.cursor);
+  if (input.pageSize !== undefined) query.set("pageSize", String(input.pageSize));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return readJson<{
+    projectId: string;
+    items: ProjectConstructionEnterprisePaidEntryReadModel[];
+    summary: ProjectConstructionEnterprisePaidSummaryReadModel;
+    nextCursor: string | null;
+  }>(`/projects/${encodeURIComponent(projectId)}/construction-enterprise-paid${suffix}`);
+}
+
+export function requestConstructionPaymentCorrection(
+  projectId: string,
+  body: RequestConstructionPaymentCorrectionPayload
+) {
+  return postJson<ConstructionPaymentCorrectionReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/construction-payment-corrections`,
+    body
+  );
+}
+
+export function fetchConstructionPaymentCorrectionCapability(projectId: string) {
+  return readJson<{ projectId: string; availableActions: string[] }>(
+    `/projects/${encodeURIComponent(projectId)}/construction-payment-corrections/capability`
+  );
+}
+
+export function confirmConstructionPaymentCorrection(
+  projectId: string,
+  sourceType: string,
+  originalFactId: string,
+  body: ConfirmConstructionPaymentCorrectionPayload
+) {
+  return postJson<ConstructionPaymentCorrectionReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/construction-payment-corrections/${encodeURIComponent(sourceType)}/${encodeURIComponent(originalFactId)}/confirmation`,
     body
   );
 }

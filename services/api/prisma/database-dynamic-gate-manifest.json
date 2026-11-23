@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 89,
-    "fullyPendingSuites": 77,
-    "partiallyPendingSuites": 12,
-    "pendingTests": 569,
-    "coveredFiles": 89,
-    "coveredTests": 569,
+    "pendingFiles": 91,
+    "fullyPendingSuites": 78,
+    "partiallyPendingSuites": 13,
+    "pendingTests": 574,
+    "coveredFiles": 91,
+    "coveredTests": 574,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -859,14 +859,48 @@
         "path": "services/api/prisma/run-issue420-approval-center-local.cjs"
       },
       "state": "executable_local_runner"
+    },
+    {
+      "id": "issue413_construction_paid",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue413-construction-enterprise-paid.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue413-construction-paid:local",
+        "path": "services/api/prisma/run-issue413-construction-paid-local.cjs"
+      },
+      "state": "executable_local_runner"
+    },
+    {
+      "id": "issue422_archives",
+      "pendingTests": 4,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue422-archives.http.pg.spec.ts",
+          "pendingTests": 4,
+          "suiteStatus": "fully_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue422-archives:local",
+        "path": "services/api/prisma/run-issue422-archives-local.cjs"
+      },
+      "state": "executable_local_runner"
     }
   ],
   "remainingFiles": [],
   "executionInventory": {
     "ciEligible": {
-      "groups": 30,
-      "files": 88,
-      "tests": 568
+      "groups": 32,
+      "files": 90,
+      "tests": 573
     },
     "manualOnly": {
       "groups": 1,

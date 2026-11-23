@@ -220,6 +220,15 @@
                 <small>按实际到账登记，未结算先收款可记为预付款</small>
               </button>
               <button
+                v-if="canRecordConstructionPayments && selectedProjectId"
+                type="button"
+                class="project-entry"
+                @click="constructionPaymentVisible = true"
+              >
+                <span>登记施工企业付款</span>
+                <small>按真实凭据登记付下游或转我方；先有对应结算，真实超付如实提示</small>
+              </button>
+              <button
                 v-for="entry in projectBusinessEntries"
                 :key="entry.label"
                 type="button"
@@ -316,6 +325,13 @@
                   <dd>{{ item.value }}</dd>
                 </div>
               </dl>
+              <t-button
+                v-if="overview?.constructionEnterprisePaid"
+                variant="text"
+                @click="constructionPaidVisible = true"
+              >
+                查看施工企业已付明细
+              </t-button>
             </section>
           </div>
 
@@ -982,6 +998,20 @@
       @cancel="closeUpstreamFundConfirmation"
     />
 
+    <ConstructionEnterprisePaymentDialog
+      v-if="selectedProjectId"
+      v-model="constructionPaymentVisible"
+      :project-id="selectedProjectId"
+      @saved="loadOverview"
+    />
+
+    <ConstructionEnterprisePaidDrawer
+      v-if="selectedProjectId"
+      v-model="constructionPaidVisible"
+      :project-id="selectedProjectId"
+      :can-confirm="canConfirmConstructionPayment"
+    />
+
     <SensitiveActionDialog
       v-model="expenseLeaveDialogVisible"
       title="放弃未提交的项目支出填写？"
@@ -1067,6 +1097,8 @@ import BusinessEntryForm from "../../components/BusinessEntryForm.vue";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import AffiliateBusinessLedgerPanel from "./components/AffiliateBusinessLedgerPanel.vue";
+import ConstructionEnterprisePaymentDialog from "./components/ConstructionEnterprisePaymentDialog.vue";
+import ConstructionEnterprisePaidDrawer from "./components/ConstructionEnterprisePaidDrawer.vue";
 import ProjectPersonnelPanel from "./components/ProjectPersonnelPanel.vue";
 import ProjectRenameForm from "./components/ProjectRenameForm.vue";
 import ProjectCreateForm from "./components/ProjectCreateForm.vue";
@@ -1551,11 +1583,22 @@ async function submitOwnerSettlement() {
   }
 }
 
+const constructionPaymentVisible = ref(false);
+const constructionPaidVisible = ref(false);
 const canRecordUpstreamFunds = computed(
   () =>
     auth.user?.roleKeys.some((role) =>
-      ["finance_director", "finance_staff"].includes(role)
+      ["finance_director", "finance_staff", "comprehensive_director"].includes(role)
     ) ?? false
+);
+const canRecordConstructionPayments = computed(
+  () =>
+    auth.user?.roleKeys.some((role) =>
+      ["comprehensive_director", "finance_staff", "finance_director"].includes(role)
+    ) ?? false
+);
+const canConfirmConstructionPayment = computed(
+  () => auth.user?.roleKeys.includes("finance_director") ?? false
 );
 const canExportOperatingProjection = computed(
   () => overview.value?.canExportOperatingProjection === true
@@ -1627,8 +1670,12 @@ const businessItems = computed(() => {
     { label: "待核对到账差额", value: formatCents(upstream?.unreconciledReceiptDifferenceCents ?? null) },
     { label: "经营收入", value: business?.operatingIncomeYuan ? `¥${business.operatingIncomeYuan}` : formatCents(business?.operatingIncomeCents ?? null) },
     {
-      label: "施工企业对下付款",
-      value: formatCents(business?.affiliateDownstreamPaymentCents ?? null)
+      label: "施工企业已付金额",
+      value: formatCents(overview.value?.constructionEnterprisePaid?.paidCents ?? null)
+    },
+    {
+      label: "施工企业超付提示",
+      value: formatCents(overview.value?.constructionEnterprisePaid?.overpaidCents ?? "0")
     },
     { label: "经营成本", value: business?.operatingCostYuan ? `¥${business.operatingCostYuan}` : formatCents(business?.operatingCostCents ?? null) },
     { label: "毛利", value: business?.grossProfitYuan ? `¥${business.grossProfitYuan}` : formatCents(business?.grossProfitCents ?? null) }
@@ -1714,6 +1761,13 @@ async function loadProjects() {
       ? projects.value.find(project => project.id === requestedProject)?.id ?? ""
       : projects.value[0]?.id ?? "";
     if (route.query.tab === "settings") activeTab.value = "settings";
+    if (
+      route.query.registerConstructionPayment === "1" &&
+      selectedProjectId.value &&
+      canRecordConstructionPayments.value
+    ) {
+      constructionPaymentVisible.value = true;
+    }
     loadedProjectId.value = selectedProjectId.value;
     if (!canReadProjectOverview.value && canCreateProjectExpense.value) {
       activeTab.value = "operations";
