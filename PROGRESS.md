@@ -38,9 +38,11 @@ POL114 合同版式浏览器夹具 `231144a10` 改用现行预览及下载入口
 
 远端 `619b4b44c` 的 PostgreSQL 留存检查通过，随后同一分片在启动项目资金用例时退出。集成提交 `4409931fa` 修复暂存文件的挂载权限，隔离 Linux 容器确认 `postgres` 用户可读取修订后的三个只读文件。精确候选 `555a2f57a` 用正式入口通过项目资金可用额度并发 1/1 和 `generic-batch` 13 套 56/56。两段均核对前后 329 条迁移、B7 及资源清理。远端 `e183106d` 已通过留存与项目资金，后续 `takeover-task1` 未观测到并发屏障，完整分片仍失败。[远端分片](https://github.com/1131096740/intelligent-construction-management/actions/runs/45286191016/job/138083011128) · [本地项目资金回执](/private/tmp/jg382-owner-mount-runtime.sFZ52FVM/jg-remaining-project-funding.Asnu0nMi/receipt.json) · [批次回执](/private/tmp/jg382-owner-mount-runtime.sFZ52FVM/jg-remaining-generic-batch.ixJvR0Q7/receipt.json)。
 
-#410 以 `555a2f57a` 的完整 329 安装和测试诊断叠加层复现两条原债更正后的台账比对失败。两条均由 `jg_contract_work_completion_cost_sources_v1` 拒绝安装器所有者读取，Prisma `P2010`、PostgreSQL `42501`。精确独立候选 `1d09ae4c` 保留完整比对，两个用例均进入已核验 TLS 与角色的受限连接。两次比对在新读取路径仍失败，现行回执只有调用位置，具体首错待定位。历史备料保持同字节，两轮资源均已清理。[原首错回执](/private/tmp/jg382-task410-diagnostic.yVrjmFP9/jg-finance-company-proxy-repayment.mIL6pUDC/receipt.json) · [受限连接复验](/private/tmp/jg382-task410-fix-runtime.ZiYw0BRQ/jg-finance-company-proxy-repayment.A34XUyHB/receipt.json)。
+#410 以 `555a2f57a` 的完整 329 安装复现履约成本来源拒绝安装器所有者读取。精确独立候选 `1d09ae4c` 保留完整比对，两个用例均进入已核验 TLS 与角色的受限连接，后续原债更正只读例程拒绝执行。独立 `443beba6` 加入该隔离例程的临时执行权限与撤销核验，精确镜像的定向诊断显示两条比对均继续到业主结算来源读取才被拒绝。两轮 329 隔离资源均已清理，未扩大该表权限，#410 完整分片仍失败。[原首错回执](/private/tmp/jg382-task410-diagnostic.yVrjmFP9/jg-finance-company-proxy-repayment.mIL6pUDC/receipt.json) · [后续精确诊断](/private/tmp/jg382-task410-plan-runtime.YCPVCwUT/narrow.log)。
 
-Line A 独立候选 `b7ed7ff6` 使用完整 329 封存安装链，经真实 TLS 测试连接验证原角色连接上限保持 1，独立角色连接上限 4；原 HTTP 用例已越过登录，测试角色已清理。定向读权限诊断叠加层运行原 12 项，2 项通过，定位后续拒绝的读、行锁及函数入口，完整原用例待通过。[Line A 诊断回执](/private/tmp/jg382-line-a-proof.ZxOFKbJ6/reads-overlay.log)。
+Line A 独立候选 `32257c66` 安装完整 329 封存链，使用隔离 TLS 测试角色保留真并发。原 HTTP 用例执行 12 项、5 项通过、零跳过。履约用例已通过，签署结算用例越过确认并推进到下游付款基础读取。测试角色和隔离资源已清理，剩余读取权限按实际语句定位。[Line A 精确回执](/private/tmp/jg382-line-a-proof.ZxOFKbJ6/exact4.log)。
+
+历史接管确认重试在状态推进后误拒，两条定向回归先红后绿。独立候选 `c30f8f1c` 在事务中先校验角色与原幂等记录，再校验新的请求能否推进当前状态；两条重试均原样返回已存结果，未写入状态、确认记录或审计。服务单测 155 项、API 类型检查与定向 lint 通过。后继 `58a8f801` 将 329 并发用例切到先财务、后合同复核，保留原封存夹具，真库复验镜像构建中。
 
 #416 约束修复已合入本地候选 `a79a9859f`。隔离 PostgreSQL 通过完整 329 条迁移与定向生命周期 1 项，核验提交进入待财务填写、原六种状态、放弃记录约束及实际台账读取。发布清单与 19 项迁移和 CI 门禁检查通过。合入封存库附件绑定兼容后，精确 `f94e038f` 的 329 安装及原留存分片 31 项全通过，205 封存库隔离和访问约束通过复核，银行、两项采购、入职和具名备料通过。新候选远端 CI 待复跑。[#416 迁移修复回执](docs/progress/2026-11-24-issue-416-migration.md)。
 
