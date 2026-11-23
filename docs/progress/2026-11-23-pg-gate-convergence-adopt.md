@@ -62,9 +62,10 @@
 | general_procurement（project11） | **绿**（补 payment detail 只读 EXECUTE 后） | `PASSED`（receipt.status，`business=CALLBACK_COMPLETED`） | 3m41s |
 | task410_company_proxy_repayment | **红** | `TASK410_COMPANY_PROXY_323_BEHAVIOR_FAILED` | 1m58s |
 | project_expense_receipt | **红** | `ERR_ASSERTION` | 1m50s |
-| line_a_real_db | 见下 | — | — |
+| line_a_real_db | **红** | 07500 闭包块 `SIGNED_SETTLEMENT_FILE_BINDING_CLOSURE_SCOPE`（55000） | ~3m |
 
 - `task410` 首因：`ContractWorkCompletionOperatingSourceAdapter.read` → `jg_contract_work_completion_cost_sources_v1`（`20261119005800`，SECURITY DEFINER）抛 42501 `履约成本来源读取资格缺失`。该函数要求 `jg_contract_work_completion_witness.runtimeRoleOid = session_user` 且 `session_user <> current_user`；而 task410 夹具以 `jg_task01_runtime` 单角色直连（session=current）、且未写 witness 行。属“夹具需两段角色 + witness”或“产品资格判定”二选一，需决策（不是本轮 A 的别名问题）。
+- `line_a_real_db` 首因：本地 `LINE_A_SKIP_CANDIDATE=20261119004200 node services/api/prisma/run-line-a-real-db-local.cjs` 在候选流安装 07500 时，其 `$closure$` 块以 `SIGNED_SETTLEMENT_FILE_BINDING_CLOSURE_SCOPE`（55000）拒绝：`jg_contract_direct_upward_closure_v2` 单行/owner/A段闭包前置在该安装序列下不满足。属产品迁移与 line-a 安装序列的交互，非本轮夹具/授权改动；不改 07500，需 line-g 与产品决定（改安装序列或调整 07500，后者触发 295 重钉）。
 - `project_expense_receipt` 首因：business 前即 `ERR_ASSERTION`（`receipt.expenseApp` 未生成；stages 停在 `EXACT_295_MULTI_WITNESS_CONSUMER`）。`expense-app.cjs` 的 323 forward 断言链（`forward?323:295`、`forward.ledgerSha256`、`expectedLedgerSha256`）之一失败，需一轮带 stack 的本地复跑定位。
 
 ## 4. 验证
