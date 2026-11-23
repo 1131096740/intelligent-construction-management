@@ -7,7 +7,7 @@ const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 
 function verifyWorkspace(workspace='/qualification/workspace', inventory='/qualification/workspace-inputs.json') {
   const bytes=fs.readFileSync(inventory);
-  if(sha(bytes)!=='a9214ab07931a9be3cc5ca94b802e395e01f3bc21cb3efed2a759365caf1caf6') throw new Error('POL109_WORKSPACE_MANIFEST');
+  if(sha(bytes)!=='a56377b010b0a945158d7d5f5dd1a3d491a21f5c66c706a0230169d1968e8088') throw new Error('POL109_WORKSPACE_MANIFEST');
   for(const row of JSON.parse(bytes)) {
     const file=path.join(workspace,row.path);
     if(!fs.lstatSync(file).isFile() || fs.realpathSync(file)!==file || sha(fs.readFileSync(file))!==row.sha256)

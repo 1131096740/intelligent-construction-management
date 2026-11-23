@@ -52,7 +52,7 @@ function openDownload(fileId: string, settlement?: ConfirmedPaymentSettlement | 
 
 async function download(values: { reason: string; password: string }) {
   const target = attachment.value;
-  if (busy.value || !target) return;
+  if (busy.value || !target || !basis.value?.canReadSignedAttachments) return;
   const request = generation;
   busy.value = true;
   error.value = "";

@@ -21,7 +21,7 @@ import hashlib,json,pathlib,sys
 source,context=map(pathlib.Path,sys.argv[1:3])
 mode=sys.argv[3]
 seals={'legacy':'6361048153810677f490fb4414adafedf016bee93b88779d11f98d78336474cc',
-       'workspace':'c50eb6012f3398c958f6281d08e7e56a508a7a4ecf2f8dcdae7283a29d679431'}
+       'workspace':'4a30950994b3212983cd5661b3989e845c39ad7259c96f2e5f6314969e51018a'}
 for name,seal in seals.items():
     inventory=(source/(name+'-inputs.json')).read_bytes()
     if hashlib.sha256(inventory).hexdigest()!=seal:

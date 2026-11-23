@@ -162,7 +162,7 @@ function open() {
 
 function submit() {
   const versionId = detail.value?.versionId;
-  if (!versionId) return;
+  if (!versionId || !detail.value?.canSubmit) return;
   return run(async () => {
     await submitContractTaxRevision(versionId, {
       ...(invoiceType.value ? { invoiceType: invoiceType.value } : {}),
@@ -179,7 +179,7 @@ function submit() {
 function review(decision: "approve" | "reject") {
   const revision = pending.value;
   const versionId = detail.value?.versionId;
-  if (!revision || !versionId) return;
+  if (!revision || !versionId || !detail.value?.canReview) return;
   return run(async () => {
     await reviewContractTaxRevision(versionId, revision.id, {
       decision, reason: reason.value.trim() || undefined,

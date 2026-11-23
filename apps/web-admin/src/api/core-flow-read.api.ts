@@ -412,6 +412,7 @@ export interface SignedContractChanges {
   effectiveAmountYuan: string | null;
   canSubmit: boolean;
   canReview: boolean;
+  canDownloadOriginals: boolean;
   changes: SignedContractChange[];
 }
 
@@ -7589,7 +7590,7 @@ export interface WorkCompletionEntry {
   canSubmit: boolean;
   canRevise: boolean;
   rejectionReason: string | null;
-  duties: { index: number; name: string; selfReview: boolean }[];
+  duties: { index: number; name: string; selfReview: boolean; canReview: boolean }[];
 }
 
 export function fetchWorkCompletions(versionId: string) {

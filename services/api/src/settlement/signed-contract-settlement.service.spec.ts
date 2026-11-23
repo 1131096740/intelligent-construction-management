@@ -255,11 +255,11 @@ describe("受限岗位读取原结算工作台列表", () => {
       const binding = { database: "isolated", role: "runtime", xid: "88", backend: "5", expires: "1795370000" };
       const rows = [{ id: "visible-draft", state: "draft", canUpdate: true, canReview: false }];
       tx.$queryRaw.mockResolvedValueOnce([binding]).mockResolvedValueOnce([{ rows }]);
-      await expect(svc.list("project", "staff")).resolves.toEqual(rows);
+      await expect(svc.list("project", "staff")).resolves.toEqual([{ ...rows[0], canReadAttachments: true }]);
       expect(tx.$queryRaw).toHaveBeenNthCalledWith(2, expect.arrayContaining([expect.stringContaining("jg_list_signed_settlements_v1")]),
         "project", "staff", binding.expires, expect.stringMatching(/^[a-f0-9]{64}$/));
       expect(tx.signedContractSettlement.findMany).not.toHaveBeenCalled();
-      expect(visibility.effectiveRoleKeysByProjectInTransaction).not.toHaveBeenCalled();
+      expect(visibility.effectiveRoleKeysByProjectInTransaction).toHaveBeenCalledWith(tx, "staff", ["project"]);
     } finally {
       if (previousKey === undefined) delete process.env.SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY;
       else process.env.SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY = previousKey;

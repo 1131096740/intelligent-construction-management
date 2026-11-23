@@ -76,7 +76,7 @@ export class ContractWorkCompletionApprovalService {
               actorUserId: actorId, actorRoleKeys: own, activeDelegators: delegated
             });
             return identity ? [{ index, name: duties[index].name, selfReview:
-              entry.applicantUserId === actorId }] : [];
+              entry.applicantUserId === actorId, canReview: true }] : [];
           }) : [];
         if (entry.status === "draft" ? !creator || !access.canUpload : !creator && !own.length && !identities.length) return [];
         return [{ id: entry.id, work: entry.work, amountYuan: entry.amountYuan, status: entry.status,
