@@ -179,7 +179,6 @@ const statements = {
   contractReviewCapability.value = null;
   contractLifecycleAvailableActions.value = null;
   contractLifecycleAvailableActionKeys.value = null;
-  contractChangeAvailableActions.value = null;
   contractReviewResultUnknown = false;
   contractWithdrawalResultUnknown = false;
   detailLoading.value = true;
@@ -198,22 +197,6 @@ const statements = {
     contractReviewCapability.value = structuredClone(serverDetail);
     contractDetail.value = detail;
     normalizedChangeVersions.value = versions;
-    changeEligibility.value = null;
-    if (
-      !serverDetail.historyReadOnly &&
-      canRequestContractChangeEligibility(auth.user?.roleKeys ?? [])
-    ) {
-      changeEligibilityLoading.value = true;
-      const eligibilityPayload = await fetchContractChangeEligibility(detail.contractVersionId).catch(() => null);
-      if (requestId !== detailRequestId || contractId !== routeContractId()) return false;
-      contractChangeAvailableActions.value = eligibilityPayload?.availableActions ?? null;
-      changeEligibility.value = eligibilityPayload === null
-        ? null
-        : normalizeChangeEligibility(structuredClone(eligibilityPayload), detail.contractVersionId);
-      changeEligibilityLoading.value = false;
-    } else {
-      changeEligibilityLoading.value = false;
-    }
     const archiveFileIds = detail.archiveFiles
       .filter((file) => file.canDownload)
       .map((file) => file.fileId);
@@ -230,11 +213,8 @@ const statements = {
     contractReviewCapability.value = null;
     contractLifecycleAvailableActions.value = null;
     contractLifecycleAvailableActionKeys.value = null;
-    contractChangeAvailableActions.value = null;
     contractDetail.value = null;
     normalizedChangeVersions.value = [];
-    changeEligibility.value = null;
-    changeEligibilityLoading.value = false;
     const reason = formatUnknownApiError(error, "未知错误");
     contractDetailError.value = \`未能读取合同详情：\${reason}。当前页面数据不能用于审批、归档、结算或付款判断，请确认账号权限和网络状态后重试。\`;
     return false;
@@ -263,10 +243,8 @@ export const SEAL_WRITE_ACTION_IDS = new Set([
 
 const trustedDetailImports = {
   fetchContractDetail: SEAL_API,
-  fetchContractChangeEligibility: SEAL_API,
   canRequestContractChangeEligibility: `${web}/pages/contracts/contract-detail.config.ts`,
   normalizeContractChangeVersions: `${web}/pages/contracts/contract-change.state.ts`,
-  normalizeChangeEligibility: `${web}/pages/contracts/contract-change.state.ts`,
   formatUnknownApiError: `${web}/api/error-message.ts`
 };
 
@@ -499,8 +477,7 @@ export function proveContractSigningParent(context, syntax) {
   bound.set("route", route);
   bound.set("contractDetail", detail);
   const reads = [
-    [capabilityRead, "GET /contracts/:param"],
-    ["fetchContractChangeEligibility", "GET /contracts/:param/change-eligibility"]
+    [capabilityRead, "GET /contracts/:param"]
   ];
   if (reads.some(([name, key]) => !wrapperHasOneRequest(
     context.wrapperIndex.get(syntax.wrapperIdentity(SEAL_API, name)), key, syntax

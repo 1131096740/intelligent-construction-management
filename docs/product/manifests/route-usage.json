@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "ready",
+  "status": "blocked",
   "scope": {
     "registry": "docs/product/manifests/route-usage.registry.json",
     "webApiManifest": "docs/product/manifests/web-api-wrappers.json",
@@ -10,34 +10,34 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 795,
-    "exactRouteCount": 795,
-    "normalizedRouteCount": 795,
-    "classificationOverrideCount": 217,
-    "consumerSurfaceOverrideCount": 40,
-    "classificationOverrideSha256": "0a2fd4a64ac6dd5849580374cad2f65619772d0cb50fe34e0bbc965ab1b30f1a",
-    "consumerSurfaceOverrideSha256": "9e1bbbd9bcc569c12da5c2fe1d64d1c6a81e97dab6f16e5051bbb2596fb94bc0",
-    "derivedProductionPageCount": 578,
-    "pageRouteCount": 596,
+    "routeCount": 818,
+    "exactRouteCount": 818,
+    "normalizedRouteCount": 818,
+    "classificationOverrideCount": 219,
+    "consumerSurfaceOverrideCount": 41,
+    "classificationOverrideSha256": "c9fa58aa6c3f2730e5982ea856a0d3c9dacb5e4f859419960058a85b0852ed92",
+    "consumerSurfaceOverrideSha256": "8017c10ac9a6885c3788a4040a7bab499970525899cc4cd40c8159e6f13d1355",
+    "derivedProductionPageCount": 598,
+    "pageRouteCount": 617,
     "externalTakeoverCount": 70,
-    "exitCandidateCount": 90,
+    "exitCandidateCount": 91,
     "internalTaskCount": 39,
-    "unclassifiedCount": 0,
+    "unclassifiedCount": 1,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 649,
+      "web_api_wrapper": 669,
       "auth_store": 5,
-      "signed_ticket_delivery": 1,
+      "signed_ticket_delivery": 2,
       "machine_probe": 2,
       "operator_endpoint": 37,
-      "none": 101
+      "none": 103
     },
-    "blockerCount": 0
+    "blockerCount": 1
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 649,
+    "productionWrapperRouteCount": 669,
     "authStoreRouteCount": 5,
-    "productionTicketFollowupCount": 3
+    "productionTicketFollowupCount": 4
   },
   "routes": [
     {
@@ -3861,29 +3861,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "contract_change_draft_flow_replaced_by_signed_supplementary_agreement_zero_web_production_calls_candidate_only",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "fetchContractChangeEligibility",
-            "method": "GET",
-            "normalizedPath": "/contracts/:param/change-eligibility",
-            "normalizedKey": "GET /contracts/:param/change-eligibility",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "GET",
@@ -3957,6 +3946,129 @@
             "normalizedKey": "GET /contracts/:param/formal-files/counterparty",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/workbench/ContractCounterpartySignedFilesPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/:contractVersionId/signed-changes",
+      "normalizedKey": "GET /contracts/:param/signed-changes",
+      "controller": "ContractController",
+      "handler": "listSignedChanges",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchSignedContractChanges",
+            "method": "GET",
+            "normalizedPath": "/contracts/:param/signed-changes",
+            "normalizedKey": "GET /contracts/:param/signed-changes",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/SignedContractChanges.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/:contractVersionId/tax-revisions",
+      "normalizedKey": "GET /contracts/:param/tax-revisions",
+      "controller": "ContractController",
+      "handler": "listTaxRevisions",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchContractTaxRevisions",
+            "method": "GET",
+            "normalizedPath": "/contracts/:param/tax-revisions",
+            "normalizedKey": "GET /contracts/:param/tax-revisions",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/EffectiveContractTaxFacts.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/:contractVersionId/work-completions",
+      "normalizedKey": "GET /contracts/:param/work-completions",
+      "controller": "ContractController",
+      "handler": "viewWorkCompletions",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchWorkCompletions",
+            "method": "GET",
+            "normalizedPath": "/contracts/:param/work-completions",
+            "normalizedKey": "GET /contracts/:param/work-completions",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue"
             ]
           }
         ],
@@ -4662,14 +4774,16 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5588,
+            "sourceLine": 5664,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+              "apps/web-admin/src/pages/contracts/SignedContractChanges.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
               "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
-              "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+              "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+              "apps/web-admin/src/pages/payments/SignedSettlementPaymentBasisPanel.vue"
             ]
           }
         ],
@@ -4711,9 +4825,11 @@
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+              "apps/web-admin/src/pages/contracts/SignedContractChanges.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
               "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
-              "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+              "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+              "apps/web-admin/src/pages/payments/SignedSettlementPaymentBasisPanel.vue"
             ]
           },
           {
@@ -7969,6 +8085,7 @@
               "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
               "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
               "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+              "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue",
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue",
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
             ]
@@ -9795,6 +9912,255 @@
               "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
               "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
               "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/signed-contract-settlements",
+      "normalizedKey": "GET /projects/:param/signed-contract-settlements",
+      "controller": "SignedContractSettlementController",
+      "handler": "list",
+      "sourceFile": "services/api/src/settlement/signed-contract-settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+            "wrapper": "fetchSignedSettlements",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/signed-contract-settlements",
+            "normalizedKey": "GET /projects/:param/signed-contract-settlements",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/signed-contract-settlements/:id/attachments/:fileId",
+      "normalizedKey": "GET /projects/:param/signed-contract-settlements/:param/attachments/:param",
+      "controller": "SignedContractSettlementController",
+      "handler": "attachmentMetadata",
+      "sourceFile": "services/api/src/settlement/signed-contract-settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+            "wrapper": "readSignedSettlementAttachment",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/signed-contract-settlements/:param/attachments/:param",
+            "normalizedKey": "GET /projects/:param/signed-contract-settlements/:param/attachments/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payments/SignedSettlementPaymentBasisPanel.vue",
+              "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/signed-contract-settlements/:id/attachments/:fileId/download",
+      "normalizedKey": "GET /projects/:param/signed-contract-settlements/:param/attachments/:param/download",
+      "controller": "SignedContractSettlementController",
+      "handler": "attachmentDownload",
+      "sourceFile": "services/api/src/settlement/signed-contract-settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "registry_override",
+      "classificationReason": "signed_settlement_attachment_ticket_followup_delivery_consumed_by_web_payment_basis_and_signed_registration",
+      "consumerSurface": "signed_ticket_delivery",
+      "consumerEvidence": {
+        "webApiWrappers": [],
+        "authStore": [],
+        "ticketFollowups": [
+          {
+            "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+            "wrapper": "readSignedSettlementAttachment",
+            "method": "GET",
+            "ticketField": "downloadUrl",
+            "sourceLine": 102,
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payments/SignedSettlementPaymentBasisPanel.vue",
+              "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue"
+            ]
+          }
+        ],
+        "manualSurfaceReason": "backend_authorized_short_lived_signed_settlement_attachment_ticket_delivery"
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/signed-contract-settlements/contract-overview",
+      "normalizedKey": "GET /projects/:param/signed-contract-settlements/contract-overview",
+      "controller": "SignedContractSettlementController",
+      "handler": "overview",
+      "sourceFile": "services/api/src/settlement/signed-contract-settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+            "wrapper": "fetchSignedSettlementOverview",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/signed-contract-settlements/contract-overview",
+            "normalizedKey": "GET /projects/:param/signed-contract-settlements/contract-overview",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/signed-contract-settlements/contracts",
+      "normalizedKey": "GET /projects/:param/signed-contract-settlements/contracts",
+      "controller": "SignedContractSettlementController",
+      "handler": "contracts",
+      "sourceFile": "services/api/src/settlement/signed-contract-settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+            "wrapper": "fetchSignedSettlementContracts",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/signed-contract-settlements/contracts",
+            "normalizedKey": "GET /projects/:param/signed-contract-settlements/contracts",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/signed-contract-settlements/payment-basis",
+      "normalizedKey": "GET /projects/:param/signed-contract-settlements/payment-basis",
+      "controller": "SignedContractSettlementController",
+      "handler": "paymentBasis",
+      "sourceFile": "services/api/src/settlement/signed-contract-settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+            "wrapper": "fetchSignedSettlementPaymentBasis",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/signed-contract-settlements/payment-basis",
+            "normalizedKey": "GET /projects/:param/signed-contract-settlements/payment-basis",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
+              "apps/web-admin/src/pages/payments/SignedSettlementPaymentBasisPanel.vue"
             ]
           }
         ],
@@ -12749,6 +13115,47 @@
     },
     {
       "method": "PATCH",
+      "path": "/contracts/:contractVersionId/work-completions/:completionId",
+      "normalizedKey": "PATCH /contracts/:param/work-completions/:param",
+      "controller": "ContractController",
+      "handler": "reviseWorkCompletionDraft",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "reviseWorkCompletionDraft",
+            "method": "PATCH",
+            "normalizedPath": "/contracts/:param/work-completions/:param",
+            "normalizedKey": "PATCH /contracts/:param/work-completions/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "PATCH",
       "path": "/fund-executions/cases/:caseId",
       "normalizedKey": "PATCH /fund-executions/cases/:param",
       "controller": "FundExecutionController",
@@ -13248,6 +13655,47 @@
             "normalizedKey": "PATCH /projects/:param/settlement-drafts/:param",
             "productionConsumers": [
               "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "PATCH",
+      "path": "/projects/:projectId/signed-contract-settlements/:id",
+      "normalizedKey": "PATCH /projects/:param/signed-contract-settlements/:param",
+      "controller": "SignedContractSettlementController",
+      "handler": "update",
+      "sourceFile": "services/api/src/settlement/signed-contract-settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+            "wrapper": "saveSignedSettlement",
+            "method": "PATCH",
+            "normalizedPath": "/projects/:param/signed-contract-settlements/:param",
+            "normalizedKey": "PATCH /projects/:param/signed-contract-settlements/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue"
             ]
           }
         ],
@@ -18152,23 +18600,12 @@
       "contractCutoverSurface": true,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
+      "usage": "unclassified",
+      "classificationSource": "unclassified",
       "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "createContractChangeDraft",
-            "method": "POST",
-            "normalizedPath": "/contracts/:param/change-drafts",
-            "normalizedKey": "POST /contracts/:param/change-drafts",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
@@ -18772,6 +19209,88 @@
     },
     {
       "method": "POST",
+      "path": "/contracts/:contractVersionId/signed-changes",
+      "normalizedKey": "POST /contracts/:param/signed-changes",
+      "controller": "ContractController",
+      "handler": "submitSignedChange",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "submitSignedContractChange",
+            "method": "POST",
+            "normalizedPath": "/contracts/:param/signed-changes",
+            "normalizedKey": "POST /contracts/:param/signed-changes",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/SignedContractChanges.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/signed-changes/:changeId/review",
+      "normalizedKey": "POST /contracts/:param/signed-changes/:param/review",
+      "controller": "ContractController",
+      "handler": "reviewSignedChange",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.archive.confirm",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "reviewSignedContractChange",
+            "method": "POST",
+            "normalizedPath": "/contracts/:param/signed-changes/:param/review",
+            "normalizedKey": "POST /contracts/:param/signed-changes/:param/review",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/SignedContractChanges.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/contracts/:contractVersionId/signing/material-change",
       "normalizedKey": "POST /contracts/:param/signing/material-change",
       "controller": "ContractController",
@@ -18801,6 +19320,211 @@
             "normalizedKey": "POST /contracts/:param/signing/material-change",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/tax-revisions",
+      "normalizedKey": "POST /contracts/:param/tax-revisions",
+      "controller": "ContractController",
+      "handler": "submitTaxRevision",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "submitContractTaxRevision",
+            "method": "POST",
+            "normalizedPath": "/contracts/:param/tax-revisions",
+            "normalizedKey": "POST /contracts/:param/tax-revisions",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/EffectiveContractTaxFacts.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/tax-revisions/:revisionId/review",
+      "normalizedKey": "POST /contracts/:param/tax-revisions/:param/review",
+      "controller": "ContractController",
+      "handler": "reviewTaxRevision",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "reviewContractTaxRevision",
+            "method": "POST",
+            "normalizedPath": "/contracts/:param/tax-revisions/:param/review",
+            "normalizedKey": "POST /contracts/:param/tax-revisions/:param/review",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/EffectiveContractTaxFacts.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/work-completion-drafts",
+      "normalizedKey": "POST /contracts/:param/work-completion-drafts",
+      "controller": "ContractController",
+      "handler": "createWorkCompletionDraft",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "saveWorkCompletionDraft",
+            "method": "POST",
+            "normalizedPath": "/contracts/:param/work-completion-drafts",
+            "normalizedKey": "POST /contracts/:param/work-completion-drafts",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/work-completions/:completionId/approval",
+      "normalizedKey": "POST /contracts/:param/work-completions/:param/approval",
+      "controller": "ContractController",
+      "handler": "reviewWorkCompletion",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "reviewWorkCompletion",
+            "method": "POST",
+            "normalizedPath": "/contracts/:param/work-completions/:param/approval",
+            "normalizedKey": "POST /contracts/:param/work-completions/:param/approval",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/work-completions/:completionId/submission",
+      "normalizedKey": "POST /contracts/:param/work-completions/:param/submission",
+      "controller": "ContractController",
+      "handler": "submitWorkCompletion",
+      "sourceFile": "services/api/src/contract/contract.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "contract.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": true,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "submitWorkCompletion",
+            "method": "POST",
+            "normalizedPath": "/contracts/:param/work-completions/:param/submission",
+            "normalizedKey": "POST /contracts/:param/work-completions/:param/submission",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue"
             ]
           }
         ],
@@ -19958,6 +20682,7 @@
               "apps/web-admin/src/pages/clearing/GlobalInvoiceWorkbenchPage.vue",
               "apps/web-admin/src/pages/contract-templates/LayoutTemplateEditorPage.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+              "apps/web-admin/src/pages/contracts/SignedContractChanges.vue",
               "apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts",
               "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
               "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
@@ -20022,9 +20747,11 @@
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
               "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
+              "apps/web-admin/src/pages/contracts/SignedContractChanges.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractBodyPaperPreview.vue",
               "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
-              "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue"
+              "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
+              "apps/web-admin/src/pages/payments/SignedSettlementPaymentBasisPanel.vue"
             ]
           }
         ],
@@ -28198,6 +28925,212 @@
     },
     {
       "method": "POST",
+      "path": "/projects/:projectId/signed-contract-settlements",
+      "normalizedKey": "POST /projects/:param/signed-contract-settlements",
+      "controller": "SignedContractSettlementController",
+      "handler": "create",
+      "sourceFile": "services/api/src/settlement/signed-contract-settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+            "wrapper": "saveSignedSettlement",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/signed-contract-settlements",
+            "normalizedKey": "POST /projects/:param/signed-contract-settlements",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/signed-contract-settlements/:id/attachments/:fileId/download-ticket",
+      "normalizedKey": "POST /projects/:param/signed-contract-settlements/:param/attachments/:param/download-ticket",
+      "controller": "SignedContractSettlementController",
+      "handler": "attachmentDownloadTicket",
+      "sourceFile": "services/api/src/settlement/signed-contract-settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+            "wrapper": "readSignedSettlementAttachment",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/signed-contract-settlements/:param/attachments/:param/download-ticket",
+            "normalizedKey": "POST /projects/:param/signed-contract-settlements/:param/attachments/:param/download-ticket",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payments/SignedSettlementPaymentBasisPanel.vue",
+              "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/signed-contract-settlements/:id/review",
+      "normalizedKey": "POST /projects/:param/signed-contract-settlements/:param/review",
+      "controller": "SignedContractSettlementController",
+      "handler": "review",
+      "sourceFile": "services/api/src/settlement/signed-contract-settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+            "wrapper": "reviewSignedSettlement",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/signed-contract-settlements/:param/review",
+            "normalizedKey": "POST /projects/:param/signed-contract-settlements/:param/review",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/signed-contract-settlements/:id/submission",
+      "normalizedKey": "POST /projects/:param/signed-contract-settlements/:param/submission",
+      "controller": "SignedContractSettlementController",
+      "handler": "submit",
+      "sourceFile": "services/api/src/settlement/signed-contract-settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+            "wrapper": "submitSignedSettlement",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/signed-contract-settlements/:param/submission",
+            "normalizedKey": "POST /projects/:param/signed-contract-settlements/:param/submission",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/signed-contract-settlements/files",
+      "normalizedKey": "POST /projects/:param/signed-contract-settlements/files",
+      "controller": "SignedContractSettlementController",
+      "handler": "upload",
+      "sourceFile": "services/api/src/settlement/signed-contract-settlement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
+            "wrapper": "uploadSignedSettlementFile",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/signed-contract-settlements/files",
+            "normalizedKey": "POST /projects/:param/signed-contract-settlements/files",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/projects/:projectId/status",
       "normalizedKey": "POST /projects/:param/status",
       "controller": "ProjectController",
@@ -32884,6 +33817,16 @@
     "authRoutesWithoutNest": [],
     "classificationConflicts": [],
     "expectationMismatches": [],
-    "unclassifiedRoutes": []
+    "unclassifiedRoutes": [
+      {
+        "method": "POST",
+        "path": "/contracts/:contractVersionId/change-drafts",
+        "normalizedKey": "POST /contracts/:param/change-drafts",
+        "controller": "ContractController",
+        "handler": "createChangeDraft",
+        "sourceFile": "services/api/src/contract/contract.controller.ts",
+        "consumerSurface": "none"
+      }
+    ]
   }
 }

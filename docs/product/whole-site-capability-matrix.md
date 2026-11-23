@@ -1,39 +1,39 @@
 # 整站能力矩阵
 
-状态：`ready`。本表仅交叉核验四份实施清单，不构成删除或生产写入授权。
+状态：`blocked`。本表仅交叉核验四份实施清单，不构成删除或生产写入授权。
 
 ## 输入证据
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `5c1265870c03964090750898ee228b43853c7c6b30a193705573f6850a1f501a` |
-| webApiWrappers | ready | `efa98be661a8643d69608dd6a15d1e8793d3f261c4777a8f9d94c64a6a169843` |
-| webPageActions | ready | `e155074c05581a0808b82ab1c8cc8072f574463bd3481e82901545566f432587` |
-| routeUsage | ready | `f720e7cfd254cb4a41906137ea559b604ce07b42e9292f4020b3bb30550ccf1e` |
+| nestRoutes | ready | `466daced0ef0e5b08bb5689aeaa2e58c442b594161bb7ba8fe87802436cfb70d` |
+| webApiWrappers | ready | `205f54bacd2dcad4f90f2c06d2393895eaaa043fcf5088413562fe0bd6483672` |
+| webPageActions | blocked | `594b78516c5567cc8fc11f4863793e59e2e1a24fe4479f30ab638b6a8ab3c872` |
+| routeUsage | blocked | `8985c6751d3a0f6509624fd1de74a9d5251172a9cbd3bc12be4aa3ece263984b` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 795 |
-| pageRouteCount | 596 |
+| routeCount | 818 |
+| pageRouteCount | 617 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 90 |
+| exitCandidateRouteCount | 91 |
 | internalTaskRouteCount | 39 |
-| unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 789 |
+| unclassifiedRouteCount | 1 |
+| mainRequestBindingCount | 811 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 445 |
-| actionBindingCount | 537 |
-| acceptedActionBindingCount | 494 |
+| registeredActionCount | 444 |
+| actionBindingCount | 536 |
+| acceptedActionBindingCount | 493 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 431 |
+| productionMutationConsumerPairCount | 447 |
 | coveredProductionMutationConsumerPairCount | 431 |
-| uncoveredProductionMutationConsumerPairCount | 0 |
-| blockerCount | 0 |
+| uncoveredProductionMutationConsumerPairCount | 16 |
+| blockerCount | 19 |
 
 ## 路由矩阵
 
@@ -126,10 +126,13 @@
 | GET | /contract-workbench | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#listContractDrafts | — | not_applicable | — |
 | GET | /contracts/:contractVersionId/archive-requests/:idempotencyKey | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchDirectSignedContractResult<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchSignedContractArchiveV2Result | contract-direct-registration.lookup-original | not_applicable | — |
 | GET | /contracts/:contractVersionId/authorizations/readiness | exit_candidate | none | — | — | not_applicable | — |
-| GET | /contracts/:contractVersionId/change-eligibility | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractChangeEligibility | — | not_applicable | — |
+| GET | /contracts/:contractVersionId/change-eligibility | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractChangeEligibility | — | not_applicable | — |
 | GET | /contracts/:contractId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeContractSigningMaterialChange<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchContractDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareContractApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareContractApprovalWithdrawalAction | contract-seal-v2.lookup-original<br>contract.signing-material-change | not_applicable | — |
 | GET | /contracts/:contractVersionId/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/multi-duty-sms.api.ts#fetchMultiDutySms | — | not_applicable | — |
 | GET | /contracts/:contractVersionId/formal-files/counterparty | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#listCounterpartySignedFiles | — | not_applicable | — |
+| GET | /contracts/:contractVersionId/signed-changes | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSignedContractChanges | — | not_applicable | — |
+| GET | /contracts/:contractVersionId/tax-revisions | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractTaxRevisions | — | not_applicable | — |
+| GET | /contracts/:contractVersionId/work-completions | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchWorkCompletions | — | not_applicable | — |
 | GET | /contracts | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractLedger | — | not_applicable | — |
 | GET | /contracts/create-capability | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#fetchContractCreateCapabilities | — | not_applicable | — |
 | GET | /contracts/ledger-export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractLedgerExport | — | not_applicable | — |
@@ -259,6 +262,12 @@
 | GET | /projects/:projectId/settlement-drafts/:draftId | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#executeSettlementDraftLifecycleAction<br>apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementDraftRecord | settlement-draft.abandon-application<br>settlement-draft.delete-pristine | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/capability | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementProjectCapability | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#listSettlementDraftRecords | — | not_applicable | — |
+| GET | /projects/:projectId/signed-contract-settlements/:id/attachments/:fileId/download | page | signed_ticket_delivery | — | — | not_applicable | — |
+| GET | /projects/:projectId/signed-contract-settlements/:id/attachments/:fileId | page | web_api_wrapper | apps/web-admin/src/api/signed-contract-settlement.api.ts#readSignedSettlementAttachment | — | not_applicable | — |
+| GET | /projects/:projectId/signed-contract-settlements/contract-overview | page | web_api_wrapper | apps/web-admin/src/api/signed-contract-settlement.api.ts#fetchSignedSettlementOverview | — | not_applicable | — |
+| GET | /projects/:projectId/signed-contract-settlements/contracts | page | web_api_wrapper | apps/web-admin/src/api/signed-contract-settlement.api.ts#fetchSignedSettlementContracts | — | not_applicable | — |
+| GET | /projects/:projectId/signed-contract-settlements/payment-basis | page | web_api_wrapper | apps/web-admin/src/api/signed-contract-settlement.api.ts#fetchSignedSettlementPaymentBasis | — | not_applicable | — |
+| GET | /projects/:projectId/signed-contract-settlements | page | web_api_wrapper | apps/web-admin/src/api/signed-contract-settlement.api.ts#fetchSignedSettlements | — | not_applicable | — |
 | GET | /projects/:projectId/update-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectUpdateCapability | — | not_applicable | — |
 | GET | /projects/:projectId/upstream-fund-facts/:fundFactId/confirmation-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectUpstreamFundConfirmationCapability | — | not_applicable | — |
 | GET | /projects/:projectId/upstream-fund-facts | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectUpstreamFundFacts | — | not_applicable | — |
@@ -329,6 +338,7 @@
 | PATCH | /contract-template-versions/:versionId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateContractTemplateVersion | — | not_applicable | — |
 | PATCH | /contract-workbench/:contractVersionId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#saveContractDraft | — | not_applicable | — |
 | PATCH | /contract-workbench/:contractVersionId/parties/:partySnapshotId | exit_candidate | none | — | — | not_applicable | — |
+| PATCH | /contracts/:contractVersionId/work-completions/:completionId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviseWorkCompletionDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PATCH | /fund-executions/cases/:caseId | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#updateFundExecutionCase | fund-execution.case.update | covered | — |
 | PATCH | /fund-executions/cases/:caseId/reversal | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#updateFundExecutionReversalReason | fund-execution.reversal.update-reason | covered | — |
 | PATCH | /organization/departments/:departmentId | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#updateOrganizationDepartment | organization.department.update | covered | — |
@@ -341,6 +351,7 @@
 | PATCH | /projects/:projectId/participating-companies/:participantId/deactivation | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#deactivateProjectParticipatingCompany | project-operating-profile.deactivate-participating-company | covered | — |
 | PATCH | /projects/:projectId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#updateProject | project.update | covered | — |
 | PATCH | /projects/:projectId/settlement-drafts/:draftId | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#updateSettlementDraftRecord | settlement-draft.update-local-gate | covered | — |
+| PATCH | /projects/:projectId/signed-contract-settlements/:id | page | web_api_wrapper | apps/web-admin/src/api/signed-contract-settlement.api.ts#saveSignedSettlement | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | PATCH | /settlement-template-versions/:versionId | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#updateSettlementTemplateVersion | — | not_applicable | — |
 | PATCH | /settlement-template-workbench/versions/:versionId | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#updateSettlementTemplateVersion | template-workbench.save<br>template-workbench.save-source | covered | — |
 | PATCH | /spot-procurement-payments/:paymentId/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementPaymentDraft | spot-procurement-payment.draft.update | covered | — |
@@ -468,7 +479,7 @@
 | POST | /contracts/:contractVersionId/archive-confirmation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractArchive | contract-archive.confirm | covered | — |
 | POST | /contracts/:contractVersionId/archive-files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadContractArchiveFile | contract-archive.associate | covered | — |
 | POST | /contracts/:contractVersionId/authorizations | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#setContractAuthorization | contract-authorization.set | covered | — |
-| POST | /contracts/:contractVersionId/change-drafts | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createContractChangeDraft | contract-change.create-draft | covered | — |
+| POST | /contracts/:contractVersionId/change-drafts | unclassified | none | apps/web-admin/src/api/core-flow-read.api.ts#createContractChangeDraft | — | not_applicable | ROUTE_USAGE_UNCLASSIFIED |
 | POST | /contracts/:contractVersionId/copies | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedContractDraft | — | not_applicable | — |
 | POST | /contracts/:contractVersionId/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/multi-duty-sms.api.ts#retryMultiDutySms | multi-duty-sms.retry | covered | — |
 | POST | /contracts/:contractVersionId/formal-files/approval | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#uploadContractFormalApprovalFile | — | not_applicable | — |
@@ -484,7 +495,14 @@
 | POST | /contracts/:contractVersionId/seal/approve | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#approveGovernedContractSeal | contract-seal.approve-governed | covered | — |
 | POST | /contracts/:contractVersionId/seal/complete | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#completeContractSeal | contract-seal.complete | covered | — |
 | POST | /contracts/:contractVersionId/signed-archive | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#archiveSignedContractV2 | contract-direct-registration.confirm<br>contract-direct-registration.resume-original<br>contract-generated-archive.confirm<br>contract-generated-archive.resume-original | covered | — |
+| POST | /contracts/:contractVersionId/signed-changes/:changeId/review | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewSignedContractChange | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /contracts/:contractVersionId/signed-changes | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#submitSignedContractChange | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts/:contractVersionId/signing/material-change | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeContractSigningMaterialChange | contract.signing-material-change | covered | — |
+| POST | /contracts/:contractVersionId/tax-revisions/:revisionId/review | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTaxRevision | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /contracts/:contractVersionId/tax-revisions | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#submitContractTaxRevision | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /contracts/:contractVersionId/work-completion-drafts | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#saveWorkCompletionDraft | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /contracts/:contractVersionId/work-completions/:completionId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewWorkCompletion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /contracts/:contractVersionId/work-completions/:completionId/submission | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#submitWorkCompletion | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /contracts | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#createWorkbenchDraft | contract-draft.create | covered | — |
 | POST | /draft-retention/controlled-entry | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /employee-onboarding/applications/:id/review | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#reviewEmployeeApplication | employee.review | covered | — |
@@ -513,8 +531,8 @@
 | POST | /expense-claims/:claimId/repayments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanRepayment | expense-claim.loan.repayment.record | covered | — |
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit | covered | — |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create<br>general-procurement.createExpenseClaim | covered | — |
-| POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>company-transfer.downloadPrivateFileByTicket<br>contract-bank-verification.downloadPrivateFileByTicket<br>contract-document.download-ticket<br>contract-draft.body-paper-preview<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>general-procurement.downloadPrivateFileByTicket<br>layout-sample.read-private-pdf<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
-| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | company-transfer.uploadPrivateFile<br>contract-archive.upload-file<br>contract-bank-verification.uploadPrivateFile<br>contract-final.upload-file<br>contract-generated-archive.confirm<br>contract-proxy-execution.uploadPrivateFile<br>global-invoice.upload-file<br>layout-template.create<br>layout-template.save<br>necessary-expense-reserve.evidence.upload<br>project-fund-dispute.evidence.upload<br>template-workbench.create-source<br>template-workbench.save-source<br>upward-contract-amount.uploadPrivateFile | covered | — |
+| POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>company-transfer.downloadPrivateFileByTicket<br>contract-bank-verification.downloadPrivateFileByTicket<br>contract-document.download-ticket<br>contract-draft.body-paper-preview<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-takeover.file-download-ticket<br>general-procurement.downloadPrivateFileByTicket<br>layout-sample.read-private-pdf<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | company-transfer.uploadPrivateFile<br>contract-archive.upload-file<br>contract-bank-verification.uploadPrivateFile<br>contract-final.upload-file<br>contract-generated-archive.confirm<br>contract-proxy-execution.uploadPrivateFile<br>global-invoice.upload-file<br>layout-template.create<br>layout-template.save<br>necessary-expense-reserve.evidence.upload<br>project-fund-dispute.evidence.upload<br>template-workbench.create-source<br>template-workbench.save-source<br>upward-contract-amount.uploadPrivateFile | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /fund-account-advance-receipts/company-owned | page | web_api_wrapper | apps/web-admin/src/api/fund-account-advance.api.ts#registerCompanyOwnedFund | fund-advance.recover-original<br>fund-advance.register | covered | — |
 | POST | /fund-account-advance-receipts | page | web_api_wrapper | apps/web-admin/src/api/fund-account-advance.api.ts#registerFundAdvance | fund-advance.recover-original<br>fund-advance.register | covered | — |
 | POST | /fund-account-transfers/:id/actions | page | web_api_wrapper | apps/web-admin/src/api/fund-account-transfer.api.ts#actOnFundAccountTransfer | fund-transfer.act<br>fund-transfer.recover-original | covered | — |
@@ -715,6 +733,11 @@
 | POST | /projects/:projectId/settlement-drafts | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#createSettlementDraftRecord | settlement-draft.save-local-gate | covered | — |
 | POST | /projects/:projectId/settlement-exception-quotas/:quotaId/approval | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#reviewSettlementExceptionQuota | — | not_applicable | — |
 | POST | /projects/:projectId/settlement-exception-quotas | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#requestSettlementExceptionQuota | — | not_applicable | — |
+| POST | /projects/:projectId/signed-contract-settlements/:id/attachments/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/signed-contract-settlement.api.ts#readSignedSettlementAttachment | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /projects/:projectId/signed-contract-settlements/:id/review | page | web_api_wrapper | apps/web-admin/src/api/signed-contract-settlement.api.ts#reviewSignedSettlement | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /projects/:projectId/signed-contract-settlements/:id/submission | page | web_api_wrapper | apps/web-admin/src/api/signed-contract-settlement.api.ts#submitSignedSettlement | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /projects/:projectId/signed-contract-settlements/files | page | web_api_wrapper | apps/web-admin/src/api/signed-contract-settlement.api.ts#uploadSignedSettlementFile | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
+| POST | /projects/:projectId/signed-contract-settlements | page | web_api_wrapper | apps/web-admin/src/api/signed-contract-settlement.api.ts#saveSignedSettlement | — | uncovered | MUTATION_CONSUMER_UNCOVERED |
 | POST | /projects/:projectId/status | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#updateProjectStatus | project.status | covered | — |
 | POST | /projects/:projectId/upstream-fund-facts/:fundFactId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectUpstreamFundFact | project.upstream-fund.confirm | covered | — |
 | POST | /projects/:projectId/upstream-fund-facts/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadProjectUpstreamFundPrivateFile | project.upstream-fund.evidence-upload | covered | — |
@@ -851,7 +874,22 @@
 
 ### 未覆盖写入消费者
 
-- 无
+- apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket → apps/web-admin/src/pages/payments/SignedSettlementPaymentBasisPanel.vue
+- apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTaxRevision → apps/web-admin/src/pages/contracts/EffectiveContractTaxFacts.vue
+- apps/web-admin/src/api/core-flow-read.api.ts#reviewSignedContractChange → apps/web-admin/src/pages/contracts/SignedContractChanges.vue
+- apps/web-admin/src/api/core-flow-read.api.ts#reviewWorkCompletion → apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue
+- apps/web-admin/src/api/core-flow-read.api.ts#reviseWorkCompletionDraft → apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue
+- apps/web-admin/src/api/core-flow-read.api.ts#saveWorkCompletionDraft → apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue
+- apps/web-admin/src/api/core-flow-read.api.ts#submitContractTaxRevision → apps/web-admin/src/pages/contracts/EffectiveContractTaxFacts.vue
+- apps/web-admin/src/api/core-flow-read.api.ts#submitSignedContractChange → apps/web-admin/src/pages/contracts/SignedContractChanges.vue
+- apps/web-admin/src/api/core-flow-read.api.ts#submitWorkCompletion → apps/web-admin/src/pages/contracts/ContractWorkCompletionSection.vue
+- apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile → apps/web-admin/src/pages/contracts/SignedContractChanges.vue
+- apps/web-admin/src/api/signed-contract-settlement.api.ts#readSignedSettlementAttachment → apps/web-admin/src/pages/payments/SignedSettlementPaymentBasisPanel.vue
+- apps/web-admin/src/api/signed-contract-settlement.api.ts#readSignedSettlementAttachment → apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue
+- apps/web-admin/src/api/signed-contract-settlement.api.ts#reviewSignedSettlement → apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue
+- apps/web-admin/src/api/signed-contract-settlement.api.ts#saveSignedSettlement → apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue
+- apps/web-admin/src/api/signed-contract-settlement.api.ts#submitSignedSettlement → apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue
+- apps/web-admin/src/api/signed-contract-settlement.api.ts#uploadSignedSettlementFile → apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue
 
 ### 未解决动作绑定
 
