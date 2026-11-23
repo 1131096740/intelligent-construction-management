@@ -263,6 +263,7 @@ jobs:
           - task409_principal_return
           - task410_company_proxy_repayment
           - line_a_real_db
+          - issue420_approval_center
         include:
           - group: pol113_pol115_business_entries
             shard: pol113_pol114
