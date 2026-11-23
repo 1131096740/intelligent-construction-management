@@ -26,10 +26,11 @@ import {
 } from "./settlement-operating-source.adapter";
 
 /**
- * 已签结算确认事实的经营来源。它与旧 `settlement` 来源同口径：
- * 正数确认成本并增加下游应付，负数冲减成本并减少应付；实付只减少应付，
- * 不再次确认成本。旧 `Settlement` 与新 `SignedContractSettlement` 是
- * 互不重复的事实来源（历史基线只由旧来源/接管基线表达）。
+ * 已签结算确认事实的经营来源。三类合同分别投影：
+ * - downstream / outside_fact：确认成本并增加下游应付，负数冲减；实付只减少应付。
+ * - upward：只形成施工企业应付我方的内部应收，不确认项目收入或成本。
+ * 旧 `Settlement` 与新 `SignedContractSettlement` 属于同一经济事实的不同入口，
+ * 跨来源去重键见 `settlement-source-dedup.ts`，同一合同版本同一结算期次只计一次。
  */
 export const SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE =
   "signed_contract_settlement";
@@ -37,7 +38,7 @@ export const SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE =
 interface FrozenContractSource {
   sourceRecordId: string;
   sourceVersion: string;
-  contractTypeKey: string;
+  contractTypeKey: string | null;
   counterparty: string | null;
   counterpartyVersionId: string;
   payerKind: string;
@@ -57,14 +58,14 @@ export class SignedSettlementOperatingSourceAdapter
     projectId: string
   ): Promise<readonly OperatingSourceSnapshot[]> {
     const rows = await tx.signedContractSettlement.findMany({
-      where: { projectId, contractKind: "downstream", state: "confirmed" },
+      where: { projectId, state: "confirmed" },
       include: { attachments: { select: { fileId: true } } },
       orderBy: [{ reviewedAt: "asc" }, { id: "asc" }]
     });
     const snapshots: OperatingSourceSnapshot[] = [];
     for (const row of rows) {
-      if (row.contractKind !== "downstream") continue;
-      const source = frozenContractSource(row);
+      if (!["downstream", "outside_fact", "upward"].includes(row.contractKind)) continue;
+      const source = frozenContractSource(row, row.contractKind);
       if (!source) continue;
       const snapshot = await this.snapshot(tx, row);
       if (snapshot) snapshots.push(snapshot);
@@ -83,12 +84,12 @@ export class SignedSettlementOperatingSourceAdapter
     if (
       !row ||
       row.projectId !== locator.projectId ||
-      row.contractKind !== "downstream" ||
+      !["downstream", "outside_fact", "upward"].includes(row.contractKind) ||
       row.state !== "confirmed"
     ) {
       return null;
     }
-    if (!frozenContractSource(row)) return null;
+    if (!frozenContractSource(row, row.contractKind)) return null;
     return this.snapshot(tx, row);
   }
 
@@ -98,6 +99,10 @@ export class SignedSettlementOperatingSourceAdapter
       "已签结算正式来源"
     );
     const affiliate = frozenAffiliateFromJson(source, "已签结算");
+    const contractKind = requiredJsonText(source, "contractKind", "已签结算");
+    if (!["downstream", "outside_fact", "upward"].includes(contractKind)) {
+      throw new BadRequestException("已签结算合同类型不正确");
+    }
     const occurredAt = requiredJsonDate(source, "occurredAt", "已签结算");
     const confirmedAt = requiredJsonDate(source, "confirmedAt", "已签结算");
     const effectiveDate = requiredJsonDate(
@@ -110,26 +115,54 @@ export class SignedSettlementOperatingSourceAdapter
       "amountCents",
       "已签结算"
     );
-    const signedPayableCents = requiredJsonMoney(
-      source,
-      "payableAmountCents",
-      "已签结算"
-    );
     if (signedAmountCents === 0n) {
       throw new BadRequestException("零金额已签结算不产生经营金额事实");
     }
     const amountCents = absolute(signedAmountCents);
-    const costCategoryCode: PrimaryCostCategoryCode = settlementCostCategory(
-      requiredJsonText(source, "contractTypeKey", "已签结算")
-    );
-    const debtor = payerSubject(source, affiliate.businessPartyVersionId);
-    const creditor = {
-      kind: "downstream_counterparty" as const,
-      id: requiredJsonText(source, "counterpartyVersionId", "已签结算")
-    };
     const impactDirection = signedAmountCents > 0n ? "increase" : "decrease";
-    const impacts: AppendOperatingFactInput["impacts"] = [
-      {
+    const debtor = payerSubject(source, affiliate.businessPartyVersionId);
+    const counterpartyVersionId = requiredJsonText(
+      source,
+      "counterpartyVersionId",
+      "已签结算"
+    );
+    const impacts: AppendOperatingFactInput["impacts"] = [];
+    let creditor: { kind: "participating_company" | "downstream_counterparty"; id: string };
+    let operatingLevel: "project" | "participating_company" = "project";
+    if (contractKind === "upward") {
+      // 对上结算只形成施工企业应付我方的内部应收；项目合并收入与成本不增加。
+      creditor = { kind: "participating_company", id: counterpartyVersionId };
+      operatingLevel = "participating_company";
+      impacts.push({
+        idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:internal-receivable`,
+        sourceImpactKey: "receivable_increase",
+        impactKind: "receivable_increase",
+        amountCents,
+        direction: impactDirection,
+        subjectRole: "creditor",
+        subject: creditor,
+        description:
+          signedAmountCents > 0n
+            ? "对上已签结算形成施工企业应付我方"
+            : "对上已签结算冲减施工企业应付我方",
+        impactSnapshot: sourceJson({
+          relationship: "upward",
+          projectConsolidation: "exclude_internal"
+        })
+      });
+    } else {
+      creditor = { kind: "downstream_counterparty", id: counterpartyVersionId };
+      const signedPayableCents = requiredJsonMoney(
+        source,
+        "payableAmountCents",
+        "已签结算"
+      );
+      const contractTypeKey = optionalJsonText(source, "contractTypeKey");
+      const costCategoryCode = settlementCostCategoryFor(
+        contractTypeKey,
+        contractKind
+      );
+      impacts.push({
         idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:confirmed_cost`,
         sourceImpactKey: "confirmed_cost",
         impactKind: "confirmed_cost",
@@ -140,23 +173,24 @@ export class SignedSettlementOperatingSourceAdapter
         costCategoryCode,
         description:
           signedAmountCents > 0n ? "已签结算确认项目成本" : "负向已签结算冲减项目成本"
-      }
-    ];
-    if (signedPayableCents !== 0n) {
-      impacts.push({
-        idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:payable`,
-        sourceImpactKey:
-          signedPayableCents > 0n ? "payable_increase" : "payable_decrease",
-        impactKind:
-          signedPayableCents > 0n ? "payable_increase" : "payable_decrease",
-        amountCents: absolute(signedPayableCents),
-        direction: signedPayableCents > 0n ? "increase" : "decrease",
-        subjectRole: "creditor",
-        subject: creditor,
-        description:
-          signedPayableCents > 0n ? "已签结算增加下游应付" : "负向已签结算冲减下游应付"
       });
+      if (signedPayableCents !== 0n) {
+        impacts.push({
+          idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:payable`,
+          sourceImpactKey:
+            signedPayableCents > 0n ? "payable_increase" : "payable_decrease",
+          impactKind:
+            signedPayableCents > 0n ? "payable_increase" : "payable_decrease",
+          amountCents: absolute(signedPayableCents),
+          direction: signedPayableCents > 0n ? "increase" : "decrease",
+          subjectRole: "creditor",
+          subject: creditor,
+          description:
+            signedPayableCents > 0n ? "已签结算增加下游应付" : "负向已签结算冲减下游应付"
+        });
+      }
     }
+    const contractTypeKey = optionalJsonText(source, "contractTypeKey") ?? "";
     return {
       entryKind: "original",
       input: {
@@ -174,7 +208,7 @@ export class SignedSettlementOperatingSourceAdapter
           "已签结算"
         ),
         factKind: "downstream_settlement",
-        operatingLevel: "project",
+        operatingLevel,
         evidenceLevel: "A",
         amountCents,
         currencyCode: "CNY",
@@ -193,6 +227,9 @@ export class SignedSettlementOperatingSourceAdapter
         basisSnapshot: sourceJson({
           authority: "confirmed_signed_settlement",
           settlementId: snapshot.sourceBusinessId,
+          contractKind,
+          contractTypeKey: contractTypeKey || null,
+          settlementNumber: optionalJsonText(source, "settlementNumber"),
           confirmationNo: snapshot.sourceVersion,
           attachmentFileIds: (source.attachmentFileIds ??
             []) as Prisma.InputJsonArray
@@ -207,7 +244,7 @@ export class SignedSettlementOperatingSourceAdapter
     tx: Parameters<OperatingSourceAdapter["readSourceSnapshot"]>[0],
     row: SignedSettlementRow
   ): Promise<OperatingSourceSnapshot | null> {
-    const frozen = frozenContractSource(row);
+    const frozen = frozenContractSource(row, row.contractKind);
     if (!frozen) return null;
     if (
       !row.number ||
@@ -223,6 +260,9 @@ export class SignedSettlementOperatingSourceAdapter
       .toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP);
     if (signedCents.isZero()) {
       throw new BadRequestException("已签结算金额不足一分，无法登记经营金额");
+    }
+    if (row.contractKind === "upward" && signedCents.isNegative()) {
+      throw new BadRequestException("对上已签结算的冲减金额不能为负");
     }
     const attachmentFileIds = row.attachments.map(
       (attachment) => attachment.fileId
@@ -247,10 +287,22 @@ export class SignedSettlementOperatingSourceAdapter
       sourceSnapshot: sourceJson({
         formalStatus: "confirmed",
         settlementId: row.id,
+        settlementNumber: row.number,
+        contractKind: row.contractKind,
+        relationship:
+          row.contractKind === "upward"
+            ? "upward"
+            : row.contractKind === "outside_fact"
+              ? "outside"
+              : frozen.payerKind === "construction_enterprise"
+                ? "outside"
+                : "inside",
         contractId: row.contractId,
         contractVersionId: frozen.sourceRecordId,
         contractVersionNo: frozen.sourceVersion,
         contractTypeKey: frozen.contractTypeKey,
+        payerKind: frozen.payerKind,
+        payerVersionId: frozen.payerVersionId,
         signingSubjectType:
           frozen.payerKind === "construction_enterprise"
             ? "affiliate"
@@ -291,14 +343,21 @@ interface SignedSettlementRow {
 }
 
 function frozenContractSource(
-  row: Pick<SignedSettlementRow, "confirmedContractSource">
+  row: Pick<SignedSettlementRow, "confirmedContractSource" | "contractKind">,
+  contractKind: string
 ): FrozenContractSource | null {
   const value = row.confirmedContractSource;
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   const contractTypeKey =
     typeof record.contractTypeKey === "string" ? record.contractTypeKey : null;
-  if (!contractTypeKey || !isDownstreamSettlementCostType(contractTypeKey)) {
+  if (
+    contractKind === "downstream" &&
+    (!contractTypeKey || !isDownstreamSettlementCostType(contractTypeKey))
+  ) {
+    return null;
+  }
+  if (contractKind !== "downstream" && contractKind !== "outside_fact" && contractKind !== "upward") {
     return null;
   }
   const text = (key: string): string | null =>
@@ -333,24 +392,42 @@ function payerSubject(
   source: Record<string, Prisma.InputJsonValue>,
   affiliateVersionId: string
 ) {
-  const signingSubjectType = requiredJsonText(
-    source,
-    "signingSubjectType",
-    "已签结算"
-  );
-  if (signingSubjectType === "affiliate") {
+  const payerKind = requiredJsonText(source, "payerKind", "已签结算");
+  if (payerKind === "construction_enterprise") {
     return {
       kind: "construction_enterprise" as const,
       id: affiliateVersionId
     };
   }
-  if (signingSubjectType === "our_company") {
+  if (payerKind === "participating_company") {
     return {
       kind: "participating_company" as const,
-      id: requiredJsonText(source, "companyEntityVersionId", "已签结算")
+      id:
+        optionalJsonText(source, "payerVersionId") ??
+        requiredJsonText(source, "companyEntityVersionId", "已签结算")
     };
   }
-  throw new BadRequestException("已签结算签约主体类型不正确");
+  throw new BadRequestException("已签结算付款主体类型不正确");
+}
+
+function settlementCostCategoryFor(
+  contractTypeKey: string | null,
+  contractKind: string
+): PrimaryCostCategoryCode {
+  if (contractTypeKey && isDownstreamSettlementCostType(contractTypeKey)) {
+    return settlementCostCategory(contractTypeKey);
+  }
+  // 表外合同类型不一定在标准成本分类内；保留为其他项目成本而不是丢失事实。
+  if (contractKind === "outside_fact") return "other_project_cost";
+  throw new BadRequestException("当前合同类型尚未接入经营成本分类");
+}
+
+function optionalJsonText(
+  source: Record<string, Prisma.InputJsonValue>,
+  key: string
+): string | null {
+  const value = source[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function absolute(value: bigint): bigint {

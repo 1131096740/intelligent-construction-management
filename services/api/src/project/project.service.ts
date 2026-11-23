@@ -922,6 +922,10 @@ export class ProjectService {
         operatingIncomeYuan: projection.operating.confirmedIncomeYuan,
         affiliateDownstreamPaymentCents:
           constructionEnterprisePaidSummary.downstreamCents,
+        // OPS-12 成对口径：施工企业已付与项目对外支付定义不同，禁止相加。
+        constructionEnterprisePaidCents:
+          projection.actualFunds.constructionEnterprisePaidCents,
+        projectExternalPaidCents: projection.actualFunds.projectExternalPaidCents,
         operatingCostCents: projection.operating.confirmedCostCents,
         operatingCostYuan: projection.operating.confirmedCostYuan,
         grossProfitCents: projection.profitAndLoss.currentOperatingProfitCents,

@@ -1699,8 +1699,12 @@ const businessItems = computed(() => {
     { label: "待核对到账差额", value: formatCents(upstream?.unreconciledReceiptDifferenceCents ?? null) },
     { label: "经营收入", value: business?.operatingIncomeYuan ? `¥${business.operatingIncomeYuan}` : formatCents(business?.operatingIncomeCents ?? null) },
     {
-      label: "施工企业已付金额",
+      label: "施工企业已付金额（与项目对外支付不可相加）",
       value: formatCents(overview.value?.constructionEnterprisePaid?.paidCents ?? null)
+    },
+    {
+      label: "项目对外支付（施工企业直接付下游 + 我方付下游）",
+      value: formatCents(business?.projectExternalPaidCents ?? null)
     },
     {
       label: "施工企业超付提示",
@@ -1718,6 +1722,18 @@ const receivablePayableItems = computed(() => {
     { label: "已确认成本", value: operating?.confirmedCostYuan ? `¥${operating.confirmedCostYuan}` : formatCents(operating?.confirmedCostCents ?? null) },
     ...(overview.value?.operatingProjection.relationshipTotals ?? []).filter((row) => ["inside", "outside", "unclassified", "non_contract"].includes(row.relationship)).map((row) => ({ label: `${row.label}确认成本`, value: formatCents(row.confirmedCostCents) })),
     { label: "对上内部应收（项目合并抵销）", value: formatCents(operating?.internalReceivableCents ?? null) },
+    ...(overview.value?.operatingProjection.costAttribution?.byBearingCompany ?? []).map((row) => ({
+      label: `${row.name ?? "成本承担公司"}确认成本`,
+      value: formatCents(row.costCents)
+    })),
+    {
+      label: "待归属成本（承担公司未明）",
+      value: formatCents(overview.value?.operatingProjection.costAttribution?.unattributedCostCents ?? null)
+    },
+    {
+      label: "公共现金支付成本",
+      value: formatCents(overview.value?.operatingProjection.costAttribution?.publicCashCostCents ?? null)
+    },
     { label: "业主及其他应收", value: formatCents(operating?.receivableCents ?? null) },
     { label: "下游及其他应付", value: formatCents(operating?.payableCents ?? null) }
   ];
@@ -1736,14 +1752,37 @@ const subjectFundsItems = computed(() => {
   ];
 });
 
+const profitIncomplete = computed(() => {
+  const projection = overview.value?.operatingProjection;
+  return (
+    projection?.integrity.moneyComplete === false ||
+    projection?.profitAndLoss.finalConfirmable === false
+  );
+});
+
 const profitAndLossItems = computed(() => {
   const profit = overview.value?.operatingProjection.profitAndLoss;
   const distribution = overview.value?.operatingProjection.distribution;
+  const currentProfit = formatCents(
+    profit?.currentOperatingProfitCents ?? null
+  );
   return [
-    { label: "当前经营盈亏", value: formatCents(profit?.currentOperatingProfitCents ?? null) },
+    {
+      label: profitIncomplete.value
+        ? "当前经营盈亏（已知数，资料待补充）"
+        : "当前经营盈亏",
+      value: profitIncomplete.value
+        ? `${currentProfit}（已知数，不作为最终利润）`
+        : currentProfit
+    },
     { label: "预计待清算费用", value: formatCents(profit?.estimatedClearingExpenseCents ?? null) },
     { label: "当前预计盈亏", value: formatCents(profit?.currentEstimatedProfitCents ?? null) },
-    { label: "最终确认盈亏", value: formatCents(profit?.finalConfirmedProfitCents ?? null) },
+    {
+      label: "最终确认盈亏",
+      value: profit?.finalConfirmable === false
+        ? "暂不可确认（资料待补充）"
+        : formatCents(profit?.finalConfirmedProfitCents ?? null)
+    },
     { label: "当前可分配利润", value: formatCents(distribution?.currentDistributableProfitCents ?? null) }
   ];
 });

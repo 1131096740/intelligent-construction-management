@@ -107,6 +107,25 @@ describe("project operating overview structure", () => {
     expect(source).toContain("项目维护");
   });
 
+  it("defines construction-enterprise paid and project external paid as a non-additive pair", () => {
+    expect(source).toContain("施工企业已付金额（与项目对外支付不可相加）");
+    expect(source).toContain("项目对外支付（施工企业直接付下游 + 我方付下游）");
+    expect(source).toContain("business?.projectExternalPaidCents");
+  });
+
+  it("shows confirmed cost by bearing company with an explicit unattributed group and public cash source", () => {
+    expect(source).toContain("costAttribution?.byBearingCompany");
+    expect(source).toContain("待归属成本（承担公司未明）");
+    expect(source).toContain("公共现金支付成本");
+  });
+
+  it("marks incomplete data as known-only and never as final profit", () => {
+    expect(source).toContain("当前经营盈亏（已知数，资料待补充）");
+    expect(source).toContain("（已知数，不作为最终利润）");
+    expect(source).toContain("暂不可确认（资料待补充）");
+    expect(source).toContain("projection?.profitAndLoss.finalConfirmable");
+  });
+
   it("renders the unified projection layers without exposing source identifiers", () => {
     expect(source).toContain("项目应收应付");
     expect(source).toContain("各主体项目资金");

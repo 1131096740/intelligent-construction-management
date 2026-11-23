@@ -2202,7 +2202,7 @@ function versionedProjectionFactFromStored(fact: ProjectionStoredFact, projectBy
   return { numericProtocolVersion: 2, amountCents: null, amountYuan: fact.amountYuan === null ? null : fact.amountYuan.toFixed(4),
     id: fact.id, projectId: fact.projectId, projectCode: project?.code ?? "未知项目", projectName: project?.name ?? "未知项目", sourceType: fact.sourceType, sourceBusinessId: fact.sourceBusinessId, sourceVersion: fact.sourceVersion, sourceBusinessCode: fact.sourceBusinessCode,
     occurredAt: fact.occurredAt.toISOString(), confirmedAt: fact.confirmedAt.toISOString(), affiliateBusinessPartyVersionId: fact.affiliateBusinessPartyVersionId, affiliateNameSnapshot: fact.affiliateNameSnapshot, factKind: fact.factKind, operatingLevel: fact.operatingLevel, evidenceLevel: fact.evidenceLevel, direction: fact.direction, sourceSnapshot: fact.sourceSnapshot, entryKind: fact.entryKind, adjustsFactId: fact.adjustsFactId,
-    debtorSubject: fact.debtorSubjectKind && fact.debtorSubjectId ? { kind: fact.debtorSubjectKind, id: fact.debtorSubjectId } : null, creditorSubject: fact.creditorSubjectKind && fact.creditorSubjectId ? { kind: fact.creditorSubjectKind, id: fact.creditorSubjectId } : null, subjectReferences: projectionFactSubjectReferences(fact), impacts: [] };
+    debtorSubject: fact.debtorSubjectKind && fact.debtorSubjectId ? { kind: fact.debtorSubjectKind, id: fact.debtorSubjectId } : null, creditorSubject: fact.creditorSubjectKind && fact.creditorSubjectId ? { kind: fact.creditorSubjectKind, id: fact.creditorSubjectId } : null, costBearingCompanySubject: fact.costBearingCompanySubjectKind && fact.costBearingCompanySubjectId ? { kind: fact.costBearingCompanySubjectKind, id: fact.costBearingCompanySubjectId, name: projectionSubjectName(fact.subjectSnapshot, "costBearingCompany") } : null, actualPayerSubject: fact.actualPayerSubjectKind && fact.actualPayerSubjectId ? { kind: fact.actualPayerSubjectKind, id: fact.actualPayerSubjectId } : null, subjectReferences: projectionFactSubjectReferences(fact), impacts: [] };
 }
 function versionedProjectionImpactFromStored(impact: StoredOperatingImpact, protocol: 1 | 2): ProjectionFactInput["impacts"][number] | ProjectionV2ImpactInput {
   if (impact.numericProtocolVersion !== 2) return projectionImpactFromStored(impact);
@@ -2239,6 +2239,8 @@ function projectionFactFromStored(
     adjustsFactId: fact.adjustsFactId,
     debtorSubject: fact.debtorSubjectKind && fact.debtorSubjectId ? { kind: fact.debtorSubjectKind, id: fact.debtorSubjectId } : null,
     creditorSubject: fact.creditorSubjectKind && fact.creditorSubjectId ? { kind: fact.creditorSubjectKind, id: fact.creditorSubjectId } : null,
+    costBearingCompanySubject: fact.costBearingCompanySubjectKind && fact.costBearingCompanySubjectId ? { kind: fact.costBearingCompanySubjectKind, id: fact.costBearingCompanySubjectId, name: projectionSubjectName(fact.subjectSnapshot, "costBearingCompany") } : null,
+    actualPayerSubject: fact.actualPayerSubjectKind && fact.actualPayerSubjectId ? { kind: fact.actualPayerSubjectKind, id: fact.actualPayerSubjectId } : null,
     subjectReferences: projectionFactSubjectReferences(fact),
     impacts: impacts.map(projectionImpactFromStored)
   };
@@ -2705,6 +2707,12 @@ function assertDetailResponseWithinBudget(response: unknown): void {
   if (Buffer.byteLength(JSON.stringify(response), "utf8") > MAX_DETAIL_RESPONSE_BYTES) {
     throw new PayloadTooLargeException("经营投影明细响应超出 8 MiB 安全预算，请缩小每页条数或筛选范围");
   }
+}
+
+function projectionSubjectName(snapshot: unknown, role: string): string | null {
+  const subject = jsonRecord(jsonRecord(snapshot)[role]);
+  const name = typeof subject.name === "string" ? subject.name.trim() : "";
+  return name || null;
 }
 
 export function projectionFactSubjectReferences(fact: {

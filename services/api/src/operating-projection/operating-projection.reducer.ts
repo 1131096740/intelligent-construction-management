@@ -1,4 +1,8 @@
 import { CONTRACT_WORK_COMPLETION_SOURCE } from "../contract/contract-work-completion-operating-source.adapter";
+import {
+  settlementDedupKey,
+  settlementEconomicIdentity
+} from "../operating-ledger/settlement-source-dedup";
 import type {CompanyTransferBalance} from "../company-transfer/company-transfer-summary";
 import {
   CONTRACT_RELATIONSHIP_LABELS,
@@ -55,6 +59,9 @@ export interface ProjectionFactInput {
   adjustsFactId?: string | null;
   debtorSubject?: { kind: string; id: string } | null;
   creditorSubject?: { kind: string; id: string } | null;
+  /** FND-22：成本承担公司（可空表示分账未明，读侧归入待归属）。 */
+  costBearingCompanySubject?: { kind: string; id: string; name?: string | null } | null;
+  actualPayerSubject?: { kind: string; id: string } | null;
   subjectReferences?: Array<{ kind: string; id: string }>;
   impacts: ProjectionImpactInput[];
 }
@@ -185,8 +192,14 @@ export interface ProjectionAggregateSeed {
   selectedHolderCashBalances: Array<[string, bigint]>;
   confirmedProjectInflowsCents: bigint;
   confirmedProjectOutflowsCents: bigint;
+  constructionEnterprisePaidCents: bigint;
+  projectExternalPaidCents: bigint;
   sourceReferenceOutflows: Array<[string, bigint]>;
   retroactiveFactCount: number;
+  crossSourceDedupedFactCount?: number;
+  costByBearingCompany?: Array<{ kind: string; id: string; name: string | null; costCents: bigint }>;
+  unattributedCostCents?: bigint;
+  publicCashCostCents?: bigint;
   moneyComplete: boolean;
   notices: string[];
 }
@@ -240,6 +253,7 @@ export interface OperatingProjectionReadModel {
     cutoffAt: string;
     readAt: string;
     retroactiveFactCount: number;
+    crossSourceDedupedFactCount?: number;
   };
   integrity: {
     status: "complete" | "incomplete";
@@ -255,6 +269,17 @@ export interface OperatingProjectionReadModel {
     receivableCents: string;
     payableCents: string;
   };
+  /** FND-22 成本主体归属读侧：已确认成本按承担公司汇总，未明承担公司单列待归属。 */
+  costAttribution: {
+    byBearingCompany: Array<{
+      kind: string;
+      id: string;
+      name: string | null;
+      costCents: string;
+    }>;
+    unattributedCostCents: string;
+    publicCashCostCents: string;
+  };
   actualFunds: {
     constructionEnterpriseFundsCents: string;
     companyProjectFundsCents: string;
@@ -262,6 +287,10 @@ export interface OperatingProjectionReadModel {
     nonNegativeUsableCashStartCents: string;
     confirmedProjectInflowsCents: string;
     confirmedProjectOutflowsCents: string;
+    /** OPS-12：施工企业直接付下游 + 转我方；与 projectExternalPaidCents 成对定义，禁止相加。 */
+    constructionEnterprisePaidCents: string;
+    /** OPS-12：项目整体对外支付 = 施工企业直接付下游 + 我方直接付下游；不含内部转款与扣费。 */
+    projectExternalPaidCents: string;
     companyAdvanceForProjectCents: string;
     companyReturnableToProjectCents: string;
     interSubjectBalanceCents: string;
@@ -344,6 +373,7 @@ export interface OperatingProjectionAggregateView {
     businessDate: string;
     readAt: string;
     retroactiveFactCount: number;
+    crossSourceDedupedFactCount?: number;
   };
   integrity: {
     statusLabel: string;
@@ -353,6 +383,7 @@ export interface OperatingProjectionAggregateView {
   commitments: OperatingProjectionReadModel["commitments"];
   relationshipTotals?: OperatingProjectionReadModel["relationshipTotals"];
   operating: OperatingProjectionReadModel["operating"];
+  costAttribution: OperatingProjectionReadModel["costAttribution"];
   actualFunds: OperatingProjectionReadModel["actualFunds"];
   restrictions: Omit<OperatingProjectionReadModel["restrictions"], "relationshipCompleteness"> & {
     relationshipCompletenessLabel: string;
@@ -371,6 +402,11 @@ export interface OperatingProjectionAggregateView {
 
 export interface OperatingProjectionDetailedView extends OperatingProjectionAggregateView {
   details: Array<{
+    /** 成本来源可追溯键：事实、影响、来源类型与源业务 ID 一起构成唯一定位。 */
+    factId: string;
+    impactId: string;
+    sourceType: string;
+    sourceBusinessId: string;
     projectId: string;
     projectCode: string;
     projectName: string;
@@ -397,6 +433,8 @@ export interface OperatingProjectionDetailedView extends OperatingProjectionAggr
   }>;
   sourceDrilldown: Array<{
     projectId: string;
+    sourceType: string;
+    sourceBusinessId: string;
     sourceTypeLabel: string;
     sourceBusinessCode: string;
     factCount: number;
@@ -431,7 +469,7 @@ function toV2Aggregate(projection: OperatingProjectionV2ReadModel): OperatingPro
   const { relationshipCompleteness, ...restrictions } = projection.restrictions;
   return { schema: "operating_projection/V2", numericProtocolVersion: 2, companyTransferBalances: projection.companyTransferBalances,
     scope: { label: projection.scope.kind === "project" ? "单项目口径" : projection.scope.kind === "company" ? "公司归属口径" : "多项目汇总口径", projectCount: projection.scope.projectIds.length },
-    asOf: { businessDate: projection.asOf.businessDate, readAt: projection.asOf.readAt, retroactiveFactCount: projection.asOf.retroactiveFactCount },
+    asOf: { businessDate: projection.asOf.businessDate, readAt: projection.asOf.readAt, retroactiveFactCount: projection.asOf.retroactiveFactCount, crossSourceDedupedFactCount: projection.asOf.crossSourceDedupedFactCount },
     integrity: {
       statusLabel: projection.integrity.moneyComplete ? "已确认收支及资金金额完整" : "已确认收支及资金金额不完整",
       moneyComplete: projection.integrity.moneyComplete,
@@ -439,7 +477,7 @@ function toV2Aggregate(projection: OperatingProjectionV2ReadModel): OperatingPro
         ? [`合同参考金额含未知项（${projection.commitments.unknownContractCommitmentCount}项）；已知小计为${projection.commitments.knownContractCommitmentYuan}元。`]
         : [])]
     },
-    commitments: projection.commitments, relationshipTotals: projection.relationshipTotals, operating: projection.operating, actualFunds: projection.actualFunds,
+    commitments: projection.commitments, relationshipTotals: projection.relationshipTotals, operating: projection.operating, costAttribution: projection.costAttribution, actualFunds: projection.actualFunds,
     restrictions: { ...restrictions, relationshipCompletenessLabel: relationshipCompletenessLabel(relationshipCompleteness) }, profitAndLoss: projection.profitAndLoss, distribution: projection.distribution, evidence: projection.evidence,
     sources: [...groups.values()].sort((a, b) => a.sourceTypeLabel.localeCompare(b.sourceTypeLabel, "zh-CN")) };
 }
@@ -485,7 +523,8 @@ export function toOperatingProjectionAggregate(projection: OperatingProjectionRe
     asOf: {
       businessDate: projection.asOf.businessDate,
       readAt: projection.asOf.readAt,
-      retroactiveFactCount: projection.asOf.retroactiveFactCount
+      retroactiveFactCount: projection.asOf.retroactiveFactCount,
+      crossSourceDedupedFactCount: projection.asOf.crossSourceDedupedFactCount
     },
     integrity: {
       statusLabel: projection.integrity.moneyComplete ? "金额完整" : "金额不完整",
@@ -495,6 +534,7 @@ export function toOperatingProjectionAggregate(projection: OperatingProjectionRe
     commitments: projection.commitments,
     relationshipTotals: projection.relationshipTotals,
     operating: projection.operating,
+    costAttribution: projection.costAttribution,
     actualFunds: projection.actualFunds,
     restrictions: {
       estimatedClearingExpenseCents:
@@ -543,6 +583,10 @@ export function toOperatingProjectionDetailedView(
     ...toOperatingProjectionAggregate(projection),
     details: [
       ...projection.details.map((detail) => ({
+        factId: detail.factId,
+        impactId: detail.impactId,
+        sourceType: detail.sourceType,
+        sourceBusinessId: detail.sourceBusinessId,
         projectId: detail.projectId,
         projectCode: detail.projectCode,
         projectName: detail.projectName,
@@ -561,6 +605,10 @@ export function toOperatingProjectionDetailedView(
         fundPurpose: detail.fundPurpose
       })),
       ...projection.clearingRiskDetails.map((detail) => ({
+        factId: "",
+        impactId: "",
+        sourceType: "clearing_reconciliation",
+        sourceBusinessId: "",
         projectId: detail.projectId,
         projectCode: detail.projectCode,
         projectName: detail.projectName,
@@ -591,6 +639,8 @@ export function toOperatingProjectionDetailedView(
       ...projection.clearingRiskSourceDrilldown
     ].map((row) => ({
       projectId: row.projectId,
+      sourceType: row.sourceType,
+      sourceBusinessId: "sourceBusinessId" in row ? row.sourceBusinessId : "",
       sourceTypeLabel: row.sourceTypeLabel,
       sourceBusinessCode: row.sourceBusinessCode,
       factCount: row.factCount,
@@ -681,6 +731,14 @@ const CASH_IMPACT_KINDS = new Set<OperatingImpactKind>([
   "construction_enterprise_funds_decrease",
   "company_project_funds_increase",
   "company_project_funds_decrease"
+]);
+/** OPS-12 项目对外支付只看真实对外付款腿，公共现金实付也属于项目对外支付。 */
+const PROJECT_EXTERNAL_PAYMENT_KINDS = new Set<OperatingImpactKind>([
+  "construction_enterprise_funds_increase",
+  "construction_enterprise_funds_decrease",
+  "company_project_funds_increase",
+  "company_project_funds_decrease",
+  "public_cash_funds_decrease"
 ]);
 const SOURCE_TYPE_LABELS: Readonly<Record<string, string>> = {
   owner_settlement: "业主结算",
@@ -1340,6 +1398,9 @@ type StreamingFactState = {
   matchingImpactCount: number;
   matchingSignedImpactCents: bigint;
   cashNetCents: bigint;
+  constructionEnterpriseFundsNetCents: bigint;
+  downstreamExternalCashNetCents: bigint;
+  crossSourceDuplicate: boolean;
   restrictionImpacts: ProjectionImpactInput[];
 };
 
@@ -1421,6 +1482,13 @@ export class OperatingProjectionStreamAccumulator {
   private restrictionConflict = false;
   private confirmedProjectInflowsCents = 0n;
   private confirmedProjectOutflowsCents = 0n;
+  private constructionEnterprisePaidCents = 0n;
+  private projectExternalPaidCents = 0n;
+  private crossSourceDedupedFactCount = 0;
+  private readonly settlementDedupSeen = new Map<string, { amountCents: bigint; sourceType: string }>();
+  private readonly costByBearingCompany = new Map<string, { kind: string; id: string; name: string | null; costCents: bigint }>();
+  private unattributedCostCents = 0n;
+  private publicCashCostCents = 0n;
   private retroactiveFactCount = 0;
   private integrityFactCount = 0;
   private integrityImpactCount = 0;
@@ -1478,13 +1546,43 @@ export class OperatingProjectionStreamAccumulator {
           this.context.constructionEnterpriseSubjectIds,
           this.context.companyEntityVersionIds
         );
+      const settlementIdentity = settlementEconomicIdentity(
+        fact.sourceType,
+        fact.sourceSnapshot
+      );
+      const settlementKey = settlementIdentity
+        ? settlementDedupKey(settlementIdentity)
+        : null;
+      let crossSourceDuplicate = false;
+      if (settlementKey) {
+        const seen = this.settlementDedupSeen.get(settlementKey);
+        if (seen) {
+          crossSourceDuplicate = true;
+          if (seen.amountCents !== fact.amountCents) {
+            this.markMoneyIncomplete(
+              "同一合同期次的多来源结算金额不一致，跨来源去重已关闭金额投影。"
+            );
+          }
+          this.notices.add(
+            `同一合同期次「${settlementIdentity!.period}」存在多来源结算，已按一次计入成本；请核对原结算单。`
+          );
+        } else {
+          this.settlementDedupSeen.set(settlementKey, {
+            amountCents: fact.amountCents,
+            sourceType: fact.sourceType
+          });
+        }
+      }
       this.stateByFactId.set(fact.id, {
         fact: { ...fact, impacts: [] },
-        selected: noImpactFilter && sourceSelected,
+        selected: !crossSourceDuplicate && noImpactFilter && sourceSelected,
         integritySelected,
         matchingImpactCount: 0,
         matchingSignedImpactCents: 0n,
         cashNetCents: 0n,
+        constructionEnterpriseFundsNetCents: 0n,
+        downstreamExternalCashNetCents: 0n,
+        crossSourceDuplicate,
         restrictionImpacts: []
       });
     }
@@ -1506,6 +1604,7 @@ export class OperatingProjectionStreamAccumulator {
       const state = this.stateByFactId.get(impact.factId);
       if (!state) throw new Error("经营投影影响缺少当前事实页坐标");
       const fact = state.fact;
+      if (state.crossSourceDuplicate) continue;
       const integritySelected = matchesFilters(
         fact,
         impact,
@@ -1571,6 +1670,31 @@ export class OperatingProjectionStreamAccumulator {
           );
         }
       }
+      if (kind === "confirmed_cost") {
+        const bearing = fact.costBearingCompanySubject;
+        if (bearing) {
+          const key = `${bearing.kind}\u0000${bearing.id}`;
+          const current = this.costByBearingCompany.get(key) ?? {
+            kind: bearing.kind,
+            id: bearing.id,
+            name: bearing.name ?? null,
+            costCents: 0n
+          };
+          current.costCents += projectionSigned;
+          this.costByBearingCompany.set(key, current);
+        } else {
+          this.unattributedCostCents += projectionSigned;
+        }
+        if (fact.actualPayerSubject?.kind === "public_cash") {
+          this.publicCashCostCents += projectionSigned;
+        }
+      }
+      if (kind === "construction_enterprise_funds_increase" || kind === "construction_enterprise_funds_decrease") {
+        state.constructionEnterpriseFundsNetCents += projectionSigned;
+      }
+      if (fact.factKind === "downstream_payment" && PROJECT_EXTERNAL_PAYMENT_KINDS.has(kind)) {
+        state.downstreamExternalCashNetCents += projectionSigned;
+      }
     }
   }
 
@@ -1590,6 +1714,7 @@ export class OperatingProjectionStreamAccumulator {
     this.decimalFacts.clear();
     for (const state of this.stateByFactId.values()) {
       const fact = state.fact;
+      if (state.crossSourceDuplicate) this.crossSourceDedupedFactCount += 1;
       if (state.selected) {
         if (!EVIDENCE_LEVEL_SET.has(fact.evidenceLevel)) {
           this.markMoneyIncomplete("经营事实使用未知证据等级，金额投影已关闭。");
@@ -1612,6 +1737,12 @@ export class OperatingProjectionStreamAccumulator {
         }
         this.confirmedProjectInflowsCents += nonNegative(state.cashNetCents);
         this.confirmedProjectOutflowsCents += nonNegative(-state.cashNetCents);
+        if (fact.factKind !== "construction_enterprise_deduction") {
+          this.constructionEnterprisePaidCents += nonNegative(-state.constructionEnterpriseFundsNetCents);
+        }
+        if (fact.factKind === "downstream_payment") {
+          this.projectExternalPaidCents += nonNegative(-state.downstreamExternalCashNetCents);
+        }
         if (this.context.collectSourceReferenceTotals) {
           for (const sourceReferenceId of sourceReferenceIds(fact.sourceSnapshot)) {
             this.addBoundedCoordinate(
@@ -1652,6 +1783,12 @@ export class OperatingProjectionStreamAccumulator {
         selectedHolderCashBalances: Array.from(this.selectedHolderCashBalances.entries()),
         confirmedProjectInflowsCents: this.confirmedProjectInflowsCents,
         confirmedProjectOutflowsCents: this.confirmedProjectOutflowsCents,
+        crossSourceDedupedFactCount: this.crossSourceDedupedFactCount,
+        costByBearingCompany: Array.from(this.costByBearingCompany.values()),
+        unattributedCostCents: this.unattributedCostCents,
+        publicCashCostCents: this.publicCashCostCents,
+        constructionEnterprisePaidCents: this.constructionEnterprisePaidCents,
+        projectExternalPaidCents: this.projectExternalPaidCents,
         sourceReferenceOutflows: Array.from(this.sourceReferenceOutflows.entries()),
         retroactiveFactCount: this.retroactiveFactCount,
         moneyComplete: this.moneyComplete,
@@ -2070,6 +2207,13 @@ function reduceLegacyOperatingProjection(
     });
   }
   const cashNetByFact = new Map<string, bigint>();
+  const settlementDedupSeen = new Map<string, { amountCents: bigint; sourceType: string }>();
+  let crossSourceDedupedFactCount = 0;
+  const costByBearingCompany = new Map<string, { kind: string; id: string; name: string | null; costCents: bigint }>();
+  let unattributedCostCents = 0n;
+  let publicCashCostCents = 0n;
+  const constructionEnterpriseFundsNetByFact = new Map<string, bigint>();
+  const downstreamExternalCashNetByFact = new Map<string, bigint>();
   const selectedHolderCashBalances = new Map<string, bigint>(
     input.aggregateSeed?.selectedHolderCashBalances ?? []
   );
@@ -2077,6 +2221,29 @@ function reduceLegacyOperatingProjection(
   let retroactiveFactCount = input.aggregateSeed?.retroactiveFactCount ?? 0;
 
   for (const fact of input.aggregateSeed ? [] : input.facts) {
+    const settlementIdentity = settlementEconomicIdentity(
+      fact.sourceType,
+      fact.sourceSnapshot
+    );
+    if (settlementIdentity) {
+      const key = settlementDedupKey(settlementIdentity);
+      const seen = settlementDedupSeen.get(key);
+      if (seen) {
+        crossSourceDedupedFactCount += 1;
+        if (seen.amountCents !== fact.amountCents) {
+          moneyComplete = false;
+          notices.push("同一合同期次的多来源结算金额不一致，跨来源去重已关闭金额投影。");
+        }
+        notices.push(
+          `同一合同期次「${settlementIdentity.period}」存在多来源结算，已按一次计入成本；请核对原结算单。`
+        );
+        continue;
+      }
+      settlementDedupSeen.set(key, {
+        amountCents: fact.amountCents,
+        sourceType: fact.sourceType
+      });
+    }
     const { factSelected, matchingImpacts } = selectFactImpacts(input, fact);
     if (!factSelected) continue;
     const evidenceKnown = EVIDENCE_LEVEL_SET.has(fact.evidenceLevel);
@@ -2153,6 +2320,37 @@ function reduceLegacyOperatingProjection(
               (selectedHolderCashBalances.get(holder) ?? 0n) + projectionSigned
             );
           }
+        }
+        if (kind === "confirmed_cost") {
+          const bearing = fact.costBearingCompanySubject;
+          if (bearing) {
+            const key = `${bearing.kind}\u0000${bearing.id}`;
+            const current = costByBearingCompany.get(key) ?? {
+              kind: bearing.kind,
+              id: bearing.id,
+              name: bearing.name ?? null,
+              costCents: 0n
+            };
+            current.costCents += projectionSigned;
+            costByBearingCompany.set(key, current);
+          } else {
+            unattributedCostCents += projectionSigned;
+          }
+          if (fact.actualPayerSubject?.kind === "public_cash") {
+            publicCashCostCents += projectionSigned;
+          }
+        }
+        if (kind === "construction_enterprise_funds_increase" || kind === "construction_enterprise_funds_decrease") {
+          constructionEnterpriseFundsNetByFact.set(
+            fact.id,
+            (constructionEnterpriseFundsNetByFact.get(fact.id) ?? 0n) + projectionSigned
+          );
+        }
+        if (fact.factKind === "downstream_payment" && PROJECT_EXTERNAL_PAYMENT_KINDS.has(kind)) {
+          downstreamExternalCashNetByFact.set(
+            fact.id,
+            (downstreamExternalCashNetByFact.get(fact.id) ?? 0n) + projectionSigned
+          );
         }
       }
       sourceGroup!.impactCount += 1;
@@ -2303,6 +2501,18 @@ function reduceLegacyOperatingProjection(
   const confirmedProjectOutflows = input.aggregateSeed?.confirmedProjectOutflowsCents ??
     Array.from(cashNetByFact.values())
       .reduce((sum, value) => sum + nonNegative(-value), 0n);
+  const constructionEnterprisePaid = input.aggregateSeed?.constructionEnterprisePaidCents ??
+    Array.from(constructionEnterpriseFundsNetByFact.entries())
+      .reduce((sum, [factId, value]) => {
+        const kind = input.facts.find((row) => row.id === factId)?.factKind;
+        return kind === "construction_enterprise_deduction" ? sum : sum + nonNegative(-value);
+      }, 0n);
+  const projectExternalPaid = input.aggregateSeed?.projectExternalPaidCents ??
+    Array.from(downstreamExternalCashNetByFact.entries())
+      .reduce((sum, [factId, value]) => {
+        const kind = input.facts.find((row) => row.id === factId)?.factKind;
+        return kind === "downstream_payment" ? sum + nonNegative(-value) : sum;
+      }, 0n);
   const sourceReferenceOutflows = new Map<string, bigint>(
     input.aggregateSeed?.sourceReferenceOutflows ?? []
   );
@@ -2410,7 +2620,10 @@ function reduceLegacyOperatingProjection(
       businessDate: chinaBusinessDate(input.cutoffAt),
       cutoffAt: input.cutoffAt,
       readAt: input.readAt,
-      retroactiveFactCount
+      retroactiveFactCount,
+      crossSourceDedupedFactCount:
+        input.aggregateSeed?.crossSourceDedupedFactCount ??
+        crossSourceDedupedFactCount
     },
     integrity: {
       status: moneyComplete ? "complete" : "incomplete",
@@ -2425,6 +2638,28 @@ function reduceLegacyOperatingProjection(
       receivableCents: apiMoney(receivable),
       payableCents: apiMoney(payable)
     },
+    costAttribution: {
+      byBearingCompany: (
+        input.aggregateSeed?.costByBearingCompany ??
+        Array.from(costByBearingCompany.values())
+      )
+        .map((row) => ({
+          kind: row.kind,
+          id: row.id,
+          name: row.name,
+          costCents: apiMoney(row.costCents)
+        }))
+        .sort(
+          (left, right) =>
+            left.kind.localeCompare(right.kind) || left.id.localeCompare(right.id)
+        ),
+      unattributedCostCents: apiMoney(
+        input.aggregateSeed?.unattributedCostCents ?? unattributedCostCents
+      ),
+      publicCashCostCents: apiMoney(
+        input.aggregateSeed?.publicCashCostCents ?? publicCashCostCents
+      )
+    },
     actualFunds: {
       constructionEnterpriseFundsCents: apiMoney(constructionEnterpriseFunds),
       companyProjectFundsCents: apiMoney(companyProjectFunds),
@@ -2432,6 +2667,8 @@ function reduceLegacyOperatingProjection(
       nonNegativeUsableCashStartCents: apiMoney(nonNegativeUsableCashStart),
       confirmedProjectInflowsCents: apiMoney(confirmedProjectInflows),
       confirmedProjectOutflowsCents: apiMoney(confirmedProjectOutflows),
+      constructionEnterprisePaidCents: apiMoney(constructionEnterprisePaid),
+      projectExternalPaidCents: apiMoney(projectExternalPaid),
       companyAdvanceForProjectCents: apiMoney(companyAdvance),
       companyReturnableToProjectCents: apiMoney(companyReturnable),
       interSubjectBalanceCents: apiMoney(interSubject)

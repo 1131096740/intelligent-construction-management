@@ -1931,6 +1931,16 @@ export interface OperatingProjectionAggregateReadModel {
     receivableCents: string;
     payableCents: string;
   };
+  costAttribution?: {
+    byBearingCompany: Array<{
+      kind: string;
+      id: string;
+      name: string | null;
+      costCents: string;
+    }>;
+    unattributedCostCents: string;
+    publicCashCostCents: string;
+  };
   actualFunds: {
     constructionEnterpriseFundsCents: string;
     companyProjectFundsCents: string;
@@ -1938,6 +1948,8 @@ export interface OperatingProjectionAggregateReadModel {
     nonNegativeUsableCashStartCents: string;
     confirmedProjectInflowsCents: string;
     confirmedProjectOutflowsCents: string;
+    constructionEnterprisePaidCents?: string;
+    projectExternalPaidCents?: string;
     companyAdvanceForProjectCents: string;
     companyReturnableToProjectCents: string;
     interSubjectBalanceCents: string;
@@ -2021,6 +2033,10 @@ export interface ProjectOperatingOverviewReadModel {
     operatingIncomeCents: string | null;
     operatingIncomeYuan?: string | null;
     affiliateDownstreamPaymentCents: string | null;
+    /** OPS-12：施工企业直接付下游 + 转我方；与 projectExternalPaidCents 成对定义，禁止相加。 */
+    constructionEnterprisePaidCents?: string;
+    /** OPS-12：项目整体对外支付 = 施工企业直接付下游 + 我方直接付下游；不含内部转款与扣费。 */
+    projectExternalPaidCents?: string;
     operatingCostCents: string | null;
     operatingCostYuan?: string | null;
     grossProfitCents: string | null;

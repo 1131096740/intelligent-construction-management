@@ -13,6 +13,7 @@ import {
   type OperatingSourceAppendPort
 } from "../operating-ledger/operating-source-replay.service";
 import { isDownstreamSettlementCostType } from "./settlement-operating-source.adapter";
+import { assertNoLegacySettlementForSignedPeriod } from "../operating-ledger/settlement-source-dedup";
 import { SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE } from "./signed-settlement-operating-source.adapter";
 
 export const signedContractKinds = ["downstream", "outside_fact", "upward"] as const;
@@ -254,7 +255,8 @@ export class SignedContractSettlementService {
           ) AS reviewed
         `;
         if (!result?.reviewed) throw new ServiceUnavailableException(unavailable);
-        if (isDownstreamOperatingSettlement(result.reviewed)) {
+        if (isOperatingSettlement(result.reviewed)) {
+          await this.assertNoCrossSourceSettlement(tx, projectId, result.reviewed);
           await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
             tx,
             {
@@ -288,6 +290,40 @@ export class SignedContractSettlementService {
         if (marker.includes("SIGNED_SETTLEMENT_REVIEW_REQUIRED")) throw new BadRequestException("请填写结算编号和非零本期金额");
       }
       throw error;
+    }
+  }
+
+  /**
+   * 同一合同版本、同一结算期次只能由一个结算入口计成本。旧 `Settlement`
+   * 与新 `SignedContractSettlement` 各有独立唯一键，数据库无法互相约束；
+   * 在确认事务内做 fail-closed 守卫，冲突时整笔复核（含审计）回滚。
+   */
+  private async assertNoCrossSourceSettlement(
+    tx: Tx,
+    projectId: string,
+    reviewed: Prisma.JsonObject
+  ) {
+    const frozen = reviewed.confirmedContractSource;
+    if (!frozen || typeof frozen !== "object" || Array.isArray(frozen)) return;
+    const sourceRecordId = (frozen as Prisma.JsonObject).sourceRecordId;
+    if (
+      reviewed.contractKind !== "downstream" ||
+      typeof sourceRecordId !== "string" ||
+      typeof reviewed.number !== "string" ||
+      typeof reviewed.contractId !== "string"
+    ) {
+      // upward / outside_fact 的数据库复核函数已在同一事务内拒绝任何旧来源同合同事实。
+      return;
+    }
+    try {
+      await assertNoLegacySettlementForSignedPeriod(tx, {
+        projectId,
+        contractId: reviewed.contractId,
+        contractVersionId: sourceRecordId,
+        period: reviewed.number
+      });
+    } catch (error) {
+      throw new ConflictException((error as Error).message);
     }
   }
 
@@ -376,11 +412,12 @@ function draftWriteWitnessKey(unavailable: string) {
   return key;
 }
 
-function isDownstreamOperatingSettlement(reviewed: Prisma.JsonObject): boolean {
+function isOperatingSettlement(reviewed: Prisma.JsonObject): boolean {
   const contractKind = reviewed.contractKind;
-  if (contractKind !== "downstream") return false;
   const frozen = reviewed.confirmedContractSource;
   if (!frozen || typeof frozen !== "object" || Array.isArray(frozen)) return false;
+  if (contractKind === "upward" || contractKind === "outside_fact") return true;
+  if (contractKind !== "downstream") return false;
   const contractTypeKey = (frozen as Prisma.JsonObject).contractTypeKey;
   return (
     typeof contractTypeKey === "string" &&
