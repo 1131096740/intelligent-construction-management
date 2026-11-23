@@ -1,6 +1,6 @@
 --- task12-onboarding-282-admission.cjs
 +++ task12-onboarding-282-admission.cjs
-@@ -37,5 +37,15 @@
+@@ -37,7 +37,17 @@
    requireScope(expectedGrants.some(line => line.includes(approvedAlias))
      && !expectedGrants.some(line => line.includes(rawLookup))
      && JSON.stringify(grantStatements(scoped)) === JSON.stringify(expectedGrants));
@@ -17,6 +17,8 @@
 +  EXECUTE pg_catalog.format('GRANT SELECT ("fileId") ON TABLE public."SignedContractSettlementAttachment" TO %I',fixture_role);
 +${endOfGrant}`);
  }
+
+ function runtimeProbeSql(database, port) {
 @@ -55,7 +65,19 @@
      AND EXISTS (SELECT FROM pg_catalog.pg_stat_ssl WHERE pid=pg_catalog.pg_backend_pid() AND ssl)
      AND pg_catalog.has_function_privilege(r.oid,'${approvedAlias}','EXECUTE')
