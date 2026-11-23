@@ -39,6 +39,9 @@ import {
   type ApprovalActorRoleScopes
 } from "../approval/approval-review-identity";
 import { clearApprovalRoundSignatureSnapshots, snapshotApprovalSignature, withApprovalIdentity } from "../approval/approval-signature-snapshot";
+import { isLegacyContractParallelRound, readLegacyContractSignature } from "./contract-approval-cutover";
+import { approvalEvidenceMetadata, finalApprovalEvidence } from "../approval/approval-evidence";
+import { activeApprovalNodeIndexes } from "../approval/parallel-approval-protocol";
 import { contractRoundSubmissionSnapshot } from "./contract-parallel-duty-access";
 import { lockApprovalReviewRow } from "../approval/approval-review-lock";
 import { AuditService } from "../audit/audit.service";
@@ -2613,6 +2616,37 @@ export class ContractService {
     return loadContractOwnerRisk(tx, contract.projectId);
   }
 
+  private async requireSignedLegacyExecutiveRisk(
+    tx: Prisma.TransactionClient,
+    approvalInstanceId: string,
+    nodes: ContractApprovalNode[],
+    risk: ContractOwnerRisk
+  ): Promise<string> {
+    const actions = await tx.approvalActionLog.findMany({
+      where: { approvalInstanceId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    });
+    let evidence;
+    try {
+      evidence = finalApprovalEvidence("approval_pending", nodes, actions);
+    } catch (error) {
+      if (!(error instanceof BadRequestException)) throw error;
+      throw legacyExecutiveRiskConflict();
+    }
+    const executive = evidence.find(action => action.approvedRoleKey === "chairman" || action.approvedRoleKey === "general_manager");
+    const leader = nodes.at(-1);
+    const role = executive?.approvedRoleKey as "chairman" | "general_manager" | undefined;
+    if (!executive || !role || executive.representedUserId !== executive.actorUserId ||
+        !leader?.candidateUserIdsByRole?.[role]?.includes(executive.actorUserId)) {
+      throw legacyExecutiveRiskConflict();
+    }
+    const signed = approvalEvidenceMetadata(approvalEvidenceMetadata(executive.metadata).ownerContractRisk);
+    if (!Object.entries(contractOwnerRiskToApi(risk)).every(([field, value]) => signed[field] === value) ||
+        !this.files || await readLegacyContractSignature(tx, this.files, executive)) {
+      throw legacyExecutiveRiskConflict();
+    }
+    return executive.id;
+  }
+
   private async lockCompanyEntityForSubmission(
     tx: Prisma.TransactionClient,
     version: { draftData: Prisma.JsonValue },
@@ -2880,6 +2914,7 @@ export class ContractService {
       const nodes = Array.isArray(expectedInstance?.frozenNodes)
         ? expectedInstance.frozenNodes as unknown as ContractApprovalNode[]
         : [];
+      const legacyParallel = version.numericProtocolVersion === 1 && isLegacyContractParallelRound(expectedInstance?.frozenNodes);
       const currentNode = nodes[input.expectedNodeIndex];
 
       if (!expectedInstance || !currentNode) {
@@ -2888,7 +2923,10 @@ export class ContractService {
 
       const actorRoles = await this.loadActorRoleKeys(tx, actorUserId, version.contractId);
       const actorRoleKeys = actorRoles.roleKeys;
-      const identityNode = input.decision === "approve"
+      if (legacyParallel && (currentNode.approvedRoleKeys?.length || actorRoles.roleScopes.globalRoleKeys.includes("super_admin"))) {
+        throw new ForbiddenException("当前账号无权处理该合同审批节点");
+      }
+      const identityNode = input.decision === "approve" || legacyParallel
         ? currentNode
         : { ...currentNode, approvedRoleKeys: [] };
       let identity = resolveApprovalReviewIdentity({
@@ -2898,7 +2936,7 @@ export class ContractService {
         actorRoleScopes: actorRoles.roleScopes,
         legacyContractRoute: true
       });
-      if (!identity) {
+      if (!identity && !legacyParallel) {
         const delegatorIds = this.delegations
           ? await this.delegations.activeDelegatorIds(tx, actorUserId)
           : await activeApprovalDelegatorIds(tx, actorUserId);
@@ -2919,7 +2957,7 @@ export class ContractService {
           legacyContractRoute: true
         });
       }
-      if (!identity) {
+      if (!identity || (legacyParallel && (identity.viaAssignment || identity.representedUserId !== actorUserId))) {
         throw new ForbiddenException("当前账号无权处理该合同审批节点");
       }
       const approvedRoleKey = identity.approvedRoleKey;
@@ -2936,7 +2974,7 @@ export class ContractService {
         !activeInstance ||
         activeInstance.id !== expectedInstance.id ||
         activeInstance.id !== expectedApprovalInstanceId ||
-        activeInstance.currentNodeIndex !== input.expectedNodeIndex ||
+        (!legacyParallel && activeInstance.currentNodeIndex !== input.expectedNodeIndex) ||
         !(activeInstance.updatedAt instanceof Date) ||
         activeInstance.updatedAt.getTime() !== expectedApprovalUpdatedAt.getTime()
       ) {
@@ -2962,6 +3000,10 @@ export class ContractService {
           ? (password) => this.auth!.confirmPassword(actorUserId, password)
           : undefined
       });
+
+      if (legacyParallel && input.decision === "reject_previous") {
+        throw new BadRequestException("并联审批没有上一节点，请填写意见并退回经办人");
+      }
 
       const auditCoordinates = {
         expectedContractUpdatedAt: expectedContractUpdatedAt.toISOString(),
@@ -3030,7 +3072,7 @@ export class ContractService {
         return updated;
       }
 
-      if (input.decision === "return_to_applicant") {
+      if (input.decision === "return_to_applicant" || (legacyParallel && input.decision === "reject")) {
         const updated = await tx.contractVersion.update({
           where: { id: version.id },
           data: {
@@ -3076,16 +3118,23 @@ export class ContractService {
         return updated;
       }
 
-      const isFinalApproval =
-        input.decision === "approve" && instance.currentNodeIndex === nodes.length - 1;
-      const ownerContractRisk = isFinalApproval
+      const parallelNodes = legacyParallel && input.decision === "approve"
+        ? nodes.map((node, index) => index === input.expectedNodeIndex ? { ...node, approvedRoleKeys: [approvedRoleKey] } : node)
+        : null;
+      const pending = parallelNodes ? activeApprovalNodeIndexes(parallelNodes, instance.currentNodeIndex) : null;
+      const isFinalApproval = input.decision === "approve" &&
+        (pending ? pending.length === 0 : instance.currentNodeIndex === nodes.length - 1);
+      const executiveReview = legacyParallel && (approvedRoleKey === "chairman" || approvedRoleKey === "general_manager");
+      const useSignedExecutiveRisk = legacyParallel && isFinalApproval && !executiveReview;
+      const confirmOwnerRisk = executiveReview || (isFinalApproval && !useSignedExecutiveRisk);
+      const ownerContractRisk = confirmOwnerRisk || useSignedExecutiveRisk
         ? await this.finalOwnerContractRisk(tx, version.contractId)
         : null;
       const ownerContractRiskSnapshot = ownerContractRisk
         ? contractOwnerRiskReviewSnapshot(ownerContractRisk)
         : null;
       if (
-        ownerContractRisk &&
+        confirmOwnerRisk && ownerContractRisk &&
         ownerContractRisk.status !== "clear" &&
         input.ownerContractRiskConfirmed !== true
       ) {
@@ -3100,7 +3149,7 @@ export class ContractService {
         });
       }
       if (
-        isFinalApproval &&
+        confirmOwnerRisk &&
         input.ownerContractRiskConfirmed === true &&
         (
           !input.expectedOwnerContractRisk ||
@@ -3112,14 +3161,17 @@ export class ContractService {
       ) {
         throw contractOwnerRiskSnapshotConflict();
       }
-      const ownerContractRiskMetadata = ownerContractRisk
+      const ownerContractRiskMetadata = confirmOwnerRisk && ownerContractRisk
         ? { ownerContractRisk: contractOwnerRiskToApi(ownerContractRisk) }
         : {};
+      const priorExecutiveRiskActionId = useSignedExecutiveRisk && ownerContractRisk
+        ? await this.requireSignedLegacyExecutiveRisk(tx, instance.id, nodes, ownerContractRisk)
+        : null;
       const nextStatus = input.decision === "approve"
         ? isFinalApproval ? "approved_pending_seal" : "in_approval"
         : "approval_rejected";
       const endedAt = nextStatus === "approval_rejected" ? new Date() : null;
-      const [scopedReview] = actorRoles.projectId === "legacy-project-business-scope" && version.numericProtocolVersion === 1 &&
+      const [scopedReview] = !legacyParallel && actorRoles.projectId === "legacy-project-business-scope" && version.numericProtocolVersion === 1 &&
         input.decision === "approve" && !isFinalApproval && instance.currentNodeIndex === 0 && approvedRoleKey === "project_manager" && identity.representedUserId === actorUserId && !identity.viaAssignment
         ? await tx.$queryRaw<Array<{ enabled: boolean }>>`
             SELECT current_user=session_user AND current_user='project_business_scope_runtime'
@@ -3147,7 +3199,9 @@ export class ContractService {
       await tx.approvalInstance.update({
         where: { id: instance.id },
         data: {
-          currentNodeIndex: input.decision === "approve" ? instance.currentNodeIndex + 1 : instance.currentNodeIndex,
+          currentNodeIndex: pending ? pending[0] ?? nodes.length
+            : input.decision === "approve" ? instance.currentNodeIndex + 1 : instance.currentNodeIndex,
+          ...(parallelNodes ? { frozenNodes: parallelNodes as unknown as Prisma.InputJsonValue } : {}),
           status: input.decision === "approve"
             ? isFinalApproval ? "approved" : "in_progress"
             : "rejected"
@@ -3212,7 +3266,8 @@ export class ContractService {
           representedUserId: identity.representedUserId,
           ...auditCoordinates,
           ...selfReview.metadata,
-          ...ownerContractRiskMetadata
+          ...ownerContractRiskMetadata,
+          ...(priorExecutiveRiskActionId ? { ownerContractRiskApprovalActionId: priorExecutiveRiskActionId } : {})
         }
       });
 
@@ -4094,6 +4149,9 @@ export class ContractService {
       }
 
       const nodes = instance.frozenNodes as unknown as ContractApprovalNode[];
+      if (isLegacyContractParallelRound(instance.frozenNodes)) {
+        throw new BadRequestException("恢复接续的合同审批须由原冻结审批人办理");
+      }
       const currentNode = nodes[instance.currentNodeIndex];
 
       if (!currentNode) {
@@ -4218,6 +4276,13 @@ function contractApprovalWithdrawalConflict() {
   return new ConflictException({
     code: "CONTRACT_APPROVAL_WITHDRAWAL_CONFLICT",
     message: "合同审批状态或撤回坐标已变化，请刷新页面后重试"
+  });
+}
+
+function legacyExecutiveRiskConflict() {
+  return new ConflictException({
+    code: "CONTRACT_OWNER_RISK_SNAPSHOT_CONFLICT",
+    message: "业主主合同风险已变化或原领导确认无法核对，暂不能完成该审批轮次"
   });
 }
 

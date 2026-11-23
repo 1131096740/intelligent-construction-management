@@ -15,11 +15,12 @@ function detailFixture(
     globalRoleKeys: ["contract_director"],
     projectRoleKeys: []
   },
-  frozenNode?: Record<string, unknown>
+  frozenNode?: Record<string, unknown> | Record<string, unknown>[]
 ) {
   const version = {
     id: "contract-version-1",
     contractId: "contract-1",
+    numericProtocolVersion: 1,
     versionNo: 1,
     status: "in_approval",
     changeType: "original",
@@ -42,7 +43,7 @@ function detailFixture(
     status: "in_progress",
     applicantUserId: "applicant-1",
     currentNodeIndex: 0,
-    frozenNodes: [frozenNode ?? {
+    frozenNodes: Array.isArray(frozenNode) ? frozenNode : [frozenNode ?? {
       name: "合同部主管",
       mode: "any",
       roleKeys: ["contract_director"],
@@ -58,7 +59,9 @@ function detailFixture(
   }));
   const prisma = {
     $queryRaw: jest.fn().mockResolvedValue([{ actorUserId: "applicant-1" }]),
+    projectOwnerContract: { findMany: jest.fn().mockResolvedValue([]) },
     contract: {
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue({
         id: "contract-1",
         projectId: "project-1",
@@ -124,6 +127,23 @@ describe("Contract approval review read coordinates", () => {
     expect(detail.reviewApprovalContext).toEqual(REVIEW_CONTEXT);
     expect(detail.availableActions.filter((action) => action.key === "review_approval"))
       .toEqual([expect.objectContaining({ enabled: true })]);
+  });
+
+  it("publishes the frozen executive duty and risk confirmation while the lead cursor is a different duty", async () => {
+    const marker = { protocolVersion: 1, executionMode: "parallel", legacyContractCutover: true, approvedRoleKeys: [] };
+    const { service } = detailFixture(1, { globalRoleKeys: ["chairman"], projectRoleKeys: [] }, [
+      { ...marker, name: "合同部主管", mode: "any", roleKeys: ["contract_director"],
+        candidateUserIds: ["director-1"], candidateUserIdsByRole: { contract_director: ["director-1"] },
+        roleScopesByRole: { contract_director: "global" } },
+      { ...marker, name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"],
+        candidateUserIds: ["reviewer-1"], candidateUserIdsByRole: { chairman: ["reviewer-1"], general_manager: [] },
+        roleScopesByRole: { chairman: "global", general_manager: "global" } }
+    ]);
+
+    const detail = await service.getDetail("HT-2026-001", ["project-1"], "reviewer-1");
+
+    expect(detail.reviewApprovalContext).toEqual({ ...REVIEW_CONTEXT, expectedNodeIndex: 1 });
+    expect(detail.ownerContractRisk).toMatchObject({ status: "missing_owner_contract", requiresExplicitConfirmation: true });
   });
 
   it("fails closed when more than one in-progress approval instance exists", async () => {

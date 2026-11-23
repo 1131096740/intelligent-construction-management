@@ -1,3 +1,4 @@
+import { isLegacyContractParallelRound } from "../../contract/contract-approval-cutover";
 import { isOrdinaryPaymentParallelRound, loadOrdinaryPaymentDelegationPrincipals, resolveOrdinaryPaymentDuty } from "../../payment/ordinary-payment-parallel";
 import { matchesOwnFundReviewReceipt, type FundReviewDecision } from "../../fund-account/fund-account-receipt";
 import { FUND_REVIEW_ACTION, resolveFundReviewIdentity } from "../../fund-account/fund-account-duty";
@@ -386,6 +387,16 @@ export class PermissionGuard implements CanActivate {
       const index = request.body?.expectedNodeIndex;
       if (!projectId || typeof index !== "number" || !Number.isInteger(index) || index < 0 || index >= instance.frozenNodes.length || request.body?.expectedApprovalInstanceId !== instance.id || instance.flowType !== "contract.approve") return false;
       const version = await this.prisma.contractVersion.findUnique({ where: { id: target.businessId } });
+      if (version?.numericProtocolVersion === 1 && version.status === "in_approval" &&
+          isLegacyContractParallelRound(instance.frozenNodes)) {
+        const node = instance.frozenNodes[index];
+        if (roleScopes?.globalRoleKeys.includes("super_admin") || !Array.isArray(node.approvedRoleKeys) ||
+            node.approvedRoleKeys.length !== 0) return false;
+        const identity = resolveApprovalReviewIdentity({
+          node, actorUserId: userId, actorRoleKeys: roleKeys, actorRoleScopes: roleScopes, legacyContractRoute: true
+        });
+        return identity?.representedUserId === userId && !identity.viaAssignment;
+      }
       const snapshot = contractRoundSubmissionSnapshot(instance.frozenNodes);
       if (!version || version.numericProtocolVersion !== 2 || version.status !== "in_approval" || !snapshot || snapshot.contractVersionId !== version.id || snapshot.documentContentRevision !== version.documentContentRevision || snapshot.documentContentFingerprint !== version.documentContentFingerprint) return false;
       return Boolean(await contractParallelDutyIdentity(this.prisma as never, instance, projectId, userId, index));

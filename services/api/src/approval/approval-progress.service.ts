@@ -1,3 +1,4 @@
+import { isLegacyContractParallelRound } from "../contract/contract-approval-cutover";
 import { isLiveOrdinaryPaymentDelegation, isOrdinaryPaymentParallelRound, paymentParallelRoundEvidence, resolveOrdinaryPaymentDuty } from "../payment/ordinary-payment-parallel";
 import { companyTransferReminderIntent, contractReminderIntent, expenseReminderIntent, paymentReminderIntent, settlementReminderIntent, spotApplicationReminderIntent, spotPaymentReminderIntent } from "./approval-reminder-business-intent";
 import { generalProcurementDutySmsIntent } from "../general-procurement/general-procurement-request-facts";
@@ -285,7 +286,9 @@ export class ApprovalProgressService {
       projectRoleKeys: [...assignments.filter(a => a.userId === user.id && a.projectId === projectId && projectId).flatMap(a => positionKeys.get(a.positionId) ? [positionKeys.get(a.positionId)!] : []), ...members.filter(m => m.userId === user.id).map(m => m.positionKey as RoleKey)]
     });
     const allRoles = (userId: string) => ["project_expense_request", "spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) ? resolveEffectiveRoleKeys(roles.get(userId)?.globalRoleKeys ?? [], roles.get(userId)?.projectRoleKeys ?? []) : [...(roles.get(userId)?.globalRoleKeys ?? []), ...(roles.get(userId)?.projectRoleKeys ?? [])];
-    const supportsGlobalDelegation = ["contract_version", "settlement", "payment_request", "fund_execution_case", "contract_work_completion"].includes(instance.businessType);
+    const legacyContractParallel = instance.businessType === "contract_version" && isLegacyContractParallelRound(instance.frozenNodes);
+    const supportsGlobalDelegation = !legacyContractParallel &&
+      ["contract_version", "settlement", "payment_request", "fund_execution_case", "contract_work_completion"].includes(instance.businessType);
     const parallelSpot = instance.businessType === "spot_procurement_version" && isParallelApprovalRound(instance.frozenNodes);
     const activeDelegatorsFor = (userId: string, nodeIndex = instance.currentNodeIndex) => supportsGlobalDelegation || parallelSpot ? delegations
       .filter(d => d.toUserId === userId && byId.get(d.fromUserId)?.isActive && (parallelSpot
@@ -300,7 +303,8 @@ export class ApprovalProgressService {
     });
     const validAssignment = (node: FrozenApprovalNode, value: unknown) => {
       const assignment = object(value);
-      if (!["contract_version", "settlement", "payment_request", "expense_claim", "fund_execution_case", "contract_work_completion"].includes(instance.businessType)) return false;
+      if (legacyContractParallel ||
+          !["contract_version", "settlement", "payment_request", "expense_claim", "fund_execution_case", "contract_work_completion"].includes(instance.businessType)) return false;
       if (typeof assignment.fromUserId !== "string" || typeof assignment.toUserId !== "string" || typeof assignment.fromRoleKey !== "string") return false;
       if (!strings(node.roleKeys).includes(assignment.fromRoleKey)) return false;
       if (!isGovernedFrozenApprovalNode(node)) return allRoles(assignment.fromUserId).includes(assignment.fromRoleKey as RoleKey) || hasAssignmentReceipt(assignment);
@@ -386,7 +390,7 @@ export class ApprovalProgressService {
       (["general_procurement", "company_transfer", "fund_execution_case"].includes(instance.businessType) &&
         (!("status" in business) || business.status !== (instance.businessType === "general_procurement" ? "approval_pending" : "submitted") || !("approvalInstanceId" in business) || business.approvalInstanceId !== instance.id));
     const pending = !businessUnavailable && ACTIVE.has(instance.status) && current ? users.filter(user => {
-      if (!user.isActive) return false;
+      if (!user.isActive || (legacyContractParallel && roles.get(user.id)?.globalRoleKeys.includes("super_admin"))) return false;
       if (parallelGeneral) return activeIndexes.some(index => generalNodeIds[index]?.includes(user.id));
       const actorRoleKeys = allRoles(user.id);
       const identity = activeIndexes.map(index => {

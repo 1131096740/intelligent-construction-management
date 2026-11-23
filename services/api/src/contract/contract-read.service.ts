@@ -1,3 +1,4 @@
+import { isLegacyContractParallelRound } from "./contract-approval-cutover";
 import { contractApprovalFormHasReaderRole, contractParallelApprovalEpoch, contractParallelDutyIdentity, contractPendingApprovalSnapshot, pendingContractApprovalFormHasReaderRole } from "./contract-parallel-duty-access";
 import { directPendingNumbers, directPendingNumberLabel } from "./contract-direct-pending-numbers";
 import { hasDirectSigningInput } from "./contract-direct-pending-source";
@@ -1748,7 +1749,9 @@ export class ContractReadService {
           requiresExplicitConfirmation: Boolean(
             ownerContractRisk.status !== "clear" &&
             currentApproval &&
-            currentApproval.currentNodeIndex === currentApprovalNodes.length - 1 &&
+            (isLegacyContractParallelRound(currentApprovalNodes)
+              ? reviewApprovalContext?.expectedNodeIndex
+              : currentApproval.currentNodeIndex) === currentApprovalNodes.length - 1 &&
             availableActions.some(
               (action) => action.key === "review_approval" && action.enabled
             )
@@ -2474,6 +2477,14 @@ export class ContractReadService {
         // Unknown historical provenance restricts this write capability, never historical reads.
         return emptyCurrentContractApprovalReview();
       }
+    }
+
+    if (version?.numericProtocolVersion === 1 && isLegacyContractParallelRound(instance.frozenNodes)) {
+      if (actorRoleScopes?.globalRoleKeys.includes("super_admin")) return emptyCurrentContractApprovalReview();
+      const review = resolveApprovalReviewOnFrozenNode(instance.frozenNodes, instance.currentNodeIndex,
+        roleKeys, actorUserId, selfReviewApplicantUserId, false, true, actorRoleScopes, true);
+      return { access: review.access, approval: review.access.canAct
+        ? { ...approvalCoordinates, currentNodeIndex: review.currentNodeIndex } : null };
     }
 
     if (isParallelApprovalRound(instance.frozenNodes)) {

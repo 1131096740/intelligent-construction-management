@@ -1,11 +1,85 @@
 import { ACTION_REQUIRED_ROLES } from "@jiangkong/shared-domain";
-import { BadRequestException } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { BadRequestException, ConflictException } from "@nestjs/common";
+import { Prisma, type ApprovalActionLog } from "@prisma/client";
+import type { AuditService } from "../audit/audit.service";
+import { lockApprovalReviewRow } from "../approval/approval-review-lock";
+import { resolveContractOriginators } from "./contract-originators";
 import { finalApprovalEvidence } from "../approval/approval-evidence";
 import { verifyApprovalSignatureSnapshot } from "../approval/approval-signature-snapshot";
-import { hasVersionedApprovalNodes } from "../approval/parallel-approval-protocol";
+import { hasVersionedApprovalNodes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import type { PrismaService } from "../database/prisma.service";
 import type { FileService } from "../file/file.service";
+
+function isLegacyExecutiveDuty(node: unknown) {
+  return object(node) && distinctIds(node.roleKeys) && node.roleKeys.length === 2 &&
+    node.roleKeys.includes("chairman") && node.roleKeys.includes("general_manager") &&
+    object(node.roleScopesByRole) && node.roleScopesByRole.chairman === "global" &&
+    node.roleScopesByRole.general_manager === "global";
+}
+
+/** Admission keeps the original v1 authority and marks only this round's approved duties. */
+export function isLegacyContractParallelRound(nodes: unknown): nodes is Array<Record<string, unknown>> {
+  return isParallelApprovalRound(nodes) && isLegacyExecutiveDuty(nodes.at(-1)) &&
+    nodes.every(node => node.legacyContractCutover === true && node.mode === "any" &&
+      distinctIds(node.approvedRoleKeys) && node.approvedRoleKeys.length <= 1 &&
+      node.approvedRoleKeys.every(role => (node.roleKeys as string[]).includes(role)));
+}
+
+type LegacyActivationCoordinates = {
+  approvalInstanceId: string;
+  versionUpdatedAt: Date;
+  approvalUpdatedAt: Date;
+};
+
+function cutoverConflict() {
+  return new ConflictException("合同或审批轮次已变化，须重新核对原岗位和签批记录");
+}
+
+/** Internal cutover step for the exact inventoried version in a stopped-writer environment. */
+export function activateLegacyContractApprovalCutover(
+  prisma: Pick<PrismaService, "$transaction">,
+  files: Pick<FileService, "getFileBuffer">,
+  audit: Pick<AuditService, "record">,
+  actorUserId: string,
+  contractVersionId: string,
+  expected: LegacyActivationCoordinates
+) {
+  return prisma.$transaction(async tx => {
+    await lockApprovalReviewRow(tx, Prisma.sql`
+      SELECT "id" FROM "ContractVersion" WHERE "id" = ${contractVersionId} FOR UPDATE
+    `);
+    await lockApprovalReviewRow(tx, Prisma.sql`
+      SELECT "id" FROM "ApprovalInstance"
+      WHERE "businessType" = 'contract_version' AND "businessId" = ${contractVersionId}
+        AND "flowType" = 'contract.approve' AND "status" = 'in_progress'
+      ORDER BY "id" FOR UPDATE
+    `);
+    const plan = await inspectRound(tx, files, contractVersionId, expected);
+    if (plan.status !== "planned" || !isLegacyExecutiveDuty(plan.frozenNodes.at(-1))) throw cutoverConflict();
+    // The inventoried cursor advances only through an unbroken signed prefix. A
+    // terminal executive duty is therefore still pending on every eligible round.
+    await resolveContractOriginators(tx, contractVersionId, plan.frozenNodes);
+    const history = await tx.approvalActionLog.findMany({
+      where: { approvalInstanceId: plan.approvalInstanceId, id: { in: plan.completedActionIds } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, approvedRoleKey: true }
+    });
+    if (history.length !== plan.completedActionIds.length || history.some((action, index) =>
+      action.id !== plan.completedActionIds[index] || !action.approvedRoleKey)) throw cutoverConflict();
+    const nodes = plan.frozenNodes.map((node, index) => ({
+      ...(node as Prisma.JsonObject), protocolVersion: 1, executionMode: "parallel", legacyContractCutover: true,
+      approvedRoleKeys: history[index]?.approvedRoleKey ? [history[index].approvedRoleKey] : []
+    }));
+    await tx.approvalInstance.update({ where: { id: plan.approvalInstanceId }, data: { frozenNodes: nodes } });
+    await audit.record(tx, {
+      actorUserId, action: "contract.approval.legacy_cutover", businessType: "contract_version",
+      businessId: contractVersionId, metadata: { approvalInstanceId: plan.approvalInstanceId,
+        completedActionIds: plan.completedActionIds, pendingNodeIndexes: plan.pendingNodeIndexes,
+        expectedContractUpdatedAt: expected.versionUpdatedAt.toISOString(),
+        expectedApprovalUpdatedAt: expected.approvalUpdatedAt.toISOString() }
+    });
+    return { approvalInstanceId: plan.approvalInstanceId };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
 
 type BlockedReason =
   | "not_in_legacy_approval"
@@ -86,21 +160,26 @@ export function inspectLegacyContractApprovalInventory(
 async function inspectRound(
   tx: Prisma.TransactionClient,
   files: Pick<FileService, "getFileBuffer">,
-  contractVersionId: string
+  contractVersionId: string,
+  expected?: LegacyActivationCoordinates
 ): Promise<LegacyContractCutoverPlan> {
   const version = await tx.contractVersion.findUnique({
-    where: { id: contractVersionId }, select: { status: true, numericProtocolVersion: true }
+    where: { id: contractVersionId }, select: { status: true, numericProtocolVersion: true, updatedAt: true }
   });
   if (version?.status !== "in_approval" || version.numericProtocolVersion !== 1) {
     return blocked("not_in_legacy_approval");
   }
+  if (expected && version.updatedAt.getTime() !== expected.versionUpdatedAt.getTime()) throw cutoverConflict();
   const rounds = await tx.approvalInstance.findMany({
     where: { businessType: "contract_version", businessId: contractVersionId, flowType: "contract.approve", status: "in_progress" },
-    select: { id: true, applicantUserId: true, currentNodeIndex: true, frozenNodes: true },
+    select: { id: true, applicantUserId: true, currentNodeIndex: true, frozenNodes: true, updatedAt: true },
     take: 2
   });
   if (rounds.length !== 1) return blocked("active_round_not_unique");
-  const { id, applicantUserId, currentNodeIndex, frozenNodes } = rounds[0];
+  const { id, applicantUserId, currentNodeIndex, frozenNodes, updatedAt } = rounds[0];
+  if (expected && (id !== expected.approvalInstanceId || updatedAt.getTime() !== expected.approvalUpdatedAt.getTime())) {
+    throw cutoverConflict();
+  }
   if (!Array.isArray(frozenNodes) || !frozenNodes.length || hasVersionedApprovalNodes(frozenNodes)) {
     return blocked("unsupported_frozen_nodes");
   }
@@ -114,7 +193,7 @@ async function inspectRound(
     if (!object(node) || typeof node.name !== "string" || !node.name.trim() || node.mode !== "any" ||
         !distinctIds(node.roleKeys) || !node.roleKeys.length ||
         node.roleKeys.some(role => !permittedRoles.has(role) || rolesSeen.has(role)) ||
-        Object.hasOwn(node, "legacySerialCutover") || Object.hasOwn(node, "submissionSnapshot")) {
+        Object.hasOwn(node, "legacySerialCutover") || Object.hasOwn(node, "legacyContractCutover") || Object.hasOwn(node, "submissionSnapshot")) {
       return blocked("unsupported_frozen_nodes");
     }
     // Legacy serial approvals advance the cursor and append an action. A declared
@@ -177,22 +256,8 @@ async function inspectRound(
   try {
     if (approvals.length) finalApprovalEvidence("approved", frozenNodes.slice(0, currentNodeIndex), approvals);
     for (const log of approvals) {
-      const signature = await tx.handwrittenSignatureVersion.findUnique({
-        where: { id: log.signatureVersionIdSnapshot! },
-        select: { source: true, userId: true, fileId: true, contentSha256: true }
-      });
-      if (!signature || signature.source !== "canvas" || signature.userId !== log.actorUserId ||
-          signature.fileId !== log.signatureFileIdSnapshot ||
-          signature.contentSha256.toLowerCase() !== log.signatureSha256Snapshot?.toLowerCase()) {
-        return blocked("invalid_signature_evidence");
-      }
-      const evidence = await files.getFileBuffer(signature.fileId, tx).catch(() => null);
-      if (!evidence) return blocked("signature_file_unavailable");
-      const { file, buffer } = evidence;
-      if (file.storageStatus !== "active" || file.contentSha256?.toLowerCase() !== signature.contentSha256.toLowerCase()) {
-        return blocked("invalid_signature_evidence");
-      }
-      verifyApprovalSignatureSnapshot(buffer, signature.contentSha256);
+      const signatureFailure = await readLegacyContractSignature(tx, files, log);
+      if (signatureFailure) return blocked(signatureFailure);
     }
   } catch (error) {
     if (!(error instanceof BadRequestException)) throw error;
@@ -206,4 +271,35 @@ async function inspectRound(
     completedActionIds: approvals.map(log => log.id),
     pendingNodeIndexes: pending.map((_, index) => currentNodeIndex + index)
   };
+}
+
+
+export async function readLegacyContractSignature(
+  tx: Prisma.TransactionClient,
+  files: Pick<FileService, "getFileBuffer">,
+  log: Pick<ApprovalActionLog, "actorUserId" | "signatureVersionIdSnapshot" | "signatureFileIdSnapshot" | "signatureSha256Snapshot">
+): Promise<"invalid_signature_evidence" | "signature_file_unavailable" | null> {
+  if (!log.signatureVersionIdSnapshot) return "invalid_signature_evidence";
+  const signature = await tx.handwrittenSignatureVersion.findUnique({
+    where: { id: log.signatureVersionIdSnapshot },
+    select: { source: true, userId: true, fileId: true, contentSha256: true }
+  });
+  if (!signature || signature.source !== "canvas" || signature.userId !== log.actorUserId ||
+      signature.fileId !== log.signatureFileIdSnapshot ||
+      signature.contentSha256.toLowerCase() !== log.signatureSha256Snapshot?.toLowerCase()) {
+    return "invalid_signature_evidence";
+  }
+  const evidence = await files.getFileBuffer(signature.fileId, tx).catch(() => null);
+  if (!evidence) return "signature_file_unavailable";
+  const { file, buffer } = evidence;
+  if (file.storageStatus !== "active" || file.contentSha256?.toLowerCase() !== signature.contentSha256.toLowerCase()) {
+    return "invalid_signature_evidence";
+  }
+  try {
+    verifyApprovalSignatureSnapshot(buffer, signature.contentSha256);
+    return null;
+  } catch (error) {
+    if (!(error instanceof BadRequestException)) throw error;
+    return "invalid_signature_evidence";
+  }
 }

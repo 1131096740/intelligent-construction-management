@@ -385,6 +385,39 @@ describe("PermissionGuard", () => {
     ).rejects.toThrow("当前账号缺少执行该项目操作所需的岗位权限");
   });
 
+  it("admits a marked legacy executive duty ahead of the cursor only for a frozen current actor", async () => {
+    const marker = { protocolVersion: 1, executionMode: "parallel", legacyContractCutover: true, approvedRoleKeys: [] as string[] };
+    const frozenNodes = [
+      { ...marker, name: "合同部主管", mode: "any", roleKeys: ["contract_director"],
+        candidateUserIds: ["director-1"], candidateUserIdsByRole: { contract_director: ["director-1"] },
+        roleScopesByRole: { contract_director: "global" } },
+      { ...marker, name: "董事长/总经理", mode: "any", roleKeys: ["chairman", "general_manager"],
+        candidateUserIds: ["frozen-chairman"], candidateUserIdsByRole: { chairman: ["frozen-chairman"], general_manager: [] },
+        roleScopesByRole: { chairman: "global", general_manager: "global" } }
+    ];
+    const instance = { id: "round-1", flowType: "contract.approve", currentNodeIndex: 0, status: "in_progress", frozenNodes };
+    const prisma = {
+      ...buildPrisma("chairman"),
+      userPosition: { findMany: jest.fn().mockImplementation(({ where }: { where: { projectId: string | null } }) =>
+        Promise.resolve(where.projectId === null ? [{ positionId: "position-1" }] : [])) },
+      contractVersion: { findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1", status: "in_approval", numericProtocolVersion: 1 }) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue(instance) }
+    };
+    const guard = () => new PermissionGuard({
+      getAllAndOverride: jest.fn().mockReturnValueOnce(undefined).mockReturnValueOnce("contract.approve")
+    } as never, prisma as never);
+    const request = (actor: string) => contextWithRequest({
+      user: { id: actor }, params: { contractVersionId: "version-1" },
+      body: { expectedApprovalInstanceId: "round-1", expectedNodeIndex: 1 }
+    });
+
+    await expect(guard().canActivate(request("frozen-chairman"))).resolves.toBe(true);
+    await expect(guard().canActivate(request("other-chairman"))).rejects.toMatchObject({ status: 403 });
+    frozenNodes[1].approvedRoleKeys = ["chairman"];
+    await expect(guard().canActivate(request("frozen-chairman"))).rejects.toMatchObject({ status: 403 });
+  });
+
   it("rejects a governed frozen candidate after the candidate changes roles", async () => {
     const prisma = {
       userPosition: { findMany: jest.fn().mockResolvedValue([]) },

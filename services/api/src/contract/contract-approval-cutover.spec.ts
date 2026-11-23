@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, rm, rmdir } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Prisma, PrismaClient } from "@prisma/client";
+import { ContractService } from "./contract.service";
+import { ContractSealService } from "./contract-seal.service";
 import { AuditService } from "../audit/audit.service";
 import { FileService, PrivateFileStorage } from "../file/file.service";
-import { inspectLegacyContractApprovalCutover, inspectLegacyContractApprovalInventory } from "./contract-approval-cutover";
+import { activateLegacyContractApprovalCutover, inspectLegacyContractApprovalCutover, inspectLegacyContractApprovalInventory } from "./contract-approval-cutover";
 
 const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=",
@@ -27,10 +29,12 @@ function fixture() {
       candidateUserIds: ["executive"], candidateUserIdsByRole: { chairman: ["executive"], general_manager: [] },
       roleScopesByRole: { chairman: "global", general_manager: "global" }
     }
-  ];
+  ].map(node => ({ ...node, originatorUserIds: ["applicant"] }));
   const round = {
-    id: "legacy-round", businessId: "version", status: "in_progress", currentNodeIndex: 1, frozenNodes: nodes
+    id: "legacy-round", businessId: "version", status: "in_progress", currentNodeIndex: 1,
+    frozenNodes: nodes, updatedAt: new Date("2026-11-22T00:00:01Z")
   };
+  const version = { status: "in_approval", numericProtocolVersion: 1, updatedAt: new Date("2026-11-22T00:00:00Z") };
   const action = {
     id: "original-approval", action: "approve", actorUserId: "contract-director",
     representedUserId: "contract-director", approvedRoleKey: "contract_director", signatureFileIdSnapshot: "file",
@@ -40,10 +44,10 @@ function fixture() {
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([{ readOnly: "on" }]),
     contractVersion: {
-      findUnique: jest.fn().mockResolvedValue({ status: "in_approval", numericProtocolVersion: 1 }),
+      findUnique: jest.fn().mockResolvedValue(version),
       findMany: jest.fn().mockResolvedValue([{ id: round.businessId }])
     },
-    approvalInstance: { findMany: jest.fn().mockResolvedValue([round]) },
+    approvalInstance: { findMany: jest.fn().mockResolvedValue([round]), update: jest.fn() },
     approvalActionLog: { findMany: jest.fn().mockResolvedValue([action]) },
     approvalDelegation: { findFirst: jest.fn().mockResolvedValue(null) },
     handwrittenSignatureVersion: { findUnique: jest.fn().mockResolvedValue({ fileId: "file", userId: "contract-director", source: "canvas", contentSha256 }) }
@@ -51,7 +55,7 @@ function fixture() {
   const prisma = { $transaction: jest.fn((run: (client: typeof tx) => unknown) => run(tx)) };
   const files = { getFileBuffer: jest.fn().mockResolvedValue({ file: { storageStatus: "active", contentSha256 }, buffer: png }) };
   const inspect = () => inspectLegacyContractApprovalCutover(prisma as never, files, round.businessId);
-  return { tx, prisma, files, nodes, round, action, inspect };
+  return { tx, prisma, files, nodes, round, version, action, inspect };
 }
 
 describe("read-only historical contract approval cutover", () => {
@@ -66,6 +70,28 @@ describe("read-only historical contract approval cutover", () => {
     expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead
     });
+  });
+
+  it("activates only the exact restored version and unsigned executive round while retaining the original completed duty", async () => {
+    const { tx, prisma, files, round, version, nodes, action } = fixture();
+    const audit = { record: jest.fn() };
+    const expected = { approvalInstanceId: round.id, versionUpdatedAt: version.updatedAt, approvalUpdatedAt: round.updatedAt };
+    await expect(activateLegacyContractApprovalCutover(prisma as never, files, audit,
+      "operator", round.businessId, { ...expected, versionUpdatedAt: new Date(0) })).rejects.toMatchObject({ status: 409 });
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+    await expect(activateLegacyContractApprovalCutover(prisma as never, files, audit,
+      "operator", round.businessId, expected)).resolves.toEqual({ approvalInstanceId: round.id });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: round.id },
+      data: { frozenNodes: nodes.map((node, index) => ({
+        ...node, protocolVersion: 1, executionMode: "parallel", legacyContractCutover: true,
+        approvedRoleKeys: index === 0 ? ["contract_director"] : []
+      })) }
+    });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "contract.approval.legacy_cutover", metadata: expect.objectContaining({ completedActionIds: [action.id] })
+    }));
   });
 
   it("does not infer retroactive principals for an ownerless role-only round", async () => {
@@ -127,7 +153,7 @@ describe("read-only historical contract approval cutover", () => {
 });
 
 const postgres = process.env.ISSUE424_CONTRACT_PLAN_OWNER_URL ? it : it.skip;
-postgres("reads the old signed round and private image on PG16 with a read-only database role", async () => {
+postgres("inventories the original signature and carries an eligible v1 round through early executive approval on PG16", async () => {
   const ownerUrl = new URL(process.env.ISSUE424_CONTRACT_PLAN_OWNER_URL!);
   const readerUrl = new URL(process.env.ISSUE424_CONTRACT_PLAN_READER_URL!);
   if (process.env.NODE_ENV !== "test" || [ownerUrl, readerUrl].some(url =>
@@ -142,8 +168,9 @@ postgres("reads the old signed round and private image on PG16 with a read-only 
   try {
     expect(await reader.$queryRaw`SELECT current_user AS role, current_setting('default_transaction_read_only') AS "readOnly"`)
       .toEqual([{ role: "jg424_contract_reader", readOnly: "on" }]);
-    const { nodes, action: evidence } = fixture();
+    const { nodes: frozen, action: evidence } = fixture();
     const applicant = await owner.user.create({ data: { name: "合成合同员" } });
+    const nodes = frozen.map(node => ({ ...node, originatorUserIds: [applicant.id] }));
     const signer = await owner.user.create({ data: { id: evidence.actorUserId, name: "原合同主管" } });
     const project = await owner.project.create({ data: { code: "I424-CON", name: "合同审批迁移合成项目" } });
     const contract = await owner.contract.create({ data: {
@@ -151,7 +178,8 @@ postgres("reads the old signed round and private image on PG16 with a read-only 
     } });
     const version = await owner.contractVersion.create({ data: {
       contractId: contract.id, versionNo: 1, changeType: "original", status: "in_approval",
-      numericProtocolVersion: 1, amountCents: 100n, draftData: {}, templateSnapshot: {}, clauseSnapshot: []
+      numericProtocolVersion: 1, contractGovernanceVersion: 1, signingSubjectType: "our_company",
+      amountCents: 100n, draftData: {}, templateSnapshot: {}, clauseSnapshot: []
     } });
     const round = await owner.approvalInstance.create({ data: {
       businessType: "contract_version", businessId: version.id, flowType: "contract.approve", status: "in_progress",
@@ -176,10 +204,96 @@ postgres("reads the old signed round and private image on PG16 with a read-only 
     });
     expect(await owner.approvalInstance.findUniqueOrThrow({ where: { id: round.id } })).toEqual(round);
     expect(await owner.approvalActionLog.findMany({ where: { approvalInstanceId: round.id } })).toEqual([action]);
+
+    const audit = new AuditService();
+    const ownerFiles = new FileService(owner as never, audit, storage);
+    const seal = new ContractSealService(owner as never, audit);
+    const service = new ContractService(owner as never, audit, undefined, undefined,
+      ownerFiles, undefined, undefined, undefined, undefined, undefined, undefined, seal);
+    const coordinates = { approvalInstanceId: round.id, versionUpdatedAt: version.updatedAt, approvalUpdatedAt: round.updatedAt };
+    await expect(activateLegacyContractApprovalCutover(owner, ownerFiles, audit, applicant.id, version.id,
+      { ...coordinates, approvalInstanceId: "previous-round" })).rejects.toMatchObject({ status: 409 });
+    await expect(activateLegacyContractApprovalCutover(owner, ownerFiles, audit, applicant.id, version.id,
+      coordinates)).resolves.toEqual({ approvalInstanceId: round.id });
+
+    const createApprover = async (id: string, role: string) => {
+      const user = await owner.user.create({ data: { id, name: "隔离审批人 " + id } });
+      if (role === "project_manager") {
+        await owner.projectMember.create({ data: { projectId: project.id, userId: id, positionKey: role } });
+      } else {
+        const position = await owner.position.findUnique({ where: { key: role } }) ??
+          await owner.position.create({ data: { key: role, name: role } });
+        await owner.userPosition.create({ data: { userId: id, positionId: position.id } });
+      }
+      const key = id + ".png";
+      await storage.write(key, png);
+      const privateFile = await owner.fileObject.create({ data: {
+        bucket: storage.bucketName(), objectKey: key, originalName: key, mimeType: "image/png", sizeBytes: png.length,
+        uploadedByUserId: id, contentSha256
+      } });
+      await owner.handwrittenSignatureVersion.create({ data: { userId: id, fileId: privateFile.id, contentSha256 } });
+      return user;
+    };
+    const executive = await createApprover("executive", "chairman");
+    const wrongExecutive = await createApprover("not-frozen-chairman", "chairman");
+    const finance = await createApprover("finance", "finance_director");
+    const manager = await createApprover("manager", "project_manager");
+    const reviewCoordinates = async (index: number) => {
+      return {
+        expectedContractUpdatedAt: (await owner.contractVersion.findUniqueOrThrow({ where: { id: version.id } })).updatedAt.toISOString(),
+        expectedApprovalInstanceId: round.id, expectedNodeIndex: index,
+        expectedApprovalUpdatedAt: (await owner.approvalInstance.findUniqueOrThrow({ where: { id: round.id } })).updatedAt.toISOString()
+      };
+    };
+    const beforeExecutive = await reviewCoordinates(3);
+    const reviewOwnerRisk = {
+      ...beforeExecutive, decision: "approve" as const, ownerContractRiskConfirmed: true,
+      expectedOwnerContractRisk: {
+        status: "missing_owner_contract" as const, ownerContractAmountCents: "0", downstreamContractAmountCents: "100",
+        excessAmountCents: "100", message: "项目尚未登记生效业主主合同，本次合同终审必须显式确认风险。",
+        requiresExplicitConfirmation: true
+      }
+    };
+    await expect(service.reviewApproval(version.id, wrongExecutive.id, reviewOwnerRisk)).rejects.toMatchObject({ status: 403 });
+    await expect(service.reviewApproval(version.id, executive.id, { ...reviewOwnerRisk, expectedApprovalUpdatedAt: round.updatedAt.toISOString() }))
+      .rejects.toMatchObject({ status: 409 });
+    await expect(service.reviewApproval(version.id, executive.id, reviewOwnerRisk)).resolves.toMatchObject({ status: "in_approval" });
+    await expect(service.reviewApproval(version.id, executive.id, { ...reviewOwnerRisk, ...await reviewCoordinates(3) }))
+      .rejects.toMatchObject({ status: 403 });
+    await expect(service.reviewApproval(version.id, manager.id, { ...await reviewCoordinates(1), decision: "approve" }))
+      .resolves.toMatchObject({ status: "in_approval" });
+
+    const competing = await owner.contract.create({ data: {
+      projectId: project.id, ownerUserId: applicant.id, code: "I424-CON-02", name: "风险变更测试合同", counterparty: "合成相对方"
+    } });
+    const competingVersion = await owner.contractVersion.create({ data: {
+      contractId: competing.id, versionNo: 1, changeType: "original", status: "in_approval",
+      signingSubjectType: "our_company", amountCents: 20n, draftData: {}, templateSnapshot: {}, clauseSnapshot: []
+    } });
+    const financeRequest = { ...await reviewCoordinates(2), decision: "approve" as const };
+    const beforeMismatch = await owner.approvalActionLog.findMany({ where: { approvalInstanceId: round.id }, orderBy: { id: "asc" } });
+    await expect(service.reviewApproval(version.id, finance.id, financeRequest))
+      .rejects.toMatchObject({ status: 409, response: { code: "CONTRACT_OWNER_RISK_SNAPSHOT_CONFLICT" } });
+    expect(await reviewCoordinates(2)).toEqual({
+      expectedContractUpdatedAt: financeRequest.expectedContractUpdatedAt, expectedApprovalInstanceId: round.id,
+      expectedNodeIndex: 2, expectedApprovalUpdatedAt: financeRequest.expectedApprovalUpdatedAt
+    });
+    expect(await owner.approvalActionLog.findMany({ where: { approvalInstanceId: round.id }, orderBy: { id: "asc" } })).toEqual(beforeMismatch);
+    expect(await owner.contractSealTask.count({ where: { approvalInstanceId: round.id } })).toBe(0);
+
+    // Restore the identical fixture state to prove same-risk completion; this is not a business recovery path.
+    await owner.contractVersion.update({ where: { id: competingVersion.id }, data: { status: "draft" } });
+    await expect(service.reviewApproval(version.id, finance.id, financeRequest))
+      .resolves.toMatchObject({ status: "approved_pending_seal" });
+    expect(await owner.contractSealTask.findUnique({ where: { approvalInstanceId: round.id } }))
+      .toMatchObject({ status: "pending_approval", handlerUserId: applicant.id });
+    expect(await owner.approvalActionLog.findUnique({ where: { id: action.id } })).toEqual(action);
+    expect((await ownerFiles.getFileBuffer(file.id)).buffer).toEqual(png);
+    expect(await owner.approvalActionLog.count({ where: { approvalInstanceId: round.id, action: "approve" } })).toBe(4);
   } finally {
     env.restore();
     await Promise.all([
-      owner.$disconnect(), reader.$disconnect(), rm(join(root, objectKey), { force: true }).then(() => rmdir(root))
+      owner.$disconnect(), reader.$disconnect(), rm(root, { recursive: true, force: true })
     ]);
   }
 });
