@@ -264,6 +264,8 @@ jobs:
           - task410_company_proxy_repayment
           - line_a_real_db
           - issue420_approval_center
+          - issue413_construction_paid
+          - issue422_archives
         include:
           - group: pol113_pol115_business_entries
             shard: pol113_pol114
