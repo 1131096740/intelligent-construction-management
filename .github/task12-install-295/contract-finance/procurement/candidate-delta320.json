@@ -135,6 +135,11 @@
     "candidate": "6c21a0f4a0632d571fbab93792900247bb011397c13b5673f9ec70ffc00786dc"
   },
   {
+    "path": "services/api/prisma/task16-current259-payment-competition.cjs",
+    "expected": "034e447eea55f7d6d443a081ba2e2cbbe96088336b9fc217de273562510b30c7",
+    "candidate": "2194879bf1a69f0b48436e30f1b027a2b7559cab15af1277aa0eab47c80e2ecb"
+  },
+  {
     "path": "services/api/scripts/business-zeroing-policy.cjs",
     "expected": "42722a432f8e03ab1cc15339439b49af9953454438fd18d75c93e5505b5d6195",
     "candidate": "088edbb344f217c580520dd8184a87926f3917c5bf818e0b33c0f827ba4ca4ef"
