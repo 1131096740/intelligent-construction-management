@@ -10,6 +10,11 @@
     "candidate": "965cd31e7c26cd317d8d3ea7091a3aa6bf205490b303222dd83bc0f6f3084065"
   },
   {
+    "path": "apps/web-admin/e2e/company-transfer-real.e2e.ts",
+    "expected": "65b8496ae9d7fc299587526300e6a33328be3ad315cad3df3bdb3286d4dd74da",
+    "candidate": "a6a9270a5240e407f5f60baa96852f0e0040c09b86ce848b08cda0a46d2ff9c8"
+  },
+  {
     "path": "apps/web-admin/e2e/contract-takeover-responsive.e2e.ts",
     "expected": "a1cfbf7ecfc2a943edab5c1c95fb4e2e55f0de3f595c5f66fb83cbcb3554591f",
     "candidate": "eeca6404316cb5a86ba058edbdf2aae4aace2d0b308a0dc1a6018debb5fc5374"
@@ -1167,7 +1172,7 @@
   {
     "path": "services/api/src/payment/payment-request.service.ts",
     "expected": "0a283f62d03fc5f22fe776d1a9da00b9becf80a2cdff44808fa1d944f96fd74f",
-    "candidate": "122bcf2fba4f09d1f168bf7d873eea227e7cd49c48022ce2bcc99e5ea57c7250"
+    "candidate": "d343c5047eb81d202ccafadd16d9e436f86ae4ab83d5552969b3287e11033088"
   },
   {
     "path": "services/api/src/payment/payment.controller.spec.ts",
