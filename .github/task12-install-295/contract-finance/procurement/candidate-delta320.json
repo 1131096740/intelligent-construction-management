@@ -537,12 +537,12 @@
   {
     "path": "services/api/src/approval/approval-form.service.spec.ts",
     "expected": "5f42c450c0515fb809ea0fcfbf259c27281edc30da0c2e645a8e5c825e650c6a",
-    "candidate": "bbbec9ee187673828d4462880c8c0aa7e989e4a40ef396d8f7708fc5e2a14ba9"
+    "candidate": "beb70c1756e644ba43862df296aa4dc58d6bf20e3b1f4edb3d977577e48a6e7d"
   },
   {
     "path": "services/api/src/approval/approval-form.service.ts",
     "expected": "031b17311e634ad97b838f71dd155734def4b2a2f3c307bf347e644427a6dedd",
-    "candidate": "0d081117b2b892ccae5fff928a9e96553e5c3d7580d3caba5e6b7a23bdb6dd7c"
+    "candidate": "9f6cabcdbaeaa5fb6b6616850a6b8fcbe38bb68121b5cc7cb934668438949e51"
   },
   {
     "path": "services/api/src/approval/approval-progress.controller.ts",
@@ -552,12 +552,12 @@
   {
     "path": "services/api/src/approval/approval-progress.service.spec.ts",
     "expected": "f7a810593df5fa3cae91c8233d34840cc757bbac405586353394f3aaa19b32fe",
-    "candidate": "58961de016f6c599a9812ef822642cc87964361b3dc8c602a9e9bb222d297842"
+    "candidate": "ead07f66bd46b97808d55e07092d4d20dadc0fa0ef39b32cbf026d7275010db2"
   },
   {
     "path": "services/api/src/approval/approval-progress.service.ts",
     "expected": "7db2f18e02d05e265173db1a012e2055d82f5db1a8a8543b45d7a95e2a5e6ff0",
-    "candidate": "a1179666fcf0d1e9539b7cd04ad131786258116dfb04bb7452db1ca716663169"
+    "candidate": "e7a531f8bc2fd75bff13502288055cb492c56c163af962cd87dc3e59b46d7e55"
   },
   {
     "path": "services/api/src/approval/approval-review-identity.spec.ts",
@@ -617,12 +617,12 @@
   {
     "path": "services/api/src/auth/guards/permission.guard.spec.ts",
     "expected": "55a3f0503efcc1ad1282636fccbea839c3ba2e952e3cea59c3313f36414c6eaa",
-    "candidate": "77e839516b96953d6ec7600ee9570f671731928dba2fcccba482867e2fd9d49b"
+    "candidate": "ecf0d5cc733834ab40d6b503ce35b73d178f9f92f7ba8c8b8e4b193cf0e411be"
   },
   {
     "path": "services/api/src/auth/guards/permission.guard.ts",
     "expected": "8ccc2c3808ddd45837ed115202395a4f87dcc51aa4e015f4590b4f97e40021f1",
-    "candidate": "35e48906f1a219759c7e00624d24772400c73d15908ea97bb73c469e64de08b8"
+    "candidate": "4e241a7e678c0b33de52c938319e6d4772a7cef587f5a95d65eb775e48ee7c7c"
   },
   {
     "path": "services/api/src/auth/ledger-read-positions.ts",
@@ -770,6 +770,11 @@
     "candidate": "a4100247a424bdf57e4f4e8ac10d0749c434b459f5261ec776894738cb916177"
   },
   {
+    "path": "services/api/src/contract/contract-approval-review-read.spec.ts",
+    "expected": "55da1cf903ee7daa40d916b6719ba0acdd65f052a6dcd72dbe2a4e32027e7b85",
+    "candidate": "ec221a0c03d92af3812c23209d9d9fbe6b477d7fa399f59b4885454441bbfb23"
+  },
+  {
     "path": "services/api/src/contract/contract-direct-outside-operating-executor-qualification.ts",
     "expected": "5c468d12c0b3c7511155df89af688dd35de86093397f6e20e099f4a379dbb7a9",
     "candidate": "2d8c2d0c74ddc3c3bd8fca516c813ba909de4cef198e9ab0347f25d07f60b83d"
@@ -795,6 +800,16 @@
     "candidate": "03e9ce5789a083362bb35b7bdadd74c28e8bb2b070d5df55dc73e22a4f072f8a"
   },
   {
+    "path": "services/api/src/contract/contract-owner-risk-approval.spec.ts",
+    "expected": "89ef5a1df88250217d06e54fc3bfe451bcd3b5cd1ba8c2836d5e46ba2f98eb9a",
+    "candidate": "1f7238d61988392f8001a708251af3ff0a404b4fc2c2a8f4d057f8db8bf46126"
+  },
+  {
+    "path": "services/api/src/contract/contract-parallel-duty-access.ts",
+    "expected": "8a97469a5413f953f49f34aef817eff0180fdcc0713c7a8291614f1fd1a43ec7",
+    "candidate": "01d9d4731088509d3287aed1e74af99f483a6e17b7d9314684a2afd03f640633"
+  },
+  {
     "path": "services/api/src/contract/contract-read.service.spec.ts",
     "expected": "1c4e890c1f2c7eee4a0846463c8e60c8a50c33c10ec36ec34da6e6c5bcfa02fe",
     "candidate": "5882993045bb7b14debcd1c8ab461841436bba1c848c5f5f132bdb4f95acfc81"
@@ -802,7 +817,7 @@
   {
     "path": "services/api/src/contract/contract-read.service.ts",
     "expected": "40ebfc93d098ef6d715843cff509d50ae26cccbb11a5e903f8415fb18570d6bb",
-    "candidate": "8b91d6b9d987c9286b60edd2f528e2d237209198ade1eb60f78e8a363d7d74bc"
+    "candidate": "aafe377222b4bd84723541e112bdb3d42a0f2dafeb8f9ecde99dce37808234f9"
   },
   {
     "path": "services/api/src/contract/contract-takeover-lifecycle-read.regression.spec.ts",
@@ -838,6 +853,11 @@
     "path": "services/api/src/contract/contract.module.ts",
     "expected": "e6f59d9423765445ecfa1d884475366846f3f79c69308e3a5e958536086f435e",
     "candidate": "28d335f79d767fad7ff711cd04e6b2d04d6a8693f6925ac285938d9782e5b58b"
+  },
+  {
+    "path": "services/api/src/contract/contract.service.ts",
+    "expected": "984c27969e6fd5593215f794c4a414ba367b4bb0632f13d73ea6af6a8c0a18d7",
+    "candidate": "d7fbbea0358d6304e60136bc8f966507c31781b350fd48c2fe3a3718987e7b1e"
   },
   {
     "path": "services/api/src/core-flow/ledger-excel.ts",
@@ -962,7 +982,7 @@
   {
     "path": "services/api/src/file/file.service.ts",
     "expected": "ee4604a5117ad40f14a27739633a265b37881702bd610ae45781a99ff389a7dd",
-    "candidate": "15d523f90d11fe3fe6dafc8174db0c642226959fea85a1ed915308046ac352b6"
+    "candidate": "231c271997cd55ff1dc552ac8678aa839516c26243670c9b26cb60561126166b"
   },
   {
     "path": "services/api/src/file/personnel-private-file-access.service.spec.ts",
