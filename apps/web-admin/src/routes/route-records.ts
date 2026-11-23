@@ -59,6 +59,12 @@ export const settlementMaintenanceRoleKeys =
   ACTION_REQUIRED_ROLES["settlement.create"];
 export const operatingTakeoverRoleKeys =
   ACTION_REQUIRED_ROLES["operating_takeover.manage"];
+export const historyExpenseRoleKeys = Array.from(new Set([
+  ...ACTION_REQUIRED_ROLES["history_expense.manage"],
+  ...ACTION_REQUIRED_ROLES["history_expense.verify"],
+  ...ACTION_REQUIRED_ROLES["history_expense.confirm"],
+  ...ACTION_REQUIRED_ROLES["history_expense.activate"]
+]));
 export const clearingRoleKeys = ACTION_REQUIRED_ROLES["clearing.read"];
 export const necessaryExpenseReserveRoleKeys =
   ACTION_REQUIRED_ROLES["necessary_expense_reserve.read"];
@@ -116,6 +122,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     items: [
       { label: "项目工作台", path: "/项目经营", requiredRoleKeys: projectOperationsRoleKeys },
       { label: "历史经营接管", path: "/历史经营接管", requiredRoleKeys: operatingTakeoverRoleKeys },
+      { label: "历史费用核实入账", path: "/历史费用核实入账", requiredRoleKeys: historyExpenseRoleKeys },
       {
         label: "清分工作台",
         path: "/清分工作台",
@@ -411,6 +418,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         path: "历史经营接管",
         component: () => import("../pages/projects/ProjectOperatingTakeoverPage.vue"),
         meta: { requiredRoleKeys: operatingTakeoverRoleKeys, title: "历史经营接管" }
+      },
+      {
+        path: "历史费用核实入账",
+        component: () => import("../pages/projects/HistoryExpensePage.vue"),
+        meta: { requiredRoleKeys: historyExpenseRoleKeys, title: "历史费用核实入账" }
       },
       {
         path: "清分工作台",

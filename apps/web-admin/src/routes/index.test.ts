@@ -612,6 +612,7 @@ describe("web admin routes", () => {
       { label: "审批单留存", path: "/审批单留存" },
       { label: "项目工作台", path: "/项目经营" },
       { label: "历史经营接管", path: "/历史经营接管" },
+      { label: "历史费用核实入账", path: "/历史费用核实入账" },
       { label: "清分工作台", path: "/清分工作台" },
       { label: "必要费用准备", path: "/必要费用准备" },
       { label: "一般争议资金", path: "/一般争议资金" },

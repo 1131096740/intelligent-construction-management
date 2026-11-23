@@ -13,6 +13,7 @@ const tasks = [
   { path: "/统一资金办理工作台", label: "办理付款", description: "登记实付、凭证与核对" },
   { path: "/公司互转台账", label: "公司资金互转", description: "申请调剂、领导审批、到账核对与往来归还" },
   { path: "/项目经营", label: "项目经营", description: "查看项目账、资金和接管状态" },
+  { path: "/历史费用核实入账", label: "历史费用核实入账", description: "批量登记历史无合同费用，逐行核实后入账" },
   { path: "/工资承担工作台", label: "工资承担", description: "人员工资、承担与支付情况" },
   { path: "/清分工作台", label: "清分与对账", description: "核对资金、分配与差异" }
 ] as const;
