@@ -381,8 +381,8 @@ async function loadNavigationBadges(requestId: number, userId: string, offset: n
 .header-title { min-width: 0; overflow-wrap: anywhere; font-size: var(--jg-font-size-body); color: var(--jg-color-text-secondary); }
 .header-user { flex: 1 1 220px; margin-left: auto; min-width: 0; max-width: 100%; overflow-wrap: anywhere; font-size: var(--jg-font-size-meta); color: var(--jg-color-text-tertiary); text-align: right; }
 .navigation-toggle { flex: 0 0 auto; }
-.navigation-drawer :deep(.t-drawer__body) { padding: 0; }
-.navigation-dialog { min-width: 0; }
+.navigation-drawer :deep(.t-drawer__body) { padding: 0; height: 100%; overflow-y: auto; overscroll-behavior: contain; }
+.navigation-dialog { min-width: 0; min-height: 100%; }
 .navigation-dialog__header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; min-height: var(--jg-layout-header-height); padding: var(--jg-space-sm) var(--jg-space-lg); border-bottom: var(--jg-border-width-base) solid var(--jg-color-border); background: var(--jg-color-bg-surface); color: var(--jg-color-text-primary); }
 .content { width: 100%; max-width: 100%; min-width: 0; min-height: 0; flex: 1; padding: var(--jg-layout-content-padding); overflow-x: clip; background: var(--jg-color-bg-page); container-name: jg-content; container-type: inline-size; }
 .mobile-bottom { display: none; }

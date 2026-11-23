@@ -15,6 +15,7 @@ export * from "./money";
 export * from "./business-decimal";
 export * from "./core-flow-read-model";
 export * from "./permissions";
+export * from "./navigation-access";
 export * from "./contract-workbench";
 export * from "./contract-lifecycle";
 export * from "./contract-takeover";

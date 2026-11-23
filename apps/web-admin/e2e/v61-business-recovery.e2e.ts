@@ -21,7 +21,7 @@ async function prepare(page: Page) {
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Local-only-test");
   await page.getByRole("button", { name: "登录", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "我要办业务", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "新建业务", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "零星材料采购 申请材料、数量和到位日期", exact: true }).click();
   await expect(page.getByRole("heading", { name: "零星采购工作台", exact: true })).toBeVisible();
   for (const label of ["采购申请", "材料付款", "收货确认"]) await expect(page.getByRole("button", { name: label, exact: true })).toBeVisible();

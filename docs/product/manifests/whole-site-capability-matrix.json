@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "88404d4470726b243a05631d0486f71b848a95b3a5e91919a37be8ac032efcb9",
+      "sha256": "8020e43b42d4f93e8d06c090fb50feebe9d5c447255db858d749fca5006ae533",
       "status": "ready",
       "summary": {
-        "routeCount": 871
+        "routeCount": 876
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "e365910124435ade1f455a201f211425e38fcd7ade18d013cf42b1350e7b17bf",
+      "sha256": "2e2b73b9ccea5d2183f65b084a97950bdaccf3d60cd317b509b549a4c859e62e",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
-        "exportedFunctionCount": 803,
-        "transportWrapperCount": 779,
+        "exportedFunctionCount": 807,
+        "transportWrapperCount": 783,
         "pureExportCount": 24,
-        "mainRequestBindingCount": 853,
+        "mainRequestBindingCount": 857,
         "ticketFollowupCount": 6,
-        "requestEdgeCount": 809,
-        "productionConsumerCount": 688,
+        "requestEdgeCount": 813,
+        "productionConsumerCount": 692,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,18 +42,18 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "ae3fddeff6717d8425a1249484fd2a5537ef28f12e134a4d949921182ee8cf30",
+      "sha256": "6b5cad7325f4440ab45a2a033b461e066416e11e05c9370d285c566c5b337259",
       "status": "ready",
       "summary": {
         "registeredActionCount": 483,
         "pageActionCount": 111,
         "backgroundActionCount": 372,
-        "reachableVueFileCount": 237,
+        "reachableVueFileCount": 241,
         "routeRootCount": 80,
-        "totalVueFileCount": 250,
-        "parsedVueFileCount": 250,
-        "reachableProductionModuleCount": 413,
-        "templateEventDirectiveCount": 1599,
+        "totalVueFileCount": 254,
+        "parsedVueFileCount": 254,
+        "reachableProductionModuleCount": 417,
+        "templateEventDirectiveCount": 1643,
         "propCallbackDirectiveCount": 8,
         "coveredProductionMutationConsumerCount": 474,
         "candidateProductionMutationConsumerCount": 474,
@@ -64,28 +64,28 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "fff76c6d6eef98cc6afb3d64766a57fab2d192ca05bb72e7fb7e31e4d9ee0a38",
+      "sha256": "48f1cc13111221d2b9ed5c1cecfadb0d46d8b1daba8875449dd48d8e5472f595",
       "status": "ready",
       "summary": {
-        "routeCount": 871,
-        "exactRouteCount": 871,
-        "normalizedRouteCount": 871,
-        "classificationOverrideCount": 233,
-        "consumerSurfaceOverrideCount": 55,
-        "classificationOverrideSha256": "cc4f12a8b7720c084aeb7b3ee240c2fabea3bb1c59fd6ac266d3efd5ed24e2d7",
-        "consumerSurfaceOverrideSha256": "2aff8df481301799b9e60c89a9f36790aae214b910bf690837d3ef07945d8c06",
-        "derivedProductionPageCount": 638,
-        "pageRouteCount": 657,
+        "routeCount": 876,
+        "exactRouteCount": 876,
+        "normalizedRouteCount": 876,
+        "classificationOverrideCount": 234,
+        "consumerSurfaceOverrideCount": 56,
+        "classificationOverrideSha256": "e5bca7e12b8f29322664da1c2721176179ec533a09edf2dd5f9bfdc4c2624b5d",
+        "consumerSurfaceOverrideSha256": "9a7fe70cf05a352bafa35410ffc5de999596c0ba4f0d5d5cb44ede45a5623836",
+        "derivedProductionPageCount": 642,
+        "pageRouteCount": 661,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 91,
-        "internalTaskCount": 53,
+        "internalTaskCount": 54,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 709,
+          "web_api_wrapper": 713,
           "auth_store": 5,
           "signed_ticket_delivery": 2,
           "machine_probe": 3,
-          "operator_endpoint": 50,
+          "operator_endpoint": 51,
           "none": 102
         },
         "blockerCount": 0
@@ -93,13 +93,13 @@
     }
   },
   "summary": {
-    "routeCount": 871,
-    "pageRouteCount": 657,
+    "routeCount": 876,
+    "pageRouteCount": 661,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 91,
-    "internalTaskRouteCount": 53,
+    "internalTaskRouteCount": 54,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 853,
+    "mainRequestBindingCount": 857,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
@@ -5453,22 +5453,87 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/expense-claims/ledger-export",
+        "normalizedKey": "GET /expense-claims/ledger-export",
+        "controller": "ExpenseClaimController",
+        "handler": "exportLedger",
+        "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
       "usage": "page",
       "consumerSurface": "web_api_wrapper",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "fetchExpenseClaims",
+          "wrapper": "downloadExpenseClaimLedger",
           "method": "GET",
-          "path": "/expense-claims",
-          "normalizedKey": "GET /expense-claims",
+          "path": "/expense-claims/ledger-export",
+          "normalizedKey": "GET /expense-claims/ledger-export",
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/expense-claims/ExpenseClaimWorkbenchPage.vue"
           ],
-          "testConsumers": [
-            "apps/web-admin/src/api/expense-claim.api.test.ts"
-          ]
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/expense-claims/ledger",
+        "normalizedKey": "GET /expense-claims/ledger",
+        "controller": "ExpenseClaimController",
+        "handler": "ledger",
+        "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "wrapper": "fetchExpenseClaimLedger",
+          "method": "GET",
+          "path": "/expense-claims/ledger",
+          "normalizedKey": "GET /expense-claims/ledger",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimWorkbenchPage.vue"
+          ],
+          "testConsumers": []
         }
       ],
       "authTransports": [],
@@ -7441,6 +7506,46 @@
           "method": "GET",
           "path": "/general-procurements?:param",
           "normalizedKey": "GET /general-procurements",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/general-procurement/GeneralProcurementWorkbenchPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/general-procurements/ledger-export",
+        "normalizedKey": "GET /general-procurements/ledger-export",
+        "controller": "GeneralProcurementController",
+        "handler": "exportLedger",
+        "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+          "wrapper": "downloadProcurementLedger",
+          "method": "GET",
+          "path": "/general-procurements/ledger-export",
+          "normalizedKey": "GET /general-procurements/ledger-export",
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/general-procurement/GeneralProcurementWorkbenchPage.vue"
@@ -9608,6 +9713,66 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/payments/ledger-export",
+        "normalizedKey": "GET /payments/ledger-export",
+        "controller": "PaymentController",
+        "handler": "exportLedger",
+        "sourceFile": "services/api/src/payment/payment.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "budget_staff",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "contract_staff",
+          "employee",
+          "engineering_department_director",
+          "engineering_department_member",
+          "engineering_director",
+          "engineering_foreman",
+          "engineering_tech",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "material_staff",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadPaymentLedgerExport",
+          "method": "GET",
+          "path": "/payments/ledger-export?:param",
+          "normalizedKey": "GET /payments/ledger-export",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentListPage.vue"
           ],
           "testConsumers": []
         }
@@ -13058,8 +13223,11 @@
             "apps/web-admin/src/components/ContractRelationshipLedger.vue",
             "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimWorkbenchPage.vue",
             "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue",
+            "apps/web-admin/src/pages/home/HomePage.vue",
             "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+            "apps/web-admin/src/pages/payments/PaymentListPage.vue",
             "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
             "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
             "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
@@ -14945,6 +15113,46 @@
           "testConsumers": [
             "apps/web-admin/src/api/spot-procurement.api.test.ts"
           ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/spot-procurements/ledger-export",
+        "normalizedKey": "GET /spot-procurements/ledger-export",
+        "controller": "SpotProcurementController",
+        "handler": "exportLedger",
+        "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+          "wrapper": "downloadSpotProcurementLedger",
+          "method": "GET",
+          "path": "/spot-procurements/ledger-export",
+          "normalizedKey": "GET /spot-procurements/ledger-export",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+          ],
+          "testConsumers": []
         }
       ],
       "authTransports": [],

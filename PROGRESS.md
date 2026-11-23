@@ -1,5 +1,15 @@
 # 建工智管当前状态
 
+## 2026-11-23 #423 个人待办首页与各岗位固定入口
+
+分支 `line-al-423`；代码提交 `01c2ce1a168e1501a07136570a205e1c9042427e`，合入集成分支 tip `b389092295c6d452119735b83bdaae79d95d2942`（合并提交 `8a7e8673640bac13d494918494e0ef4f74ec88e9`）。未 push、未新增迁移（仍 328）、未改 `07500`/`05800`、未操作生产。
+
+- `/me/work-items` 增动作分组投影：`actionGroup`（待审批/待复核/待采购/待付款/待补资料/其他）与 `groups`（全量计数、≤3 条摘要、分组深链），不改四队列契约；首页分组卡/计数/摘要/直达 + tab 计数 + 分组筛选，`groups` 缺失退回四队列。
+- 岗位入口矩阵单一真相：新增 shared-domain `navigation-access`，入口只声明能力 key，岗位由 `ACTION_REQUIRED_ROLES` 或后端只读 Guard 常量（台账/项目总览/档案/审计/资金/资金执行/组织目录）展开；只读常量上移并由 Nest Guard 同源引用；Web 导航不再手写 role。分组改为合同岗/物资岗/综合岗/财务岗 + 独立台账 + 资料 + 系统管理，补 `/付款工作台`、`/资金流水`。
+- 首页顺序：待办分组 → 工作项 → 我的项目 → 新建业务；页头主按钮「新建业务」；筛选/队列/分组写入 query，后退保持；审批中心读取 query 视图/筛选初值；移动抽屉内部滚动不带动页面。
+- 真实 PostgreSQL 16 一次性容器 5/5：各岗位入口集合、导航与 `GET /archives|/audit-logs|/organization/directory|/fund-accounts|…operating-funds-overview` 同向（不越权）、兼岗并集无重复、分组计数＝真实待办；`candidateSha=8a7e86736`、`worktreeClean=true`，清理后 `docker ps -q` 为 0。shared 263、Web 262 文件 2460、API me/auth 323、API/Web typecheck、`check:ui` 通过；合并集成清单后 web-api 783/857、page-actions 483/0、route-usage 876/0、能力矩阵 876/0 全部 READY；A34 首页 e2e 320–1920 在 chromium/webkit 通过。
+- 边界：真库为 `db push` 未重放迁移；未 push/未跑生产试运行/未验短信；动态门 3 个既有未登记 RUN_* spec、响应式既有 2 条失败与本票无关。详见 [回执](docs/progress/2026-11-23-issue-423.md)。
+
 ## 2026-11-23 整站 inspect 清单收敛（#418 成本归属）
 
 分支 `line-af-manifests`；合入 #418（合并状态），迁移到 328。未 push、未新增迁移、未操作生产。

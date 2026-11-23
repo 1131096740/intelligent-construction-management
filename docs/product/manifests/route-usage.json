@@ -4998,7 +4998,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 6149,
+            "sourceLine": 6169,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
@@ -8767,6 +8767,7 @@
               "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
               "apps/web-admin/src/pages/expense-claims/ExpenseClaimWorkbenchPage.vue",
               "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue",
+              "apps/web-admin/src/pages/home/HomePage.vue",
               "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
               "apps/web-admin/src/pages/payments/PaymentListPage.vue",
               "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",

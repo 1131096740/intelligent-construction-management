@@ -5,6 +5,7 @@ import { RequireProjectRole } from "../auth/decorators/require-project-role.deco
 import { FUND_REVIEW_ACTION } from "./fund-account-duty";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
+import { FUND_ACCOUNT_READ_ROLE_KEYS } from "@jiangkong/shared-domain";
 import { CorrectFundBalanceDto, ConfirmFundBalanceDto, RegisterFundBalanceDto } from "./fund-account.dto";
 import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
 import { FundBalanceReviewNotificationService } from "./fund-balance-review-notification.service";
@@ -21,13 +22,13 @@ export class FundAccountController {
   constructor(private readonly accounts: FundAccountService,
     @Optional() private readonly balanceNotifications?: FundBalanceReviewNotificationService) {}
   @Get()
-  @RequirePositions("finance_staff", "finance_director", "comprehensive_director")
+  @RequirePositions(...FUND_ACCOUNT_READ_ROLE_KEYS)
   list(@CurrentUser() actor: AuthenticatedUser, @Query("includeSourceOwnership") ownership?: string) { return this.accounts.list(actor.id, ownership === "true"); }
   @Get("registrations/:registrationId")
-  @RequirePositions("finance_staff", "finance_director", "comprehensive_director")
+  @RequirePositions(...FUND_ACCOUNT_READ_ROLE_KEYS)
   readRegistration(@CurrentUser() actor: AuthenticatedUser, @Param("registrationId") id: string) { return this.accounts.readRegistration(actor.id, id); }
   @Get(":scopeKey")
-  @RequirePositions("finance_staff", "finance_director", "comprehensive_director")
+  @RequirePositions(...FUND_ACCOUNT_READ_ROLE_KEYS)
   readAccount(@CurrentUser() actor: AuthenticatedUser, @Param("scopeKey") key: string) { return this.accounts.readAccount(actor.id, key); }
   @Get("registrations/:registrationId/review")
   @RequireProjectRole(FUND_REVIEW_ACTION)
@@ -46,7 +47,7 @@ export class FundAccountController {
     return this.balanceNotifications.retry(id, actor.id, body.attemptId, body.expectedApprovalInstanceId);
   }
   @Post("openings")
-  @RequirePositions("finance_staff", "finance_director", "comprehensive_director")
+  @RequirePositions(...FUND_ACCOUNT_READ_ROLE_KEYS)
   registerOpening(@CurrentUser() actor: AuthenticatedUser, @Body() input: RegisterFundBalanceDto) { return this.accounts.registerOpening(actor.id, input); }
   @Post("corrections")
   @RequirePositions("finance_staff", "finance_director")

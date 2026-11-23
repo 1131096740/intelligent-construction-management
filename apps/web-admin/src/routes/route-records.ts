@@ -3,77 +3,38 @@ import {
   ACTION_REQUIRED_ROLES,
   COMPANY_ENTITY_READER_ROLES,
   HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS,
+  ORGANIZATION_DIRECTORY_READ_ROLE_KEYS,
+  hasNavigationEntryAccess,
+  navigationEntryRoleKeys,
+  type NavigationEntryKey,
   type RoleKey
 } from "@jiangkong/shared-domain";
 
-export const fundsOverviewRoleKeys = [
-  "chairman",
-  "general_manager",
-  "engineering_department_director",
-  "finance_staff",
-  "finance_director",
-  "contract_director",
-  "budget_director",
-  "material_director",
-  "comprehensive_director",
-  "super_admin",
-  "project_manager"
-] as const satisfies readonly RoleKey[];
-
-export const fundFlowRoleKeys = [
-  "finance_staff",
-  "finance_director",
-  "comprehensive_director",
-  "general_manager",
-  "chairman",
-  "project_manager"
-] as const satisfies readonly RoleKey[];
-
-export const fundsWorkbenchRoleKeys = [
-  "finance_staff",
-  "finance_director",
-  "comprehensive_director"
-] as const satisfies readonly RoleKey[];
-
-export const otherProjectPaymentRoleKeys = [
-  "comprehensive_director",
-  "finance_staff",
-  "finance_director"
-] as const satisfies readonly RoleKey[];
-
-export const fundMovementRoleKeys = [
-  "finance_staff",
-  "finance_director"
-] as const satisfies readonly RoleKey[];
-
-export const fundExecutionRoleKeys = [
-  "finance_staff",
-  "finance_director",
-  "chairman",
-  "general_manager"
-] as const satisfies readonly RoleKey[];
-
-export const projectOperationsRoleKeys = [
-  ...fundsOverviewRoleKeys,
-  "employee",
-  "material_staff"
-] as const satisfies readonly RoleKey[];
-
+/**
+ * 固定入口的岗位可见性不再在 Web 手写 role 列表（Issue #423）。
+ *
+ * 每个入口只声明 shared-domain 的 `NavigationEntryKey`；岗位集合由
+ * `NAVIGATION_ENTRY_ACCESS` 从后端动作表（`ACTION_REQUIRED_ROLES`）或后端只读
+ * Guard 使用的岗位常量展开。下列别名仅用于保留既有路由 meta 的引用，
+ * 本身同样是派生值，不再新增岗位清单。
+ */
+export const fundFlowRoleKeys = navigationEntryRoleKeys("fund_flow") ?? [];
+export const fundsWorkbenchRoleKeys = navigationEntryRoleKeys("fund_handling_workbench") ?? [];
+export const otherProjectPaymentRoleKeys = navigationEntryRoleKeys("other_project_payment") ?? [];
+export const fundMovementRoleKeys = navigationEntryRoleKeys("fund_movement_workbench") ?? [];
+export const fundExecutionRoleKeys = navigationEntryRoleKeys("fund_execution_cases") ?? [];
+export const projectOperationsRoleKeys = navigationEntryRoleKeys("project_workbench") ?? [];
 export const historicalTakeoverRoleKeys =
   HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS;
 export const companyEntityReaderRoleKeys = COMPANY_ENTITY_READER_ROLES;
+export const organizationAdminRoleKeys = ORGANIZATION_DIRECTORY_READ_ROLE_KEYS;
 export const contractMaintenanceRoleKeys =
   ACTION_REQUIRED_ROLES["contract.create"];
 export const settlementMaintenanceRoleKeys =
   ACTION_REQUIRED_ROLES["settlement.create"];
 export const operatingTakeoverRoleKeys =
   ACTION_REQUIRED_ROLES["operating_takeover.manage"];
-export const historyExpenseRoleKeys = Array.from(new Set([
-  ...ACTION_REQUIRED_ROLES["history_expense.manage"],
-  ...ACTION_REQUIRED_ROLES["history_expense.verify"],
-  ...ACTION_REQUIRED_ROLES["history_expense.confirm"],
-  ...ACTION_REQUIRED_ROLES["history_expense.activate"]
-]));
+export const historyExpenseRoleKeys = navigationEntryRoleKeys("historical_expense") ?? [];
 export const clearingRoleKeys = ACTION_REQUIRED_ROLES["clearing.read"];
 export const necessaryExpenseReserveRoleKeys =
   ACTION_REQUIRED_ROLES["necessary_expense_reserve.read"];
@@ -83,18 +44,6 @@ export const payableSettlementRoleKeys =
   ACTION_REQUIRED_ROLES["payable_settlement.read"];
 export const businessPartyCreateRoleKeys =
   ACTION_REQUIRED_ROLES["business_party.create"];
-
-export const organizationAdminRoleKeys = [
-  "chairman",
-  "general_manager",
-  "engineering_department_director",
-  "finance_director",
-  "contract_director",
-  "budget_director",
-  "material_director",
-  "comprehensive_director",
-  "super_admin"
-] as const satisfies readonly RoleKey[];
 export const settlementTemplateAdminRoleKeys = [
   "contract_director",
   "super_admin"
@@ -107,8 +56,8 @@ export const contractScenarioAdminRoleKeys = [
 export interface AdminNavigationItem {
   label: string;
   path: string;
-  requiredRoleKeys?: readonly RoleKey[];
-  requiredGlobalRoleKeys?: readonly RoleKey[];
+  /** 入口能力 key；岗位可见性全部由 shared-domain 矩阵展开。 */
+  access: NavigationEntryKey;
 }
 
 export interface AdminNavigationGroup {
@@ -116,147 +65,100 @@ export interface AdminNavigationGroup {
   items: AdminNavigationItem[];
 }
 
+/**
+ * UI-02：按岗位放合同/物资/综合/财务工作台，独立台账、资金、档案与管理入口就近可发现。
+ * 分组只是信息架构；可见性由 `access` 决定，不在本文件写 role。
+ */
 export const adminNavigationGroups: AdminNavigationGroup[] = [
   {
     label: "工作入口",
     items: [
-      { label: "首页", path: "/首页" },
-      { label: "全局搜索", path: "/全局搜索" },
-      { label: "审批中心", path: "/审批中心" },
-      { label: "审批单留存", path: "/审批单留存" }
+      { label: "首页", path: "/首页", access: "home" },
+      { label: "全局搜索", path: "/全局搜索", access: "global_search" },
+      { label: "审批中心", path: "/审批中心", access: "approval_center" },
+      { label: "审批单留存", path: "/审批单留存", access: "approval_archive" }
     ]
   },
   {
     label: "项目",
     items: [
-      { label: "项目工作台", path: "/项目经营", requiredRoleKeys: projectOperationsRoleKeys },
-      { label: "历史经营接管", path: "/历史经营接管", requiredRoleKeys: operatingTakeoverRoleKeys },
-      { label: "历史费用核实入账", path: "/历史费用核实入账", requiredRoleKeys: historyExpenseRoleKeys },
-      {
-        label: "清分工作台",
-        path: "/清分工作台",
-        requiredGlobalRoleKeys: clearingRoleKeys
-      },
-      {
-        label: "必要费用准备",
-        path: "/必要费用准备",
-        requiredRoleKeys: necessaryExpenseReserveRoleKeys
-      },
-      {
-        label: "一般争议资金",
-        path: "/一般争议资金",
-        requiredRoleKeys: projectFundDisputeRoleKeys
-      },
-      { label: "工资承担工作台", path: "/工资承担工作台" },
-      {
-        label: "全局发票与清分分配",
-        path: "/全局发票与清分分配",
-        requiredGlobalRoleKeys: clearingRoleKeys
-      },
-      { label: "员工管理", path: "/员工管理" }
+      { label: "项目工作台", path: "/项目经营", access: "project_workbench" },
+      { label: "历史经营接管", path: "/历史经营接管", access: "historical_operating_takeover" },
+      { label: "历史费用核实入账", path: "/历史费用核实入账", access: "historical_expense" },
+      { label: "清分工作台", path: "/清分工作台", access: "clearing_workbench" },
+      { label: "必要费用准备", path: "/必要费用准备", access: "necessary_expense_reserve" },
+      { label: "一般争议资金", path: "/一般争议资金", access: "project_fund_dispute" },
+      { label: "全局发票与清分分配", path: "/全局发票与清分分配", access: "global_invoice_allocation" }
     ]
   },
   {
-    label: "合同",
+    label: "合同岗",
     items: [
-      {
-        label: "合同工作台",
-        path: "/合同工作台"
-      },
-      { label: "历史合同接管", path: "/历史合同接管", requiredRoleKeys: historicalTakeoverRoleKeys },
-      { label: "合同模板库", path: "/合同模板库" }
+      { label: "合同工作台", path: "/合同工作台", access: "contract_workbench" },
+      { label: "结算工作台", path: "/结算工作台", access: "settlement_workbench" },
+      { label: "历史合同接管", path: "/历史合同接管", access: "historical_contract_takeover" },
+      { label: "合同模板库", path: "/合同模板库", access: "contract_template_library" }
     ]
   },
   {
-    label: "结算",
+    label: "物资岗",
     items: [
-      {
-        label: "结算工作台",
-        path: "/结算工作台"
-      }
+      { label: "零星采购工作台", path: "/零星采购工作台", access: "spot_procurement_workbench" },
+      { label: "零星材料付款工作台", path: "/零星材料付款工作台", access: "spot_material_payment_workbench" },
+      { label: "收货确认工作台", path: "/收货确认工作台", access: "receipt_confirmation_workbench" }
     ]
   },
   {
-    label: "付款",
+    label: "综合岗",
     items: [
-      { label: "资金账户", path: "/资金账户", requiredGlobalRoleKeys: fundsWorkbenchRoleKeys },
-      { label: "统一更正", path: "/更正中心", requiredRoleKeys: ["finance_staff", "finance_director", "comprehensive_director", "contract_staff", "contract_director"] },
-      { label: "资金办理工作台", path: "/统一资金办理工作台", requiredRoleKeys: fundsWorkbenchRoleKeys },
-      {
-        label: "资金执行案件",
-        path: "/资金执行案件",
-        requiredGlobalRoleKeys: fundExecutionRoleKeys
-      },
-      {
-        label: "公司互转台账",
-        path: "/公司互转台账",
-        requiredRoleKeys: ["finance_staff", "finance_director", "chairman", "general_manager", "project_manager", "contract_staff", "contract_director", "comprehensive_director"]
-      },
-      {
-        label: "资金移动工作台",
-        path: "/资金移动工作台",
-        requiredGlobalRoleKeys: fundMovementRoleKeys
-      },
-      {
-        label: "工资应付核销工作台",
-        path: "/工资应付核销工作台",
-        requiredGlobalRoleKeys: payableSettlementRoleKeys
-      }
+      { label: "综合采购申请", path: "/综合采购申请", access: "general_procurement_request" },
+      { label: "费用与报销工作台", path: "/费用与报销工作台", access: "expense_claim_workbench" },
+      { label: "其他项目付款", path: "/其他项目付款", access: "other_project_payment" }
     ]
   },
   {
-    label: "零星采购",
+    label: "财务岗",
     items: [
-      { label: "零星采购工作台", path: "/零星采购工作台" },
-      {
-        label: "零星材料付款工作台",
-        path: "/零星材料付款工作台"
-      },
-      { label: "收货确认工作台", path: "/收货确认工作台" }
+      { label: "资金账户", path: "/资金账户", access: "fund_account" },
+      { label: "资金流水", path: "/资金流水", access: "fund_flow" },
+      { label: "付款工作台", path: "/付款工作台", access: "payment_workbench" },
+      { label: "资金办理工作台", path: "/统一资金办理工作台", access: "fund_handling_workbench" },
+      { label: "资金执行案件", path: "/资金执行案件", access: "fund_execution_cases" },
+      { label: "公司互转台账", path: "/公司互转台账", access: "company_transfer_ledger" },
+      { label: "资金移动工作台", path: "/资金移动工作台", access: "fund_movement_workbench" },
+      { label: "工资承担工作台", path: "/工资承担工作台", access: "wage_assumption" },
+      { label: "工资应付核销工作台", path: "/工资应付核销工作台", access: "payable_settlement_workbench" },
+      { label: "统一更正", path: "/更正中心", access: "correction_center" }
     ]
   },
   {
-    label: "费用与报销",
+    label: "独立台账",
     items: [
-      { label: "综合采购申请", path: "/综合采购申请" },
-      { label: "费用与报销工作台", path: "/费用与报销工作台" },
-      { label: "其他项目付款", path: "/其他项目付款", requiredRoleKeys: otherProjectPaymentRoleKeys }
-    ]
-  },
-  {
-    label: "业务台账",
-    items: [
-      { label: "合同台账", path: "/合同工作台" },
-      { label: "结算台账", path: "/结算工作台" },
-      { label: "付款台账", path: "/付款管理" },
-      { label: "零星采购台账", path: "/零星采购工作台" },
-      { label: "综合采购台账", path: "/综合采购申请" },
-      { label: "费用与报销台账", path: "/费用与报销工作台" }
+      { label: "合同台账", path: "/合同工作台", access: "ledger_contract" },
+      { label: "结算台账", path: "/结算工作台", access: "ledger_settlement" },
+      { label: "付款台账", path: "/付款管理", access: "ledger_payment" },
+      { label: "零星采购台账", path: "/零星采购工作台", access: "ledger_spot_procurement" },
+      { label: "综合采购台账", path: "/综合采购申请", access: "ledger_general_procurement" },
+      { label: "费用与报销台账", path: "/费用与报销工作台", access: "ledger_expense_claim" }
     ]
   },
   {
     label: "资料与治理",
     items: [
-      { label: "资料库", path: "/资料库" },
-      { label: "审计日志", path: "/审计日志" }
+      { label: "资料库", path: "/资料库", access: "archives" },
+      { label: "审计日志", path: "/审计日志", access: "audit_logs" }
     ]
   },
   {
-    label: "系统配置",
+    label: "系统管理",
     items: [
-      {
-        label: "我方公司主体",
-        path: "/我方公司主体",
-        requiredGlobalRoleKeys: companyEntityReaderRoleKeys
-      },
-      {
-        label: "合作单位档案",
-        path: "/business-parties"
-      },
-      { label: "系统配置", path: "/系统配置" }
+      { label: "我方公司主体", path: "/我方公司主体", access: "company_entity" },
+      { label: "合作单位档案", path: "/business-parties", access: "business_parties" },
+      { label: "员工管理", path: "/员工管理", access: "employee_management" },
+      { label: "系统配置", path: "/系统配置", access: "system_settings" }
     ]
   }
-] as const;
+];
 
 export const adminNavigationItems: AdminNavigationItem[] = adminNavigationGroups.flatMap(
   (group) => group.items
@@ -268,26 +170,22 @@ export function hasAnyRole(userRoleKeys: readonly RoleKey[] | undefined, require
 
 export function visibleAdminNavigationItems(
   userRoleKeys: readonly RoleKey[] | undefined,
-  userGlobalRoleKeys: readonly RoleKey[] | undefined = []
+  userGlobalRoleKeys: readonly RoleKey[] = []
 ) {
-  return adminNavigationItems.filter(
-    (item) =>
-      hasAnyRole(userRoleKeys, item.requiredRoleKeys) &&
-      hasAnyRole(userGlobalRoleKeys, item.requiredGlobalRoleKeys)
+  return adminNavigationItems.filter((item) =>
+    hasNavigationEntryAccess(item.access, userRoleKeys, userGlobalRoleKeys)
   );
 }
 
 export function visibleAdminNavigationGroups(
   userRoleKeys: readonly RoleKey[] | undefined,
-  userGlobalRoleKeys: readonly RoleKey[] | undefined = []
+  userGlobalRoleKeys: readonly RoleKey[] = []
 ) {
   return adminNavigationGroups
     .map((group) => ({
       ...group,
-      items: group.items.filter(
-        (item) =>
-          hasAnyRole(userRoleKeys, item.requiredRoleKeys) &&
-          hasAnyRole(userGlobalRoleKeys, item.requiredGlobalRoleKeys)
+      items: group.items.filter((item) =>
+        hasNavigationEntryAccess(item.access, userRoleKeys, userGlobalRoleKeys)
       )
     }))
     .filter((group) => group.items.length > 0);
