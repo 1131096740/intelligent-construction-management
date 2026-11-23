@@ -346,7 +346,7 @@ describe("PaymentReadService", () => {
         ])
       },
       approvalActionLog: {
-        findMany: jest.fn().mockResolvedValue([{ approvalInstanceId: "approval-returned" }])
+        findMany: jest.fn().mockResolvedValue([{ approvalInstanceId: "approval-returned", action: "return_to_applicant", actorUserId: "reviewer" }])
       }
     };
     const service = new PaymentReadService(withSignedAgreementLookup(prisma), {effectiveRoleKeys: async () => ["finance_staff"]} as never);

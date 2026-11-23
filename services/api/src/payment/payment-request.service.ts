@@ -98,7 +98,7 @@ import {
 } from "../payable-registry/wage-payable-source.adapter";
 import type { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import type { RevisePaymentRequestDto } from "./dto/revise-payment-request.dto";
-import { hasPaymentRevisionBasis } from "./payment-revision-basis";
+import { hasPaymentRevisionBasis, paymentRevisionAction } from "./payment-revision-basis";
 import { inspectPaymentApprovalHistory } from "./payment-approval-cutover";
 import { hasOrdinaryPaymentParallelMarker, isOrdinaryPaymentParallelRound, ordinaryPaymentParallelNodes, resolveOrdinaryPaymentDuty } from "./ordinary-payment-parallel";
 import { activeApprovalNodeIndexes } from "../approval/parallel-approval-protocol";
@@ -738,12 +738,19 @@ export class PaymentRequestService {
         where: { businessType: "payment_request", businessId: draft.id, flowType: "payment.approve" },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }]
       });
-      if (previous?.status !== "returned_to_applicant" ||
+      const revisionAction = paymentRevisionAction(previous);
+      if (!previous || !revisionAction ||
           await tx.approvalInstance.count({ where: {
             businessType: "payment_request", businessId: draft.id, flowType: "payment.approve", status: "in_progress"
           } }) !== 0 ||
-          !await tx.approvalActionLog.findFirst({ where: { approvalInstanceId: previous.id, action: "return_to_applicant" }, select: { id: true } })) {
-        throw new ConflictException("付款申请缺少退回修改记录，请刷新后重试");
+          !await tx.approvalActionLog.findFirst({
+            where: {
+              approvalInstanceId: previous.id, action: revisionAction,
+              ...(revisionAction === "withdraw" ? { actorUserId: previous.applicantUserId } : {})
+            },
+            select: { id: true }
+          })) {
+        throw new ConflictException("付款申请缺少退回或撤回待修改记录，请刷新后重试");
       }
       if (previous.applicantUserId !== actorUserId) throw new ForbiddenException("只有原申请人可以修改并重提付款申请");
       if (await tx.paymentExecution.findFirst({ where: { paymentRequestId: draft.id }, select: { id: true } })) {
@@ -2414,7 +2421,6 @@ export class PaymentRequestService {
     `);
   }
 
-  // 申请人撤回进行中的付款审批：付款请求无草稿态，撤回为终态 withdrawn（重试须新建付款申请）。
   async withdrawApproval(paymentId: string, actorUserId: string) {
     if (!this.prisma) {
       throw new Error("付款审批撤回服务暂不可用，请稍后重试或联系管理员");
@@ -2447,9 +2453,14 @@ export class PaymentRequestService {
         throw new Error("只有付款申请人可以撤回审批");
       }
 
+      const parallel = isOrdinaryPaymentParallelRound(instance.frozenNodes);
+      if (!parallel && hasOrdinaryPaymentParallelMarker(instance.frozenNodes)) {
+        throw new ConflictException("付款审批职责记录无效，不能撤回");
+      }
+      const nextStatus = parallel ? "draft" : "withdrawn";
       const updated = await tx.paymentRequest.update({
         where: { id: payment.id },
-        data: { status: "withdrawn" }
+        data: { status: nextStatus }
       });
 
       await tx.approvalInstance.update({
@@ -2479,7 +2490,7 @@ export class PaymentRequestService {
         businessId: payment.id,
         metadata: {
           fromStatus: payment.status,
-          toStatus: "withdrawn",
+          toStatus: nextStatus,
           applicantUserId: instance.applicantUserId
         }
       });
@@ -2530,8 +2541,9 @@ export class PaymentRequestService {
         id: string;
         status: string;
         applicantUserId: string;
+        frozenNodes: unknown;
       }>>(Prisma.sql`
-        SELECT "id", "status", "applicantUserId"
+        SELECT "id", "status", "applicantUserId", "frozenNodes"
         FROM "ApprovalInstance"
         WHERE "businessType" = 'payment_request'
           AND "businessId" = ${payment.id}
@@ -2541,7 +2553,8 @@ export class PaymentRequestService {
         FOR UPDATE
       `);
       const latestApproval = approvalRows[0];
-      if (!latestApproval || latestApproval.status !== "returned_to_applicant") {
+      const revisionAction = paymentRevisionAction(latestApproval);
+      if (!latestApproval || !revisionAction) {
         throw new ConflictException("付款申请没有有效的退回待修改审批记录，不能放弃申请");
       }
       if (latestApproval.applicantUserId !== actorUserId) {
@@ -2551,7 +2564,8 @@ export class PaymentRequestService {
       const returnAction = await tx.approvalActionLog.findFirst({
         where: {
           approvalInstanceId: latestApproval.id,
-          action: "return_to_applicant"
+          action: revisionAction,
+          ...(revisionAction === "withdraw" ? { actorUserId: latestApproval.applicantUserId } : {})
         },
         select: { id: true }
       });

@@ -1,4 +1,11 @@
 import type { PaymentRequest } from "@prisma/client";
+import { isOrdinaryPaymentParallelRound } from "./ordinary-payment-parallel";
+
+export function paymentRevisionAction(round: { status: string; frozenNodes?: unknown } | null | undefined) {
+  if (round?.status === "returned_to_applicant") return "return_to_applicant";
+  if (round?.status === "withdrawn" && isOrdinaryPaymentParallelRound(round.frozenNodes)) return "withdraw";
+  return null;
+}
 
 export function hasPaymentRevisionBasis(payment: Pick<PaymentRequest,
   "sourceType" | "settlementId" | "signedSettlementId" | "paymentTermsStageId" |
