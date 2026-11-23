@@ -162,6 +162,7 @@
   "services/api/src/core-flow/ledger-excel.ts": "33cd3ad6144829e14cc4e3d9c64de6d9180b7e1836b071709641ce8949a1b15b",
   "services/api/src/database/registered-payment-catalog.ts": "121b00319df30f72468707163bb532f3b6189b77b2b23528bfd9cde49b11c27b",
   "services/api/src/database/spot-procurement-core-schema.spec.ts": "ace8b6615c03938efba4cdbf63146c1ff4c3e3b5499ec2ce32a30f8f4b01049f",
+  "services/api/src/database/task07-formal-payment.test-support.ts": "e2de6a2f71ce4503fea0f3763af77078d80f0a106532e41ca70d25a40e95abbd",
   "services/api/src/database/task16-revocation-application.http.spec.ts": "5ee9a246ff170a3cd7afc7c95eb748048469cc684a9316144ae225d6fd85f419",
   "services/api/src/database/unified-file-business-binding-guard.spec.ts": "14bf6ffb0cfb229e9f466a61d2a7807514e0e8ec5756ee59d9cf909e6fa75f97",
   "services/api/src/expense-claim/dto/create-expense-claim.dto.ts": "e848d5089226adb58ac08cef56ffcdbae72ab72abf9df337f4b399eb6b19e196",

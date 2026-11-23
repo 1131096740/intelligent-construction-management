@@ -845,6 +845,11 @@
     "candidate": "ace8b6615c03938efba4cdbf63146c1ff4c3e3b5499ec2ce32a30f8f4b01049f"
   },
   {
+    "path": "services/api/src/database/task07-formal-payment.test-support.ts",
+    "expected": "96dc3e914cf9a4d0fcccf377a3c6cc49491607cf03b6a249424ce952f25bb5a5",
+    "candidate": "e2de6a2f71ce4503fea0f3763af77078d80f0a106532e41ca70d25a40e95abbd"
+  },
+  {
     "path": "services/api/src/database/task16-revocation-application.http.spec.ts",
     "expected": "db6b0b445608b74f71283d4dd91ba33accbf3e411df939802b78d4ad6a2708cd",
     "candidate": "5ee9a246ff170a3cd7afc7c95eb748048469cc684a9316144ae225d6fd85f419"

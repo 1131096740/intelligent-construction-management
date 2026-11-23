@@ -70,9 +70,12 @@ export async function prepareTask07FormalPayment(db: PrismaClient, fixture: Task
     const applicant = await identity(`${fixture.prefix}_applicant`);
     const comprehensive = await identity(`${fixture.prefix}_comprehensive`);
     const projectManager = await identity(`${fixture.prefix}_manager`);
+    const contractDirector = await identity(`${fixture.prefix}_contract_director`);
     const chairman = await identity(`${fixture.prefix}_chairman`);
     await assign(comprehensive, "comprehensive_director");
+    await assign(contractDirector, "contract_director");
     await assign(chairman, "chairman");
+    const reviewers = [comprehensive, projectManager, verifier, contractDirector, chairman];
     const scenarios = [
       { scenario: fixture.scenarios.remaining, checks: [[fixture.vouchers.remainingA, 700], [fixture.vouchers.remainingB, 700]] },
       { scenario: fixture.scenarios.replay, checks: [[fixture.vouchers.replay, 400], ["other-project", 700]] },
@@ -83,7 +86,7 @@ export async function prepareTask07FormalPayment(db: PrismaClient, fixture: Task
       await assign(projectManager, "project_manager", scenario.projectId);
       await assign(verifier, "finance_director", scenario.projectId);
     }
-    for (const reviewer of [comprehensive, projectManager, verifier, chairman]) await uploadSignature(reviewer);
+    for (const reviewer of reviewers) await uploadSignature(reviewer);
     for (const { scenario, checks } of scenarios) {
       // The existing test bootstraps the settled contract. Supply its due-stage
       // and legacy confirmed archive so the public application can price it.
@@ -106,12 +109,22 @@ export async function prepareTask07FormalPayment(db: PrismaClient, fixture: Task
         paymentSubjectType: "our_company"
       });
       scenario.paymentId = payment.id;
-      for (const actor of [comprehensive, projectManager, verifier, chairman]) {
+      for (const [index, actor] of reviewers.entries()) {
         const route = `/payments/${payment.id}`;
-        const review = await json<{ reviewApprovalContext: Record<string, unknown> }>("GET", route, actor.token);
+        const { reviewApprovalContext } = await json<{ reviewApprovalContext: {
+          expectedPaymentUpdatedAt: string;
+          expectedApprovalInstanceId: string;
+          expectedNodeIndex: number;
+          expectedApprovalUpdatedAt: string;
+        } | null }>("GET", route, actor.token);
+        if (reviewApprovalContext?.expectedNodeIndex !== index) {
+          throw new Error(`正式付款验收第 ${index + 1} 岗缺少当前审批坐标`);
+        }
+        const { expectedPaymentUpdatedAt, expectedApprovalInstanceId, expectedNodeIndex, expectedApprovalUpdatedAt } = reviewApprovalContext;
         const approved = await json<{ businessEntrySnapshot?: { values: Record<string, unknown> } }>(
           "POST", route + "/approval", actor.token,
-          { ...review.reviewApprovalContext, decision: "approve", confirmationPassword: password }
+          { expectedPaymentUpdatedAt, expectedApprovalInstanceId, expectedNodeIndex, expectedApprovalUpdatedAt,
+            decision: "approve", confirmationPassword: password }
         );
         if (actor === chairman) expect(approved.businessEntrySnapshot?.values).toEqual({ approvedAmountYuan: "10.00" });
       }

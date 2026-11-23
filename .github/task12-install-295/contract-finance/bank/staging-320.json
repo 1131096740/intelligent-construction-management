@@ -19,7 +19,7 @@
   "bank/execution-files.json": {
     "kind": "execution-manifest",
     "material": "db8782be2783ac8c1b21d9026ea45ccd0eb4f8c81298ebbb9a898ca37e4c29b2.gz",
-    "sha256": "cb6e2ea72ebafe4448e5cebbd90838e1f8b2025bd8c1ab098708dac983b8c600"
+    "sha256": "ac21f5c185d9a0e5053011359c2f7f7e93513e5e94e952aa45211cba0c73bd93"
   },
   "bank/overlay/services/api/prisma/contract-bank-runtime-fixture.cjs": {
     "kind": "full",
