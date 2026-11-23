@@ -7,7 +7,7 @@ COPY workspace/ ./
 RUN pnpm --filter @jiangkong/api... --filter @jiangkong/web-admin... install --frozen-lockfile \
  && pnpm --filter @jiangkong/shared-domain build \
  && pnpm --filter @jiangkong/api exec prisma generate \
- && pnpm --filter @jiangkong/api build
+ && NODE_OPTIONS=--max-old-space-size=4096 pnpm --filter @jiangkong/api build
 
 FROM contract-finance-api AS contract-finance-browser
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/jg-playwright

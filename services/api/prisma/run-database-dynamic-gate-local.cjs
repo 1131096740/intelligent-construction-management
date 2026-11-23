@@ -709,7 +709,7 @@ async function runPreflight(environment) {
     { env: environment, forwardOutput: true }
   );
   await runCommand(pnpm, ["--filter", "@jiangkong/api", "build"], {
-    env: environment,
+    env: { ...environment, NODE_OPTIONS: "--max-old-space-size=4096" },
     forwardOutput: true
   });
   process.stdout.write(`[database-dynamic-timing] ${JSON.stringify({ phase: "prepare.generate-and-build", durationMs: Math.round(performance.now() - started) })}\n`);

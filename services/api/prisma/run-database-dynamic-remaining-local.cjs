@@ -686,7 +686,7 @@ async function main(sourceEnv = process.env, args = process.argv.slice(2)) {
       env: preparationEnvironment, forwardOutput: true
     });
     await run(pnpm, ["--filter", "@jiangkong/api", "build"], {
-      env: preparationEnvironment, forwardOutput: true
+      env: { ...preparationEnvironment, NODE_OPTIONS: "--max-old-space-size=4096" }, forwardOutput: true
     });
     process.stdout.write(`[database-dynamic-timing] ${JSON.stringify({ phase: "prepare.generate-and-build", durationMs: Math.round(performance.now() - preparationStarted) })}\n`);
 

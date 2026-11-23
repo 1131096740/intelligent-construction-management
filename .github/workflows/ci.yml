@@ -208,7 +208,7 @@ jobs:
 
       - name: Build API and Web production applications
         run: |
-          pnpm --filter @jiangkong/api build
+          NODE_OPTIONS=--max-old-space-size=4096 pnpm --filter @jiangkong/api build
           pnpm --filter @jiangkong/web-admin build
 
       - name: Verify business cleanup preservation and safety
