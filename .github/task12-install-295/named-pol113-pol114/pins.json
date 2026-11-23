@@ -94,8 +94,8 @@
       "file": "patches/base-entry-http-postgres.spec.ts.gz"
     },
     "services/api/src/database/contract-business-entry-http.spec.ts": {
-      "base": "e4475a9bfb2a08fecaca0ca6f89d2e631b0355e6c58a4f2418dc612651ef73d9",
-      "result": "9b003f75e805ab68d04cbdf58983646723a1f2410c97ed86bb710917407d7514",
+      "base": "66db4be97e2f9e55365cc8f5fa7eac8659de7e5623cbf394e437a3b6b4dfafb2",
+      "result": "f3ab9d4042f79fa05730ea2cefbdf8c6a1b387c5870398333f168eac8018f02a",
       "file": "patches/contract-business-entry-http.spec.ts.gz"
     },
     "services/api/src/database/layout-preview-http.acceptance.ts": {
