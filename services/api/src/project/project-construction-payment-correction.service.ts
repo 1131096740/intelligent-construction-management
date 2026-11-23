@@ -24,7 +24,8 @@ import { validateRemittanceLineage } from "./project.service";
 
 export const CONSTRUCTION_PAYMENT_CORRECTION_SOURCES = [
   "downstream_payment",
-  "affiliate_remittance_to_company"
+  "affiliate_remittance_to_company",
+  "affiliate_deduction"
 ] as const;
 export type ConstructionPaymentCorrectionSource =
   (typeof CONSTRUCTION_PAYMENT_CORRECTION_SOURCES)[number];
@@ -37,6 +38,7 @@ export interface RequestConstructionPaymentCorrectionInput {
   amountCents?: string;
   occurredAt?: string;
   counterpartyName?: string;
+  feeName?: string;
   contractLedgerId?: string;
   settlementLedgerId?: string;
   paymentRequestId?: string;
@@ -260,6 +262,91 @@ export class ProjectConstructionPaymentCorrectionService {
           action: "project.construction_payment_correction.request",
           businessType: "project_affiliate_payment_fact",
           businessId: original.id,
+          metadata: {
+            projectId,
+            sourceType,
+            originalFactId,
+            reversalFactId: reversal.id,
+            replacementFactId: replacement.id,
+            correctionReason,
+            idempotencyKey
+          }
+        });
+        return this.toCorrectionReadModel({
+          sourceType,
+          originalFactId,
+          reversalFactId: reversal.id,
+          replacementFactId: replacement.id
+        });
+      }
+
+      if (sourceType === "affiliate_deduction") {
+        const deduction = await tx.projectUpstreamFundFact.findFirst({
+          where: { id: originalFactId, projectId }
+        });
+        if (!deduction) throw new NotFoundException("待更正的施工企业扣费事实不存在");
+        if (
+          deduction.factType !== "affiliate_deduction" ||
+          deduction.entryKind !== "original" ||
+          deduction.status !== "confirmed"
+        ) {
+          throw new BadRequestException("只能对已确认的施工企业扣费原始事实发起更正");
+        }
+        await tx.$queryRaw(Prisma.sql`
+          SELECT "id" FROM "ProjectUpstreamFundFact"
+          WHERE "id" = ${originalFactId} AND "projectId" = ${projectId} FOR UPDATE
+        `);
+        await this.assertNoOpenCorrection(tx, originalFactId);
+        const corrected = await this.resolveDeductionCorrection(
+          tx,
+          actorUserId,
+          deduction,
+          input
+        );
+        const reversal = await tx.projectUpstreamFundFact.create({
+          data: {
+            ...this.remittanceFactCore(deduction),
+            projectId,
+            id: randomUUID(),
+            entryKind: "reversal",
+            adjustsFactId: deduction.id,
+            effectDirection: "decrease",
+            idempotencyKey: reversalKey,
+            requestFingerprint: fingerprint({
+              correctionKind: "reversal",
+              originalFactId,
+              idempotencyKey
+            }),
+            recordedByUserId: actorUserId,
+            recordedByRoleKey: this.roleKeyFor(roleKeys),
+            status: "pending_confirm"
+          }
+        });
+        const replacement = await tx.projectUpstreamFundFact.create({
+          data: {
+            ...corrected,
+            projectId,
+            id: randomUUID(),
+            entryKind: "correction",
+            adjustsFactId: deduction.id,
+            effectDirection: "increase",
+            idempotencyKey: `${idempotencyKey}:correction`,
+            requestFingerprint: fingerprint({
+              correctionKind: "correction",
+              originalFactId,
+              idempotencyKey,
+              request: input
+            }),
+            recordedByUserId: actorUserId,
+            recordedByRoleKey: this.roleKeyFor(roleKeys),
+            status: "pending_confirm"
+          }
+        });
+        await this.audit.record(tx, {
+          actorUserId,
+          action: "project.construction_payment_correction.request",
+          businessType: "project_upstream_fund_fact",
+          businessId: deduction.id,
           metadata: {
             projectId,
             sourceType,
@@ -864,6 +951,63 @@ export class ProjectConstructionPaymentCorrectionService {
       evidenceFileId: evidence.evidenceFileId,
       fileContentSha256Snapshot: evidence.fileContentSha256Snapshot,
       bankObservationReference: original.bankObservationReference
+    };
+  }
+
+  private async resolveDeductionCorrection(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    original: Prisma.ProjectUpstreamFundFactGetPayload<Record<string, never>>,
+    input: RequestConstructionPaymentCorrectionInput
+  ) {
+    const feeName =
+      optionalText(input.feeName) ??
+      optionalText(input.description) ??
+      optionalText(original.description ?? undefined);
+    if (!feeName) {
+      throw new BadRequestException("更正后的费用名称不能为空");
+    }
+    const counterpartyName = optionalText(input.counterpartyName);
+    if (counterpartyName && counterpartyName !== original.counterpartyName) {
+      throw new BadRequestException("施工企业扣费更正不得改变施工企业主体");
+    }
+    if (input.companyEntityId || input.affiliateCompanyContractId ||
+        input.affiliateSettlementFactId || input.invoiceRecordId ||
+        input.contractLedgerId || input.settlementLedgerId ||
+        input.paymentRequestId) {
+      throw new BadRequestException("施工企业扣费更正不能关联资金链路的合同、结算或付款申请");
+    }
+    const evidence = await this.resolveEvidence(
+      tx,
+      actorUserId,
+      original.evidenceFileId,
+      input.evidenceFileId,
+      original.basisType
+    );
+    return {
+      factType: original.factType,
+      occurredAt: parseCorrectionDate(
+        input.occurredAt,
+        original.occurredAt,
+        "更正后的扣费日期格式不正确"
+      ),
+      amountCents: positiveMoney(input.amountCents, original.amountCents),
+      counterpartyName: original.counterpartyName,
+      basisType: evidence.evidenceFileId ? "written" : "oral",
+      deductionCategory: original.deductionCategory ?? "other",
+      upstreamSettlementId: null,
+      companyEntityId: null,
+      affiliateCompanyContractId: null,
+      affiliateSettlementFactId: null,
+      invoiceRecordId: null,
+      affiliateAssignmentId: original.affiliateAssignmentId,
+      affiliateBusinessPartyVersionId: original.affiliateBusinessPartyVersionId,
+      affiliateNameSnapshot: original.affiliateNameSnapshot,
+      description: feeName,
+      evidenceFileId: evidence.evidenceFileId,
+      fileContentSha256Snapshot: evidence.fileContentSha256Snapshot,
+      documentVersion: original.documentVersion,
+      bankObservationReference: null
     };
   }
 

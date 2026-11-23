@@ -42,6 +42,14 @@ describe("project operating overview structure", () => {
     expect(source).toContain("auth.user?.globalRoleKeys.some");
   });
 
+  it("exposes the named construction enterprise deduction entry and drawer", () => {
+    expect(source).toContain("登记施工企业扣费");
+    expect(source).toContain("ConstructionEnterpriseDeductionDrawer");
+    expect(source).toContain("registerConstructionDeduction === \"1\"");
+    expect(source).toContain(':can-confirm-written="canConfirmConstructionDeductionWritten"');
+    expect(source).toContain(':can-confirm-oral="canConfirmConstructionDeductionOral"');
+  });
+
   it("serializes the close-profit projection after companion reads complete", () => {
     const companionReadsCompleted = source.indexOf("] = await companionRequests;");
     const closeProfitRead = source.indexOf(

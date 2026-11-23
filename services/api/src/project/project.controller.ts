@@ -36,6 +36,10 @@ import { ConfirmProjectUpstreamSettlementDto } from "./dto/confirm-project-upstr
 import { ConfirmProjectUpstreamFundFactDto } from "./dto/confirm-project-upstream-fund-fact.dto";
 import { ListProjectUpstreamFundFactsDto } from "./dto/list-project-upstream-fund-facts.dto";
 import { ListConstructionEnterprisePaidDto } from "./dto/list-construction-enterprise-paid.dto";
+import {
+  ListProjectConstructionEnterpriseDeductionsDto,
+  RecordProjectConstructionEnterpriseDeductionDto
+} from "./dto/record-project-construction-enterprise-deduction.dto";
 import type { CreateProjectDto } from "./dto/create-project.dto";
 import { RecordProjectOwnerContractDto } from "./dto/record-project-owner-contract.dto";
 import { RecordProjectAffiliateCompanyContractDto } from "./dto/record-project-affiliate-company-contract.dto";
@@ -57,6 +61,7 @@ import type { UpdateProjectDto } from "./dto/update-project.dto";
 import { UpdateProjectOperatingProfileDto } from "./dto/update-project-operating-profile.dto";
 import { ProjectAffiliateBusinessService } from "./project-affiliate-business.service";
 import { ProjectConstructionPaymentCorrectionService } from "./project-construction-payment-correction.service";
+import { ProjectConstructionEnterpriseDeductionService } from "./project-construction-enterprise-deduction.service";
 import {
   ConfirmConstructionPaymentCorrectionDto,
   RequestConstructionPaymentCorrectionDto
@@ -78,7 +83,9 @@ export class ProjectController {
     @Optional()
     private readonly operatingProfiles?: ProjectOperatingProfileService,
     @Optional()
-    private readonly constructionPaymentCorrections?: ProjectConstructionPaymentCorrectionService
+    private readonly constructionPaymentCorrections?: ProjectConstructionPaymentCorrectionService,
+    @Optional()
+    private readonly constructionDeductions?: ProjectConstructionEnterpriseDeductionService
   ) {}
 
   private constructionPaymentCorrectionService(): ProjectConstructionPaymentCorrectionService {
@@ -86,6 +93,13 @@ export class ProjectController {
       throw new Error("Project construction payment correction service is not available");
     }
     return this.constructionPaymentCorrections;
+  }
+
+  private constructionDeductionService(): ProjectConstructionEnterpriseDeductionService {
+    if (!this.constructionDeductions) {
+      throw new Error("Project construction enterprise deduction service is not available");
+    }
+    return this.constructionDeductions;
   }
 
   private operatingProfileService(): ProjectOperatingProfileService {
@@ -534,6 +548,49 @@ export class ProjectController {
     );
   }
 
+  @Get(":projectId/construction-enterprise-deductions/capability")
+  @RequireProjectRole("project.upstream_fund_fact.record")
+  constructionEnterpriseDeductionCapability(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.constructionDeductionService().getCapability(projectId, user.id);
+  }
+
+  @Get(":projectId/construction-enterprise-deductions")
+  @RequireProjectRole("project.upstream_fund_fact.record")
+  constructionEnterpriseDeductions(
+    @Param("projectId") projectId: string,
+    @Query() query: ListProjectConstructionEnterpriseDeductionsDto
+  ) {
+    const rawPageSize = query.pageSize?.trim();
+    const pageSize = rawPageSize ? Number(rawPageSize) : undefined;
+    if (
+      pageSize !== undefined &&
+      (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200)
+    ) {
+      throw new BadRequestException("扣费明细每页条数必须是 1 到 200 的整数");
+    }
+    return this.constructionDeductionService().listDeductions(projectId, {
+      cursor: query.cursor?.trim() || undefined,
+      pageSize
+    });
+  }
+
+  @Post(":projectId/construction-enterprise-deductions")
+  @RequireProjectRole("project.upstream_fund_fact.record")
+  recordConstructionEnterpriseDeduction(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RecordProjectConstructionEnterpriseDeductionDto
+  ) {
+    return this.constructionDeductionService().recordDeduction(
+      projectId,
+      user.id,
+      body
+    );
+  }
+
   @Get(":projectId/construction-payment-corrections/capability")
   @RequireProjectRole("project.construction_payment_correction.request")
   constructionPaymentCorrectionCapability(
@@ -572,7 +629,8 @@ export class ProjectController {
   ) {
     if (
       sourceType !== "downstream_payment" &&
-      sourceType !== "affiliate_remittance_to_company"
+      sourceType !== "affiliate_remittance_to_company" &&
+      sourceType !== "affiliate_deduction"
     ) {
       throw new BadRequestException("施工企业付款更正来源类型不正确");
     }

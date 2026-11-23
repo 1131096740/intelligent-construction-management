@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 50,
-    "exportedFunctionCount": 767,
-    "transportWrapperCount": 743,
+    "exportedFunctionCount": 770,
+    "transportWrapperCount": 746,
     "pureExportCount": 24,
-    "mainRequestBindingCount": 817,
+    "mainRequestBindingCount": 820,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 773,
-    "productionConsumerCount": 654,
+    "requestEdgeCount": 776,
+    "productionConsumerCount": 657,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 419,
-    "reachableProductionModuleCount": 400
+    "productionModuleCount": 420,
+    "reachableProductionModuleCount": 401
   },
   "wrappers": [
     {
@@ -6063,6 +6063,7 @@
         }
       ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
         "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
       ],
       "testConsumers": [],
@@ -6472,7 +6473,8 @@
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+        "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
       ],
       "unreachableConsumers": []
     },
@@ -6631,7 +6633,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5845,
+          "sourceLine": 5918,
           "method": "POST",
           "path": "/files/download-package",
           "normalizedPath": "/files/download-package",
@@ -7092,7 +7094,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7555,
+          "sourceLine": 7628,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -7124,7 +7126,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7539,
+          "sourceLine": 7612,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -7154,7 +7156,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7539,
+          "sourceLine": 7612,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -7184,7 +7186,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5955,
+          "sourceLine": 6028,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -7213,7 +7215,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7539,
+          "sourceLine": 7612,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -7305,7 +7307,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5816,
+          "sourceLine": 5889,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -7339,7 +7341,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3938,
+          "sourceLine": 4011,
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
@@ -7398,7 +7400,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7582,
+          "sourceLine": 7655,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -7427,7 +7429,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7569,
+          "sourceLine": 7642,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -7456,7 +7458,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7597,
+          "sourceLine": 7670,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -7485,7 +7487,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7539,
+          "sourceLine": 7612,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -8030,6 +8032,7 @@
         }
       ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
         "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
       ],
       "testConsumers": [],
@@ -8773,6 +8776,66 @@
         "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
       ],
       "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectConstructionEnterpriseDeductionCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 80,
+          "method": "GET",
+          "path": "/projects/:param/construction-enterprise-deductions/capability",
+          "normalizedPath": "/projects/:param/construction-enterprise-deductions/capability",
+          "normalizedKey": "GET /projects/:param/construction-enterprise-deductions/capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectConstructionEnterpriseDeductionCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "fetchProjectConstructionEnterpriseDeductions",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 80,
+          "method": "GET",
+          "path": "/projects/:param/construction-enterprise-deductions",
+          "normalizedPath": "/projects/:param/construction-enterprise-deductions",
+          "normalizedKey": "GET /projects/:param/construction-enterprise-deductions",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchProjectConstructionEnterpriseDeductions",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
+      ],
       "unreachableConsumers": []
     },
     {
@@ -10670,6 +10733,36 @@
       "unreachableConsumers": []
     },
     {
+      "name": "recordProjectConstructionEnterpriseDeduction",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 86,
+          "method": "POST",
+          "path": "/projects/:param/construction-enterprise-deductions",
+          "normalizedPath": "/projects/:param/construction-enterprise-deductions",
+          "normalizedKey": "POST /projects/:param/construction-enterprise-deductions",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "recordProjectConstructionEnterpriseDeduction",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "recordProjectExpenseExecution",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -11152,6 +11245,7 @@
         }
       ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
         "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
       ],
       "testConsumers": [],
@@ -12497,6 +12591,7 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+        "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
         "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
       ],
       "testConsumers": [],
