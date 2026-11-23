@@ -102,7 +102,7 @@ export class CompanyTransferCorrectionService {
         return { originalSource: `proxy:${row.id}`, reference: source.reference ?? "原合同代付",
           availableCents: row.availableCents, debtorId: source.debtor.id, creditorId: source.actualPayer.id };
       }),
-    ].filter(row => row.debtorId === state.transfer.sourceCompanyId &&
+    ].filter(row => row.debtorId === (state.transfer.repaymentDebtorCompanyId ?? state.transfer.sourceCompanyId) &&
       row.creditorId === state.transfer.destinationCompanyId &&
       repaymentCorrectionFamily(row.originalSource) === repaymentCorrectionFamily(state.originalSource));
     const candidates = (state.settled && !state.confirmed ? typedSources : [])

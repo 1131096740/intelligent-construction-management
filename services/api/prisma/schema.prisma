@@ -7641,6 +7641,7 @@ model CompanyTransfer {
   status                             String                        @default("submitted")
   originalOperationalPaymentId       String?
   originalOperationalPayment         RegisteredOperationalPayment? @relation(fields: [originalOperationalPaymentId], references: [id], onDelete: Restrict)
+  repaymentDebtorCompanyId           String?
   requiresParallelRepaymentApproval  Boolean                       @default(false)
   approvalInstanceId                 String?                       @unique
   applicantUserId                    String
