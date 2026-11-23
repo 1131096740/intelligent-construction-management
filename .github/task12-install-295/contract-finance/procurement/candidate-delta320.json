@@ -1027,7 +1027,7 @@
   {
     "path": "services/api/src/operational-write-freeze/operational-write-freeze.registry.ts",
     "expected": "86b58394c010a1988eef862ade413c6f36017788fa7824a23a6cbc353af65692",
-    "candidate": "176c9f41827af3d2e36c1664a0257d23aa0ee90c09e106bf8b1d3ac35cc27f65"
+    "candidate": "2d04420bb4266dd8415bc24016acc571e527a53faf7ab82d533ad5bf8792545a"
   },
   {
     "path": "services/api/src/organization/organization-management-policy.ts",

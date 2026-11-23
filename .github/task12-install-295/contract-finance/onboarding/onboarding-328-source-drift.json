@@ -206,7 +206,7 @@
   "services/api/src/operating-projection/operating-projection.reducer.ts": "b75e2cd696172f5d439212bdb71fe80eddd0649ee82d2fa7fa977bb3de9ce376",
   "services/api/src/operating-projection/operating-projection.service.ts": "119394574bbccfb143b99faa956d9c9789e80c38e1b0ba620457c5dac767094f",
   "services/api/src/operational-write-freeze/operational-write-freeze.guard.spec.ts": "55d98f6086abb40eb3ecd712dd03087fc7ea14c4c5b563497c6376b2250d04d7",
-  "services/api/src/operational-write-freeze/operational-write-freeze.registry.ts": "176c9f41827af3d2e36c1664a0257d23aa0ee90c09e106bf8b1d3ac35cc27f65",
+  "services/api/src/operational-write-freeze/operational-write-freeze.registry.ts": "2d04420bb4266dd8415bc24016acc571e527a53faf7ab82d533ad5bf8792545a",
   "services/api/src/organization/organization-management-policy.ts": "5af7622faaa3e42580b7b5f5aad18a5a11c12be69666097b7fc7499da2dfcb99",
   "services/api/src/payment/dto/create-payment-request.dto.ts": "8e5a70009ad4733baea0dc6b3b5e511ee1b5c6aaa6f75a8de7830a594e9e19a7",
   "services/api/src/payment/payment-approval-notification.service.spec.ts": "32f1eb124bf1d9aa31073e1880a9cdcb06edff164b98d90cc4af7df66a07dadd",

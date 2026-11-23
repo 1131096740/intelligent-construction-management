@@ -13,6 +13,7 @@ export type OperationalWriteModule = (typeof OPERATIONAL_WRITE_MODULES)[number];
 export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   Record<string, OperationalWriteModule>
 > = Object.freeze({
+  ActualPurchaseBatchController: "procurement",
   ApprovalDelegationController: "approval",
   ApprovalFormController: "approval",
   AffiliateClearingAuthorityController: "finance",
@@ -50,6 +51,7 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   FundExecutionController: "finance",
   FundMovementController: "finance",
   CompanyTransferController: "finance",
+  HistoryExpenseController: "expense",
   HistoricalFinancialTakeoverController: "finance",
   HistoricalWageTakeoverController: "finance",
   InvoiceLedgerController: "finance",
@@ -62,10 +64,13 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   ProjectRosterManagementController: "organization",
   EmployeeOnboardingController: "organization",
   AccountSecurityController: "account",
+  OperatingCostAttributionController: "finance",
   OperatingProjectionController: "finance",
   OperatingTakeoverController: "project",
+  OtherProjectPaymentController: "expense",
   PayableRegistryController: "payment",
   PaymentController: "payment",
+  PaymentFinancialController: "payment",
   RegisteredPaymentExecutionController: "payment",
   ProjectController: "project",
   ProjectExpenseController: "expense",
