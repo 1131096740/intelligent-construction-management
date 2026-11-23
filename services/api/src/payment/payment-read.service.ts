@@ -624,6 +624,28 @@ export class PaymentReadService {
     }
 
     const classificationByVersion = await contractClassifications(this.prisma, payments.map((p) => p.contractVersionId));
+    const signedContractIds = [
+      ...new Set(
+        payments
+          .filter((payment) => payment.signedSettlementId)
+          .map((payment) => payment.contractId)
+      )
+    ];
+    const signedBasisByContract = new Map<string, Awaited<ReturnType<typeof loadSignedSettlementPaymentBasis>>>();
+    for (const contractId of signedContractIds) {
+      try {
+        signedBasisByContract.set(
+          contractId,
+          await loadSignedSettlementPaymentBasis(
+            this.prisma as unknown as Prisma.TransactionClient,
+            contractId
+          )
+        );
+      } catch (error) {
+        // 没有最近确认的已签结算时列表照常展示原申请；其他读取故障不能被静默吞掉。
+        if (!(error instanceof ConflictException)) throw error;
+      }
+    }
     const requestRows = payments.map((payment) => {
       const latestApproval = latestApprovalByPaymentId.get(payment.id);
       const returnedForRevision = payment.status === "draft" &&
@@ -654,6 +676,11 @@ export class PaymentReadService {
         ? "申请人"
         : this.currentOwnerLabel(payment.status, execution.complete);
       const contract = contractById.get(payment.contractId);
+      const signedBasis = payment.signedSettlementId
+        ? signedBasisByContract.get(payment.contractId)
+        : undefined;
+      const suspensionApplies =
+        Boolean(signedBasis?.suspended) && payableAmountCents - paidAmountCents > 0n;
 
       return {
         id: payment.code,
@@ -690,6 +717,17 @@ export class PaymentReadService {
         lifecycleUpdatedAt: payment.updatedAt.toISOString(),
         requestedAmountCents: moneyCentsToApi(payment.requestedAmountCents),
         paidAmountCents: moneyCentsToApi(paidAmountCents),
+        ...(signedBasis
+          ? {
+              capacitySuspended: suspensionApplies,
+              capacityStatusLabel: suspensionApplies
+                ? "合同累计可付余额不足，已暂停"
+                : "容量正常",
+              capacityRemainingCents: moneyCentsToApi(signedBasis.remainingCents),
+              unsettledAdvanceCents: moneyCentsToApi(signedBasis.unsettledAdvanceCents),
+              overpayCents: moneyCentsToApi(signedBasis.overpayCents)
+            }
+          : {}),
         availableActions:
           returnedForRevision &&
           options?.actorUserId &&
@@ -1193,6 +1231,14 @@ export class PaymentReadService {
       : this.returnReason(payment.status);
     const blockedReasons = disabledActionReasons(availableActions);
     if (
+      currentSignedSettlementBasis?.suspended &&
+      payableAmountCents - paidAmountCents > 0n
+    ) {
+      blockedReasons.push(
+        "合同累计可付余额不足，相关未付申请已暂停；请撤回或调整未付部分，或待新结算补足后再办理"
+      );
+    }
+    if (
       returnedForRevision &&
       actorUserId &&
       latestApproval?.applicantUserId !== actorUserId
@@ -1293,6 +1339,45 @@ export class PaymentReadService {
                           ? " · 当前无可付余额"
                           : ""
                       }`
+                    },
+                    {
+                      label: "已付（含预付款）",
+                      value: `${formatMoneyCentsAsYuan(currentSignedSettlementBasis.netPaidCents)} 元`
+                    },
+                    {
+                      label: "在途未付占用",
+                      value: `${formatMoneyCentsAsYuan(currentSignedSettlementBasis.outstandingCents)} 元`
+                    },
+                    currentSignedSettlementBasis.overpayCents > 0n
+                      ? {
+                          label: "超付差额",
+                          value: `${formatMoneyCentsAsYuan(currentSignedSettlementBasis.overpayCents)} 元`
+                        }
+                      : {
+                          label: "可付余额",
+                          value: `${formatMoneyCentsAsYuan(currentSignedSettlementBasis.remainingCents)} 元`
+                        },
+                    ...(currentSignedSettlementBasis.unsettledAdvanceCents > 0n
+                      ? [
+                          {
+                            label: "尚未结算预付款",
+                            value: `${formatMoneyCentsAsYuan(currentSignedSettlementBasis.unsettledAdvanceCents)} 元`
+                          }
+                        ]
+                      : []),
+                    ...(currentSignedSettlementBasis.abnormalOverpayCents > 0n
+                      ? [
+                          {
+                            label: "异常超付",
+                            value: `${formatMoneyCentsAsYuan(currentSignedSettlementBasis.abnormalOverpayCents)} 元`
+                          }
+                        ]
+                      : []),
+                    {
+                      label: "容量状态",
+                      value: currentSignedSettlementBasis.suspended
+                        ? "已暂停：合同累计可付余额不足"
+                        : "正常"
                     }
                   ]
                 : [])

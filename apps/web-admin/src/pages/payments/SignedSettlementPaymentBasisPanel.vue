@@ -110,8 +110,26 @@ async function download(values: { reason: string; password: string }) {
           <dd>{{ basis.downstreamCapacity.outstandingYuan }} 元</dd>
           <dt>账面未占用余额</dt>
           <dd>{{ basis.downstreamCapacity.unoccupiedYuan }} 元</dd>
+          <template v-if="Number(basis.downstreamCapacity.unsettledAdvanceYuan) > 0">
+            <dt>尚未结算预付款</dt>
+            <dd>{{ basis.downstreamCapacity.unsettledAdvanceYuan }} 元（已付预付款，后续结算自动抵扣）</dd>
+          </template>
+          <template v-if="Number(basis.downstreamCapacity.overpayYuan) > 0">
+            <dt>超付差额</dt>
+            <dd>{{ basis.downstreamCapacity.overpayYuan }} 元</dd>
+          </template>
+          <template v-if="Number(basis.downstreamCapacity.abnormalOverpayYuan) > 0">
+            <dt>异常超付</dt>
+            <dd>{{ basis.downstreamCapacity.abnormalOverpayYuan }} 元（真实已付保留，不改写原记录）</dd>
+          </template>
         </template>
       </dl>
+      <t-alert
+        v-if="basis.downstreamCapacity?.suspended"
+        theme="warning"
+        title="合同累计可付余额不足，相关未付申请已暂停"
+        message="只按客观余额暂停，不自动挑选先付一笔；可撤回或调整未付部分，新结算补足余额后自动解除。"
+      />
       <t-space direction="vertical">
         <p v-if="!basis.canReadSignedAttachments && (basis.latestConfirmed?.source === 'signed_registration' || basis.confirmedHistory.some(record => record.source === 'signed_registration'))">
           已签结算附件由本项目合同员或合同部主管查阅。

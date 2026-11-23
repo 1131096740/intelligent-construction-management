@@ -25,19 +25,85 @@ export interface ConfirmedSignedSettlementRow {
   reviewedAt: Date | null;
 }
 
-export interface SignedSettlementPaymentBasis {
+export interface SignedSettlementCapacityFacts {
+  /** 合同支付口径累计结算（已签 + 旧结算 + 历史起点），整数分。 */
+  confirmedCents: bigint;
+  /** 已登记实付（含预付款实付与历史已付），整数分。 */
+  paidCents: bigint;
+  /** paidCents 中属于合同预付款的部分，用于区分未结算预付与异常超付。 */
+  advancePaidCents: bigint;
+  /** 审批中、批准待付、部分剩余的未付占用，整数分。 */
+  outstandingCents: bigint;
+  proxyPaidCents: bigint;
+  historicalOutstandingCents: bigint;
+}
+
+export interface SignedSettlementPaymentCapacity {
+  confirmedCents: bigint;
+  netPaidCents: bigint;
+  occupiedCents: bigint;
+  outstandingCents: bigint;
+  advancePaidCents: bigint;
+  unsettledAdvanceCents: bigint;
+  overpayCents: bigint;
+  abnormalOverpayCents: bigint;
+  capacityShortfallCents: bigint;
+  /** 可为负：实付/审批校验需还原当前申请自身在途后再判断。 */
+  rawRemainingCents: bigint;
+  remainingCents: bigint;
+  /** 合同全部未付占用合计超过可付余额时暂停，后续新结算使余额足够自动解除。 */
+  suspended: boolean;
+}
+
+export interface SignedSettlementPaymentBasis extends SignedSettlementPaymentCapacity {
   latestConfirmed: ConfirmedSignedSettlementRow & { amountYuan: Prisma.Decimal };
   confirmedContractYuan: Prisma.Decimal;
   signedConfirmedYuan: Prisma.Decimal;
   legacyConfirmedCents: bigint;
   historicalConfirmedCents: bigint;
-  occupiedCents: bigint;
-  outstandingCents: bigint;
-  proxyPaidCents: bigint;
-  historicalOutstandingCents: bigint;
-  /** 可为负：实付校验需还原当前申请自身在途后再判断。 */
-  rawRemainingCents: bigint;
-  remainingCents: bigint;
+}
+
+/** 累计结算按支付口口径先精确汇总到四位，再半入到分；负数按绝对值半入后恢复符号。 */
+export function settlementAmountYuanToCents(value: Prisma.Decimal): bigint {
+  const negative = value.isNegative();
+  const absolute = value.abs().times(100).toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP);
+  const cents = BigInt(absolute.toFixed(0));
+  return negative ? -cents : cents;
+}
+
+/**
+ * 合同已签结算容量的纯计算：累计结算 - 有效净已付（含预付款、代付）- 全部未付占用。
+ * 超付先按预付未结算部分解释，剩余才计异常超付；两者都不改写真实付款事实。
+ */
+export function calculateSignedSettlementPaymentCapacity(
+  facts: SignedSettlementCapacityFacts
+): SignedSettlementPaymentCapacity {
+  const advancePaidCents = facts.advancePaidCents > facts.paidCents ? facts.paidCents : facts.advancePaidCents;
+  const netPaidCents = facts.paidCents + facts.proxyPaidCents;
+  const occupiedCents =
+    netPaidCents + facts.outstandingCents + facts.historicalOutstandingCents;
+  const overpayCents = netPaidCents > facts.confirmedCents ? netPaidCents - facts.confirmedCents : 0n;
+  const advanceExcessCents =
+    advancePaidCents > facts.confirmedCents ? advancePaidCents - facts.confirmedCents : 0n;
+  const unsettledAdvanceCents = advanceExcessCents < overpayCents ? advanceExcessCents : overpayCents;
+  const abnormalOverpayCents = overpayCents - unsettledAdvanceCents;
+  const rawRemainingCents = facts.confirmedCents - occupiedCents;
+  const capacityShortfallCents = rawRemainingCents < 0n ? -rawRemainingCents : 0n;
+
+  return {
+    confirmedCents: facts.confirmedCents,
+    netPaidCents,
+    occupiedCents,
+    outstandingCents: facts.outstandingCents,
+    advancePaidCents,
+    unsettledAdvanceCents,
+    overpayCents,
+    abnormalOverpayCents,
+    capacityShortfallCents,
+    rawRemainingCents,
+    remainingCents: rawRemainingCents > 0n ? rawRemainingCents : 0n,
+    suspended: rawRemainingCents < 0n
+  };
 }
 
 function amountYuan(value: Prisma.Decimal | string | null | undefined): Prisma.Decimal {
@@ -80,8 +146,8 @@ export function paymentRequestOutstandingCents(payment: {
   return outstanding > 0n ? outstanding : 0n;
 }
 
-function yuanToWholeCentsFloor(value: Prisma.Decimal): bigint {
-  return BigInt(value.times(100).floor().toFixed(0));
+function maxBigInt(left: bigint, right: bigint): bigint {
+  return left > right ? left : right;
 }
 
 /**
@@ -95,9 +161,17 @@ export async function loadSignedSettlementPaymentBasis(
   options: { lock?: boolean } = {}
 ): Promise<SignedSettlementPaymentBasis> {
   if (options.lock) {
-    await tx.$queryRaw(
-      Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended('signed-settlement:' || ${SIGNED_SETTLEMENT_PAYMENT_CONTRACT_KIND} || ':' || ${contractId}, 0))`
-    );
+    const lockSql = Prisma.sql`SELECT pg_advisory_xact_lock(hashtextextended('signed-settlement:' || ${SIGNED_SETTLEMENT_PAYMENT_CONTRACT_KIND} || ':' || ${contractId}, 0))`;
+    const executeRaw = (tx as unknown as {
+      $executeRaw?: (query: Prisma.Sql) => Promise<unknown>;
+    }).$executeRaw;
+    // `pg_advisory_xact_lock` returns void, which Prisma cannot deserialize from
+    // $queryRaw on a real database; tests use $queryRaw doubles, production uses execute.
+    if (typeof executeRaw === "function") {
+      await executeRaw.call(tx, lockSql);
+    } else {
+      await tx.$queryRaw(lockSql);
+    }
   }
 
   const signedRows = await tx.signedContractSettlement.findMany({
@@ -144,10 +218,11 @@ export async function loadSignedSettlementPaymentBasis(
     tx.paymentRequest.findMany({
       where: {
         contractId,
-        sourceType: { in: ["settlement", "contract_due", "signed_settlement"] },
+        sourceType: { in: ["settlement", "contract_due", "signed_settlement", "contract_advance"] },
         status: { in: [...SETTLEMENT_CAPACITY_PAYMENT_STATUSES, "paid"] }
       },
       select: {
+        sourceType: true,
         status: true,
         requestedAmountCents: true,
         approvedAmountCents: true,
@@ -172,6 +247,11 @@ export async function loadSignedSettlementPaymentBasis(
   const historicalConfirmedCents = historicalBalance?.settledCents ?? 0n;
   const historicalPaidCents = historicalBalance?.paidCents ?? 0n;
   const historicalProxyPaidCents = historicalBalance?.proxyPaidCents ?? 0n;
+  const historicalUnrecoveredAdvanceCents = maxBigInt(
+    (historicalBalance?.advancePaidCents ?? 0n) -
+      (historicalBalance?.advanceDeductedCents ?? 0n),
+    0n
+  );
   const withheldCents =
     (historicalBalance?.retentionWithheldCents ?? 0n) -
     (historicalBalance?.retentionReleasedCents ?? 0n);
@@ -198,29 +278,32 @@ export async function loadSignedSettlementPaymentBasis(
     historicalProxyPaidCents;
   const recordedPaidCents =
     requests.reduce((total, request) => total + request.paidAmountCents, 0n) +
-    historicalPaidCents;
-  const occupiedCents =
-    recordedPaidCents +
-    outstandingCents +
-    proxyPaidCents +
-    historicalOutstandingCents;
-  const rawRemainingCents = yuanToWholeCentsFloor(confirmedContractYuan) - occupiedCents;
+    historicalPaidCents +
+    historicalUnrecoveredAdvanceCents;
+  const systemAdvancePaidCents = requests.reduce(
+    (total, request) =>
+      request.sourceType === "contract_advance" ? total + request.paidAmountCents : total,
+    0n
+  );
+  const capacity = calculateSignedSettlementPaymentCapacity({
+    confirmedCents: settlementAmountYuanToCents(confirmedContractYuan),
+    paidCents: recordedPaidCents,
+    advancePaidCents: systemAdvancePaidCents + historicalUnrecoveredAdvanceCents,
+    outstandingCents,
+    proxyPaidCents,
+    historicalOutstandingCents
+  });
 
   const [latestConfirmed] = orderConfirmedSignedSettlements(signedRows);
   if (!latestConfirmed) {
     throw new ConflictException("该合同暂无可付款的已签结算，请先完成主管复核");
   }
   return {
+    ...capacity,
     latestConfirmed: { ...latestConfirmed, amountYuan: amountYuan(latestConfirmed.amountYuan) },
     confirmedContractYuan,
     signedConfirmedYuan,
     legacyConfirmedCents,
-    historicalConfirmedCents,
-    occupiedCents,
-    outstandingCents,
-    proxyPaidCents,
-    historicalOutstandingCents,
-    rawRemainingCents,
-    remainingCents: rawRemainingCents > 0n ? rawRemainingCents : 0n
+    historicalConfirmedCents
   };
 }

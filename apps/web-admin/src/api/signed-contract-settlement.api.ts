@@ -139,6 +139,17 @@ export function fetchSignedSettlementPaymentBasis(projectId: string, contractId:
     contractAttachmentIds: string[];
     canReadSignedAttachments: boolean;
     confirmedYuan: string;
-    downstreamCapacity: { recordedPaidYuan: string; outstandingYuan: string; unoccupiedYuan: string; wholeCentLimit: string } | null;
+    downstreamCapacity: {
+      recordedPaidYuan: string;
+      outstandingYuan: string;
+      unoccupiedYuan: string;
+      wholeCentLimit: string;
+      advancePaidYuan: string;
+      unsettledAdvanceYuan: string;
+      overpayYuan: string;
+      abnormalOverpayYuan: string;
+      capacityShortfallYuan: string;
+      suspended: boolean;
+    } | null;
   }>(`${endpoint(projectId)}/payment-basis?${query}`);
 }

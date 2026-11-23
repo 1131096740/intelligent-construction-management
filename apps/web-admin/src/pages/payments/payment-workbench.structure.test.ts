@@ -64,6 +64,14 @@ describe("payment workbench structure", () => {
     expect(workbench).toContain("该合同暂无已确认的已签结算，请先在结算工作台完成主管复核。");
   });
 
+  it("shows the unsettled advance, overpayment and suspension of the contract capacity (PAY-04/PAY-08)", () => {
+    expect(workbench).toContain("unsettledAdvanceYuan");
+    expect(workbench).toContain("尚未结算预付款");
+    expect(workbench).toContain("downstreamCapacity.overpayYuan");
+    expect(workbench).toContain("已暂停（合同累计可付余额不足）");
+    expect(workbench).toContain("downstreamCapacity.suspended");
+  });
+
   it("keeps system capacity validation and manual requested amount before creation", () => {
     expect(workbench).toContain("fetchContractPaymentApplication");
     expect(workbench).toContain("visibleContractPaymentPreview");
