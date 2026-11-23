@@ -21,7 +21,7 @@ describe("contract workbench mutation capability gates", () => {
     ["ContractDocumentsSection.vue", "queueContractDocumentWithCapability"],
     ["ContractDocumentsSection.vue", "uploadContractDocumentFileWithCapability"],
     ["ContractDocumentsSection.vue", "retryContractDocumentWithCapability"],
-    ["ContractDocumentsSection.vue", "confirmContractDocumentDownload"],
+    ["ContractDocumentsSection.vue", "createContractDocumentDownloadTicketWithCapability"],
     ["ContractAuthorizationSection.vue", "uploadContractAuthorizationFileWithCapability"],
     ["ContractAuthorizationSection.vue", "setContractAuthorizationWithCapability"],
     ["ContractCounterpartySignedFilesPanel.vue", "uploadPrivateFileWithCapability"],
@@ -49,15 +49,10 @@ describe("contract workbench mutation capability gates", () => {
     expect(source).not.toContain("return uploadPrivateFile(");
   });
 
-  it("gates contract document download confirmation with the exact file capability", () => {
+  it("gates contract document download with the exact file capability before issuing a link", () => {
     const source = read("ContractDocumentsSection.vue");
-    expect(source).toContain(
-      'v-if="contractDocumentDownloadAction && contractDocumentDownloadAction.enabled"'
-    );
-    expect(source).toContain('@confirm="confirmContractDocumentDownload"');
     expect(source).toContain("getPrivateFileDownloadTicketCapability(fileId)");
-    expect(source).toContain(
-      "const request = createPrivateFileDownloadTicket(downloadFileId.value"
-    );
+    expect(source).toContain('capability.availableActions.includes(');
+    expect(source).toContain("return createPrivateFileDownloadTicket(fileId, {})");
   });
 });

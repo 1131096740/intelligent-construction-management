@@ -22,7 +22,22 @@ export class ArchiveController {
   ) {}
 
   @Get()
-  async list(@CurrentUser() user: AuthenticatedUser, @Query("limit") limit?: string) {
-    return this.archives.listRecent(limit, await this.projectVisibility.visibleProjectIds(user.id));
+  async list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("limit") limit?: string,
+    @Query("project") project?: string,
+    @Query("contract") contract?: string,
+    @Query("counterparty") counterparty?: string,
+    @Query("documentType") documentType?: string,
+    @Query("archiveStatus") archiveStatus?: string,
+    @Query("dateFrom") dateFrom?: string,
+    @Query("dateTo") dateTo?: string,
+    @Query("keyword") keyword?: string
+  ) {
+    return this.archives.listRecent(
+      limit,
+      await this.projectVisibility.visibleProjectIds(user.id),
+      { project, contract, counterparty, documentType, archiveStatus, dateFrom, dateTo, keyword }
+    );
   }
 }

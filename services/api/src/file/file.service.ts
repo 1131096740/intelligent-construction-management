@@ -56,6 +56,11 @@ import { readGeneratedArchiveDownloadGeneration } from "../contract/contract-v2-
 import { assertDirectReviewQualification } from "../contract-ledger/contract-direct-review-qualification";
 import { fundBalanceWitnessBinding, signFundBalanceWitness } from "../fund-account/fund-balance-witness-signing";
 import { isSignedSettlementFileMime, isSignedSettlementObjectKey, signedSettlementUploadPrefix } from "./signed-settlement-file";
+import {
+  archivePackageFileName,
+  assertArchivePackageSelection,
+  buildArchivePackageBuffer
+} from "./archive-package";
 
 export interface UploadPrivateFileInput {
   originalName: string;
@@ -821,10 +826,24 @@ export class PrivateFileStorage implements OnModuleInit {
   }
 }
 
+const DEFAULT_DOWNLOAD_REASON = "单据可见权限内下载";
+
+function normalizePackageFileIds(fileIds: readonly string[]): string[] {
+  return [...new Set(fileIds.map((fileId) => fileId.trim()).filter(Boolean))];
+}
+
+function orderPackageFiles<T extends { id: string }>(ids: readonly string[], files: readonly T[]): T[] {
+  const byId = new Map(files.map((file) => [file.id, file]));
+  if (ids.some((id) => !byId.has(id)) || byId.size !== ids.length) {
+    throw new BadRequestException("部分资料文件不存在或已被移除，请刷新后重新选择");
+  }
+  return ids.map((id) => byId.get(id)!);
+}
+
 function normalizeDownloadReason(value: string | undefined): string {
   const reason = value?.trim();
   if (!reason) {
-    throw new BadRequestException("请填写下载原因，便于留痕审计");
+    return DEFAULT_DOWNLOAD_REASON;
   }
   if (reason.length > 200) {
     throw new BadRequestException("下载原因不能超过 200 个字，请精简后重新提交");
@@ -1437,6 +1456,93 @@ export class FileService {
         }
       };
     }));
+  }
+
+  async getDownloadPackageCapability(fileIds: readonly string[], actorUserId: string) {
+    const ids = normalizePackageFileIds(fileIds);
+    assertArchivePackageSelection(ids.map((id) => ({ id, sizeBytes: 0 })));
+    const checked = await this.prisma.$transaction(async (tx) => {
+      const files = await tx.fileObject.findMany({ where: { id: { in: ids } } });
+      const ordered = orderPackageFiles(ids, files);
+      assertArchivePackageSelection(ordered);
+      for (const file of ordered) {
+        const access = await this.assertCanDownloadFileObject(tx, file, actorUserId, undefined, "ticket");
+        await this.archiveDownloadGeneration(
+          tx, file, actorUserId, "ticket", access?.businessType === "contract_economic_review"
+        );
+      }
+      return {
+        fileCount: ordered.length,
+        totalBytes: ordered.reduce((total, file) => total + file.sizeBytes, 0)
+      };
+    });
+    return {
+      availableActions: ["download_archive_package" as const],
+      action: {
+        key: "download_archive_package" as const,
+        enabled: true as const
+      },
+      fileCount: checked.fileCount,
+      totalBytes: checked.totalBytes
+    };
+  }
+
+  async createDownloadPackage(fileIds: readonly string[], actorUserId: string) {
+    if (!actorUserId.trim()) {
+      throw new ForbiddenException("下载人信息缺失，请重新登录后再打包下载资料");
+    }
+    const ids = normalizePackageFileIds(fileIds);
+    assertArchivePackageSelection(ids.map((id) => ({ id, sizeBytes: 0 })));
+    const checked = await this.prisma.$transaction(async (tx) => {
+      const files = await tx.fileObject.findMany({ where: { id: { in: ids } } });
+      const ordered = orderPackageFiles(ids, files);
+      assertArchivePackageSelection(ordered);
+      const generations = new Map<string, string | null>();
+      for (const file of ordered) {
+        const access = await this.assertCanDownloadFileObject(tx, file, actorUserId, undefined, "ticket");
+        generations.set(
+          file.id,
+          await this.archiveDownloadGeneration(
+            tx, file, actorUserId, "consume", access?.businessType === "contract_economic_review"
+          )
+        );
+      }
+      return { ordered, generations };
+    });
+    const entries: Array<{ fileName: string; buffer: Buffer }> = [];
+    for (const file of checked.ordered) {
+      const generation = checked.generations.get(file.id) ?? null;
+      const buffer = generation === null
+        ? await this.readVerifiedFileBuffer(file)
+        : await this.readPinnedArchiveBuffer(file, generation);
+      if (buffer.length !== file.sizeBytes) {
+        throw new ServiceUnavailableException("资料文件版本或完整性暂无法核对，请保留原件");
+      }
+      entries.push({ fileName: file.originalName, buffer });
+    }
+    const buffer = buildArchivePackageBuffer(entries);
+    const fileName = archivePackageFileName();
+    const totalBytes = checked.ordered.reduce((total, file) => total + file.sizeBytes, 0);
+    const packageId = randomUUID();
+    await this.prisma.$transaction((tx) => this.audit.record(tx, {
+      actorUserId,
+      action: "file.package.download",
+      businessType: "file_package",
+      businessId: packageId,
+      metadata: {
+        packageId,
+        fileName,
+        fileCount: checked.ordered.length,
+        totalBytes,
+        fileIds: checked.ordered.map((file) => file.id)
+      }
+    }));
+    return {
+      buffer,
+      fileName,
+      fileCount: checked.ordered.length,
+      totalBytes
+    };
   }
 
   async readPrivateFile(fileId: string, input: ReadPrivateFileInput) {

@@ -2856,11 +2856,8 @@ async function requestContractFileDownload() {
   if (!(await prepareContractFileDownloadCapability(fileId))) return;
   openSensitiveAction("fileDownload", {
     title: "确认下载敏感合同文件？",
-    description: "系统将校验当前密码，签发短时效下载链接，并记录文件、合同和下载原因。",
-    confirmText: "确认下载",
-    requireReason: true,
-    requirePassword: true,
-    reasonLabel: "下载原因"
+    description: "系统将校验当前单据可见权限，签发短时效下载链接，并记录文件、合同和访问审计。",
+    confirmText: "确认下载"
   });
 }
 
@@ -2874,11 +2871,8 @@ async function requestFormalFileDownload(fileId: string) {
   if (!(await prepareContractFileDownloadCapability(fileId))) return;
   openSensitiveAction("formalFileDownload", {
     title: "确认下载合同正式文件？",
-    description: "系统将校验当前密码，签发短时效下载链接，并记录文件、合同和下载原因。",
+    description: "系统将校验当前单据可见权限，签发短时效下载链接，并记录文件、合同和访问审计。",
     confirmText: "确认下载",
-    requireReason: true,
-    requirePassword: true,
-    reasonLabel: "下载原因",
     targetFileId: fileId
   });
 }
@@ -2897,11 +2891,8 @@ async function requestFormalFilePreview(document: { id: string; available: boole
   if (!(await prepareContractFileDownloadCapability(document.id))) return;
   openSensitiveAction("formalFilePreview", {
     title: "确认预览合同正式文件？",
-    description: "系统将校验当前密码，签发五分钟在线预览链接，并记录文件、合同和预览原因。",
+    description: "系统将校验当前单据可见权限，签发短时效在线预览链接，并记录文件、合同和预览审计。",
     confirmText: "确认预览",
-    requireReason: true,
-    requirePassword: true,
-    reasonLabel: "预览原因",
     targetFileId: document.id
   });
 }
