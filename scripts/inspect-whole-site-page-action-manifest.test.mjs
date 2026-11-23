@@ -11304,6 +11304,17 @@ test("duty SMS retry needs the actual server attempt capability and the fixed do
     const bypassedPaymentVisibility = await inspect();
     assert.ok(bypassedPaymentVisibility.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
     await write(root, approvalService, approvalSource);
+    for (const [check, bypass] of [
+      ["delegationActionId === expectedDelegationActionId", "true"],
+      ["!activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex).includes(nodeIndex)", "false"]
+    ]) {
+      const changed = approvalSource.replace(check, bypass);
+      assert.notEqual(changed, approvalSource);
+      await write(root, approvalService, changed);
+      const withoutDutyEvidence = await inspect();
+      assert.ok(withoutDutyEvidence.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
+    }
+    await write(root, approvalService, approvalSource);
     await write(root, panel, source.replace('!notice.value?.canRetry || notice.value.status !== "failed" || busy.value', "busy.value"));
     const missingGuard = await inspect();
     assert.ok(missingGuard.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));

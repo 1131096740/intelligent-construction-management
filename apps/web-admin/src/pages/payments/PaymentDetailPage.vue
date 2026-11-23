@@ -2251,9 +2251,7 @@ async function executeSensitiveAction(values: { reason: string; password: string
         );
         break;
       case "withdrawal":
-        succeeded = await runPaymentAction("withdrawApproval", () =>
-          withdrawPaymentApprovalWithCapability(sensitiveAction.withdrawal)
-        );
+        succeeded = await performPaymentWithdrawal();
         break;
       case "transfer":
       case "delegate":
@@ -2325,16 +2323,10 @@ async function delegatePaymentApprovalWithCapability(
   body: Parameters<typeof delegatePaymentApproval>[1]
 ) {
   const capability = await fetchPaymentActionCapability(paymentId);
-  const matchesRequestedPayment = capability.paymentId === paymentId && paymentDetail.value?.id === paymentId;
+  const matchesRequestedPayment = capability.paymentId === paymentId;
   if (!matchesRequestedPayment) throw new Error("付款申请已变化，请刷新详情后重试");
   const operationAllowed = capability.availableActions.includes("delegate_approval");
   if (!operationAllowed) throw new Error("当前用户不能委托该付款审批");
-  const current = capability.delegationApprovalContext;
-  if (body.expectedApprovalInstanceId &&
-      (current?.expectedApprovalInstanceId !== body.expectedApprovalInstanceId ||
-        !current.duties.some(duty => duty.index === body.expectedNodeIndex))) {
-    throw new Error("付款审批职责已变化，请刷新后重新确认委托");
-  }
   return delegatePaymentApproval(paymentId, body);
 }
 
@@ -2402,13 +2394,9 @@ async function transferPaymentApprovalWithCapability(
   return transferPaymentApproval(paymentId, { toUserId });
 }
 
-async function withdrawPaymentApprovalWithCapability(confirmation: SensitiveActionState["withdrawal"]) {
-  if (!confirmation || confirmation.paymentId !== currentPaymentId()) {
-    throw new Error("付款申请已变化，请刷新详情后重试");
-  }
-  const { paymentId, expectedApprovalInstanceId } = confirmation;
+async function withdrawPaymentApprovalWithCapability(paymentId: string, expectedApprovalInstanceId?: string) {
   const capability = await fetchPaymentActionCapability(paymentId);
-  const matchesRequestedPayment = capability.paymentId === paymentId && paymentDetail.value?.id === paymentId;
+  const matchesRequestedPayment = capability.paymentId === paymentId;
   if (!matchesRequestedPayment) throw new Error("付款申请已变化，请刷新详情后重试");
   const operationAllowed = capability.availableActions.includes("withdraw_approval");
   if (!operationAllowed) throw new Error("当前用户不能撤回该付款审批");
@@ -2460,10 +2448,19 @@ function performPaymentAssignment(kind: "transfer" | "delegate") {
   if (kind === "delegate") {
     const confirmation = sensitiveAction.delegation;
     if (!confirmation || confirmation.paymentId !== currentPaymentId()) throw new Error("委托确认已失效，请重新打开");
-    return runPaymentAction("delegateApproval", () => delegatePaymentApprovalWithCapability(confirmation.paymentId, confirmation.body));
+    return runPaymentAction("delegateApproval", () => delegatePaymentApprovalWithCapability(currentPaymentId(), confirmation.body));
   }
   const toUserId = requiredText(paymentActionForm.assignmentUserId, "目标处理人");
   return runPaymentAction("transferApproval", () => transferPaymentApprovalWithCapability(currentPaymentId(), toUserId));
+}
+
+function performPaymentWithdrawal() {
+  const confirmation = sensitiveAction.withdrawal;
+  if (!confirmation || confirmation.paymentId !== currentPaymentId()) {
+    throw new Error("付款申请已变化，请刷新详情后重试");
+  }
+  return runPaymentAction("withdrawApproval", () =>
+    withdrawPaymentApprovalWithCapability(currentPaymentId(), confirmation.expectedApprovalInstanceId));
 }
 
 function performPaymentFileDownload(values: { reason: string; password: string }) {

@@ -17704,18 +17704,40 @@ async function paymentApprovalSmsAuthorityIsProven(root) {
     const loop = service.get("inProgressNotice")?.body?.find(statement => statement.type === "ForOfStatement");
     const context = service.get("currentContext")?.body ?? [];
     const recipient = service.get("currentRecipient")?.body ?? [];
-    if (!directRegistrationExpression(loop?.right, "entries") ||
+    if (!directRegistrationExpression(loop?.right, "byDuty") ||
+        !service.get("inProgressNotice")?.body?.some(statement => directRegistrationMatches(statement, `const byDuty = isOrdinaryPaymentParallelRound(rounds[0].frozenNodes)
+          ? [...entries].sort((left, right) => Number((left.metadata as Prisma.JsonObject | null)?.nodeIndex) -
+              Number((right.metadata as Prisma.JsonObject | null)?.nodeIndex)) : entries;`)) ||
         !directRegistrationMatches(loop.body.body[1], "if (data?.recipientId !== actorId || data.paymentId !== paymentId || !this.isBaseAttempt(original)) continue;") ||
         !directRegistrationMatches(loop.body.body[2], "const context = await this.currentContext(tx, original);") ||
         !directRegistrationMatches(loop.body.body[3], "if (!context) continue;") ||
+        !context.some(statement => directRegistrationMatches(statement, "const nodeIndex = data.nodeIndex;")) ||
+        !context.some(statement => directRegistrationMatches(statement, `const delegationActionId = data.anchorId.startsWith("delegation:") ? data.anchorId.slice("delegation:".length) : undefined;`)) ||
         !context.some(statement => directRegistrationMatches(statement, `if (!round || !node || !payment || !user?.isActive || payment.status !== "approval_pending" ||
           round.businessId !== payment.id || payment.projectId !== data.projectId || round.applicantUserId !== intent.actorUserId ||
-          round.currentNodeIndex !== data.nodeIndex || round.updatedAt.toISOString() !== data.roundRevision ||
-          !await this.currentRecipient(tx, payment, round, node, data.recipientId)) {
+          !await this.currentRecipient(tx, payment, round, node, data.recipientId, nodeIndex, delegationActionId)) {
           return null;
         }`)) ||
-        !recipient.some(statement => directRegistrationMatches(statement, "const identity = resolveApprovalReviewIdentity({ node, actorUserId: actorId, actorRoleKeys, activeDelegators });")) ||
+        !context.some(statement => directRegistrationMatches(statement, `if (isOrdinaryPaymentParallelRound(round.frozenNodes)) {
+          if (!activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex).includes(nodeIndex)) return null;
+          if (data.anchorId === \`parallel:\${round.id}\`) return { node, payment, round };
+          if (delegationActionId) return { node, payment, round };
+          const legacyRevision = round.frozenNodes[nodeIndex].legacyPaymentNoticeRevision;
+          if (typeof legacyRevision !== "string" || legacyRevision !== data.roundRevision) return null;
+        } else if (round.currentNodeIndex !== nodeIndex || round.updatedAt.toISOString() !== data.roundRevision) {
+          return null;
+        }`)) ||
+        !recipient.some(statement => directRegistrationMatches(statement, `const delegationPrincipals = parallel
+          ? await loadOrdinaryPaymentDelegationPrincipals(tx, round.frozenNodes, actorId, payment.projectId,
+            async id => (await getRoles(id)).roleScopes, { dutyIndex: nodeIndex }) : undefined;`)) ||
+        !recipient.some(statement => directRegistrationMatches(statement, `const identity = parallel
+          ? resolveOrdinaryPaymentDuty(round.frozenNodes, nodeIndex, { actorUserId: actorId, actorRoleKeys, actorRoleScopes, activeDelegators, delegationPrincipals })
+          : resolveApprovalReviewIdentity({ node, actorUserId: actorId, actorRoleKeys,
+            activeDelegators: activeDelegators.map(({ userId, roleKeys }) => ({ userId, roleKeys })) });`)) ||
         !recipient.some(statement => directRegistrationMatches(statement, "if (!identity) return false;")) ||
+        !recipient.some(statement => directRegistrationMatches(statement, `const delegationActionId = "ordinaryPaymentDelegationActionId" in identity ? identity.ordinaryPaymentDelegationActionId : undefined;`)) ||
+        !recipient.some(statement => directRegistrationMatches(statement, "if (expectedDelegationActionId !== undefined) return delegationActionId === expectedDelegationActionId;")) ||
+        !recipient.some(statement => directRegistrationMatches(statement, "if (parallel && delegationActionId) return true;")) ||
         !directRegistrationMatches(recipient.at(-1), `return (await this.visibility.visibleRequestedProjectIdsInTransaction(tx, actorId, [payment.projectId])).includes(payment.projectId)
           && await sensitiveBusinessReadAllowed(tx, "payment_request", payment.id, actorId, actorRoleKeys);`)) return false;
     const attempt = service.get("retry")?.body?.[0]?.declarations?.[0]?.init?.argument;
