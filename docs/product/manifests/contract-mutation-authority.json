@@ -12,10 +12,10 @@
     "deletionAuthorized": false
   },
   "summary": {
-    "routeCount": 80,
+    "routeCount": 84,
     "authorityCounts": {
       "aggregate_member_writer": 1,
-      "governed_specialized_command": 55,
+      "governed_specialized_command": 59,
       "exit_candidate": 24
     },
     "actionTargetCount": 29,
@@ -94,6 +94,15 @@
       "tombstoned": true,
       "authority": "exit_candidate",
       "authorityRule": "tombstoned_cutover_exit"
+    },
+    {
+      "method": "PATCH",
+      "path": "/contracts/:contractVersionId/work-completions/:completionId",
+      "controller": "ContractController",
+      "handler": "reviseWorkCompletionDraft",
+      "tombstoned": false,
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
     },
     {
       "method": "PATCH",
@@ -445,6 +454,33 @@
       "tombstoned": false,
       "authority": "exit_candidate",
       "authorityRule": "legacy_cutover_exit"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/work-completion-drafts",
+      "controller": "ContractController",
+      "handler": "createWorkCompletionDraft",
+      "tombstoned": false,
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/work-completions/:completionId/approval",
+      "controller": "ContractController",
+      "handler": "reviewWorkCompletion",
+      "tombstoned": false,
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/work-completions/:completionId/submission",
+      "controller": "ContractController",
+      "handler": "submitWorkCompletion",
+      "tombstoned": false,
+      "authority": "governed_specialized_command",
+      "authorityRule": "governed_specialized_command"
     },
     {
       "method": "POST",

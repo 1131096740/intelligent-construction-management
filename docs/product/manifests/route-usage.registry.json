@@ -4,24 +4,24 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 818,
-    "classificationOverrideCount": 219,
+    "classificationOverrideCount": 220,
     "derivedProductionPageCount": 598,
-    "classificationOverrideSha256": "c9fa58aa6c3f2730e5982ea856a0d3c9dacb5e4f859419960058a85b0852ed92",
-    "consumerSurfaceOverrideSha256": "8017c10ac9a6885c3788a4040a7bab499970525899cc4cd40c8159e6f13d1355",
+    "classificationOverrideSha256": "72e5601ee6762e364be6d050efbfc9a7f8b0625714b80ecd3a03dae4d6c4e9aa",
+    "consumerSurfaceOverrideSha256": "1e1be136bfca60ce98c0bcde4c0d538bad9dcb2a28bf9118e88c09ff86438939",
     "usageCounts": {
       "page": 617,
       "external_takeover": 70,
       "exit_candidate": 91,
-      "internal_task": 39,
-      "unclassified": 1
+      "internal_task": 40,
+      "unclassified": 0
     },
     "consumerSurfaceCounts": {
       "web_api_wrapper": 669,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
-      "machine_probe": 2,
+      "machine_probe": 3,
       "operator_endpoint": 37,
-      "none": 103
+      "none": 102
     }
   },
   "overrides": [
@@ -1338,6 +1338,12 @@
       "path": "/projects/:projectId/signed-contract-settlements/:id/attachments/:fileId/download",
       "usage": "page",
       "reason": "signed_settlement_attachment_ticket_followup_delivery_consumed_by_web_payment_basis_and_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/change-drafts",
+      "usage": "internal_task",
+      "reason": "retained_pending_issue_425_old_change_draft_write_superseded_by_signed_supplement_web_entry_zero_production_web_callers_still_consumed_by_enterprise_http_acceptance_and_e2e_harness_retire_with_call_site_migration_no_410_now"
     }
   ],
   "consumerSurfaceOverrides": [
@@ -1602,6 +1608,12 @@
           "ticketField": "downloadUrl"
         }
       ]
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/change-drafts",
+      "consumerSurface": "machine_probe",
+      "reason": "retained_pending_issue_425_enterprise_http_acceptance_and_playwright_harness_machine_consumer_not_production_web_not_operator_endpoint"
     }
   ]
 }

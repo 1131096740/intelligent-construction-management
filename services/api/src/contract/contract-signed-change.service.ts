@@ -45,6 +45,7 @@ export class ContractSignedChangeService {
         currentPaymentAgreementText: latestAgreement?.paymentAgreementText ?? null,
         canSubmit: access.canUpload,
         canReview: access.canConfirm,
+        canDownloadOriginals: access.canUpload || access.canConfirm,
         changes: changes.map(row => ({
           ...this.readRow(row),
           appendixFileId: row.appendixFileId,

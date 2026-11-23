@@ -3,80 +3,83 @@
 日期：2026-11-23
 工作树：`/tmp/jgM`
 分支：`line-m-inspect-manifests`
-基线：`9a4f00be8`（迁移 323）
-范围：只处理 inspect/release manifest 门禁；未 push，未改主仓库、`/tmp/jgL`、`/tmp/jg382-adopt`。
+基线：`9a4f00be8`（迁移 323）；已 `--no-ff` 合入 `adopt-395-396-415` 最新 `fda7f7dd8`
+范围：A 类 16 个写 wrapper witness + B 类 `change-drafts` 保留分类；未 push，未改主仓库、`/tmp/jgL`、`/tmp/jg382-adopt`。
 
 ## 结论
 
-- 基线 `pnpm run inspect:whole-site-page-actions:ready` 的 **37 个 blocker 已处理 21 个**，**仍剩 16 个**。
-- 剩余 16 个全部是候选树（`e717ba4c6` 采纳的 #395/#396/#415 页面）新增写操作 wrapper：页面确实有动作并确实调用 wrapper，但当前 `inspect-whole-site-page-action-manifest` 的通用因果/能力证明无法为这些页面成立；**按约束没有把未证明的能力登记为已具备**，也没有改动 inspect 判定逻辑放行。
-- route-usage 3 条未分类处理 2 条；`POST /contracts/:contractVersionId/change-drafts` 保留未分类并报告，原因是把它登记为 `exit_candidate` 会连带要求旧写入口返回 410，进而破坏既有企业验收 HTTP 用例。
-- 五条验证命令：2 绿、1 绿（blocked 事实清单）、2 红；`@jiangkong/web-admin` typecheck 绿。
+- `pnpm run inspect:whole-site-page-actions:ready`：**37 → 16 → 0**（458 actions / 0 blockers）。
+- `pnpm run inspect:whole-site-route-usage`（及 `--require-ready`）：**0 unclassified**（818 routes）。
+- 五条验证命令全部退出码 0；`inspect:release-manifests` 全段通过。
+- 未修改检查器的既有判定、未扩大任何既有白名单、未改 410、未改 `contract-business-entry-http.spec.ts`、未伪造零调用者。
 
-## Blocker 分组与处理（37 → 16）
+## A 类：16 条写 wrapper（全部 16/16 清零）
 
-| 组 | 基线数 | 处理 | 结果 |
-| --- | ---: | --- | --- |
-| `staleRegistryEntries` | 1 | 删除旧 `contract-change.create-draft` 条目 | 0 |
-| `unresolvedWrappers` | 8 | 2 条随旧条目删除；6 条见签章/归档因果链重钉 | 0 |
-| `writeWithoutServerCapability` | 7 | 5 条签章/归档随因果链重钉；2 条短信随后端 authority 重钉 | 0 |
-| `uncoveredMutationWrappers` | 21 | 5 条为上述修复的连带覆盖；16 条仍红 | 16 |
+### 采用方式
 
-### 1. 旧 change-draft 条目（1 + 2 连带）
+1. **显式 AST witness（首选）**：新增 `scripts/lib/contract-signed-pages-action-proof.mjs`，按既有 `contract-*-page-action-proof.mjs` 的写法，为 5 个页面逐动作固定：
+   - 页面元素/事件/handler 与 registry 完全一致；
+   - 触发元素的**自有或祖先 `v-if`** 能力表达式（或 handler 内的 fail-closed 守卫）逐字匹配；
+   - 写调用语句逐字匹配（含共享 `run()` 回调；`run()` 本身也逐字固定）；
+   - 能力读取函数逐字固定，并只接受**单 GET、`transparent_main_response`、已认证非公开**的读 wrapper；
+   - 对每个 wrapper 验证在 handler 中**恰好被调用一次**。
+   该 witness 在 `proveBusinessActionPipeline` 的既有专用证明分派链上新增一个分支；**没有改动任何既有判定、没有新增通配/默认放行**。
+2. **显式服务端布尔（缺能力处）**：按下表补了 4 个由服务端权限计算出的布尔（均非写死 true）：
+   - `WorkCompletionEntry.duties[].canReview`：仅在 `resolveApprovalReviewIdentity` 解析出可办职责时投影（TS 投影分支，非常量）；
+   - `SignedContractChanges.canDownloadOriginals`：`access.canUpload || access.canConfirm`（与列表读取同一访问门）；
+   - `SignedSettlementOverview.canRegister`：由 `authorize()` 的 `staff || director` 计算；
+   - `SignedSettlementRow.canReadAttachments`：由 `authorize()` 与附件读取同一规则 `director || (staff && (owner || confirmed))` 计算。
+3. **读 wrapper 透明化**：`signed-contract-settlement.api.ts` 的列表/概览/付款依据读改用本地 `readSettlementJson`（`apiFetch` → `ensureOk` → `return response.json()`，与 `core-flow-read` 同形），使能力来源成为检查器认可的 `transparent_main_response`；写路径仍用原 `request`，行为不变。
+4. **页面门/守卫**：在写触发元素上补 `v-if` 服务端布尔，并在 handler 首部补 fail-closed 守卫（保存/提交/复核/上传/下载/附件访问），不改变正常流程。
 
-- `apps/web-admin/src/pages/contracts/ContractDetailPage.vue` 已不再包含 `createContractChangeDraftWithCapability` / `submitChangeDraft`，旧“发起合同变更”对话框已由 `SignedContractChanges.vue`（双方已签补充协议）入口取代。
-- `createContractChangeDraft` wrapper 的生产消费者为零（仅 `core-flow-read.api.ts` 定义与测试引用）。已从 `docs/product/manifests/web-page-actions.registry.json` 删除 `contract-change.create-draft`，未凭空保留。
-- 同一提交 `e717ba4c6` 把变更资格读取从 `reloadContractDetail()` 中移除；签章/归档的父页面证明仍钉着旧 `reloadContractDetail` 与 `fetchContractChangeEligibility`/`normalizeChangeEligibility` 导入，导致 6 条 seal/archive `ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED`。已在 `scripts/lib/contract-seal-page-action-proof.mjs` 按当前页面把 witness 重钉到实际 `reloadContractDetail`，并移除已不存在的变更资格导入/请求检查；**未删除任何签章/归档守卫检查**。
+### 逐条结果（before = 该 wrapper×consumer 的未覆盖 blocker）
 
-### 2. 签章/归档 capability 门（5）
+| # | 页面 | wrapper | 采用的写路径/门 | 动作 id | before → after |
+| ---: | --- | --- | --- | --- | ---: |
+| 1 | `ContractWorkCompletionSection.vue` | `saveWorkCompletionDraft` | form submit `save`；`canRegister && showDraft`；`if (!canRegister.value) return;` | `contract-work-completion.save-draft` | 1 → 0 |
+| 2 | 同上 | `reviseWorkCompletionDraft` | form submit `saveRevision`；`reviseTarget && reviseTarget.canRevise` | `contract-work-completion.revise-draft` | 1 → 0 |
+| 3 | 同上 | `submitWorkCompletion` | 按钮 `submit(entry.id)`；`entry.canSubmit` | `contract-work-completion.submit` | 1 → 0 |
+| 4 | 同上 | `reviewWorkCompletion` | form submit `review`；`duty.canReview`（新增服务端布尔） | `contract-work-completion.review` | 1 → 0 |
+| 5 | `EffectiveContractTaxFacts.vue` | `submitContractTaxRevision` | t-form submit；祖先 `detail?.canSubmit && !pending`；handler 守卫 | `contract-tax-facts.submit` | 1 → 0 |
+| 6 | 同上 | `reviewContractTaxRevision` | 按钮 `review`；祖先 `pending && detail?.canReview`；handler 守卫 | `contract-tax-facts.review` | 1 → 0 |
+| 7 | `SignedContractChanges.vue` | `uploadPrivateFile` + `submitSignedContractChange` | form submit；`detail.canSubmit` 门；handler 守卫（同一 action 覆盖两个 wrapper） | `contract-signed-change.submit` | 1 + 1 → 0 |
+| 8 | 同上 | `reviewSignedContractChange` | form submit；`reviewTarget && detail.canReview`；handler 守卫 | `contract-signed-change.review` | 1 → 0 |
+| 9 | `SignedContractSettlementPage.vue` | `saveSignedSettlement` + `submitSignedSettlement` | 按钮组；`overview?.canRegister`（新增）；handler 守卫 | `signed-settlement.save` | 1 + 1 → 0 |
+| 10 | 同上 | `reviewSignedSettlement` | 按钮组；`selected?.canReview`；handler 守卫 | `signed-settlement.review` | 1 → 0 |
+| 11 | 同上 | `uploadSignedSettlementFile` | 原生 input；`v-if="overview?.canRegister"`；handler 守卫 | `signed-settlement.upload-file` | 1 → 0 |
+| 12 | 同上 | `readSignedSettlementAttachment` | `SensitiveActionDialog` confirm；`selected.canReadAttachments`（新增）；handler 守卫 | `signed-settlement.attachment-access` | 1 → 0 |
+| 13 | `SignedSettlementPaymentBasisPanel.vue` | `readSignedSettlementAttachment` + `downloadPrivateFileByTicket` | dialog confirm；`basis.canReadSignedAttachments`；handler 守卫（同一 action 覆盖两个 wrapper） | `payment-basis.download-signed-attachment` | 1 + 1 → 0 |
 
-- `contract-generated-archive.confirm`、`contract-generated-archive.resume-original`、`contract-seal-v2.confirm`、`contract-seal-v2.lookup-original`、`contract-seal-v2.resume-original` 的 capability 仍分别为 `v2Lifecycle.archiveAction.eligible` / `v2Lifecycle.sealAction.eligible`，没有改成 `true`。
-- 之前红的原因是父页面 witness 过期（见上）。重钉后 composable 的 `confirmSeal`/`continueSeal`/`confirmArchive`/`sendArchive`、section 的 dialog 终端 callback、API 的 `confirmContractSealV2`/`archiveSignedContractV2`/`uploadPrivateFile`、route 的 `contract.seal` project action 均由原证明继续逐项验证。
+另登记 `contract-signed-change.download-original`（`SignedContractChanges.vue` 的下载签署原件，`detail.canDownloadOriginals`）：该 consumer 此前已被 `contract-file.download-private-file-by-ticket` 的依赖闭包覆盖、不在 16 条内，但页面确有该动作且调用 `downloadPrivateFileByTicket`，按“真实调用才登记”一并显式登记，未新增 blocker。
 
-### 3. 短信重试 capability 门（2）
+### 受影响后端/API 改动
 
-- `duty-sms.retry` 与 `multi-duty-sms.retry` 的页面/capability 没有变化（`notice.canRetry` 来自服务端状态读）。
-- 红的原因是本轮 #415/#419 后端改动后，authority witness 过期：
-  - `payment-approval-notification.service.ts` 的 `currentNotice` 已改为 `inProgressNotice` + `correctionNotice` 委派；
-  - `contract.controller.ts` 的 `dutySmsStatus`/`retryDutySms` 已把 `ContractWorkCompletionNotificationService` 的履约待办并入同一 `/contracts/:version/duty-sms` 面；
-  - `contract-duty-notification.service.ts` 的 `authorized` 新增 `correction` 阶段。
-- 已在 `scripts/lib/whole-site-page-action-manifest.mjs` 重钉并**加强**证明：新增 `currentNotice` 委派、correction 通知的 `recipientId === actorId` 归属门、履约通知 `notificationStatusForVersion` 的 SQL `recipientId` 过滤、履约 `retry` 的 `contractVersionId`/`recipientId` 门、`authorized` 的 `correction` 仅原申请人分支。没有把任何短信能力写成无条件。
+- `services/api/src/contract/contract-work-completion-approval.service.ts`：职责投影增加 `canReview`；对应 `contract-work-completion-approval.service.spec.ts` 断言同步。
+- `services/api/src/contract/contract-signed-change.service.ts`：列表读取增加 `canDownloadOriginals`。
+- `services/api/src/settlement/signed-contract-settlement.service.ts`：`overview` 增加 `canRegister`；`list` 增加逐行 `canReadAttachments`；对应 spec 同步（并断言 `authorize` 被调用）。
+- `apps/web-admin/src/api/core-flow-read.api.ts`、`signed-contract-settlement.api.ts`：新增类型字段与本地透明读 helper。
 
-### 4. 新增写操作 wrapper（16 条未登记，不在本轮回执中假登记）
+## B 类：`POST /contracts/:contractVersionId/change-drafts` 保留分类（#425）
 
-按页面分组（wrapper 均真实被页面调用，页面动作也确实存在）：
+- 机器真相：`docs/product/manifests/route-usage.registry.json` 增加
+  - usage override：**`internal_task`**；
+  - consumerSurface override：**`machine_probe`**；
+  - reason 字段内写明：旧写入口已被“已签补充协议”页面入口取代；生产 Web 调用者为 0；仍有企业验收 HTTP 与 Playwright e2e 机器消费面；**连同 410 与调用者迁移归属 #425，本轮不改 410**。
+- 脚本既有 schema 只有 `page / external_takeover / exit_candidate / internal_task / unclassified` 五个 usage，没有字面 “retained” 值；为避免 `exit_candidate` 连带要求 retired-write guard（410），按脚本允许的 `internal_task + machine_probe` 登记，产品语义“保留待 #425”完整写在 reason 中。
+- 未做：未把接口改成 410；未改 `retired-write-entry.guard.ts`；未改 `contract-business-entry-http.spec.ts`；未在 manifest 声称零调用者。
+- 结果：route-usage `unclassified` 3 → 0；该行可在 `route-usage.json` 中按 `#425`/`issue_425` 检索到；capability matrix、user-fill、contract-mutation-authority 均随之为 ready。
 
-| 页面 | wrapper |
-| --- | --- |
-| `contracts/ContractWorkCompletionSection.vue` | `saveWorkCompletionDraft`、`reviseWorkCompletionDraft`、`submitWorkCompletion`、`reviewWorkCompletion` |
-| `contracts/EffectiveContractTaxFacts.vue` | `submitContractTaxRevision`、`reviewContractTaxRevision` |
-| `contracts/SignedContractChanges.vue` | `submitSignedContractChange`、`reviewSignedContractChange`、`uploadPrivateFile` |
-| `settlements/SignedContractSettlementPage.vue` | `saveSignedSettlement`、`submitSignedSettlement`、`reviewSignedSettlement`、`uploadSignedSettlementFile`、`readSignedSettlementAttachment` |
-| `payments/SignedSettlementPaymentBasisPanel.vue` | `readSignedSettlementAttachment`、`downloadPrivateFileByTicket` |
+### #425 输入：当前调用者清单（仓库实际搜索结果）
 
-不登记的具体原因（实测，不是猜测）：
+| 调用点 | 位置 | 性质 |
+| --- | --- | --- |
+| 后端路由 | `services/api/src/contract/contract.controller.ts:202` `@Post(":contractVersionId/change-drafts")` | 路由定义 |
+| 企业验收 HTTP 用例 | `services/api/src/database/contract-business-entry-http.spec.ts:1220` | 真实 HTTP 调用（direct 付款模式下的合同变更链） |
+| Playwright e2e | `apps/web-admin/e2e/contract-change.e2e.ts:58,270` | 页面请求 mock（`page.route`），驱动旧变更 UI 断言 |
+| Web API wrapper | `apps/web-admin/src/api/core-flow-read.api.ts:472` `createContractChangeDraft` | wrapper 定义，生产页面零调用 |
+| wrapper 单测 | `apps/web-admin/src/api/core-flow-read.api.test.ts:433` | 单测消费 |
 
-1. **通用因果证明失败关**：这些写动作的 handler 都经本地 `run(async () => …)` 包装并含运行时 `if/else`/`try-catch-finally` 分支；`wrapperCausalProof` 的 `directCallTargets` 不跟随高阶回调，且遇到未知分支即 `reliable=false`，因此全部得到 `ACTION_WRAPPER_CAUSAL_CHAIN_UNVERIFIED`。
-2. **能力支配失败关**：上表动作的触发元素（dialog/form/按钮）多数没有可机器证明的服务端布尔祖先条件。已存在的服务端布尔只到 `detail.canSubmit`/`detail.canReview`/`selected.canUpdate`/`basis.canReadSignedAttachments` 等成员，而 revise/review/save/upload/attachment 的触发元素由 `reviewTarget`、`readOnly`、`dialogVisible` 等客户端状态控制；`ContractWorkCompletionSection` 的 `canRegister`、`entry.canRevise` 等还是裸 `ref`，通用证明不认。
-3. **能力本身缺失而非仅不可证明**：
-   - 履约三职责 review 没有 per-duty 布尔，服务端只返回“当前可办职责数组”（`duties`），页面无法用 `server_boolean` 表达；
-   - 补充协议/已签结算附件的下载入口没有对应服务端下载能力布尔（`downloadPrivateFileByTicket` 只有票据 + 密码/原因门）；
-   - 付款依据面板的 `canReadSignedAttachments` 只覆盖 `source=signed_registration` 的附件，不覆盖同页的历史/合同原件下载。
-
-处理留痕：曾按最接近的 `server_boolean` 为上述 16 条写入 14 个候选 registry 条目做验证，blocker 反增至 **44**（每条同时新增未证明因果链 + 未支配能力 + 反向覆盖缺失），因此已回退，未提交任何登记。要转绿需要二选一：为这 5 个页面补专用 AST 证明（类似签章/归档的 `contract-*-page-action-proof.mjs`），或把写 handler 重构为可由通用证明直读的直线链并补显式服务端能力门；两者都需要产品/工程决策与页面行为验证。
-
-## route-usage 3 条未分类
-
-处理 2 条、保留 1 条：
-
-1. `GET /contracts/:contractVersionId/change-eligibility` → `exit_candidate`（只读，旧合同变更草稿入口被已签补充协议取代，生产 Web 调用者为零；只读退出候选不触发 410，也不需要 retired-write 登记）。
-2. `GET /projects/:projectId/signed-contract-settlements/:id/attachments/:fileId/download` → `page` + `consumerSurface=signed_ticket_delivery`，并登记 ticketFollowup `signed-contract-settlement.api.ts#readSignedSettlementAttachment`（`GET`、`downloadUrl`）。依据是该 wrapper 先取票据、再 `apiFetch(ticket.downloadUrl)`，由 `SignedContractSettlementPage.vue` 与 `SignedSettlementPaymentBasisPanel.vue` 两个生产页面消费。
-3. `POST /contracts/:contractVersionId/change-drafts` **保留未分类**。依据：
-   - 该路由没有生产 Web 消费者（wrapper `createContractChangeDraft` 调用者已清零）；
-   - `consumerSurface=none` 时唯一不冲突的用法是 `exit_candidate`；
-   - 但 `exit_candidate` 变更要求 `services/api/src/retired-write-entry/retired-write-entry.guard.ts` 登记 `ContractController.createChangeDraft` 并返回 410；而 `services/api/src/database/contract-business-entry-http.spec.ts:1220` 仍以该端点驱动企业验收的合同变更链，直接退休会破坏既有验收用例；
-   - 同一分类还会让 `inspect-contract-mutation-authority-manifest` 产生 `routeAuthorityDrift`（authority 仍为 `governed_specialized_command`）。
-   - 因此这条需要产品决定“旧合同变更草稿 HTTP 入口是否正式停止（并迁移企业验收用例）”，本轮不擅自制造 410。
+#425 需同时处理：上述 HTTP 验收链与 e2e 的迁移/删除、wrapper 与单测清理、`retired-write-entry.guard.ts` 登记 410、`contract-mutation-authority` 分类同步、route-usage 从 `internal_task` 改为 `exit_candidate`。
 
 ## 五条验证命令结果
 
@@ -84,36 +87,39 @@
 | --- | ---: | --- |
 | `pnpm run inspect:whole-site-capabilities` | 0 | `WHOLE_SITE_ROUTE_MANIFEST_OK: 818 routes` |
 | `pnpm run inspect:whole-site-web-api:ready` | 0 | `WHOLE_SITE_WEB_API_MANIFEST_READY: 737 wrappers, 811 bindings` |
-| `pnpm run inspect:whole-site-page-actions:ready` | 1 | `WHOLE_SITE_PAGE_ACTION_MANIFEST_FAILED`（16 uncovered wrapper） |
-| `pnpm run inspect:whole-site-route-usage` | 0 | `WHOLE_SITE_ROUTE_USAGE_MANIFEST_BLOCKED: 818 routes, 1 unclassified`（`--check` 字节一致；1 条未分类为上述 change-drafts） |
-| `pnpm run inspect:release-manifests` | 1 | 停在 page-actions `--require-ready`（同 16 条） |
+| `pnpm run inspect:whole-site-page-actions:ready` | 0 | `WHOLE_SITE_PAGE_ACTION_MANIFEST_READY: 458 actions, 0 blockers` |
+| `pnpm run inspect:whole-site-route-usage` | 0 | `WHOLE_SITE_ROUTE_USAGE_MANIFEST_READY: 818 routes, 0 unclassified` |
+| `pnpm run inspect:release-manifests` | 0 | 全段通过（contract matrix matched、page-actions ready、route-usage ready、user-fill ready、POL-21/23 ready、mutation authority ready、capability matrix ready） |
 
-补充：`pnpm --filter @jiangkong/web-admin typecheck` 通过（exit 0）。
+其他 release 子门（单独执行）：
 
-其他 release 子门（单独执行，便于后续收敛）：
+- `inspect-contract-workbench-capabilities --check`：matched，exit_candidate 53。
+- `inspect-user-fill-entry-inventory --check --require-ready`：ready，旧写入口 78，只读旧入口 13，阻塞 0。
+- `inspect-whole-site-capability-matrix --check --require-ready`：ready，818 routes / 0 blockers。
+- `inspect-contract-mutation-authority-manifest --check`：ready，84 routes / 22 advertised actions。
+- `inspect-pol21-cross-domain-acceptance`、`inspect-pol23-release-candidate`：ready。
 
-- `contract-workbench-capability-matrix`：matched（exit candidates 53）。
-- `inspect-user-fill-entry-inventory --check --require-ready`：blocked，仅 `web_page_actions:blocked` + `route_usage:blocked` 两项上游。
-- `inspect-whole-site-capability-matrix --check --require-ready`：blocked 19 = 2 上游 + 1 route unclassified + 16 uncovered consumer。
-- `inspect-contract-mutation-authority-manifest --check`：blocked 1，`POST /contracts/:param/change-drafts` usage 未分类与 authority 不一致（见上）。
-- `inspect-pol21-cross-domain-acceptance --check --require-ready`、`inspect-pol23-release-candidate --check --require-ready`：通过。
+## 测试
 
-单测：`scripts/inspect-whole-site-page-action-manifest.test.mjs` 393/394 通过；唯一失败 `review regression rejects selected target JSON custom response` 经 `git stash` 回退本轮 lib/registry 改动后仍同样失败，属基线既存（fixture 的 `assert.notEqual(changed, source)` 对当前 `contract-workbench.api.ts` 片段不成立），与本轮改动无关。本轮另为 multi-duty 契约测试 fixture 增补了 `contract-work-completion-notification.service.ts` 真实源码（否则新重钉的履约通知归属门在合成根中缺文件而失败）。`scripts/inspect-contract-seal-page-action.test.mjs` + `inspect-generated-archive-page-action.test.mjs` + `inspect-direct-registration-page-action.test.mjs` 共 50/50 通过；`scripts/inspect-release-manifests.test.mjs` 与 page-action CLI 测试 5/5 通过。
+- `pnpm --filter @jiangkong/web-admin typecheck`：通过。
+- `pnpm --filter @jiangkong/web-admin test`（vitest 全量）：**257 files / 2415 tests 全通过**。
+- 受影响 API spec：`contract-work-completion-approval.service.spec.ts`、`contract-signed-change.service.spec.ts`、`signed-contract-settlement.service.spec.ts`、`signed-settlement-payment-basis.spec.ts` 全通过（随新布尔同步断言）。
+- `@jiangkong/api build` 通过。
+- `scripts/inspect-whole-site-page-action-manifest.test.mjs`：393/394；唯一失败 `review regression rejects selected target JSON custom response` 与基线一致（该 fixture 的 `assert.notEqual(changed, source)` 对当前 `contract-workbench.api.ts` 片段不成立，`git stash` 回退本轮改动后同样失败），与本轮无关。
+- `scripts/inspect-contract-seal-page-action.test.mjs` + `inspect-generated-archive-page-action.test.mjs` + `inspect-direct-registration-page-action.test.mjs`：50/50 通过。
 
 ## 改动文件
 
-- `scripts/lib/contract-seal-page-action-proof.mjs`：父页面 `reloadContractDetail` witness 重钉、移除已不存在的变更资格导入/请求检查。
-- `scripts/lib/whole-site-page-action-manifest.mjs`：付款/合同短信 authority 重钉（含新增履约通知归属与 correction 阶段检查）。
-- `scripts/inspect-whole-site-page-action-manifest.test.mjs`：multi-duty SMS 契约 fixture 增补履约通知服务源码。
-- `docs/product/manifests/web-page-actions.registry.json`：删除 `contract-change.create-draft`。
-- `docs/product/manifests/web-page-actions.json`、`whole-site-capability-matrix.json`/`.md`、`user-fill-entry-inventory.json`：按当前事实重生成（状态为 blocked 的生成事实）。
-- `docs/product/manifests/route-usage.registry.json`/`route-usage.json`：2 条分类与 expectation/hash 更新。
-- `docs/product/contract-workbench-capability-matrix.md`：按 route-usage 退出候选 53 重生成。
+- 新增：`scripts/lib/contract-signed-pages-action-proof.mjs`
+- 检查器分派：`scripts/lib/whole-site-page-action-manifest.mjs`（仅在既有专用证明分派链增加 `SIGNED_PAGE_ACTION_IDS` 分支）
+- 页面：`ContractWorkCompletionSection.vue`、`EffectiveContractTaxFacts.vue`、`SignedContractChanges.vue`、`SignedContractSettlementPage.vue`、`SignedSettlementPaymentBasisPanel.vue`
+- API：`core-flow-read.api.ts`、`signed-contract-settlement.api.ts`
+- 后端：`contract-work-completion-approval.service.ts`（+spec）、`contract-signed-change.service.ts`、`signed-contract-settlement.service.ts`（+spec）
+- manifests：`web-page-actions.registry.json`/`web-page-actions.json`、`route-usage.registry.json`/`route-usage.json`、`web-api-wrappers.json`、`whole-site-capability-matrix.json`/`.md`、`user-fill-entry-inventory.json`、`contract-mutation-authority.json`
+- `PROGRESS.md` 本回执
 
-说明：本机沙箱拒绝 Prisma 用户缓存 `utime`，`pnpm run inspect:whole-site-capabilities` 的 API build 需显式 `PRISMA_SCHEMA_ENGINE_BINARY`/`PRISMA_QUERY_LIBRARY` 覆盖生成本地 client（未入库，属执行环境差异）。
+## 仍需产品/评审介入
 
-## 仍未过项与需产品介入
-
-1. **16 条新增写 wrapper**（上表）：门禁要求专用证明或页面重构；当前不能在不改变判定逻辑、不虚假登记的前提下转绿。需决定：补 5 个页面的专用 witness（推荐，保持现有页面行为）还是重构写 handler/能力门。
-2. **`POST /contracts/:contractVersionId/change-drafts`**：需决定旧合同变更草稿 HTTP 入口是否正式停止（410）并同步迁移 `contract-business-entry-http.spec.ts` 的合同变更验收链；在此之前保留未分类，route-usage/capability-matrix/contract-mutation-authority 保持红。
-3. 16 条里的能力缺口（履约 review 的 per-duty 布尔、附件下载能力布尔、付款依据附件覆盖范围）如要补，需后端 read model 增加显式布尔，不能由前端伪造。
+1. **#425**：旧 `change-drafts` 写入口的正式退出（410、调用者迁移、e2e/HTTP 验收改写、mutation authority/route-usage 分类切换）。本轮按用户 B 决定只做“保留 + 显式分类 + 理由入 manifest”。
+2. **Witness 机制评审**：本轮按用户 A 决定在既有专用证明分派链新增显式 witness；未放宽既有判定，但这是检查器能力面的扩展（新增 14 个动作的证明），建议代码评审确认该 witness 与既有 `contract-*-page-action-proof` 同等强度。若不接受该扩展，替代方案是页面写路径重构，成本更高。
+3. **新增服务端布尔语义评审**：`canDownloadOriginals`/`canRegister`/`canReadAttachments` 均按现有授权规则计算（非常量），但其中 `canDownloadOriginals` 与 `canRegister` 对通过读取门的调用者为真；建议在后端权限评审中确认这层“读取门即办理门”的语义。

@@ -22,6 +22,7 @@ export interface SignedSettlementRow {
   attachments: SignedSettlementFile[];
   canUpdate: boolean;
   canReview: boolean;
+  canReadAttachments: boolean;
   selfReview: boolean;
   duplicateNumber?: boolean;
 }
@@ -36,6 +37,19 @@ export interface SignedSettlementDraft {
 
 const endpoint = (projectId: string) => `/projects/${encodeURIComponent(projectId)}/signed-contract-settlements`;
 
+async function ensureOk(response: Response, fallback: string): Promise<void> {
+  if (response.ok) return;
+  const payload = await response.json().catch(() => null);
+  const message = payload?.errors?.[0]?.message ?? payload?.message;
+  throw new Error(formatApiErrorMessage(typeof message === "string" ? message : "", response.status, fallback));
+}
+
+async function readSettlementJson<T>(path: string): Promise<T> {
+  const response = await apiFetch(path);
+  await ensureOk(response, "办理结算失败");
+  return response.json() as Promise<T>;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await apiFetch(path, init);
   const payload = await response.json().catch(() => null);
@@ -46,11 +60,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
-export const fetchSignedSettlements = (projectId: string) => request<SignedSettlementRow[]>(endpoint(projectId));
-export const fetchSignedSettlementContracts = (projectId: string) => request<SignedContractOption[]>(`${endpoint(projectId)}/contracts`);
+export const fetchSignedSettlements = (projectId: string) => readSettlementJson<SignedSettlementRow[]>(endpoint(projectId));
+export const fetchSignedSettlementContracts = (projectId: string) => readSettlementJson<SignedContractOption[]>(`${endpoint(projectId)}/contracts`);
 export const fetchSignedSettlementOverview = (projectId: string, option: SignedContractOption) => {
   const query = new URLSearchParams({ contractKind: option.kind, contractId: option.id });
-  return request<{ name: string; party: string; counterparty: string; confirmedYuan: string }>(`${endpoint(projectId)}/contract-overview?${query}`);
+  return readSettlementJson<{ name: string; party: string; counterparty: string; confirmedYuan: string; canRegister: boolean }>(`${endpoint(projectId)}/contract-overview?${query}`);
 };
 
 export function uploadSignedSettlementFile(projectId: string, file: File) {
@@ -119,7 +133,7 @@ export interface ConfirmedPaymentSettlement {
 
 export function fetchSignedSettlementPaymentBasis(projectId: string, contractId: string) {
   const query = new URLSearchParams({ contractKind: "downstream", contractId });
-  return request<{
+  return readSettlementJson<{
     latestConfirmed: ConfirmedPaymentSettlement | null;
     confirmedHistory: ConfirmedPaymentSettlement[];
     contractAttachmentIds: string[];

@@ -7035,7 +7035,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7370,
+          "sourceLine": 7371,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -7067,7 +7067,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7354,
+          "sourceLine": 7355,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -7097,7 +7097,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7354,
+          "sourceLine": 7355,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -7127,7 +7127,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5770,
+          "sourceLine": 5771,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -7156,7 +7156,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7354,
+          "sourceLine": 7355,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -7186,7 +7186,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2883,
+          "sourceLine": 2884,
           "method": "POST",
           "path": "/operating-projections/export",
           "normalizedPath": "/operating-projections/export",
@@ -7248,7 +7248,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5664,
+          "sourceLine": 5665,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -7282,7 +7282,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3817,
+          "sourceLine": 3818,
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
@@ -7341,7 +7341,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7397,
+          "sourceLine": 7398,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -7370,7 +7370,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7384,
+          "sourceLine": 7385,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -7399,7 +7399,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7412,
+          "sourceLine": 7413,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -7428,7 +7428,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7354,
+          "sourceLine": 7355,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -20859,11 +20859,11 @@
       "name": "fetchSignedSettlementContracts",
       "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
       "kind": "transport",
-      "returnProvenance": "unverified",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 40,
+          "sourceLine": 48,
           "method": "GET",
           "path": "/projects/:param/signed-contract-settlements/contracts",
           "normalizedPath": "/projects/:param/signed-contract-settlements/contracts",
@@ -20872,7 +20872,7 @@
           "localCallChains": [
             [
               "fetchSignedSettlementContracts",
-              "request"
+              "readSettlementJson"
             ]
           ]
         }
@@ -20887,11 +20887,11 @@
       "name": "fetchSignedSettlementOverview",
       "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
       "kind": "transport",
-      "returnProvenance": "unverified",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 40,
+          "sourceLine": 48,
           "method": "GET",
           "path": "/projects/:param/signed-contract-settlements/contract-overview?:param",
           "normalizedPath": "/projects/:param/signed-contract-settlements/contract-overview",
@@ -20900,7 +20900,7 @@
           "localCallChains": [
             [
               "fetchSignedSettlementOverview",
-              "request"
+              "readSettlementJson"
             ]
           ]
         }
@@ -20915,11 +20915,11 @@
       "name": "fetchSignedSettlementPaymentBasis",
       "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
       "kind": "transport",
-      "returnProvenance": "unverified",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 40,
+          "sourceLine": 48,
           "method": "GET",
           "path": "/projects/:param/signed-contract-settlements/payment-basis?:param",
           "normalizedPath": "/projects/:param/signed-contract-settlements/payment-basis",
@@ -20928,7 +20928,7 @@
           "localCallChains": [
             [
               "fetchSignedSettlementPaymentBasis",
-              "request"
+              "readSettlementJson"
             ]
           ]
         }
@@ -20944,11 +20944,11 @@
       "name": "fetchSignedSettlements",
       "apiFile": "apps/web-admin/src/api/signed-contract-settlement.api.ts",
       "kind": "transport",
-      "returnProvenance": "unverified",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 40,
+          "sourceLine": 48,
           "method": "GET",
           "path": "/projects/:param/signed-contract-settlements",
           "normalizedPath": "/projects/:param/signed-contract-settlements",
@@ -20957,7 +20957,7 @@
           "localCallChains": [
             [
               "fetchSignedSettlements",
-              "request"
+              "readSettlementJson"
             ]
           ]
         }
@@ -20976,7 +20976,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 40,
+          "sourceLine": 54,
           "method": "GET",
           "path": "/projects/:param/signed-contract-settlements/:param/attachments/:param",
           "normalizedPath": "/projects/:param/signed-contract-settlements/:param/attachments/:param",
@@ -20991,7 +20991,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 40,
+          "sourceLine": 54,
           "method": "POST",
           "path": "/projects/:param/signed-contract-settlements/:param/attachments/:param/download-ticket",
           "normalizedPath": "/projects/:param/signed-contract-settlements/:param/attachments/:param/download-ticket",
@@ -21006,7 +21006,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 102,
+          "sourceLine": 116,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -21032,7 +21032,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 40,
+          "sourceLine": 54,
           "method": "POST",
           "path": "/projects/:param/signed-contract-settlements/:param/review",
           "normalizedPath": "/projects/:param/signed-contract-settlements/:param/review",
@@ -21060,7 +21060,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 40,
+          "sourceLine": 54,
           "method": "PATCH",
           "path": "/projects/:param/signed-contract-settlements/:param",
           "normalizedPath": "/projects/:param/signed-contract-settlements/:param",
@@ -21075,7 +21075,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 40,
+          "sourceLine": 54,
           "method": "POST",
           "path": "/projects/:param/signed-contract-settlements",
           "normalizedPath": "/projects/:param/signed-contract-settlements",
@@ -21103,7 +21103,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 40,
+          "sourceLine": 54,
           "method": "POST",
           "path": "/projects/:param/signed-contract-settlements/:param/submission",
           "normalizedPath": "/projects/:param/signed-contract-settlements/:param/submission",
@@ -21131,7 +21131,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 40,
+          "sourceLine": 54,
           "method": "POST",
           "path": "/projects/:param/signed-contract-settlements/files",
           "normalizedPath": "/projects/:param/signed-contract-settlements/files",

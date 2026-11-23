@@ -115,7 +115,7 @@ describe("其他合同履约的三个并联职责", () => {
     const visible = await service.view("version", "manager");
     expect(visible.entries).toEqual([expect.objectContaining({
       amountYuan: "100.0123", exceedsContractAmount: true, canSubmit: false,
-      duties: [{ index: 1, name: "项目经理", selfReview: false }]
+      duties: [{ index: 1, name: "项目经理", selfReview: false, canReview: true }]
     })]);
     expect(visible.entries[0]).not.toHaveProperty("frozenNodes");
     await expect(service.view("version", "outsider")).resolves.toMatchObject({ entries: [] });
@@ -156,7 +156,7 @@ describe("其他合同履约的三个并联职责", () => {
 
     const visible = await service.view("version", "finance");
     expect(visible.entries).toEqual([expect.objectContaining({
-      duties: [{ index: 2, name: "财务", selfReview: false }]
+      duties: [{ index: 2, name: "财务", selfReview: false, canReview: true }]
     })]);
 
     const financeApproval = { approvalInstanceId: "round", dutyIndex: 2, decision: "approve" } as const;
