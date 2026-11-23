@@ -57,5 +57,7 @@ for name in sorted(partial_pins.keys() | completion_pins.keys()):
         subprocess.run(['patch', '--batch', '--fuzz=0', '--silent', str(target), str(forward)], check=True)
         diagnostics = Path(__file__).resolve().parents[1] / 'task398-browser-diagnostics.patch'
         subprocess.run(['patch', '--batch', '--fuzz=0', '--silent', str(target), str(diagnostics)], check=True)
+        read_acl = diagnostics.with_name('task398-browser-read-acl.patch')
+        subprocess.run(['patch', '--batch', '--fuzz=0', '--silent', str(target), str(read_acl)], check=True)
     target.chmod(0o644)
     print(name)
