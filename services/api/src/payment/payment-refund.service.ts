@@ -58,7 +58,7 @@ export class PaymentRefundService {
       select: { id: true, amountCents: true, paidAt: true }
     });
     const refunds = await tx.paymentExecutionRefund.findMany({
-      where: { paymentRequestId: paymentId },
+      where: { paymentRequestId: paymentId, executionType: "payment_execution" },
       select: { id: true, paymentExecutionId: true, amountCents: true, receivedAt: true, accountId: true, fundRegistrationId: true }
     });
     return { executions, refunds };
@@ -71,6 +71,7 @@ export class PaymentRefundService {
       const { executions, refunds } = await this.executionAggregates(tx, payment.id);
       const refundedByExecution = new Map<string, bigint>();
       for (const refund of refunds) {
+        if (!refund.paymentExecutionId) continue;
         refundedByExecution.set(refund.paymentExecutionId, (refundedByExecution.get(refund.paymentExecutionId) ?? 0n) + refund.amountCents);
       }
       const refundedCents = refunds.reduce((sum, refund) => sum + refund.amountCents, 0n);
@@ -243,9 +244,10 @@ export class PaymentRefundService {
   }
 
   private async refundView(tx: Prisma.TransactionClient, refund: {
-    id: string; paymentExecutionId: string; paymentRequestId: string; amountCents: bigint;
+    id: string; paymentExecutionId: string | null; paymentRequestId: string | null; amountCents: bigint;
     receivedAt: Date; accountId: string | null; fundRegistrationId: string | null;
   }, idempotent: boolean) {
+    if (!refund.paymentExecutionId || !refund.paymentRequestId) throw new ConflictException("退款事实关联不完整，请核对原实付");
     const [execution, refunds, payment] = await Promise.all([
       tx.paymentExecution.findUniqueOrThrow({ where: { id: refund.paymentExecutionId }, select: { id: true, amountCents: true } }),
       tx.paymentExecutionRefund.aggregate({ where: { paymentExecutionId: refund.paymentExecutionId }, _sum: { amountCents: true } }),

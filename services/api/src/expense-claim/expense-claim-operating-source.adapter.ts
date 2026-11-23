@@ -51,6 +51,7 @@ type ExpenseClaimApprovalRow = {
   code: string;
   claimType: string;
   incidentalExpenseCategory: string | null;
+  actualPurchaseBatchId: string | null;
   projectId: string | null;
   companyEntityId: string;
   applicantUserId: string | null;
@@ -171,8 +172,10 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
     };
     const claimType = requiredJsonText(source, "claimType", "费用确认");
     const payee = claimPayee(source, claimType, "费用确认");
-    const impacts =
-      claimType === "reimbursement"
+    const batchLinked = typeof source.actualPurchaseBatchId === "string" && source.actualPurchaseBatchId.trim().length > 0;
+    const impacts: AppendOperatingFactInput["impacts"] = batchLinked
+      ? []
+      : claimType === "reimbursement"
         ? reimbursementCostImpacts(snapshot, source, company, amountCents)
         : incidentalCostImpacts(snapshot, source, company, amountCents);
     if (payableCents > 0n) {
@@ -276,6 +279,7 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
         formalStatus: "confirmed",
         claimType: row.claimType,
         incidentalExpenseCategory: row.incidentalExpenseCategory,
+        actualPurchaseBatchId: row.actualPurchaseBatchId,
         companyEntityId: row.companyEntityId,
         applicantUserId: row.applicantUserId,
         applicantNameSnapshot: row.applicantNameSnapshot,
@@ -795,6 +799,7 @@ function expenseClaimApprovalSelect() {
     code: true,
     claimType: true,
     incidentalExpenseCategory: true,
+    actualPurchaseBatchId: true,
     projectId: true,
     companyEntityId: true,
     applicantUserId: true,
