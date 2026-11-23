@@ -83,7 +83,7 @@
   "packages/shared-domain/src/operating-projection-export.ts": "1a6685bae063954893078700e11515cea5bff78398feb641f91f2e7cd80a9aef",
   "packages/shared-domain/src/permissions.test.ts": "cafac5a1abfe1885311e6928594a3195cce2b5f178d0122d7f0db050606392b1",
   "packages/shared-domain/src/permissions.ts": "f3a1ca916a9a5f7c5f1bfe8d47b2009d53f5d63bd8e3502ff1f0ebb2dd239989",
-  "services/api/package.json": "485be706a0368853131cd26baf2e3f8a29691072a634b2970ace0c7f40756a80",
+  "services/api/package.json": "c0b60802c159fe467833194f5a30fc77fd3909a95930cba4018bdf6c40265d12",
   "services/api/prisma/database-dynamic-gate-manifest.json": "5e35796144515672fe7c82fc88a22d7d772052ebe9048dc8ae769f8a118c41bc",
   "services/api/prisma/fixtures/project-approval-configuration.ts": "83d0aaf8a19ad281982cfa87f0a906d050554c1e48f6a66edc89677e1dfe88d3",
   "services/api/prisma/general-procurement-runtime-grants.sql": "0e67f9832f589f48c236b0964c0bb74e9a2f3c18798995014c5ac2be703f9324",

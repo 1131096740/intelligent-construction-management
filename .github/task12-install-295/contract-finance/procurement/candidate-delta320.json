@@ -432,7 +432,7 @@
   {
     "path": "services/api/package.json",
     "expected": "a16f8f2250a8ef9e52ae85913cf22341e2cb2314bdba4a8df2dae49cdc6a60bd",
-    "candidate": "485be706a0368853131cd26baf2e3f8a29691072a634b2970ace0c7f40756a80"
+    "candidate": "c0b60802c159fe467833194f5a30fc77fd3909a95930cba4018bdf6c40265d12"
   },
   {
     "path": "services/api/prisma/database-dynamic-gate-manifest.json",
