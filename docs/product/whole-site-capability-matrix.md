@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `466daced0ef0e5b08bb5689aeaa2e58c442b594161bb7ba8fe87802436cfb70d` |
-| webApiWrappers | ready | `8303b2bb8bd9508f28fdfe3a0c9aa46e8fc7495c075c307326ba1fc18b491675` |
-| webPageActions | ready | `7483146dff56eb11bc264406dd2d45d140a9bd7e54327ca7b5e87a7f9a389b99` |
-| routeUsage | ready | `98b69ad1450b950c193d0eca4cef23db3349f8c502ccc3b7a0286e02f3418789` |
+| nestRoutes | ready | `88404d4470726b243a05631d0486f71b848a95b3a5e91919a37be8ac032efcb9` |
+| webApiWrappers | ready | `e365910124435ade1f455a201f211425e38fcd7ade18d013cf42b1350e7b17bf` |
+| webPageActions | ready | `ae3fddeff6717d8425a1249484fd2a5537ef28f12e134a4d949921182ee8cf30` |
+| routeUsage | ready | `fff76c6d6eef98cc6afb3d64766a57fab2d192ca05bb72e7fb7e31e4d9ee0a38` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 818 |
-| pageRouteCount | 617 |
+| routeCount | 871 |
+| pageRouteCount | 657 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 91 |
-| internalTaskRouteCount | 40 |
+| internalTaskRouteCount | 53 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 811 |
+| mainRequestBindingCount | 853 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 458 |
-| actionBindingCount | 558 |
-| acceptedActionBindingCount | 511 |
+| registeredActionCount | 483 |
+| actionBindingCount | 584 |
+| acceptedActionBindingCount | 536 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 447 |
-| coveredProductionMutationConsumerPairCount | 447 |
+| productionMutationConsumerPairCount | 474 |
+| coveredProductionMutationConsumerPairCount | 474 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -48,6 +48,8 @@
 | DELETE | /projects/:projectId/participating-companies/:participantId | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#removeProjectParticipatingCompany | project-operating-profile.remove-participating-company | covered | — |
 | DELETE | /spot-procurements/:procurementId/receipt/photos/:photoId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#deleteSpotProcurementReceiptPhoto | spot-procurement-receipt.photo.remove | covered | — |
 | GET | /account-security/options | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#fetchAccountOptions | — | not_applicable | — |
+| GET | /actual-purchase-batches/:batchId | internal_task | operator_endpoint | apps/web-admin/src/api/actual-purchase-batch.api.ts#fetchActualPurchaseBatch | — | not_applicable | — |
+| GET | /actual-purchase-batches | page | web_api_wrapper | apps/web-admin/src/api/actual-purchase-batch.api.ts#listActualPurchaseBatches | — | not_applicable | — |
 | GET | /affiliate-clearing-authorities/allocation-options/:caseId | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchClearingAllocationOptions | — | not_applicable | — |
 | GET | /affiliate-clearing-authorities/options | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchAffiliateClearingAuthorityOptions | — | not_applicable | — |
 | GET | /approval-delegations/:delegationId/revoke-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchApprovalDelegationRevokeCapability | — | not_applicable | — |
@@ -148,9 +150,12 @@
 | GET | /expense-claims/:claimId | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimDetail | — | not_applicable | — |
 | GET | /expense-claims/:claimId/repayments/:repaymentId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimRepaymentActionCapability | — | not_applicable | — |
 | GET | /expense-claims/create-options | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimCreateOptions | — | not_applicable | — |
+| GET | /expense-claims/expense-categories | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimExpenseCategories | — | not_applicable | — |
 | GET | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaims | — | not_applicable | — |
+| GET | /expense-claims/selectable-purchase-batches | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimSelectablePurchaseBatches | — | not_applicable | — |
 | GET | /files/:fileId/download-ticket-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#getPrivateFileDownloadTicketCapability | company-transfer.downloadPrivateFileByTicket<br>contract-bank-verification.downloadPrivateFileByTicket<br>contract-draft.body-paper-preview<br>contract-file.download-private-file-by-ticket<br>contract-signed-change.download-original<br>general-procurement.downloadPrivateFileByTicket<br>layout-sample.read-private-pdf<br>payment-basis.download-signed-attachment | not_applicable | — |
 | GET | /files/:fileId/download | page | signed_ticket_delivery | — | — | not_applicable | — |
+| GET | /files/download-package-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getArchiveDownloadPackageCapability | archive.download-package | not_applicable | — |
 | GET | /fund-account-advance-receipts/company-owned-bank-options | page | web_api_wrapper | apps/web-admin/src/api/fund-account-advance.api.ts#fetchCompanyOwnedBankOptions | — | not_applicable | — |
 | GET | /fund-account-advance-receipts/contributor-options | page | web_api_wrapper | apps/web-admin/src/api/fund-account-advance.api.ts#fetchFundAdvanceContributorOptions | — | not_applicable | — |
 | GET | /fund-account-transfers/:id/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
@@ -169,6 +174,8 @@
 | GET | /fund-executions/cases | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionCases | — | not_applicable | — |
 | GET | /fund-executions/observation-options | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionObservationOptions | — | not_applicable | — |
 | GET | /fund-executions/reversal-options | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#fetchFundExecutionReversalOptions | — | not_applicable | — |
+| GET | /fund-flows/export | page | web_api_wrapper | apps/web-admin/src/api/fund-flow.api.ts#downloadFundFlowExport | — | not_applicable | — |
+| GET | /fund-flows | page | web_api_wrapper | apps/web-admin/src/api/fund-flow.api.ts#fetchFundFlows | — | not_applicable | — |
 | GET | /fund-movements/:movementId | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /fund-movements | page | web_api_wrapper | apps/web-admin/src/api/fund-movement.api.ts#fetchFundMovements | — | not_applicable | — |
 | GET | /funds-workbench | page | web_api_wrapper | apps/web-admin/src/api/funds-workbench.api.ts#fetchFundsWorkbench | — | not_applicable | — |
@@ -203,6 +210,9 @@
 | GET | /organization/personnel-changes/results/:commandKey | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchPersonnelResult | — | not_applicable | — |
 | GET | /organization/project-roster/options | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchProjectRosterManagementOptions | — | not_applicable | — |
 | GET | /organization/users/:userId/employment | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#fetchEmploymentHistory | — | not_applicable | — |
+| GET | /other-project-payments/:claimId | page | web_api_wrapper | apps/web-admin/src/api/other-project-payment.api.ts#fetchOtherProjectPaymentDetail | — | not_applicable | — |
+| GET | /other-project-payments/entry | page | web_api_wrapper | apps/web-admin/src/api/other-project-payment.api.ts#fetchOtherProjectPaymentEntry | — | not_applicable | — |
+| GET | /other-project-payments | page | web_api_wrapper | apps/web-admin/src/api/other-project-payment.api.ts#fetchOtherProjectPayments | — | not_applicable | — |
 | GET | /payable-settlements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPayableSettlementCapabilities | — | not_applicable | — |
 | GET | /payable-settlements/inter-entity-relationships | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchInterEntityRelationships | — | not_applicable | — |
 | GET | /payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPaymentExecutionCandidates | — | not_applicable | — |
@@ -216,6 +226,9 @@
 | GET | /payment-executions/recorded-items | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRecordedPaymentItems | — | not_applicable | — |
 | GET | /payment-executions/results/:idempotencyKey | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRegisteredPaymentResult | registered-payment.lookup-original | not_applicable | — |
 | GET | /payment-executions/work-items | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#fetchRegisteredPaymentWorkItems | — | not_applicable | — |
+| GET | /payment-financial/entry/capability | page | web_api_wrapper | apps/web-admin/src/api/payment-financial.api.ts#fetchFinancialCorrectionCapability | — | not_applicable | — |
+| GET | /payment-financial/payments/:paymentId/corrections | internal_task | operator_endpoint | — | — | not_applicable | — |
+| GET | /payment-financial/payments/:paymentId/refunds/capability | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /payments/:paymentId/approval/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /payments/:paymentId/capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentActionCapability | — | not_applicable | — |
 | GET | /payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#preparePaymentApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentExecutionWithUpload | payment-execution.record | not_applicable | — |
@@ -228,8 +241,13 @@
 | GET | /projects/:projectId/affiliate-business-facts/record-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateRecordCapability | — | not_applicable | — |
 | GET | /projects/:projectId/affiliate-company-contracts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectAffiliateCompanyContracts | — | not_applicable | — |
 | GET | /projects/:projectId/close-profit | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#fetchProjectCloseProfitWorkbench | — | not_applicable | — |
+| GET | /projects/:projectId/construction-enterprise-deductions/capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectConstructionEnterpriseDeductionCapability | — | not_applicable | — |
+| GET | /projects/:projectId/construction-enterprise-deductions | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectConstructionEnterpriseDeductions | — | not_applicable | — |
 | GET | /projects/:projectId/construction-enterprise-options | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#fetchProjectConstructionEnterpriseOptions | — | not_applicable | — |
+| GET | /projects/:projectId/construction-enterprise-paid | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchConstructionEnterprisePaid | — | not_applicable | — |
+| GET | /projects/:projectId/construction-payment-corrections/capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchConstructionPaymentCorrectionCapability | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers/:takeoverId/detail-export | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractTakeoverDetailExport | — | not_applicable | — |
+| GET | /projects/:projectId/contract-takeovers/:takeoverId/handover | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getContractTakeoverHandover | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers/:takeoverId | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#getContractTakeover | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#fetchContractTaxFactRevisions | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers/capability | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractTakeoverProjectCapability | — | not_applicable | — |
@@ -238,6 +256,7 @@
 | GET | /projects/:projectId/contract-takeovers/import-template | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractTakeoverImportTemplate | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers/ledger-export | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractTakeoverLedgerExport | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#listContractTakeovers | — | not_applicable | — |
+| GET | /projects/:projectId/cost-attributions | page | web_api_wrapper | apps/web-admin/src/api/cost-attribution.api.ts#fetchCostAttributions | — | not_applicable | — |
 | GET | /projects/:projectId/expense-requests/:expenseRequestId/approval-detail | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectExpenseReceiptWithPreflight<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseApprovalDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseWithdrawalAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseFinanceWithPreflight | project-expense.execution-local-status<br>project-expense.finance-local-status<br>project-expense.receipt-confirm-local-status | not_applicable | — |
 | GET | /projects/:projectId/expense-requests/:expenseRequestId/capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseActionCapability | — | not_applicable | — |
 | GET | /projects/:projectId/expense-requests/create-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseCreateCapability | — | not_applicable | — |
@@ -245,6 +264,9 @@
 | GET | /projects/:projectId/financing-quotas/:quotaId/review-capability | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaReviewAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaReviewCapability | project-financing-quota.review-approve<br>project-financing-quota.review-reject | not_applicable | — |
 | GET | /projects/:projectId/financing-quotas/:quotaId/termination-capability | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaTerminationAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaTerminationCapability | project-financing-quota.terminate | not_applicable | — |
 | GET | /projects/:projectId/financing-quotas | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaReviewAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaTerminationAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaRequestCapability<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaWorkbench<br>apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request<br>project-financing-quota.review-approve<br>project-financing-quota.review-reject<br>project-financing-quota.terminate | not_applicable | — |
+| GET | /projects/:projectId/history-expenses/batches/:batchId | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#fetchHistoryExpenseBatch | — | not_applicable | — |
+| GET | /projects/:projectId/history-expenses/batches | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#fetchHistoryExpenseBatches | — | not_applicable | — |
+| GET | /projects/:projectId/history-expenses/capability | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#fetchHistoryExpenseCapability | — | not_applicable | — |
 | GET | /projects/:projectId/operating-funds-overview | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectOperatingOverview | — | not_applicable | — |
 | GET | /projects/:projectId/operating-profile | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#fetchProjectOperatingProfile | — | not_applicable | — |
 | GET | /projects/:projectId/operating-takeovers/:batchId | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#deleteOperatingTakeoverDraft<br>apps/web-admin/src/api/operating-takeover.api.ts#fetchOperatingTakeoverDetail | operating-takeover.delete-draft | not_applicable | — |
@@ -301,6 +323,8 @@
 | GET | /settlements/ledger-export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementLedgerExport | — | not_applicable | — |
 | GET | /settlements/lifecycle-ledger | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLifecycleLedger | — | not_applicable | — |
 | GET | /settlements | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLedger | — | not_applicable | — |
+| GET | /settlements/signed-ledger-export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSignedSettlementLedgerExport | — | not_applicable | — |
+| GET | /settlements/signed-ledger | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSignedSettlementLedger | — | not_applicable | — |
 | GET | /settlements/workbench | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementWorkbenchLedger | — | not_applicable | — |
 | GET | /spot-procurement-payments/:paymentId/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /spot-procurement-payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementInvoiceAppend<br>apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPaymentDetail<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementPaymentReviewAction<br>apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementRefundForPayment<br>apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementRefundVoucherForPayment | spot-procurement-payment.refund.record<br>spot-procurement-payment.refund.record<br>spot-procurement.invoice-append | not_applicable | — |
@@ -326,6 +350,7 @@
 | GET | /wage-statements/:statementId/summary | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementSummary | — | not_applicable | — |
 | GET | /wage-statements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementCapabilities | — | not_applicable | — |
 | GET | /wage-statements/workbench | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementWorkbench | — | not_applicable | — |
+| PATCH | /actual-purchase-batches/:batchId | internal_task | operator_endpoint | apps/web-admin/src/api/actual-purchase-batch.api.ts#updateActualPurchaseBatch | — | not_applicable | — |
 | PATCH | /auth/profile | page | auth_store | — | user-self-profile.update.commit | covered | — |
 | PATCH | /clearing-cases/events/:eventId/draft | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#reviseClearingEvent | clearing.event.revise | covered | — |
 | PATCH | /company-entities/:id | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntity | company-entity.update | covered | — |
@@ -346,6 +371,7 @@
 | PATCH | /projects/:projectId/contract-takeovers/:takeoverId | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#updateContractTakeover | contract-takeover.update | covered | — |
 | PATCH | /projects/:projectId/contract-takeovers/:takeoverId/tax-fact-revisions/:revisionId | external_takeover | web_api_wrapper | apps/web-admin/src/api/contract-tax-facts.api.ts#updateContractTaxFactRevision | contract-tax-fact.update-revision | covered | — |
 | PATCH | /projects/:projectId/contract-takeovers/import-batches/:batchId/review-result | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverImportBatch | contract-takeover.review-import-batch | covered | — |
+| PATCH | /projects/:projectId/history-expenses/batches/:batchId/rows/:rowId | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#verifyHistoryExpenseRow | history-expense.verify-row | covered | — |
 | PATCH | /projects/:projectId/operating-profile | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#updateProjectOperatingProfile | project-operating-profile.save | covered | — |
 | PATCH | /projects/:projectId/operating-takeovers/:batchId/rows/:rowId | external_takeover | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#updateOperatingTakeoverRow | operating-takeover.update-row | covered | — |
 | PATCH | /projects/:projectId/participating-companies/:participantId/deactivation | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#deactivateProjectParticipatingCompany | project-operating-profile.deactivate-participating-company | covered | — |
@@ -368,6 +394,11 @@
 | POST | /account-security/users/:id/change-phone | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#changeUserPhone | employee.admin-phone-change | covered | — |
 | POST | /account-security/users/:id/phone-change-sms | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#sendAdminPhoneChangeSms | employee.admin-phone-change-sms | covered | — |
 | POST | /account-security/users/:id/reset-password | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#resetEmployeePassword | employee.admin-reset | covered | — |
+| POST | /actual-purchase-batches/:batchId/corrections/:correctionId/confirmation | page | web_api_wrapper | apps/web-admin/src/api/actual-purchase-batch.api.ts#confirmActualPurchaseBatchCorrection | actual-purchase-batch.correction-confirm | covered | — |
+| POST | /actual-purchase-batches/:batchId/corrections | page | web_api_wrapper | apps/web-admin/src/api/actual-purchase-batch.api.ts#requestActualPurchaseBatchCorrection | actual-purchase-batch.correction-request | covered | — |
+| POST | /actual-purchase-batches/:batchId/refunds | page | web_api_wrapper | apps/web-admin/src/api/actual-purchase-batch.api.ts#recordActualPurchaseBatchRefund | actual-purchase-batch.refund-record | covered | — |
+| POST | /actual-purchase-batches/:batchId/spot-payments | page | web_api_wrapper | apps/web-admin/src/api/actual-purchase-batch.api.ts#createActualPurchaseBatchSpotPayment | actual-purchase-batch.spot-payment | covered | — |
+| POST | /actual-purchase-batches | page | web_api_wrapper | apps/web-admin/src/api/actual-purchase-batch.api.ts#createActualPurchaseBatch | actual-purchase-batch.create | covered | — |
 | POST | /affiliate-clearing-authorities/:authorityId/confirm | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /affiliate-clearing-authorities/:authorityId/return | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /affiliate-clearing-authorities/:authorityId/submit | internal_task | operator_endpoint | — | — | not_applicable | — |
@@ -531,7 +562,8 @@
 | POST | /expense-claims/:claimId/repayments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanRepayment | expense-claim.loan.repayment.record | covered | — |
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit | covered | — |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create<br>general-procurement.createExpenseClaim | covered | — |
-| POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.create-private-file-download-ticket<br>company-transfer.downloadPrivateFileByTicket<br>contract-bank-verification.downloadPrivateFileByTicket<br>contract-document.download-ticket<br>contract-draft.body-paper-preview<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-signed-change.download-original<br>contract-takeover.file-download-ticket<br>general-procurement.downloadPrivateFileByTicket<br>layout-sample.read-private-pdf<br>payment-basis.download-signed-attachment<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
+| POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.download-private-attachment<br>company-transfer.downloadPrivateFileByTicket<br>contract-bank-verification.downloadPrivateFileByTicket<br>contract-document.download-ticket<br>contract-draft.body-paper-preview<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-signed-change.download-original<br>contract-takeover.file-download-ticket<br>general-procurement.downloadPrivateFileByTicket<br>layout-sample.read-private-pdf<br>payment-basis.download-signed-attachment<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
+| POST | /files/download-package | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createArchiveDownloadPackage | archive.download-package | covered | — |
 | POST | /files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPrivateFile | company-transfer.uploadPrivateFile<br>contract-archive.upload-file<br>contract-bank-verification.uploadPrivateFile<br>contract-final.upload-file<br>contract-generated-archive.confirm<br>contract-proxy-execution.uploadPrivateFile<br>contract-signed-change.submit<br>global-invoice.upload-file<br>layout-template.create<br>layout-template.save<br>necessary-expense-reserve.evidence.upload<br>project-fund-dispute.evidence.upload<br>template-workbench.create-source<br>template-workbench.save-source<br>upward-contract-amount.uploadPrivateFile | covered | — |
 | POST | /fund-account-advance-receipts/company-owned | page | web_api_wrapper | apps/web-admin/src/api/fund-account-advance.api.ts#registerCompanyOwnedFund | fund-advance.recover-original<br>fund-advance.register | covered | — |
 | POST | /fund-account-advance-receipts | page | web_api_wrapper | apps/web-admin/src/api/fund-account-advance.api.ts#registerFundAdvance | fund-advance.recover-original<br>fund-advance.register | covered | — |
@@ -599,6 +631,12 @@
 | POST | /organization/role-changes/batch-preview | exit_candidate | none | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemovalBatch | — | not_applicable | — |
 | POST | /organization/role-changes/preview | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#previewOrganizationRoleRemoval | organization.role-removal.preview | covered | — |
 | POST | /organization/users | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#createOrganizationUser | organization.user.create | covered | — |
+| POST | /other-project-payments/:claimId/approval | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /other-project-payments/:claimId/corrections | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /other-project-payments/:claimId/payments/:executionId/refunds | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /other-project-payments/:claimId/payments | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /other-project-payments/:claimId/submission | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /other-project-payments | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /payable-settlements/:settlementCaseId/confirm | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#confirmPayableSettlement | payable-settlement.confirm | covered | — |
 | POST | /payable-settlements/:settlementCaseId/return | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#returnPayableSettlement | payable-settlement.return | covered | — |
 | POST | /payable-settlements/:settlementCaseId/submit | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#submitPayableSettlement | payable-settlement.submit | covered | — |
@@ -610,6 +648,9 @@
 | POST | /payment-executions/:paymentId/registrations | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#recordRegisteredPayment | registered-payment.register | covered | — |
 | POST | /payment-executions/:executionId/voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#supplementRegisteredPaymentVoucher | registered-payment.supplement-voucher | covered | — |
 | POST | /payment-executions/:executionId/voucher | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#supplementRegisteredPaymentVoucher | registered-payment.supplement-voucher | covered | — |
+| POST | /payment-financial/corrections/:correctionId/confirmation | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /payment-financial/payments/:paymentId/executions/:executionId/corrections | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /payment-financial/payments/:paymentId/executions/:executionId/refunds | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /payments/:paymentId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#abandonPaymentRequest | payment-detail.abandon | covered | — |
 | POST | /payments/:paymentId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegatePaymentApproval | payment-detail.delegate | covered | — |
 | POST | /payments/:paymentId/approval-reminder | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#remindPaymentApproval | — | not_applicable | — |
@@ -636,8 +677,8 @@
 | POST | /projects/:projectId/affiliate-contract-facts/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadProjectAffiliateContractPrivateFile | project.affiliate-contract.evidence-upload | covered | — |
 | POST | /projects/:projectId/affiliate-contract-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateContractFact | project.affiliate-contract.record | covered | — |
 | POST | /projects/:projectId/affiliate-payment-facts/:factId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliatePaymentFact | project.affiliate-payment.confirm | covered | — |
-| POST | /projects/:projectId/affiliate-payment-facts/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadProjectAffiliatePaymentPrivateFile | project.affiliate-payment.evidence-upload | covered | — |
-| POST | /projects/:projectId/affiliate-payment-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliatePaymentFact | project.affiliate-payment.record | covered | — |
+| POST | /projects/:projectId/affiliate-payment-facts/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadProjectAffiliatePaymentPrivateFile | project.affiliate-payment.evidence-upload<br>project.construction-payment.downstream-evidence-upload | covered | — |
+| POST | /projects/:projectId/affiliate-payment-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliatePaymentFact | project.affiliate-payment.record<br>project.construction-payment.downstream-record | covered | — |
 | POST | /projects/:projectId/affiliate-settlement-facts/:factId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectAffiliateSettlementFact | project.affiliate-settlement.confirm | covered | — |
 | POST | /projects/:projectId/affiliate-settlement-facts/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadProjectAffiliateSettlementPrivateFile | project.affiliate-settlement.evidence-upload | covered | — |
 | POST | /projects/:projectId/affiliate-settlement-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectAffiliateSettlementFact | project.affiliate-settlement.record | covered | — |
@@ -650,7 +691,10 @@
 | POST | /projects/:projectId/close-profit/impacts/reconcile | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#reconcileProjectCloseImpacts | project-close-profit.impacts.reconcile | covered | — |
 | POST | /projects/:projectId/close-profit/stages/:stageKey/complete | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#completeProjectCloseStage | project-close-profit.stage.complete | covered | — |
 | POST | /projects/:projectId/close-profit/temporary-distributions | page | web_api_wrapper | apps/web-admin/src/api/project-close-profit.api.ts#postTemporaryProfitDistribution | project-close-profit.temporary-distribution.create | covered | — |
+| POST | /projects/:projectId/construction-enterprise-deductions | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectConstructionEnterpriseDeduction | project.construction-deduction.record | covered | — |
 | POST | /projects/:projectId/construction-enterprise | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#assignProjectConstructionEnterprise | project-operating-profile.set-construction-enterprise | covered | — |
+| POST | /projects/:projectId/construction-payment-corrections/:sourceType/:originalFactId/confirmation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmConstructionPaymentCorrection | project.construction-deduction.correction-confirm<br>project.construction-payment.correction-confirm | covered | — |
+| POST | /projects/:projectId/construction-payment-corrections | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#requestConstructionPaymentCorrection | project.construction-deduction.correction-request<br>project.construction-payment.correction-request | covered | — |
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/abandonment | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#abandonContractTakeover | contract-takeover.abandon | covered | — |
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/change-baseline-confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeoverChangeBaseline | contract-takeover.confirm-change-baseline | covered | — |
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/company-entity-corrections/:correctionId/review | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewContractTakeoverCompanyEntityCorrection | contract-takeover.review-company-entity-correction | covered | — |
@@ -663,6 +707,7 @@
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/evidence-files | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#attachContractTakeoverEvidenceFile | contract-takeover.attach-contract-evidence | covered | — |
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/finance-side/confirmation-withdrawal | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawContractTakeoverFinanceSideConfirmation | contract-takeover.withdraw-finance-side-confirmation | covered | — |
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/finance-side/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractTakeoverFinanceSide | contract-takeover.confirm-finance-side | covered | — |
+| POST | /projects/:projectId/contract-takeovers/:takeoverId/finance-supplement-return | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#returnContractTakeoverForFinanceSupplement | contract-takeover.finance-return-for-supplement | covered | — |
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/payment-evidence-files | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#attachHistoricalPaymentVoucher | contract-takeover.attach-payment-voucher | covered | — |
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/review-submission | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#submitContractTakeoverReview | contract-takeover.submit-review | covered | — |
 | POST | /projects/:projectId/contract-takeovers/:takeoverId/supplement-return | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#returnContractTakeoverForSupplement | contract-takeover.return-for-supplement | covered | — |
@@ -679,6 +724,8 @@
 | POST | /projects/:projectId/contract-takeovers/imports/apply | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#applyContractTakeoverExcelImport | contract-takeover.apply-excel-import | covered | — |
 | POST | /projects/:projectId/contract-takeovers/imports/preview | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#previewContractTakeoverExcelImport | contract-takeover.preview-excel-import | covered | — |
 | POST | /projects/:projectId/contract-takeovers | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createContractTakeover | contract-takeover.create | covered | — |
+| POST | /projects/:projectId/cost-attributions/:factId | page | web_api_wrapper | apps/web-admin/src/api/cost-attribution.api.ts#requestCostAttribution | cost-attribution.request | covered | — |
+| POST | /projects/:projectId/cost-attributions/:id/review | page | web_api_wrapper | apps/web-admin/src/api/cost-attribution.api.ts#reviewCostAttribution | cost-attribution.review | covered | — |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/approval-pdf-download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadProjectExpenseApprovalPdf | project-expense.approval-pdf-download | covered | — |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeProjectExpenseWithdrawalAction | project-expense.withdraw | covered | — |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeProjectExpenseApprovalReviewAction | project-expense.review-approve<br>project-expense.review-reject | covered | — |
@@ -695,6 +742,11 @@
 | POST | /projects/:projectId/financing-quotas/:quotaId/termination | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaTerminationAction | project-financing-quota.terminate | covered | — |
 | POST | /projects/:projectId/financing-quotas/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request | covered | — |
 | POST | /projects/:projectId/financing-quotas | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request | covered | — |
+| POST | /projects/:projectId/history-expenses/batches/:batchId/activation | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#activateHistoryExpenseBatch | history-expense.activate-batch | covered | — |
+| POST | /projects/:projectId/history-expenses/batches/:batchId/confirmations | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#confirmHistoryExpenseBatch | history-expense.confirm-batch | covered | — |
+| POST | /projects/:projectId/history-expenses/batches/:batchId/rows/:rowId/corrections | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#correctHistoryExpenseRow | history-expense.correct-row | covered | — |
+| POST | /projects/:projectId/history-expenses/batches | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#createHistoryExpenseBatch | history-expense.create-batch | covered | — |
+| POST | /projects/:projectId/history-expenses/precheck | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#precheckHistoryExpenses | history-expense.precheck | covered | — |
 | POST | /projects/:projectId/operating-takeovers/:batchId/activation | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#activateOperatingTakeover | operating-takeover.activate | covered | — |
 | POST | /projects/:projectId/operating-takeovers/:batchId/attachments | external_takeover | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#addOperatingTakeoverAttachmentGroup | operating-takeover.attach-files | covered | — |
 | POST | /projects/:projectId/operating-takeovers/:batchId/confirmations | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#confirmOperatingTakeover | operating-takeover.confirm | covered | — |
@@ -740,8 +792,8 @@
 | POST | /projects/:projectId/signed-contract-settlements | page | web_api_wrapper | apps/web-admin/src/api/signed-contract-settlement.api.ts#saveSignedSettlement | signed-settlement.save | covered | — |
 | POST | /projects/:projectId/status | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#updateProjectStatus | project.status | covered | — |
 | POST | /projects/:projectId/upstream-fund-facts/:fundFactId/confirmation | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectUpstreamFundFact | project.upstream-fund.confirm | covered | — |
-| POST | /projects/:projectId/upstream-fund-facts/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadProjectUpstreamFundPrivateFile | project.upstream-fund.evidence-upload | covered | — |
-| POST | /projects/:projectId/upstream-fund-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectUpstreamFundFact | project.upstream-fund.record | covered | — |
+| POST | /projects/:projectId/upstream-fund-facts/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadProjectUpstreamFundPrivateFile | project.construction-payment.remittance-evidence-upload<br>project.upstream-fund.evidence-upload | covered | — |
+| POST | /projects/:projectId/upstream-fund-facts | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectUpstreamFundFact | project.construction-payment.remittance-record<br>project.upstream-fund.record | covered | — |
 | POST | /projects/:projectId/upstream-settlements/:upstreamSettlementId/confirmation | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectUpstreamSettlement | — | not_applicable | — |
 | POST | /projects/:projectId/upstream-settlements | external_takeover | none | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectUpstreamSettlement | — | not_applicable | — |
 | POST | /projects/create-validation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#validateProjectCreation | project-create.validate<br>project.rename.name-warning | covered | — |
@@ -857,6 +909,7 @@
 | PUT | /contract-versions/:toContractVersionId/bill-transitions | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#saveContractBillTransitions | contract-bill-transition.save | covered | — |
 | PUT | /projects/:projectId/contract-takeovers/:takeoverId/contract-side | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#saveContractTakeoverContractSide | contract-takeover.save-contract-side | covered | — |
 | PUT | /projects/:projectId/contract-takeovers/:takeoverId/finance-side | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#saveContractTakeoverFinanceSide | contract-takeover.save-finance-side | covered | — |
+| PUT | /projects/:projectId/contract-takeovers/:takeoverId/handover | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#saveContractTakeoverHandover | contract-takeover.register-handover | covered | — |
 
 ## 阻塞附录
 

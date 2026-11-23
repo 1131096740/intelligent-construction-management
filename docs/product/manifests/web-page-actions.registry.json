@@ -11897,6 +11897,323 @@
           "name": "saveContractTakeoverHandover"
         }
       ]
+    },
+    {
+      "id": "actual-purchase-batch.create",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "createBatch"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canCreate"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "name": "createActualPurchaseBatch"
+        }
+      ]
+    },
+    {
+      "id": "actual-purchase-batch.spot-payment",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "createPayment"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canPay"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "name": "createActualPurchaseBatchSpotPayment"
+        }
+      ]
+    },
+    {
+      "id": "actual-purchase-batch.correction-request",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "requestCorrection"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "batch.costVersion > 0"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "name": "requestActualPurchaseBatchCorrection"
+        }
+      ]
+    },
+    {
+      "id": "actual-purchase-batch.correction-confirm",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "confirmCorrection"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "correction.status === 'pending_confirm'"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "name": "confirmActualPurchaseBatchCorrection"
+        }
+      ]
+    },
+    {
+      "id": "actual-purchase-batch.refund-record",
+      "usage": "page_action",
+      "routePaths": [
+        "/综合采购申请/:procurementId",
+        "/零星采购/:procurementId"
+      ],
+      "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "recordRefund"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "Number(batch.capacity.paidAmountCents) > 0"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "name": "recordActualPurchaseBatchRefund"
+        }
+      ]
+    },
+    {
+      "id": "history-expense.precheck",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "runPrecheck"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.manage"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "name": "precheckHistoryExpenses"
+        }
+      ]
+    },
+    {
+      "id": "history-expense.create-batch",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "createBatch"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.manage"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "name": "createHistoryExpenseBatch"
+        }
+      ]
+    },
+    {
+      "id": "history-expense.verify-row",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitVerify"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.verify"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "name": "verifyHistoryExpenseRow"
+        }
+      ]
+    },
+    {
+      "id": "history-expense.correct-row",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-dialog",
+        "event": "confirm",
+        "handler": "submitCorrection"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.correct"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "name": "correctHistoryExpenseRow"
+        }
+      ]
+    },
+    {
+      "id": "history-expense.confirm-batch",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitConfirm"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.confirm"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "name": "confirmHistoryExpenseBatch"
+        }
+      ]
+    },
+    {
+      "id": "history-expense.activate-batch",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "submitActivate"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.activate"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "name": "activateHistoryExpenseBatch"
+        }
+      ]
+    },
+    {
+      "id": "cost-attribution.request",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitCostAttribution"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canRequestCostAttribution"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "name": "requestCostAttribution"
+        }
+      ]
+    },
+    {
+      "id": "cost-attribution.review",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "submitCostAttributionReview"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "canReviewCostAttribution"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "name": "reviewCostAttribution"
+        }
+      ]
     }
   ]
 }

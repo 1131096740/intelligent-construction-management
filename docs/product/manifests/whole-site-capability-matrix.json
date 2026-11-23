@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "466daced0ef0e5b08bb5689aeaa2e58c442b594161bb7ba8fe87802436cfb70d",
+      "sha256": "88404d4470726b243a05631d0486f71b848a95b3a5e91919a37be8ac032efcb9",
       "status": "ready",
       "summary": {
-        "routeCount": 818
+        "routeCount": 871
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "8303b2bb8bd9508f28fdfe3a0c9aa46e8fc7495c075c307326ba1fc18b491675",
+      "sha256": "e365910124435ade1f455a201f211425e38fcd7ade18d013cf42b1350e7b17bf",
       "status": "ready",
       "summary": {
-        "apiModuleCount": 50,
-        "exportedFunctionCount": 761,
-        "transportWrapperCount": 737,
+        "apiModuleCount": 56,
+        "exportedFunctionCount": 803,
+        "transportWrapperCount": 779,
         "pureExportCount": 24,
-        "mainRequestBindingCount": 811,
+        "mainRequestBindingCount": 853,
         "ticketFollowupCount": 6,
-        "requestEdgeCount": 767,
-        "productionConsumerCount": 648,
+        "requestEdgeCount": 809,
+        "productionConsumerCount": 688,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,50 +42,50 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "7483146dff56eb11bc264406dd2d45d140a9bd7e54327ca7b5e87a7f9a389b99",
+      "sha256": "ae3fddeff6717d8425a1249484fd2a5537ef28f12e134a4d949921182ee8cf30",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 458,
-        "pageActionCount": 102,
-        "backgroundActionCount": 356,
-        "reachableVueFileCount": 228,
-        "routeRootCount": 76,
-        "totalVueFileCount": 241,
-        "parsedVueFileCount": 241,
-        "reachableProductionModuleCount": 398,
-        "templateEventDirectiveCount": 1538,
+        "registeredActionCount": 483,
+        "pageActionCount": 111,
+        "backgroundActionCount": 372,
+        "reachableVueFileCount": 237,
+        "routeRootCount": 80,
+        "totalVueFileCount": 250,
+        "parsedVueFileCount": 250,
+        "reachableProductionModuleCount": 413,
+        "templateEventDirectiveCount": 1599,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 447,
-        "candidateProductionMutationConsumerCount": 447,
-        "acceptedProductionMutationConsumerCount": 447,
-        "productionMutationConsumerPairCount": 447,
+        "coveredProductionMutationConsumerCount": 474,
+        "candidateProductionMutationConsumerCount": 474,
+        "acceptedProductionMutationConsumerCount": 474,
+        "productionMutationConsumerPairCount": 474,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "98b69ad1450b950c193d0eca4cef23db3349f8c502ccc3b7a0286e02f3418789",
+      "sha256": "fff76c6d6eef98cc6afb3d64766a57fab2d192ca05bb72e7fb7e31e4d9ee0a38",
       "status": "ready",
       "summary": {
-        "routeCount": 818,
-        "exactRouteCount": 818,
-        "normalizedRouteCount": 818,
-        "classificationOverrideCount": 220,
-        "consumerSurfaceOverrideCount": 42,
-        "classificationOverrideSha256": "72e5601ee6762e364be6d050efbfc9a7f8b0625714b80ecd3a03dae4d6c4e9aa",
-        "consumerSurfaceOverrideSha256": "1e1be136bfca60ce98c0bcde4c0d538bad9dcb2a28bf9118e88c09ff86438939",
-        "derivedProductionPageCount": 598,
-        "pageRouteCount": 617,
+        "routeCount": 871,
+        "exactRouteCount": 871,
+        "normalizedRouteCount": 871,
+        "classificationOverrideCount": 233,
+        "consumerSurfaceOverrideCount": 55,
+        "classificationOverrideSha256": "cc4f12a8b7720c084aeb7b3ee240c2fabea3bb1c59fd6ac266d3efd5ed24e2d7",
+        "consumerSurfaceOverrideSha256": "2aff8df481301799b9e60c89a9f36790aae214b910bf690837d3ef07945d8c06",
+        "derivedProductionPageCount": 638,
+        "pageRouteCount": 657,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 91,
-        "internalTaskCount": 40,
+        "internalTaskCount": 53,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 669,
+          "web_api_wrapper": 709,
           "auth_store": 5,
           "signed_ticket_delivery": 2,
           "machine_probe": 3,
-          "operator_endpoint": 37,
+          "operator_endpoint": 50,
           "none": 102
         },
         "blockerCount": 0
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 818,
-    "pageRouteCount": 617,
+    "routeCount": 871,
+    "pageRouteCount": 657,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 91,
-    "internalTaskRouteCount": 40,
+    "internalTaskRouteCount": 53,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 811,
+    "mainRequestBindingCount": 853,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 458,
-    "actionBindingCount": 558,
-    "acceptedActionBindingCount": 511,
+    "registeredActionCount": 483,
+    "actionBindingCount": 584,
+    "acceptedActionBindingCount": 536,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 447,
-    "coveredProductionMutationConsumerPairCount": 447,
+    "productionMutationConsumerPairCount": 474,
+    "coveredProductionMutationConsumerPairCount": 474,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -655,6 +655,84 @@
           "testConsumers": [
             "apps/web-admin/src/components/account-security.component.test.ts"
           ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/actual-purchase-batches/:batchId",
+        "normalizedKey": "GET /actual-purchase-batches/:param",
+        "controller": "ActualPurchaseBatchController",
+        "handler": "detail",
+        "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "fetchActualPurchaseBatch",
+          "method": "GET",
+          "path": "/actual-purchase-batches/:param",
+          "normalizedKey": "GET /actual-purchase-batches/:param",
+          "bodyKind": "none",
+          "productionConsumers": [],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/actual-purchase-batches",
+        "normalizedKey": "GET /actual-purchase-batches",
+        "controller": "ActualPurchaseBatchController",
+        "handler": "list",
+        "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "listActualPurchaseBatches",
+          "method": "GET",
+          "path": "/actual-purchase-batches?procurementId=:param",
+          "normalizedKey": "GET /actual-purchase-batches",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "testConsumers": []
         }
       ],
       "authTransports": [],
@@ -4720,7 +4798,7 @@
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "downloadContractLedgerExport",
           "method": "GET",
-          "path": "/contracts/ledger-export",
+          "path": "/contracts/ledger-export?:param",
           "normalizedKey": "GET /contracts/ledger-export",
           "bodyKind": "none",
           "productionConsumers": [
@@ -5317,6 +5395,48 @@
     {
       "route": {
         "method": "GET",
+        "path": "/expense-claims/expense-categories",
+        "normalizedKey": "GET /expense-claims/expense-categories",
+        "controller": "ExpenseClaimController",
+        "handler": "expenseCategories",
+        "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "wrapper": "fetchExpenseClaimExpenseCategories",
+          "method": "GET",
+          "path": "/expense-claims/expense-categories?:param",
+          "normalizedKey": "GET /expense-claims/expense-categories",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimCreateDrawer.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/expense-claim.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/expense-claims",
         "normalizedKey": "GET /expense-claims",
         "controller": "ExpenseClaimController",
@@ -5345,6 +5465,48 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/expense-claims/ExpenseClaimWorkbenchPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/expense-claim.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/expense-claims/selectable-purchase-batches",
+        "normalizedKey": "GET /expense-claims/selectable-purchase-batches",
+        "controller": "ExpenseClaimController",
+        "handler": "selectablePurchaseBatches",
+        "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "wrapper": "fetchExpenseClaimSelectablePurchaseBatches",
+          "method": "GET",
+          "path": "/expense-claims/selectable-purchase-batches?:param",
+          "normalizedKey": "GET /expense-claims/selectable-purchase-batches",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimCreateDrawer.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/expense-claim.api.test.ts"
@@ -5661,6 +5823,73 @@
       "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/files/download-package-capability",
+        "normalizedKey": "GET /files/download-package-capability",
+        "controller": "FileController",
+        "handler": "downloadPackageCapability",
+        "sourceFile": "services/api/src/file/file.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "getArchiveDownloadPackageCapability",
+          "method": "GET",
+          "path": "/files/download-package-capability?fileIds=:param",
+          "normalizedKey": "GET /files/download-package-capability",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/archives/ArchiveListPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "archive.download-package",
+          "bindingIndex": 1,
+          "identity": "archive.download-package\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000getArchiveDownloadPackageCapability\u0000GET\u0000GET /files/download-package-capability\u00001",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "download_archive_package",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "getArchiveDownloadPackageCapability",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/archives/ArchiveListPage.vue"
+          ],
+          "acceptedProductionConsumers": [],
+          "causalVerified": true,
+          "accepted": false,
+          "blockerCodes": []
+        }
+      ],
       "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
@@ -6474,6 +6703,100 @@
           "testConsumers": [
             "apps/web-admin/src/api/fund-execution.api.test.ts"
           ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/fund-flows/export",
+        "normalizedKey": "GET /fund-flows/export",
+        "controller": "FundFlowController",
+        "handler": "export",
+        "sourceFile": "services/api/src/fund-flow/fund-flow.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "chairman",
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "project_manager"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-flow.api.ts",
+          "wrapper": "downloadFundFlowExport",
+          "method": "GET",
+          "path": "/fund-flows/export",
+          "normalizedKey": "GET /fund-flows/export",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/fund-flows",
+        "normalizedKey": "GET /fund-flows",
+        "controller": "FundFlowController",
+        "handler": "list",
+        "sourceFile": "services/api/src/fund-flow/fund-flow.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "chairman",
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "project_manager"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/fund-flow.api.ts",
+          "wrapper": "fetchFundFlows",
+          "method": "GET",
+          "path": "/fund-flows",
+          "normalizedKey": "GET /fund-flows",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue"
+          ],
+          "testConsumers": []
         }
       ],
       "authTransports": [],
@@ -8276,6 +8599,126 @@
     {
       "route": {
         "method": "GET",
+        "path": "/other-project-payments/:claimId",
+        "normalizedKey": "GET /other-project-payments/:param",
+        "controller": "OtherProjectPaymentController",
+        "handler": "detail",
+        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/other-project-payment.api.ts",
+          "wrapper": "fetchOtherProjectPaymentDetail",
+          "method": "GET",
+          "path": "/other-project-payments/:param",
+          "normalizedKey": "GET /other-project-payments/:param",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/other-project-payment/OtherProjectPaymentPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/other-project-payments/entry",
+        "normalizedKey": "GET /other-project-payments/entry",
+        "controller": "OtherProjectPaymentController",
+        "handler": "entry",
+        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/other-project-payment.api.ts",
+          "wrapper": "fetchOtherProjectPaymentEntry",
+          "method": "GET",
+          "path": "/other-project-payments/entry",
+          "normalizedKey": "GET /other-project-payments/entry",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/other-project-payment/OtherProjectPaymentPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/other-project-payments",
+        "normalizedKey": "GET /other-project-payments",
+        "controller": "OtherProjectPaymentController",
+        "handler": "list",
+        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/other-project-payment.api.ts",
+          "wrapper": "fetchOtherProjectPayments",
+          "method": "GET",
+          "path": "/other-project-payments",
+          "normalizedKey": "GET /other-project-payments",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/other-project-payment/OtherProjectPaymentPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/payable-settlements/capabilities",
         "normalizedKey": "GET /payable-settlements/capabilities",
         "controller": "PayableRegistryController",
@@ -8822,6 +9265,100 @@
     {
       "route": {
         "method": "GET",
+        "path": "/payment-financial/entry/capability",
+        "normalizedKey": "GET /payment-financial/entry/capability",
+        "controller": "PaymentFinancialController",
+        "handler": "entryCapability",
+        "sourceFile": "services/api/src/payment/payment-financial.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/payment-financial.api.ts",
+          "wrapper": "fetchFinancialCorrectionCapability",
+          "method": "GET",
+          "path": "/payment-financial/entry/capability?type=:param&id=:param",
+          "normalizedKey": "GET /payment-financial/entry/capability",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/corrections/FinancialCorrectionEntryPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/payment-financial/payments/:paymentId/corrections",
+        "normalizedKey": "GET /payment-financial/payments/:param/corrections",
+        "controller": "PaymentFinancialController",
+        "handler": "listCorrections",
+        "sourceFile": "services/api/src/payment/payment-financial.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/payment-financial/payments/:paymentId/refunds/capability",
+        "normalizedKey": "GET /payment-financial/payments/:param/refunds/capability",
+        "controller": "PaymentFinancialController",
+        "handler": "refundCapability",
+        "sourceFile": "services/api/src/payment/payment-financial.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/payments/:paymentId/approval/duty-sms",
         "normalizedKey": "GET /payments/:param/approval/duty-sms",
         "controller": "PaymentController",
@@ -9292,7 +9829,8 @@
           "normalizedKey": "GET /projects/:param/affiliate-business-facts",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
@@ -9334,7 +9872,8 @@
           "normalizedKey": "GET /projects/:param/affiliate-business-facts/record-capability",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
           ],
           "testConsumers": []
         }
@@ -9459,6 +9998,90 @@
     {
       "route": {
         "method": "GET",
+        "path": "/projects/:projectId/construction-enterprise-deductions/capability",
+        "normalizedKey": "GET /projects/:param/construction-enterprise-deductions/capability",
+        "controller": "ProjectController",
+        "handler": "constructionEnterpriseDeductionCapability",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.upstream_fund_fact.record",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "fetchProjectConstructionEnterpriseDeductionCapability",
+          "method": "GET",
+          "path": "/projects/:param/construction-enterprise-deductions/capability",
+          "normalizedKey": "GET /projects/:param/construction-enterprise-deductions/capability",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/construction-enterprise-deductions",
+        "normalizedKey": "GET /projects/:param/construction-enterprise-deductions",
+        "controller": "ProjectController",
+        "handler": "constructionEnterpriseDeductions",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.upstream_fund_fact.record",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "fetchProjectConstructionEnterpriseDeductions",
+          "method": "GET",
+          "path": "/projects/:param/construction-enterprise-deductions",
+          "normalizedKey": "GET /projects/:param/construction-enterprise-deductions",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/projects/:projectId/construction-enterprise-options",
         "normalizedKey": "GET /projects/:param/construction-enterprise-options",
         "controller": "ProjectController",
@@ -9491,6 +10114,99 @@
           "testConsumers": [
             "apps/web-admin/src/api/project-operating-profile.api.test.ts"
           ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/construction-enterprise-paid",
+        "normalizedKey": "GET /projects/:param/construction-enterprise-paid",
+        "controller": "ProjectController",
+        "handler": "constructionEnterprisePaid",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "engineering_department_director",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "fetchConstructionEnterprisePaid",
+          "method": "GET",
+          "path": "/projects/:param/construction-enterprise-paid",
+          "normalizedKey": "GET /projects/:param/construction-enterprise-paid",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/construction-payment-corrections/capability",
+        "normalizedKey": "GET /projects/:param/construction-payment-corrections/capability",
+        "controller": "ProjectController",
+        "handler": "constructionPaymentCorrectionCapability",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.construction_payment_correction.request",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "fetchConstructionPaymentCorrectionCapability",
+          "method": "GET",
+          "path": "/projects/:param/construction-payment-corrections/capability",
+          "normalizedKey": "GET /projects/:param/construction-payment-corrections/capability",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
+          ],
+          "testConsumers": []
         }
       ],
       "authTransports": [],
@@ -9535,6 +10251,54 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/contract-takeovers/:takeoverId/handover",
+        "normalizedKey": "GET /projects/:param/contract-takeovers/:param/handover",
+        "controller": "ContractTakeoverController",
+        "handler": "readHandover",
+        "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "contract_director",
+          "contract_staff",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": true,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "getContractTakeoverHandover",
+          "method": "GET",
+          "path": "/projects/:param/contract-takeovers/:param/handover",
+          "normalizedKey": "GET /projects/:param/contract-takeovers/:param/handover",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTakeoverHandoverPanel.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
@@ -9679,6 +10443,7 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+            "apps/web-admin/src/pages/contracts/components/ContractTakeoverHandoverPanel.vue",
             "apps/web-admin/src/pages/contracts/components/ContractTaxFactReviewPanel.vue"
           ],
           "testConsumers": []
@@ -9904,6 +10669,50 @@
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
           ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/cost-attributions",
+        "normalizedKey": "GET /projects/:param/cost-attributions",
+        "controller": "OperatingCostAttributionController",
+        "handler": "list",
+        "sourceFile": "services/api/src/operating-ledger/operating-cost-attribution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "wrapper": "fetchCostAttributions",
+          "method": "GET",
+          "path": "/projects/:param/cost-attributions",
+          "normalizedKey": "GET /projects/:param/cost-attributions",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "testConsumers": []
         }
       ],
       "authTransports": [],
@@ -10634,6 +11443,138 @@
     {
       "route": {
         "method": "GET",
+        "path": "/projects/:projectId/history-expenses/batches/:batchId",
+        "normalizedKey": "GET /projects/:param/history-expenses/batches/:param",
+        "controller": "HistoryExpenseController",
+        "handler": "detail",
+        "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "fetchHistoryExpenseBatch",
+          "method": "GET",
+          "path": "/projects/:param/history-expenses/batches/:param",
+          "normalizedKey": "GET /projects/:param/history-expenses/batches/:param",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/history-expenses/batches",
+        "normalizedKey": "GET /projects/:param/history-expenses/batches",
+        "controller": "HistoryExpenseController",
+        "handler": "list",
+        "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "fetchHistoryExpenseBatches",
+          "method": "GET",
+          "path": "/projects/:param/history-expenses/batches",
+          "normalizedKey": "GET /projects/:param/history-expenses/batches",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/projects/:projectId/history-expenses/capability",
+        "normalizedKey": "GET /projects/:param/history-expenses/capability",
+        "controller": "HistoryExpenseController",
+        "handler": "capability",
+        "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "fetchHistoryExpenseCapability",
+          "method": "GET",
+          "path": "/projects/:param/history-expenses/capability",
+          "normalizedKey": "GET /projects/:param/history-expenses/capability",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
         "path": "/projects/:projectId/operating-funds-overview",
         "normalizedKey": "GET /projects/:param/operating-funds-overview",
         "controller": "ProjectController",
@@ -11134,6 +12075,7 @@
           "normalizedKey": "GET /projects/:param/participating-company-options",
           "bodyKind": "none",
           "productionConsumers": [
+            "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue",
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
             "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
           ],
@@ -11860,7 +12802,8 @@
           "normalizedKey": "GET /projects/:param/upstream-fund-facts/record-capability",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
           ],
           "testConsumers": []
         }
@@ -11900,7 +12843,8 @@
           "normalizedKey": "GET /projects/:param/upstream-fund-facts/reference-options",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
@@ -12114,9 +13058,11 @@
             "apps/web-admin/src/components/ContractRelationshipLedger.vue",
             "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+            "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue",
             "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
             "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
             "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
             "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
             "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
             "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
@@ -13204,6 +14150,112 @@
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
           ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/settlements/signed-ledger-export",
+        "normalizedKey": "GET /settlements/signed-ledger-export",
+        "controller": "SettlementController",
+        "handler": "signedLedgerExport",
+        "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "contract_director",
+          "contract_staff",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "downloadSignedSettlementLedgerExport",
+          "method": "GET",
+          "path": "/settlements/signed-ledger-export?:param",
+          "normalizedKey": "GET /settlements/signed-ledger-export",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/settlements/signed-ledger",
+        "normalizedKey": "GET /settlements/signed-ledger",
+        "controller": "SettlementController",
+        "handler": "signedLedger",
+        "sourceFile": "services/api/src/settlement/settlement.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "budget_director",
+          "budget_staff",
+          "chairman",
+          "comprehensive_director",
+          "contract_director",
+          "contract_staff",
+          "employee",
+          "engineering_department_director",
+          "engineering_department_member",
+          "engineering_director",
+          "engineering_foreman",
+          "engineering_tech",
+          "finance_director",
+          "finance_staff",
+          "general_manager",
+          "material_director",
+          "material_staff",
+          "project_manager",
+          "super_admin"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "fetchSignedSettlementLedger",
+          "method": "GET",
+          "path": "/settlements/signed-ledger",
+          "normalizedKey": "GET /settlements/signed-ledger",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
+          ],
+          "testConsumers": []
         }
       ],
       "authTransports": [],
@@ -14470,6 +15522,44 @@
     {
       "route": {
         "method": "PATCH",
+        "path": "/actual-purchase-batches/:batchId",
+        "normalizedKey": "PATCH /actual-purchase-batches/:param",
+        "controller": "ActualPurchaseBatchController",
+        "handler": "update",
+        "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "updateActualPurchaseBatch",
+          "method": "PATCH",
+          "path": "/actual-purchase-batches/:param",
+          "normalizedKey": "PATCH /actual-purchase-batches/:param",
+          "bodyKind": "json",
+          "productionConsumers": [],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "PATCH",
         "path": "/auth/profile",
         "normalizedKey": "PATCH /auth/profile",
         "controller": "AuthController",
@@ -15654,6 +16744,72 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "PATCH",
+        "path": "/projects/:projectId/history-expenses/batches/:batchId/rows/:rowId",
+        "normalizedKey": "PATCH /projects/:param/history-expenses/batches/:param/rows/:param",
+        "controller": "HistoryExpenseController",
+        "handler": "verifyRow",
+        "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "history_expense.verify",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "verifyHistoryExpenseRow",
+          "method": "PATCH",
+          "path": "/projects/:param/history-expenses/batches/:param/rows/:param",
+          "normalizedKey": "PATCH /projects/:param/history-expenses/batches/:param/rows/:param",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "history-expense.verify-row",
+          "bindingIndex": 0,
+          "identity": "history-expense.verify-row\u0000apps/web-admin/src/api/history-expense.api.ts\u0000verifyHistoryExpenseRow\u0000PATCH\u0000PATCH /projects/:param/history-expenses/batches/:param/rows/:param\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.actions.verify",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "verifyHistoryExpenseRow",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -17154,6 +18310,336 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/components/AccountCredentialDialog.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/actual-purchase-batches/:batchId/corrections/:correctionId/confirmation",
+        "normalizedKey": "POST /actual-purchase-batches/:param/corrections/:param/confirmation",
+        "controller": "ActualPurchaseBatchController",
+        "handler": "confirmCorrection",
+        "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "confirmActualPurchaseBatchCorrection",
+          "method": "POST",
+          "path": "/actual-purchase-batches/:param/corrections/:param/confirmation",
+          "normalizedKey": "POST /actual-purchase-batches/:param/corrections/:param/confirmation",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "actual-purchase-batch.correction-confirm",
+          "bindingIndex": 0,
+          "identity": "actual-purchase-batch.correction-confirm\u0000apps/web-admin/src/api/actual-purchase-batch.api.ts\u0000confirmActualPurchaseBatchCorrection\u0000POST\u0000POST /actual-purchase-batches/:param/corrections/:param/confirmation\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "correction.status === 'pending_confirm'",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "confirmActualPurchaseBatchCorrection",
+          "productionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/actual-purchase-batches/:batchId/corrections",
+        "normalizedKey": "POST /actual-purchase-batches/:param/corrections",
+        "controller": "ActualPurchaseBatchController",
+        "handler": "requestCorrection",
+        "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "requestActualPurchaseBatchCorrection",
+          "method": "POST",
+          "path": "/actual-purchase-batches/:param/corrections",
+          "normalizedKey": "POST /actual-purchase-batches/:param/corrections",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "actual-purchase-batch.correction-request",
+          "bindingIndex": 0,
+          "identity": "actual-purchase-batch.correction-request\u0000apps/web-admin/src/api/actual-purchase-batch.api.ts\u0000requestActualPurchaseBatchCorrection\u0000POST\u0000POST /actual-purchase-batches/:param/corrections\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "batch.costVersion > 0",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "requestActualPurchaseBatchCorrection",
+          "productionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/actual-purchase-batches/:batchId/refunds",
+        "normalizedKey": "POST /actual-purchase-batches/:param/refunds",
+        "controller": "ActualPurchaseBatchController",
+        "handler": "recordRefund",
+        "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "recordActualPurchaseBatchRefund",
+          "method": "POST",
+          "path": "/actual-purchase-batches/:param/refunds",
+          "normalizedKey": "POST /actual-purchase-batches/:param/refunds",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "actual-purchase-batch.refund-record",
+          "bindingIndex": 0,
+          "identity": "actual-purchase-batch.refund-record\u0000apps/web-admin/src/api/actual-purchase-batch.api.ts\u0000recordActualPurchaseBatchRefund\u0000POST\u0000POST /actual-purchase-batches/:param/refunds\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "Number(batch.capacity.paidAmountCents) > 0",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "recordActualPurchaseBatchRefund",
+          "productionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/actual-purchase-batches/:batchId/spot-payments",
+        "normalizedKey": "POST /actual-purchase-batches/:param/spot-payments",
+        "controller": "ActualPurchaseBatchController",
+        "handler": "createSpotPayment",
+        "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "createActualPurchaseBatchSpotPayment",
+          "method": "POST",
+          "path": "/actual-purchase-batches/:param/spot-payments",
+          "normalizedKey": "POST /actual-purchase-batches/:param/spot-payments",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "actual-purchase-batch.spot-payment",
+          "bindingIndex": 0,
+          "identity": "actual-purchase-batch.spot-payment\u0000apps/web-admin/src/api/actual-purchase-batch.api.ts\u0000createActualPurchaseBatchSpotPayment\u0000POST\u0000POST /actual-purchase-batches/:param/spot-payments\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "canPay",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "createActualPurchaseBatchSpotPayment",
+          "productionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/actual-purchase-batches",
+        "normalizedKey": "POST /actual-purchase-batches",
+        "controller": "ActualPurchaseBatchController",
+        "handler": "create",
+        "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "createActualPurchaseBatch",
+          "method": "POST",
+          "path": "/actual-purchase-batches",
+          "normalizedKey": "POST /actual-purchase-batches",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "actual-purchase-batch.create",
+          "bindingIndex": 0,
+          "identity": "actual-purchase-batch.create\u0000apps/web-admin/src/api/actual-purchase-batch.api.ts\u0000createActualPurchaseBatch\u0000POST\u0000POST /actual-purchase-batches\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "canCreate",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",
+          "wrapper": "createActualPurchaseBatch",
+          "productionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -27563,15 +29049,15 @@
       "authTransports": [],
       "actions": [
         {
-          "actionId": "archive.create-private-file-download-ticket",
+          "actionId": "archive.download-private-attachment",
           "bindingIndex": 0,
-          "identity": "archive.create-private-file-download-ticket\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000createPrivateFileDownloadTicket\u0000POST\u0000POST /files/:param/download-ticket\u00000",
-          "usage": "page_action",
+          "identity": "archive.download-private-attachment\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000createPrivateFileDownloadTicket\u0000POST\u0000POST /files/:param/download-ticket\u00000",
+          "usage": "background",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
           "capability": {
-            "kind": "detail_action",
-            "source": "archiveDownloadAction",
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
             "key": "create_private_file_download_ticket",
             "serverDerived": true,
             "dominatesTrigger": true
@@ -27644,12 +29130,12 @@
           "actionId": "contract-document.download-ticket",
           "bindingIndex": 0,
           "identity": "contract-document.download-ticket\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000createPrivateFileDownloadTicket\u0000POST\u0000POST /files/:param/download-ticket\u00000",
-          "usage": "page_action",
+          "usage": "background",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
           "capability": {
-            "kind": "detail_action",
-            "source": "contractDocumentDownloadAction",
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
             "key": "create_private_file_download_ticket",
             "serverDerived": true,
             "dominatesTrigger": true
@@ -27947,6 +29433,75 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/files/download-package",
+        "normalizedKey": "POST /files/download-package",
+        "controller": "FileController",
+        "handler": "downloadPackage",
+        "sourceFile": "services/api/src/file/file.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createArchiveDownloadPackage",
+          "method": "POST",
+          "path": "/files/download-package",
+          "normalizedKey": "POST /files/download-package",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/archives/ArchiveListPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "archive.download-package",
+          "bindingIndex": 0,
+          "identity": "archive.download-package\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000createArchiveDownloadPackage\u0000POST\u0000POST /files/download-package\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "download_archive_package",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "createArchiveDownloadPackage",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/archives/ArchiveListPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/archives/ArchiveListPage.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -32823,6 +34378,174 @@
     {
       "route": {
         "method": "POST",
+        "path": "/other-project-payments/:claimId/approval",
+        "normalizedKey": "POST /other-project-payments/:param/approval",
+        "controller": "OtherProjectPaymentController",
+        "handler": "approve",
+        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "expense_claim.approve",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/other-project-payments/:claimId/corrections",
+        "normalizedKey": "POST /other-project-payments/:param/corrections",
+        "controller": "OtherProjectPaymentController",
+        "handler": "correctAmount",
+        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "finance_director"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/other-project-payments/:claimId/payments/:executionId/refunds",
+        "normalizedKey": "POST /other-project-payments/:param/payments/:param/refunds",
+        "controller": "OtherProjectPaymentController",
+        "handler": "recordRefund",
+        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/other-project-payments/:claimId/payments",
+        "normalizedKey": "POST /other-project-payments/:param/payments",
+        "controller": "OtherProjectPaymentController",
+        "handler": "recordPayment",
+        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "expense_claim.payment.execute",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/other-project-payments/:claimId/submission",
+        "normalizedKey": "POST /other-project-payments/:param/submission",
+        "controller": "OtherProjectPaymentController",
+        "handler": "submit",
+        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/other-project-payments",
+        "normalizedKey": "POST /other-project-payments",
+        "controller": "OtherProjectPaymentController",
+        "handler": "create",
+        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
         "path": "/payable-settlements/:settlementCaseId/confirm",
         "normalizedKey": "POST /payable-settlements/:param/confirm",
         "controller": "PayableRegistryController",
@@ -33576,6 +35299,87 @@
         }
       ],
       "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/payment-financial/corrections/:correctionId/confirmation",
+        "normalizedKey": "POST /payment-financial/corrections/:param/confirmation",
+        "controller": "PaymentFinancialController",
+        "handler": "confirmCorrection",
+        "sourceFile": "services/api/src/payment/payment-financial.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/payment-financial/payments/:paymentId/executions/:executionId/corrections",
+        "normalizedKey": "POST /payment-financial/payments/:param/executions/:param/corrections",
+        "controller": "PaymentFinancialController",
+        "handler": "requestCorrection",
+        "sourceFile": "services/api/src/payment/payment-financial.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/payment-financial/payments/:paymentId/executions/:executionId/refunds",
+        "normalizedKey": "POST /payment-financial/payments/:param/executions/:param/refunds",
+        "controller": "PaymentFinancialController",
+        "handler": "recordRefund",
+        "sourceFile": "services/api/src/payment/payment-financial.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -35480,7 +37284,8 @@
           "normalizedKey": "POST /projects/:param/affiliate-payment-facts/file-uploads",
           "bodyKind": "raw",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
           ],
           "testConsumers": []
         }
@@ -35508,6 +37313,32 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "project.construction-payment.downstream-evidence-upload",
+          "bindingIndex": 0,
+          "identity": "project.construction-payment.downstream-evidence-upload\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadProjectAffiliatePaymentPrivateFile\u0000POST\u0000POST /projects/:param/affiliate-payment-facts/file-uploads\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "record_affiliate_payment_fact",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadProjectAffiliatePaymentPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -35547,7 +37378,8 @@
           "normalizedKey": "POST /projects/:param/affiliate-payment-facts",
           "bodyKind": "json",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+            "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
@@ -35577,6 +37409,32 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "project.construction-payment.downstream-record",
+          "bindingIndex": 0,
+          "identity": "project.construction-payment.downstream-record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectAffiliatePaymentFact\u0000POST\u0000POST /projects/:param/affiliate-payment-facts\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "record_affiliate_payment_fact",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectAffiliatePaymentFact",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -36519,6 +38377,75 @@
     {
       "route": {
         "method": "POST",
+        "path": "/projects/:projectId/construction-enterprise-deductions",
+        "normalizedKey": "POST /projects/:param/construction-enterprise-deductions",
+        "controller": "ProjectController",
+        "handler": "recordConstructionEnterpriseDeduction",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.upstream_fund_fact.record",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectConstructionEnterpriseDeduction",
+          "method": "POST",
+          "path": "/projects/:param/construction-enterprise-deductions",
+          "normalizedKey": "POST /projects/:param/construction-enterprise-deductions",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project.construction-deduction.record",
+          "bindingIndex": 0,
+          "identity": "project.construction-deduction.record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectConstructionEnterpriseDeduction\u0000POST\u0000POST /projects/:param/construction-enterprise-deductions\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "record_construction_enterprise_deduction",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectConstructionEnterpriseDeduction",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
         "path": "/projects/:projectId/construction-enterprise",
         "normalizedKey": "POST /projects/:param/construction-enterprise",
         "controller": "ProjectController",
@@ -36575,6 +38502,194 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/projects/components/ProjectOperatingProfilePanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/construction-payment-corrections/:sourceType/:originalFactId/confirmation",
+        "normalizedKey": "POST /projects/:param/construction-payment-corrections/:param/:param/confirmation",
+        "controller": "ProjectController",
+        "handler": "confirmConstructionPaymentCorrection",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.construction_payment_correction.confirm",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmConstructionPaymentCorrection",
+          "method": "POST",
+          "path": "/projects/:param/construction-payment-corrections/:param/:param/confirmation",
+          "normalizedKey": "POST /projects/:param/construction-payment-corrections/:param/:param/confirmation",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project.construction-deduction.correction-confirm",
+          "bindingIndex": 0,
+          "identity": "project.construction-deduction.correction-confirm\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000confirmConstructionPaymentCorrection\u0000POST\u0000POST /projects/:param/construction-payment-corrections/:param/:param/confirmation\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "confirm_construction_payment_correction",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmConstructionPaymentCorrection",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "project.construction-payment.correction-confirm",
+          "bindingIndex": 0,
+          "identity": "project.construction-payment.correction-confirm\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000confirmConstructionPaymentCorrection\u0000POST\u0000POST /projects/:param/construction-payment-corrections/:param/:param/confirmation\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "confirm_construction_payment_correction",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "confirmConstructionPaymentCorrection",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/construction-payment-corrections",
+        "normalizedKey": "POST /projects/:param/construction-payment-corrections",
+        "controller": "ProjectController",
+        "handler": "requestConstructionPaymentCorrection",
+        "sourceFile": "services/api/src/project/project.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "project.construction_payment_correction.request",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "requestConstructionPaymentCorrection",
+          "method": "POST",
+          "path": "/projects/:param/construction-payment-corrections",
+          "normalizedKey": "POST /projects/:param/construction-payment-corrections",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "project.construction-deduction.correction-request",
+          "bindingIndex": 0,
+          "identity": "project.construction-deduction.correction-request\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000requestConstructionPaymentCorrection\u0000POST\u0000POST /projects/:param/construction-payment-corrections\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "request_construction_payment_correction",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "requestConstructionPaymentCorrection",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
+        {
+          "actionId": "project.construction-payment.correction-request",
+          "bindingIndex": 0,
+          "identity": "project.construction-payment.correction-request\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000requestConstructionPaymentCorrection\u0000POST\u0000POST /projects/:param/construction-payment-corrections\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "request_construction_payment_correction",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "requestConstructionPaymentCorrection",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -37356,6 +39471,73 @@
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "confirmContractTakeoverFinanceSide",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/contract-takeovers/:takeoverId/finance-supplement-return",
+        "normalizedKey": "POST /projects/:param/contract-takeovers/:param/finance-supplement-return",
+        "controller": "ContractTakeoverController",
+        "handler": "returnFinanceForSupplement",
+        "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "contract.takeover.finance_facts.edit",
+        "authorizationCombination": null,
+        "contractCutoverSurface": true,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "returnContractTakeoverForFinanceSupplement",
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/finance-supplement-return",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/finance-supplement-return",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "contract-takeover.finance-return-for-supplement",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.finance-return-for-supplement\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000returnContractTakeoverForFinanceSupplement\u0000POST\u0000POST /projects/:param/contract-takeovers/:param/finance-supplement-return\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "return_finance_for_supplement",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "returnContractTakeoverForFinanceSupplement",
           "productionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
           ],
@@ -38492,6 +40674,146 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/cost-attributions/:factId",
+        "normalizedKey": "POST /projects/:param/cost-attributions/:param",
+        "controller": "OperatingCostAttributionController",
+        "handler": "request",
+        "sourceFile": "services/api/src/operating-ledger/operating-cost-attribution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "wrapper": "requestCostAttribution",
+          "method": "POST",
+          "path": "/projects/:param/cost-attributions/:param",
+          "normalizedKey": "POST /projects/:param/cost-attributions/:param",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "cost-attribution.request",
+          "bindingIndex": 0,
+          "identity": "cost-attribution.request\u0000apps/web-admin/src/api/cost-attribution.api.ts\u0000requestCostAttribution\u0000POST\u0000POST /projects/:param/cost-attributions/:param\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "canRequestCostAttribution",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "wrapper": "requestCostAttribution",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/cost-attributions/:id/review",
+        "normalizedKey": "POST /projects/:param/cost-attributions/:param/review",
+        "controller": "OperatingCostAttributionController",
+        "handler": "review",
+        "sourceFile": "services/api/src/operating-ledger/operating-cost-attribution.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "positions",
+        "isPublic": false,
+        "requiredPositions": [
+          "comprehensive_director",
+          "finance_director",
+          "finance_staff"
+        ],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "wrapper": "reviewCostAttribution",
+          "method": "POST",
+          "path": "/projects/:param/cost-attributions/:param/review",
+          "normalizedKey": "POST /projects/:param/cost-attributions/:param/review",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "cost-attribution.review",
+          "bindingIndex": 0,
+          "identity": "cost-attribution.review\u0000apps/web-admin/src/api/cost-attribution.api.ts\u0000reviewCostAttribution\u0000POST\u0000POST /projects/:param/cost-attributions/:param/review\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "canReviewCostAttribution",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+          "wrapper": "reviewCostAttribution",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -39675,6 +41997,336 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/history-expenses/batches/:batchId/activation",
+        "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/activation",
+        "controller": "HistoryExpenseController",
+        "handler": "activate",
+        "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "history_expense.activate",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "activateHistoryExpenseBatch",
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches/:param/activation",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/activation",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "history-expense.activate-batch",
+          "bindingIndex": 0,
+          "identity": "history-expense.activate-batch\u0000apps/web-admin/src/api/history-expense.api.ts\u0000activateHistoryExpenseBatch\u0000POST\u0000POST /projects/:param/history-expenses/batches/:param/activation\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.actions.activate",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "activateHistoryExpenseBatch",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/history-expenses/batches/:batchId/confirmations",
+        "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/confirmations",
+        "controller": "HistoryExpenseController",
+        "handler": "confirm",
+        "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "history_expense.confirm",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "confirmHistoryExpenseBatch",
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches/:param/confirmations",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/confirmations",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "history-expense.confirm-batch",
+          "bindingIndex": 0,
+          "identity": "history-expense.confirm-batch\u0000apps/web-admin/src/api/history-expense.api.ts\u0000confirmHistoryExpenseBatch\u0000POST\u0000POST /projects/:param/history-expenses/batches/:param/confirmations\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.actions.confirm",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "confirmHistoryExpenseBatch",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/history-expenses/batches/:batchId/rows/:rowId/corrections",
+        "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+        "controller": "HistoryExpenseController",
+        "handler": "correctRow",
+        "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "history_expense.correct",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "correctHistoryExpenseRow",
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "history-expense.correct-row",
+          "bindingIndex": 0,
+          "identity": "history-expense.correct-row\u0000apps/web-admin/src/api/history-expense.api.ts\u0000correctHistoryExpenseRow\u0000POST\u0000POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.actions.correct",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "correctHistoryExpenseRow",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/history-expenses/batches",
+        "normalizedKey": "POST /projects/:param/history-expenses/batches",
+        "controller": "HistoryExpenseController",
+        "handler": "create",
+        "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "history_expense.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "createHistoryExpenseBatch",
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/batches",
+          "normalizedKey": "POST /projects/:param/history-expenses/batches",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "history-expense.create-batch",
+          "bindingIndex": 0,
+          "identity": "history-expense.create-batch\u0000apps/web-admin/src/api/history-expense.api.ts\u0000createHistoryExpenseBatch\u0000POST\u0000POST /projects/:param/history-expenses/batches\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.actions.manage",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "createHistoryExpenseBatch",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/projects/:projectId/history-expenses/precheck",
+        "normalizedKey": "POST /projects/:param/history-expenses/precheck",
+        "controller": "HistoryExpenseController",
+        "handler": "precheck",
+        "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "history_expense.manage",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "precheckHistoryExpenses",
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/precheck",
+          "normalizedKey": "POST /projects/:param/history-expenses/precheck",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "history-expense.precheck",
+          "bindingIndex": 0,
+          "identity": "history-expense.precheck\u0000apps/web-admin/src/api/history-expense.api.ts\u0000precheckHistoryExpenses\u0000POST\u0000POST /projects/:param/history-expenses/precheck\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "capability.actions.manage",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "precheckHistoryExpenses",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -42190,7 +44842,8 @@
           "normalizedKey": "POST /projects/:param/upstream-fund-facts/:param/confirmation",
           "bodyKind": "json",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
@@ -42216,10 +44869,12 @@
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "confirmProjectUpstreamFundFact",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -42259,13 +44914,41 @@
           "normalizedKey": "POST /projects/:param/upstream-fund-facts/file-uploads",
           "bodyKind": "raw",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
           ],
           "testConsumers": []
         }
       ],
       "authTransports": [],
       "actions": [
+        {
+          "actionId": "project.construction-payment.remittance-evidence-upload",
+          "bindingIndex": 0,
+          "identity": "project.construction-payment.remittance-evidence-upload\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000uploadProjectUpstreamFundPrivateFile\u0000POST\u0000POST /projects/:param/upstream-fund-facts/file-uploads\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "record_upstream_fund_fact",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "uploadProjectUpstreamFundPrivateFile",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
         {
           "actionId": "project.upstream-fund.evidence-upload",
           "bindingIndex": 0,
@@ -42283,10 +44966,14 @@
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "uploadProjectUpstreamFundPrivateFile",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -42326,7 +45013,8 @@
           "normalizedKey": "POST /projects/:param/upstream-fund-facts",
           "bodyKind": "json",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
           ],
           "testConsumers": [
             "apps/web-admin/src/api/core-flow-read.api.test.ts"
@@ -42335,6 +45023,32 @@
       ],
       "authTransports": [],
       "actions": [
+        {
+          "actionId": "project.construction-payment.remittance-record",
+          "bindingIndex": 0,
+          "identity": "project.construction-payment.remittance-record\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000recordProjectUpstreamFundFact\u0000POST\u0000POST /projects/:param/upstream-fund-facts\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "record_upstream_fund_fact",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "recordProjectUpstreamFundFact",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        },
         {
           "actionId": "project.upstream-fund.record",
           "bindingIndex": 0,
@@ -42352,10 +45066,12 @@
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "recordProjectUpstreamFundFact",
           "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
           ],
           "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+            "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
           ],
           "causalVerified": true,
           "accepted": true,
@@ -49823,6 +52539,75 @@
           ],
           "acceptedProductionConsumers": [
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "PUT",
+        "path": "/projects/:projectId/contract-takeovers/:takeoverId/handover",
+        "normalizedKey": "PUT /projects/:param/contract-takeovers/:param/handover",
+        "controller": "ContractTakeoverController",
+        "handler": "registerHandover",
+        "sourceFile": "services/api/src/contract-takeover/contract-takeover.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "contract.archive.confirm",
+        "authorizationCombination": null,
+        "contractCutoverSurface": true,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "saveContractTakeoverHandover",
+          "method": "PUT",
+          "path": "/projects/:param/contract-takeovers/:param/handover",
+          "normalizedKey": "PUT /projects/:param/contract-takeovers/:param/handover",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTakeoverHandoverPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/core-flow-read.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "contract-takeover.register-handover",
+          "bindingIndex": 0,
+          "identity": "contract-takeover.register-handover\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000saveContractTakeoverHandover\u0000PUT\u0000PUT /projects/:param/contract-takeovers/:param/handover\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTakeoverHandoverPanel.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "register_handover",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "saveContractTakeoverHandover",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTakeoverHandoverPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/contracts/components/ContractTakeoverHandoverPanel.vue"
           ],
           "causalVerified": true,
           "accepted": true,

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "status": "blocked",
+  "status": "ready",
   "scope": {
     "registry": "docs/product/manifests/route-usage.registry.json",
     "webApiManifest": "docs/product/manifests/web-api-wrappers.json",
@@ -10,32 +10,32 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 866,
-    "exactRouteCount": 866,
-    "normalizedRouteCount": 866,
-    "classificationOverrideCount": 225,
-    "consumerSurfaceOverrideCount": 47,
-    "classificationOverrideSha256": "71663f75150fda4cd713f90bc211f59dcf45cc116c6fbb98232cee63389be8d2",
-    "consumerSurfaceOverrideSha256": "b2bbe6944629b245b12f03521fc673151201615df030bea2ca96c22191b02015",
-    "derivedProductionPageCount": 633,
-    "pageRouteCount": 652,
+    "routeCount": 876,
+    "exactRouteCount": 876,
+    "normalizedRouteCount": 876,
+    "classificationOverrideCount": 234,
+    "consumerSurfaceOverrideCount": 56,
+    "classificationOverrideSha256": "e5bca7e12b8f29322664da1c2721176179ec533a09edf2dd5f9bfdc4c2624b5d",
+    "consumerSurfaceOverrideSha256": "9a7fe70cf05a352bafa35410ffc5de999596c0ba4f0d5d5cb44ede45a5623836",
+    "derivedProductionPageCount": 642,
+    "pageRouteCount": 661,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 91,
-    "internalTaskCount": 45,
-    "unclassifiedCount": 8,
+    "internalTaskCount": 54,
+    "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 704,
+      "web_api_wrapper": 713,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 3,
-      "operator_endpoint": 42,
-      "none": 110
+      "operator_endpoint": 51,
+      "none": 102
     },
-    "blockerCount": 19
+    "blockerCount": 0
   },
   "evidence": {
-    "upstreamWebManifestStatus": "blocked",
-    "productionWrapperRouteCount": 709,
+    "upstreamWebManifestStatus": "ready",
+    "productionWrapperRouteCount": 713,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -449,15 +449,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_403_actual_purchase_batch_detail_and_update_api_not_yet_consumed_by_web_page",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_403_actual_purchase_batch_detail_and_update_api_not_yet_consumed_by_web_page"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -4576,26 +4576,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "expense_claim_list_has_no_page_consumer_web_uses_ledger_and_create_endpoints_retire_pending_425",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-            "wrapper": "fetchExpenseClaims",
-            "method": "GET",
-            "normalizedPath": "/expense-claims",
-            "normalizedKey": "GET /expense-claims",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/expense-claims/ExpenseClaimWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "internal_list_without_page_consumer_served_via_operator_tooling_until_425"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -4858,6 +4847,88 @@
     },
     {
       "method": "GET",
+      "path": "/expense-claims/ledger",
+      "normalizedKey": "GET /expense-claims/ledger",
+      "controller": "ExpenseClaimController",
+      "handler": "ledger",
+      "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+            "wrapper": "fetchExpenseClaimLedger",
+            "method": "GET",
+            "normalizedPath": "/expense-claims/ledger",
+            "normalizedKey": "GET /expense-claims/ledger",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/expense-claims/ExpenseClaimWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/expense-claims/ledger-export",
+      "normalizedKey": "GET /expense-claims/ledger-export",
+      "controller": "ExpenseClaimController",
+      "handler": "exportLedger",
+      "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+            "wrapper": "downloadExpenseClaimLedger",
+            "method": "GET",
+            "normalizedPath": "/expense-claims/ledger-export",
+            "normalizedKey": "GET /expense-claims/ledger-export",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/expense-claims/ExpenseClaimWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/expense-claims/selectable-purchase-batches",
       "normalizedKey": "GET /expense-claims/selectable-purchase-batches",
       "controller": "ExpenseClaimController",
@@ -4927,7 +4998,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 6105,
+            "sourceLine": 6149,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
@@ -5846,6 +5917,102 @@
     },
     {
       "method": "GET",
+      "path": "/fund-flows",
+      "normalizedKey": "GET /fund-flows",
+      "controller": "FundFlowController",
+      "handler": "list",
+      "sourceFile": "services/api/src/fund-flow/fund-flow.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff",
+        "general_manager",
+        "project_manager"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-flow.api.ts",
+            "wrapper": "fetchFundFlows",
+            "method": "GET",
+            "normalizedPath": "/fund-flows",
+            "normalizedKey": "GET /fund-flows",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/fund-flows/export",
+      "normalizedKey": "GET /fund-flows/export",
+      "controller": "FundFlowController",
+      "handler": "export",
+      "sourceFile": "services/api/src/fund-flow/fund-flow.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "chairman",
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff",
+        "general_manager",
+        "project_manager"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/fund-flow.api.ts",
+            "wrapper": "downloadFundFlowExport",
+            "method": "GET",
+            "normalizedPath": "/fund-flows/export",
+            "normalizedKey": "GET /fund-flows/export",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/fund-movements",
       "normalizedKey": "GET /fund-movements",
       "controller": "FundMovementController",
@@ -6215,6 +6382,47 @@
               "apps/web-admin/src/pages/general-procurement/GeneralProcurementWorkbenchPage.vue",
               "apps/web-admin/src/pages/general-procurement/components/LegacyProcurementDraftDrawer.vue",
               "apps/web-admin/src/pages/general-procurement/components/ProcurementDraftDrawer.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/general-procurements/ledger-export",
+      "normalizedKey": "GET /general-procurements/ledger-export",
+      "controller": "GeneralProcurementController",
+      "handler": "exportLedger",
+      "sourceFile": "services/api/src/general-procurement/general-procurement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/general-procurement.api.ts",
+            "wrapper": "downloadProcurementLedger",
+            "method": "GET",
+            "normalizedPath": "/general-procurements/ledger-export",
+            "normalizedKey": "GET /general-procurements/ledger-export",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/general-procurement/GeneralProcurementWorkbenchPage.vue"
             ]
           }
         ],
@@ -8414,6 +8622,67 @@
     },
     {
       "method": "GET",
+      "path": "/payments/ledger-export",
+      "normalizedKey": "GET /payments/ledger-export",
+      "controller": "PaymentController",
+      "handler": "exportLedger",
+      "sourceFile": "services/api/src/payment/payment.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "budget_director",
+        "budget_staff",
+        "chairman",
+        "comprehensive_director",
+        "contract_director",
+        "contract_staff",
+        "employee",
+        "engineering_department_director",
+        "engineering_department_member",
+        "engineering_director",
+        "engineering_foreman",
+        "engineering_tech",
+        "finance_director",
+        "finance_staff",
+        "general_manager",
+        "material_director",
+        "material_staff",
+        "project_manager",
+        "super_admin"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "downloadPaymentLedgerExport",
+            "method": "GET",
+            "normalizedPath": "/payments/ledger-export",
+            "normalizedKey": "GET /payments/ledger-export",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payments/PaymentListPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/project-fund-disputes/workbench",
       "normalizedKey": "GET /project-fund-disputes/workbench",
       "controller": "ProjectFundDisputeController",
@@ -8496,8 +8765,10 @@
               "apps/web-admin/src/components/ContractRelationshipLedger.vue",
               "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
               "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+              "apps/web-admin/src/pages/expense-claims/ExpenseClaimWorkbenchPage.vue",
               "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue",
               "apps/web-admin/src/pages/necessary-expense-reserves/NecessaryExpenseReserveWorkbenchPage.vue",
+              "apps/web-admin/src/pages/payments/PaymentListPage.vue",
               "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
               "apps/web-admin/src/pages/project-fund-disputes/ProjectFundDisputeWorkbenchPage.vue",
               "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
@@ -9438,6 +9709,51 @@
     },
     {
       "method": "GET",
+      "path": "/projects/:projectId/cost-attributions",
+      "normalizedKey": "GET /projects/:param/cost-attributions",
+      "controller": "OperatingCostAttributionController",
+      "handler": "list",
+      "sourceFile": "services/api/src/operating-ledger/operating-cost-attribution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+            "wrapper": "fetchCostAttributions",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/cost-attributions",
+            "normalizedKey": "GET /projects/:param/cost-attributions",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/projects/:projectId/expense-requests",
       "normalizedKey": "GET /projects/:param/expense-requests",
       "controller": "ProjectExpenseController",
@@ -9863,10 +10179,14 @@
       "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "project_action",
+      "guardAuthorization": "positions",
       "isPublic": false,
-      "requiredPositions": [],
-      "requiredProjectAction": "history_expense.manage",
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -9904,10 +10224,14 @@
       "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "project_action",
+      "guardAuthorization": "positions",
       "isPublic": false,
-      "requiredPositions": [],
-      "requiredProjectAction": "history_expense.manage",
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -9945,10 +10269,14 @@
       "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
       "authorizationScope": "guard_metadata_only",
       "authentication": "authenticated",
-      "guardAuthorization": "project_action",
+      "guardAuthorization": "positions",
       "isPublic": false,
-      "requiredPositions": [],
-      "requiredProjectAction": "history_expense.manage",
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
       "authorizationCombination": null,
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
@@ -13059,6 +13387,47 @@
     },
     {
       "method": "GET",
+      "path": "/spot-procurements/ledger-export",
+      "normalizedKey": "GET /spot-procurements/ledger-export",
+      "controller": "SpotProcurementController",
+      "handler": "exportLedger",
+      "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "authenticated_only",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
+            "wrapper": "downloadSpotProcurementLedger",
+            "method": "GET",
+            "normalizedPath": "/spot-procurements/ledger-export",
+            "normalizedKey": "GET /spot-procurements/ledger-export",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/spot-procurements/projects/:projectId/application-definitions",
       "normalizedKey": "GET /spot-procurements/projects/:param/application-definitions",
       "controller": "SpotProcurementController",
@@ -13587,15 +13956,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_403_actual_purchase_batch_detail_and_update_api_not_yet_consumed_by_web_page",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_403_actual_purchase_batch_detail_and_update_api_not_yet_consumed_by_web_page"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -24699,15 +25068,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -24729,15 +25098,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -24761,15 +25130,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -24791,15 +25160,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -24825,15 +25194,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -24855,15 +25224,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "unclassified",
-      "classificationSource": "unclassified",
-      "classificationReason": null,
-      "consumerSurface": "none",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
         "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_405_other_project_payment_write_api_not_yet_consumed_by_web_page"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -28527,6 +28896,96 @@
             "normalizedKey": "POST /projects/:param/contract-takeovers/imports/preview",
             "productionConsumers": [
               "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/cost-attributions/:factId",
+      "normalizedKey": "POST /projects/:param/cost-attributions/:param",
+      "controller": "OperatingCostAttributionController",
+      "handler": "request",
+      "sourceFile": "services/api/src/operating-ledger/operating-cost-attribution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+            "wrapper": "requestCostAttribution",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/cost-attributions/:param",
+            "normalizedKey": "POST /projects/:param/cost-attributions/:param",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/cost-attributions/:id/review",
+      "normalizedKey": "POST /projects/:param/cost-attributions/:param/review",
+      "controller": "OperatingCostAttributionController",
+      "handler": "review",
+      "sourceFile": "services/api/src/operating-ledger/operating-cost-attribution.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "positions",
+      "isPublic": false,
+      "requiredPositions": [
+        "comprehensive_director",
+        "finance_director",
+        "finance_staff"
+      ],
+      "requiredProjectAction": null,
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
+            "wrapper": "reviewCostAttribution",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/cost-attributions/:param/review",
+            "normalizedKey": "POST /projects/:param/cost-attributions/:param/review",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
             ]
           }
         ],
@@ -35705,160 +36164,10 @@
     "invalidConsumerSurfaceEntries": [],
     "duplicateConsumerSurfaceEntries": [],
     "staleConsumerSurfaceEntries": [],
-    "productionWebRoutesWithoutNest": [
-      {
-        "normalizedKey": "GET /fund-flows",
-        "wrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/fund-flow.api.ts",
-            "wrapper": "fetchFundFlows"
-          }
-        ]
-      },
-      {
-        "normalizedKey": "GET /fund-flows/export",
-        "wrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/fund-flow.api.ts",
-            "wrapper": "downloadFundFlowExport"
-          }
-        ]
-      },
-      {
-        "normalizedKey": "GET /projects/:param/cost-attributions",
-        "wrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
-            "wrapper": "fetchCostAttributions"
-          }
-        ]
-      },
-      {
-        "normalizedKey": "POST /projects/:param/cost-attributions/:param",
-        "wrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
-            "wrapper": "requestCostAttribution"
-          }
-        ]
-      },
-      {
-        "normalizedKey": "POST /projects/:param/cost-attributions/:param/review",
-        "wrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
-            "wrapper": "reviewCostAttribution"
-          }
-        ]
-      }
-    ],
+    "productionWebRoutesWithoutNest": [],
     "authRoutesWithoutNest": [],
     "classificationConflicts": [],
-    "expectationMismatches": [
-      {
-        "field": "consumerSurfaceCounts.none",
-        "expected": 102,
-        "actual": 110
-      },
-      {
-        "field": "consumerSurfaceCounts.web_api_wrapper",
-        "expected": 682,
-        "actual": 704
-      },
-      {
-        "field": "derivedProductionPageCount",
-        "expected": 611,
-        "actual": 633
-      },
-      {
-        "field": "routeCount",
-        "expected": 836,
-        "actual": 866
-      },
-      {
-        "field": "usageCounts.page",
-        "expected": 630,
-        "actual": 652
-      },
-      {
-        "field": "usageCounts.unclassified",
-        "expected": 0,
-        "actual": 8
-      }
-    ],
-    "unclassifiedRoutes": [
-      {
-        "method": "GET",
-        "path": "/actual-purchase-batches/:batchId",
-        "normalizedKey": "GET /actual-purchase-batches/:param",
-        "controller": "ActualPurchaseBatchController",
-        "handler": "detail",
-        "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "PATCH",
-        "path": "/actual-purchase-batches/:batchId",
-        "normalizedKey": "PATCH /actual-purchase-batches/:param",
-        "controller": "ActualPurchaseBatchController",
-        "handler": "update",
-        "sourceFile": "services/api/src/actual-purchase/actual-purchase-batch.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/other-project-payments",
-        "normalizedKey": "POST /other-project-payments",
-        "controller": "OtherProjectPaymentController",
-        "handler": "create",
-        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/other-project-payments/:claimId/approval",
-        "normalizedKey": "POST /other-project-payments/:param/approval",
-        "controller": "OtherProjectPaymentController",
-        "handler": "approve",
-        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/other-project-payments/:claimId/corrections",
-        "normalizedKey": "POST /other-project-payments/:param/corrections",
-        "controller": "OtherProjectPaymentController",
-        "handler": "correctAmount",
-        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/other-project-payments/:claimId/payments",
-        "normalizedKey": "POST /other-project-payments/:param/payments",
-        "controller": "OtherProjectPaymentController",
-        "handler": "recordPayment",
-        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/other-project-payments/:claimId/payments/:executionId/refunds",
-        "normalizedKey": "POST /other-project-payments/:param/payments/:param/refunds",
-        "controller": "OtherProjectPaymentController",
-        "handler": "recordRefund",
-        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
-        "consumerSurface": "none"
-      },
-      {
-        "method": "POST",
-        "path": "/other-project-payments/:claimId/submission",
-        "normalizedKey": "POST /other-project-payments/:param/submission",
-        "controller": "OtherProjectPaymentController",
-        "handler": "submit",
-        "sourceFile": "services/api/src/expense-claim/other-project-payment.controller.ts",
-        "consumerSurface": "none"
-      }
-    ]
+    "expectationMismatches": [],
+    "unclassifiedRoutes": []
   }
 }

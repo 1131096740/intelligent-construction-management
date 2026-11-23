@@ -13237,7 +13237,7 @@
       "name": "fetchCostAttributions",
       "apiFile": "apps/web-admin/src/api/cost-attribution.api.ts",
       "kind": "transport",
-      "returnProvenance": "unverified",
+      "returnProvenance": "transparent_main_response",
       "requests": [
         {
           "kind": "main",
@@ -13269,7 +13269,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 54,
+          "sourceLine": 55,
           "method": "POST",
           "path": "/projects/:param/cost-attributions/:param",
           "normalizedPath": "/projects/:param/cost-attributions/:param",
@@ -13297,7 +13297,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 54,
+          "sourceLine": 55,
           "method": "POST",
           "path": "/projects/:param/cost-attributions/:param/review",
           "normalizedPath": "/projects/:param/cost-attributions/:param/review",
