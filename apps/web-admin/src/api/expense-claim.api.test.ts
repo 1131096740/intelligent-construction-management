@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, confirmExpenseClaimLoanRepayment, createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaims, generateExpenseClaimFinalDisbursementPdf, generateExpenseClaimFinalPaymentPdf, recordExpenseClaimLoanDisbursement, recordExpenseClaimLoanRepayment, recordExpenseClaimPayment, removeExpenseClaimAttachment, reverseExpenseClaimLoanRepayment, reviewExpenseClaim, submitExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
+import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, confirmExpenseClaimLoanRepayment, createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaimExpenseCategories, fetchExpenseClaimSelectablePurchaseBatches, fetchExpenseClaims, generateExpenseClaimFinalDisbursementPdf, generateExpenseClaimFinalPaymentPdf, recordExpenseClaimLoanDisbursement, recordExpenseClaimLoanRepayment, recordExpenseClaimPayment, removeExpenseClaimAttachment, reverseExpenseClaimLoanRepayment, reviewExpenseClaim, submitExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
 
 vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
 
@@ -62,6 +62,40 @@ describe("expense claim API", () => {
       method: "POST",
       body: JSON.stringify(draft)
     }));
+  });
+
+  it("loads reusable company expense categories and manually selectable purchase batches", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ categories: [{ name: "餐饮", isDefault: true, usageCount: 2 }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ batches: [{ batchId: "batch-1", supplierName: "五金供应商", availableAmountCents: "40000" }] }), { status: 200 }));
+
+    await expect(fetchExpenseClaimExpenseCategories("company/1")).resolves.toMatchObject({
+      categories: [{ name: "餐饮", isDefault: true, usageCount: 2 }]
+    });
+    await expect(fetchExpenseClaimSelectablePurchaseBatches({ companyEntityId: "company/1", projectId: "project 1" })).resolves.toMatchObject({
+      batches: [{ batchId: "batch-1" }]
+    });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(1, "/expense-claims/expense-categories?companyEntityId=company%2F1");
+    expect(mockApiFetch).toHaveBeenNthCalledWith(2, "/expense-claims/selectable-purchase-batches?companyEntityId=company%2F1&projectId=project+1");
+  });
+
+  it("posts a purchase advance reimbursement with batch, quantity and no procurement request key", async () => {
+    mockApiFetch.mockResolvedValue(new Response(JSON.stringify({ id: "claim-2", code: "BX-2", status: "draft", requestedAmountCents: "40000" }), { status: 201 }));
+    const draft: CreateExpenseClaimPayload = {
+      actualPurchaseBatchId: "batch-1",
+      claimType: "reimbursement",
+      companyEntityId: "company-1",
+      projectId: "project-1",
+      applicantUserId: "user-1",
+      reason: "员工垫付采购款",
+      requestedAmountCents: "40000",
+      payeeName: "员工甲",
+      lines: [{ expenseCategory: "零星材料", occurredOn: "2026-11-20", purpose: "垫付角钢", quantity: "4", receiptCount: 1, amountCents: "40000", evidenceType: "invoice" }]
+    };
+    await expect(createExpenseClaim(draft)).resolves.toMatchObject({ id: "claim-2" });
+    expect(mockApiFetch).toHaveBeenLastCalledWith("/expense-claims", expect.objectContaining({ method: "POST", body: JSON.stringify(draft) }));
+    expect(JSON.stringify(draft)).not.toContain("generalProcurementRequestKey");
   });
 
   it("posts a project-scoped incidental expense without inventing an attachment", async () => {

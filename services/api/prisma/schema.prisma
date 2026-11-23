@@ -5373,6 +5373,7 @@ model ExpenseClaimLine {
   expenseCategory  String
   occurredOn       DateTime
   purpose          String
+  quantity         Decimal? @db.Decimal(24, 4)
   receiptCount     Int
   amountCents      BigInt
   evidenceType     String
