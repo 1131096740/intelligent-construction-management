@@ -39,6 +39,7 @@ import { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
 import { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto";
 import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
+import { RevisePaymentRequestDto } from "./dto/revise-payment-request.dto";
 import { PaymentReadService } from "./payment-read.service";
 import { PaymentRequestService } from "./payment-request.service";
 import { PAYMENT_REQUEST_ENTRY_DEFINITION } from "./payment-request-business-entry-definition";
@@ -143,6 +144,16 @@ export class PaymentController {
     @Body() body: ReviewPaymentApprovalDto
   ) {
     return this.payments.reviewApproval(paymentId, user.id, body);
+  }
+
+  @Post(":paymentId/revision-submission")
+  @RequireProjectRole("payment.create")
+  reviseAndSubmit(
+    @Param("paymentId") paymentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RevisePaymentRequestDto
+  ) {
+    return this.payments.reviseAndSubmit(paymentId, user.id, body);
   }
 
   @Post(":paymentId/approval-transfer")

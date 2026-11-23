@@ -236,6 +236,46 @@
             :execute="executePaymentDraftAction"
           />
 
+          <div
+            v-if="paymentDetail.revisionSubmissionContext && isPaymentActionEnabled('revise_and_submit')"
+            class="action-group"
+          >
+            <div class="action-title">
+              <strong>修改并重新提交</strong>
+            </div>
+            <div class="action-fields">
+              <MoneyInput
+                v-model="paymentRevisionForm.amountYuan"
+                label="申请金额"
+                required
+              />
+              <label class="action-field action-field--wide">
+                <span>付款事项</span>
+                <t-input
+                  v-model="paymentRevisionForm.paymentMatter"
+                  :maxlength="500"
+                />
+              </label>
+              <label class="action-field action-field--wide">
+                <span>金额计算说明</span>
+                <t-textarea
+                  v-model="paymentRevisionForm.amountCalculationExplanation"
+                  :maxlength="2000"
+                />
+              </label>
+            </div>
+            <div class="action-buttons">
+              <t-button
+                theme="primary"
+                :loading="actionBusy === 'revision'"
+                :disabled="Boolean(actionBusy)"
+                @click="submitPaymentRevision"
+              >
+                重新提交审批
+              </t-button>
+            </div>
+          </div>
+
           <t-alert
             v-if="paymentDetail.disabledReasons.length"
             theme="info"
@@ -311,6 +351,14 @@
                   @click="requestApproval('reject')"
                 >
                   驳回
+                </t-button>
+                <t-button
+                  v-if="paymentReviewEnabled && paymentApprovalCapability?.reviewApprovalContext?.canReturnForRevision"
+                  variant="outline"
+                  :loading="actionBusy === 'approval'"
+                  @click="requestApproval('return_to_applicant')"
+                >
+                  退回修改
                 </t-button>
                 <t-button
                   v-if="isPaymentActionEnabled('download_approval_form')"
@@ -794,6 +842,7 @@ import {
   recordPaymentExecutionWithUpload,
   recordPaymentFinance,
   recordPaymentPdfArchive,
+  reviseAndSubmitPaymentRequest,
   transferPaymentApproval,
   uploadPaymentPdfArchivePrivateFile,
   withdrawPaymentApproval,
@@ -873,6 +922,7 @@ interface PaymentReviewConfirmationState {
   expectedNodeIndex: number;
   expectedApprovalUpdatedAt: string;
   requiresSelfReviewConfirmation: boolean;
+  decision?: PaymentApprovalReviewActionDecision;
 }
 
 interface PaymentExecutionSelection {
@@ -965,6 +1015,7 @@ const paymentActionForm = reactive({
   assignmentUserId: "",
   downloadFileId: ""
 });
+const paymentRevisionForm = reactive({ amountYuan: "", paymentMatter: "", amountCalculationExplanation: "" });
 
 const paymentDetailMetaView = computed(() => paymentDetail.value?.meta ?? []);
 const paymentBaseInfoView = computed(() => paymentDetail.value?.baseInfo ?? []);
@@ -1070,7 +1121,8 @@ const paymentActionByKey = computed(
 );
 const paymentOperationalActions = computed(() =>
   (paymentDetail.value?.availableActions ?? []).filter(
-    (action) => action.key !== "abandon_application" && !(registeredExecutionCapability.value?.supportedDomain && action.key === "record_execution")
+    (action) => !["abandon_application", "revise_and_submit"].includes(action.key) &&
+      !(registeredExecutionCapability.value?.supportedDomain && action.key === "record_execution")
   )
 );
 const paymentDraftActionSubject = computed(() => ({
@@ -1175,6 +1227,23 @@ async function executePaymentDraftAction(request: BusinessDraftActionRequest) {
   if (!succeeded) throw new Error(actionMessage.value || "放弃付款申请失败，请重试");
 }
 
+async function submitPaymentRevision() {
+  const detail = paymentDetail.value;
+  const context = detail?.revisionSubmissionContext;
+  if (!detail || !context || actionBusy.value || !isPaymentActionEnabled("revise_and_submit")) return;
+  try {
+    const requestedAmountCents = parseYuanAmount(paymentRevisionForm.amountYuan, "申请金额");
+    await runPaymentAction("revision", () => reviseAndSubmitPaymentRequest(detail.id, {
+      expectedUpdatedAt: context.expectedUpdatedAt,
+      requestedAmountCents,
+      paymentMatter: paymentRevisionForm.paymentMatter.trim() || undefined,
+      amountCalculationExplanation: paymentRevisionForm.amountCalculationExplanation.trim() || undefined
+    }));
+  } catch (error) {
+    setActionError(error, "付款申请信息不完整");
+  }
+}
+
 function buttonTheme(key: string) {
   return paymentDetail.value?.primaryAction === key ? "primary" : "default";
 }
@@ -1260,6 +1329,12 @@ async function reloadPaymentDetail() {
     paymentApprovalCapabilityGeneration += 1;
     paymentApprovalCapability.value = serverDetail;
     paymentDetail.value = viewDetail;
+    const revision = viewDetail.revisionSubmissionContext;
+    Object.assign(paymentRevisionForm, {
+      amountYuan: revision ? centsTextToYuanText(revision.requestedAmountCents) : "",
+      paymentMatter: revision?.paymentMatter ?? "",
+      amountCalculationExplanation: revision?.amountCalculationExplanation ?? ""
+    });
     registeredDetailRefreshWarning.value = "";
     if (!evidenceFileIds.includes(paymentActionForm.downloadFileId)) {
       paymentActionForm.downloadFileId = evidenceFileIds[0] ?? "";
@@ -1319,6 +1394,7 @@ function clearPaymentReviewConfirmation() {
   paymentReviewConfirmation.expectedNodeIndex = -1;
   paymentReviewConfirmation.expectedApprovalUpdatedAt = "";
   paymentReviewConfirmation.requiresSelfReviewConfirmation = false;
+  paymentReviewConfirmation.decision = undefined;
 }
 
 function invalidatePaymentReviewDialog(close: boolean) {
@@ -1452,7 +1528,7 @@ function openSensitiveAction(
   });
 }
 
-function requestApproval(decision: "approve" | "reject") {
+function requestApproval(decision: PaymentApprovalReviewActionDecision) {
   const paymentId = paymentApprovalCapability.value?.id;
   const coordinates = paymentApprovalCapability.value?.reviewApprovalContext;
   try {
@@ -1460,6 +1536,7 @@ function requestApproval(decision: "approve" | "reject") {
       !paymentReviewEnabled.value ||
       !paymentId ||
       !coordinates ||
+      (decision === "return_to_applicant" && !coordinates.canReturnForRevision) ||
       routePaymentId() !== paymentId
     ) {
       throw new Error("付款审批资格或审批坐标未读取，请刷新详情后重试");
@@ -1491,15 +1568,16 @@ function requestApproval(decision: "approve" | "reject") {
     expectedApprovalInstanceId: coordinates.expectedApprovalInstanceId,
     expectedNodeIndex: coordinates.expectedNodeIndex,
     expectedApprovalUpdatedAt: coordinates.expectedApprovalUpdatedAt,
+    decision,
     requiresSelfReviewConfirmation:
       requiresPaymentSelfReviewConfirmation.value
   });
   openSensitiveAction(decision === "approve" ? "approvalApprove" : "approvalReject", {
-    title: decision === "approve" ? "确认通过付款审批？" : "确认驳回付款审批？",
+    title: decision === "approve" ? "确认通过付款审批？" : decision === "return_to_applicant" ? "确认退回付款申请？" : "确认驳回付款审批？",
     description: decision === "approve"
       ? "通过后只会进入已批待付，仍需财务或出纳登记实际付款。"
-      : "驳回后本轮审批将终止，驳回原因会写入审批历史。",
-    confirmText: decision === "approve" ? "确认通过" : "确认驳回",
+      : decision === "return_to_applicant" ? "本轮审批将终止，原申请人修改后可重新提交。" : "驳回后本轮审批将终止，驳回原因会写入审批历史。",
+    confirmText: decision === "approve" ? "确认通过" : decision === "return_to_applicant" ? "确认退回" : "确认驳回",
     confirmTheme: decision === "approve" ? "primary" : "danger",
     requirePassword: requiresPaymentSelfReviewConfirmation.value
   });
@@ -1525,7 +1603,8 @@ function paymentReviewCapabilityMatches(
       context.expectedApprovalInstanceId &&
     coordinates?.expectedNodeIndex === context.expectedNodeIndex &&
     coordinates?.expectedApprovalUpdatedAt ===
-      context.expectedApprovalUpdatedAt
+      context.expectedApprovalUpdatedAt &&
+    (context.decision !== "return_to_applicant" || coordinates?.canReturnForRevision === true)
   );
 }
 
@@ -1537,6 +1616,7 @@ function paymentReviewSelectionMatches(
   return (
     sensitiveAction.visible &&
     sensitiveAction.kind === expectedKind &&
+    paymentReviewConfirmation.decision === context.decision &&
     paymentReviewConfirmation.dialogGeneration ===
       context.dialogGeneration &&
     paymentReviewConfirmation.paymentId === context.paymentId &&
@@ -1605,8 +1685,8 @@ function capturePaymentReviewContext(
           )
         : undefined;
     const comment = paymentActionForm.approvalComment.trim() || undefined;
-    if (decision === "reject" && !comment) {
-      throw new Error("驳回原因不能为空");
+    if (decision !== "approve" && !comment) {
+      throw new Error("退回或驳回原因不能为空");
     }
     const selfReviewPayload = buildApprovalSelfReviewPayload(
       coordinates.requiresSelfReviewConfirmation,
@@ -1700,7 +1780,7 @@ async function completePaymentReview(
   actionMessage.value =
     context.decision === "approve"
       ? "付款审批已通过，当前仅进入已批待付。"
-      : "付款审批已驳回。";
+      : context.decision === "return_to_applicant" ? "付款申请已退回修改。" : "付款审批已驳回。";
   await reloadPaymentDetail();
 }
 
@@ -1750,14 +1830,15 @@ function confirmPaymentApprovalReject(values: {
   reason: string;
   password: string;
 }) {
+  const decision = paymentReviewConfirmation.decision === "return_to_applicant" ? "return_to_applicant" : "reject";
   return executePaymentApprovalReviewAction({
-    decision: "reject",
+    decision,
     capture: () =>
-      capturePaymentReviewContext("reject", values.password),
+      capturePaymentReviewContext(decision, values.password),
     preflight: (context) =>
       preparePaymentApprovalReviewAction({
         ...context,
-        decision: "reject",
+        decision,
         isCurrent: paymentReviewContextIsCurrent
       }),
     current: preparedPaymentReviewIsCurrent,

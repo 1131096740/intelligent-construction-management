@@ -1,6 +1,7 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
 import { PrismaService } from "../database/prisma.service";
+import { PaymentReadService } from "./payment-read.service";
 
 const FINANCE_ROLES = ["finance_staff", "finance_director", "comprehensive_director"] as const;
 
@@ -20,7 +21,7 @@ export interface EntryAction {
 @Injectable()
 export class FinancialCorrectionEntryService {
   private readonly roles: CompanyRoleResolverService;
-  constructor(private readonly prisma: PrismaService) {
+  constructor(private readonly prisma: PrismaService, @Optional() private readonly paymentRead?: PaymentReadService) {
     this.roles = new CompanyRoleResolverService(prisma);
   }
 
@@ -31,7 +32,7 @@ export class FinancialCorrectionEntryService {
     const keys = await this.roles.resolveActiveRoleScopesInTransaction(this.prisma, actorUserId);
     const finance = keys.some(role => (FINANCE_ROLES as readonly string[]).includes(role));
     if (["payment_request", "payment", "payment_execution"].includes(normalized)) {
-      return this.paymentEntry(normalized, businessId, finance);
+      return this.paymentEntry(normalized, businessId, finance, actorUserId);
     }
     if (normalized === "actual_purchase_batch") return this.actualPurchaseBatchEntry(businessId, finance);
     if (normalized === "settlement") return this.settlementEntry(businessId);
@@ -39,7 +40,7 @@ export class FinancialCorrectionEntryService {
     throw new BadRequestException("该单据类型没有统一更正入口，请从原业务页面办理");
   }
 
-  private async paymentEntry(type: string, id: string, finance: boolean) {
+  private async paymentEntry(type: string, id: string, finance: boolean, actorUserId: string) {
     const execution = type === "payment_execution"
       ? await this.prisma.paymentExecution.findUnique({ where: { id }, select: { paymentRequestId: true } })
       : null;
@@ -55,8 +56,11 @@ export class FinancialCorrectionEntryService {
     });
     const path = `/付款管理/${encodeURIComponent(payment.id)}`;
     const actions: EntryAction[] = [];
-    if (["draft", "approval_rejected", "withdrawn"].includes(payment.status)) {
-      actions.push({ key: "edit_draft", label: "编辑原付款申请", path, method: "page", enabled: true });
+    if (payment.status === "draft" && this.paymentRead) {
+      const detail = await this.paymentRead.getDetail(payment.id, undefined, actorUserId);
+      if (detail.availableActionKeys.includes("revise_and_submit")) {
+        actions.push({ key: "edit_draft", label: "修改并重新提交付款申请", path, method: "page", enabled: true });
+      }
     } else if (["approval_pending", "in_approval"].includes(payment.status)) {
       actions.push({ key: "withdraw_approval", label: "撤回审批后修改", path, method: "page", enabled: true });
     } else if (["approved_pending_payment", "partially_paid", "paid"].includes(payment.status)) {

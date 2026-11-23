@@ -29,7 +29,7 @@ import {
   Logger,
   Optional
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, type PaymentRequest } from "@prisma/client";
 import {
   approvalElapsedHours,
   canCreatePaymentFromSettlementStatus,
@@ -96,6 +96,8 @@ import {
   payableSourceAdapterRegistry
 } from "../payable-registry/wage-payable-source.adapter";
 import type { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
+import type { RevisePaymentRequestDto } from "./dto/revise-payment-request.dto";
+import { hasPaymentRevisionBasis } from "./payment-revision-basis";
 import {
   CONTRACT_TAKEOVER_BALANCE_SELECT,
   type ContractTakeoverBalanceRow,
@@ -255,6 +257,8 @@ type NormalizedWagePayableBinding = Readonly<{
 type NormalizedCreatePaymentRequest = Omit<CreatePaymentRequestDto, "requestedAmountCents"> & {
   requestedAmountCents: bigint;
 };
+
+type PaymentRevision = { draft: PaymentRequest; previousRoundId: string };
 
 type AuditWriteClient = Pick<Prisma.TransactionClient, "auditLog">;
 
@@ -700,155 +704,265 @@ export class PaymentRequestService {
       requestedAmountCents: positiveMoneyCents(input.requestedAmountCents, "付款申请金额必须为大于 0 的整数分")
     };
 
-    const payment = await this.prisma.$transaction(async (tx) => {
-      const sourceType = normalizedInput.sourceType ?? "settlement";
-      if (sourceType === "contract_advance") {
-        return this.createContractAdvancePaymentRequest(tx, normalizedInput, applicantUserId);
-      }
-
-      if (sourceType === "contract_due") {
-        return this.createContractDuePaymentRequest(tx, normalizedInput, applicantUserId);
-      }
-
-      if (sourceType === "signed_settlement") {
-        return this.createSignedSettlementPaymentRequest(tx, normalizedInput, applicantUserId);
-      }
-
-      if (sourceType !== "settlement") {
-        throw new Error("不支持的付款申请来源，请从结算或合同付款入口发起");
-      }
-
-      if (normalizedInput.signedSettlementId) {
-        throw new BadRequestException("已签结算依据只能用于已签结算付款来源");
-      }
-
-      if (!normalizedInput.settlementId) {
-        throw new Error("请选择已归档生效的结算后再发起付款申请");
-      }
-
-      let settlement = await tx.settlement.findUnique({
-        where: { id: normalizedInput.settlementId }
-      });
-
-      if (!settlement) {
-        throw new Error("未找到结算记录，请刷新结算台账后重试");
-      }
-
-      this.assertSettlementEffective(settlement.status as SettlementStatus);
-      await this.lockContractPaymentCapacityRows(tx, settlement.contractId);
-      settlement = await tx.settlement.findUnique({
-        where: { id: settlement.id }
-      });
-      if (!settlement) {
-        throw new Error("未找到结算记录，请刷新结算台账后重试");
-      }
-      this.assertSettlementEffective(settlement.status as SettlementStatus);
-      const settlementContract = await tx.contract.findUnique({
-        where: { id: settlement.contractId },
-        select: { contractTypeKey: true }
-      });
-      if (!settlementContract) {
-        throw new Error("未找到关联合同，请刷新合同台账后重试");
-      }
-      if (!SETTLEMENT_PAYMENT_CONTRACT_TYPES.has(settlementContract.contractTypeKey ?? "")) {
-        throw new BadRequestException("该合同类型应从合同已冻结的付款阶段发起付款");
-      }
-      const settlementContractVersion = await tx.contractVersion.findUnique({
-        where: { id: settlement.contractVersionId },
-        select: { signingSubjectType: true }
-      });
-      const paymentSubjectType = paymentSubjectForSigningSubject(
-        normalizedInput.paymentSubjectType,
-        settlementContractVersion?.signingSubjectType
-      );
-      await this.assertHistoricalTakeoverPaymentReady(tx, {
-        contractId: settlement.contractId,
-        contractVersionId: settlement.contractVersionId,
-        sourceType: "settlement",
-        actorUserId: applicantUserId
-      });
-
-      const existingApprovedOrPending = await tx.paymentRequest.findMany({
-        where: {
-          settlementId: settlement.id,
-          status: {
-            in: [...SETTLEMENT_CAPACITY_PAYMENT_STATUSES]
-          }
-        }
-      });
-      const proxyPaidCents = await this.sumProjectProxyPaymentCents(tx, settlement.id);
-      const contractDueAllocatedCents = await this.sumContractDueAllocatedCentsForSettlement(
-        tx,
-        settlement.id
-      );
-      const capacityView = calculateSettlementPaymentCapacityBigInt({
-        payableAmountCents: settlement.payableAmountCents,
-        actualPaidAmountCents: settlement.paidAmountCents,
-        proxyPaidAmountCents:
-          dbMoneyToBigInt(proxyPaidCents, "项目代付金额") +
-          dbMoneyToBigInt(contractDueAllocatedCents, "合同到期付款分摊金额"),
-        paymentRequests: existingApprovedOrPending
-      });
-      const capacity: PaymentCapacity = {
-        payableAmountCents: settlement.payableAmountCents,
-        approvedPendingPaymentCents: capacityView.outstandingPaymentCents,
-        paidAmountCents:
-          dbMoneyToBigInt(settlement.paidAmountCents, "结算已付金额") +
-          dbMoneyToBigInt(proxyPaidCents, "项目代付金额") +
-          dbMoneyToBigInt(contractDueAllocatedCents, "合同到期付款分摊金额")
-      };
-
-      this.amount.assertCanRequest(capacity, normalizedInput.requestedAmountCents);
-      await this.assertContractDuePaymentCapacity(tx, settlement, normalizedInput.requestedAmountCents);
-      const payment = await tx.paymentRequest.create({
-        data: {
-          projectId: settlement.projectId,
-          settlementId: settlement.id,
-          sourceType: "settlement",
-          paymentSubjectType,
-          contractId: settlement.contractId,
-          contractVersionId: settlement.contractVersionId,
-          paymentTermsVersionId: settlement.paymentTermsVersionId,
-          code: normalizedInput.code,
-          status: "approval_pending",
-          requestedAmountCents: normalizedInput.requestedAmountCents,
-          approvedAmountCents: null,
-          paidAmountCents: 0n,
-          ...(optionalTrimmedText(normalizedInput.paymentMatter) ? { paymentMatter: optionalTrimmedText(normalizedInput.paymentMatter) } : {}),
-          ...(optionalTrimmedText(normalizedInput.amountCalculationExplanation) ? { amountCalculationExplanation: optionalTrimmedText(normalizedInput.amountCalculationExplanation) } : {})
-        }
-      });
-
-      if (applicantUserId) {
-        await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES, applicantUserId);
-        const round = await tx.approvalInstance.create({
-          data: {
-            flowType: "payment.approve",
-            businessType: "payment_request",
-            businessId: payment.id,
-            status: "in_progress",
-            currentNodeIndex: 0,
-            frozenNodes: PAYMENT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
-            applicantUserId
-          }
-        });
-        await this.approvalNotifications?.queue(tx, payment, round, null);
-      }
-
-      await this.recordPaymentRequestCreated(tx, payment, applicantUserId);
-      if (!applicantUserId || !this.businessEntry) return payment;
-      const businessEntrySnapshot = await this.businessEntry.freezeSubmissionSnapshotInTransaction(tx, applicantUserId, {
-        sceneKey: PAYMENT_REQUEST_ENTRY_DEFINITION.key,
-        definitionVersion: PAYMENT_REQUEST_ENTRY_DEFINITION.version,
-        target: { projectId: payment.projectId, entityType: "payment_request", entityId: payment.id },
-        expectedRevision: 0,
-        values: paymentRequestEntryValues(payment)
-      });
-      return { ...payment, businessEntrySnapshot };
-    });
-
+    const payment = await this.prisma.$transaction(tx =>
+      this.submitPaymentRequest(tx, normalizedInput, applicantUserId));
     await this.approvalNotifications?.afterCommit(payment.id);
     return paymentPostResponseToApi(payment);
+  }
+
+  async reviseAndSubmit(paymentId: string, actorUserId: string, input: RevisePaymentRequestDto) {
+    if (!this.prisma) throw new BadRequestException("付款申请重提服务暂不可用");
+    const expectedUpdatedAt = new Date(input.expectedUpdatedAt);
+    if (Number.isNaN(expectedUpdatedAt.getTime())) throw new BadRequestException("付款申请更新时间不正确，请刷新后重试");
+    const requestedAmountCents = positiveMoneyCents(input.requestedAmountCents, "付款申请金额必须为大于 0 的整数分");
+    const payment = await this.prisma.$transaction(async tx => {
+      // Match review and execution: lock the payment before the contract capacity path.
+      const matches = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "PaymentRequest" WHERE id = ${paymentId} OR code = ${paymentId} ORDER BY id FOR UPDATE
+      `;
+      if (matches.length !== 1) throw new ConflictException("未找到唯一的退回待修改付款申请");
+      const draft = await tx.paymentRequest.findUnique({ where: { id: matches[0].id } });
+      if (!draft || draft.status !== "draft" ||
+          draft.updatedAt.getTime() !== expectedUpdatedAt.getTime() || !hasPaymentRevisionBasis(draft)) {
+        throw new ConflictException("付款申请状态、版本或原付款依据已变化，请刷新后重试");
+      }
+      await tx.$queryRaw`SELECT id FROM "ApprovalInstance" WHERE "businessType" = 'payment_request'
+        AND "businessId" = ${draft.id} AND "flowType" = 'payment.approve' FOR UPDATE`;
+      const previous = await tx.approvalInstance.findFirst({
+        where: { businessType: "payment_request", businessId: draft.id, flowType: "payment.approve" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }]
+      });
+      if (previous?.status !== "returned_to_applicant" ||
+          await tx.approvalInstance.count({ where: {
+            businessType: "payment_request", businessId: draft.id, flowType: "payment.approve", status: "in_progress"
+          } }) !== 0 ||
+          !await tx.approvalActionLog.findFirst({ where: { approvalInstanceId: previous.id, action: "return_to_applicant" }, select: { id: true } })) {
+        throw new ConflictException("付款申请缺少退回修改记录，请刷新后重试");
+      }
+      if (previous.applicantUserId !== actorUserId) throw new ForbiddenException("只有原申请人可以修改并重提付款申请");
+      if (await tx.paymentExecution.findFirst({ where: { paymentRequestId: draft.id }, select: { id: true } })) {
+        throw new ConflictException("付款申请已有实付记录，不能作为草稿重提");
+      }
+      const holds = await this.financingUsageTotals(tx, draft.id);
+      if (holds.occupied > 0n || holds.used > 0n) {
+        throw new ConflictException("原付款申请仍有垫资额度占用或实付，请核对后重提");
+      }
+
+      return this.submitPaymentRequest(tx, {
+        sourceType: draft.sourceType as CreatePaymentRequestDto["sourceType"],
+        code: draft.code, requestedAmountCents,
+        paymentSubjectType: draft.paymentSubjectType as CreatePaymentRequestDto["paymentSubjectType"],
+        settlementId: draft.settlementId ?? undefined,
+        signedSettlementId: draft.signedSettlementId ?? undefined,
+        contractVersionId: draft.contractVersionId,
+        paymentTermsVersionId: draft.paymentTermsVersionId,
+        paymentTermsStageId: draft.paymentTermsStageId ?? undefined,
+        paymentMatter: input.paymentMatter ?? draft.paymentMatter ?? undefined,
+        amountCalculationExplanation: input.amountCalculationExplanation ?? draft.amountCalculationExplanation ?? undefined
+      }, actorUserId, { draft, previousRoundId: previous.id });
+    });
+    await this.approvalNotifications?.afterCommit(payment.id);
+    return paymentPostResponseToApi(payment);
+  }
+
+  private persistPaymentSubmission(
+    tx: Prisma.TransactionClient,
+    data: Prisma.PaymentRequestUncheckedCreateInput,
+    revision?: PaymentRevision
+  ) {
+    if (!revision) return tx.paymentRequest.create({ data });
+    const { draft } = revision;
+    if (data.projectId !== draft.projectId || data.contractId !== draft.contractId ||
+        data.contractVersionId !== draft.contractVersionId || data.paymentTermsVersionId !== draft.paymentTermsVersionId ||
+        (data.paymentTermsStageId ?? null) !== draft.paymentTermsStageId || data.paymentSubjectType !== draft.paymentSubjectType ||
+        (data.settlementId ?? null) !== draft.settlementId || (data.signedSettlementId ?? null) !== draft.signedSettlementId ||
+        data.sourceType !== draft.sourceType) {
+      throw new ConflictException("原合同、结算、付款阶段或付款主体已变化，请核对原付款依据");
+    }
+    return tx.paymentRequest.update({
+      where: { id: draft.id },
+      data: {
+        status: "approval_pending",
+        requestedAmountCents: data.requestedAmountCents,
+        paymentMatter: data.paymentMatter,
+        amountCalculationExplanation: data.amountCalculationExplanation,
+        signedSettlementConfirmationNo: data.signedSettlementConfirmationNo,
+        signedSettlementConfirmedYuan: data.signedSettlementConfirmedYuan,
+        signedSettlementContractConfirmedYuan: data.signedSettlementContractConfirmedYuan,
+        signedSettlementOccupiedCents: data.signedSettlementOccupiedCents,
+        signedSettlementBasisAt: data.signedSettlementBasisAt
+      }
+    });
+  }
+
+  private async finishPaymentSubmission(
+    tx: Prisma.TransactionClient, payment: PaymentRequest, applicantUserId?: string, revision?: PaymentRevision
+  ) {
+    if (!applicantUserId) return payment;
+    await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES, applicantUserId);
+    const round = await tx.approvalInstance.create({
+      data: {
+        flowType: "payment.approve",
+        businessType: "payment_request",
+        businessId: payment.id,
+        status: "in_progress",
+        currentNodeIndex: 0,
+        frozenNodes: PAYMENT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
+        applicantUserId
+      }
+    });
+    await this.approvalNotifications?.queue(tx, payment, round, null);
+    if (revision) {
+      await this.audit.record(tx, {
+        actorUserId: applicantUserId, action: "payment.request.revise_and_submit", businessType: "payment_request", businessId: payment.id,
+        metadata: {
+          previousApprovalInstanceId: revision.previousRoundId, approvalInstanceId: round.id,
+          previousRequestedAmountCents: revision.draft.requestedAmountCents.toString(),
+          requestedAmountCents: payment.requestedAmountCents.toString(),
+          previousPaymentMatter: revision.draft.paymentMatter,
+          previousAmountCalculationExplanation: revision.draft.amountCalculationExplanation
+        }
+      });
+    } else {
+      await this.recordPaymentRequestCreated(tx, payment, applicantUserId);
+    }
+    if (!this.businessEntry || !["settlement", "signed_settlement"].includes(payment.sourceType)) return payment;
+    const target = { projectId: payment.projectId, entityType: "payment_request", entityId: payment.id };
+    const snapshot = revision ? await tx.businessEntrySubmissionSnapshot.findFirst({
+      where: { ...target, sceneKey: PAYMENT_REQUEST_ENTRY_DEFINITION.key },
+      orderBy: { revision: "desc" },
+      select: { revision: true }
+    }) : null;
+    const businessEntrySnapshot = await this.businessEntry.freezeSubmissionSnapshotInTransaction(tx, applicantUserId, {
+      sceneKey: PAYMENT_REQUEST_ENTRY_DEFINITION.key,
+      definitionVersion: PAYMENT_REQUEST_ENTRY_DEFINITION.version,
+      target, expectedRevision: snapshot?.revision ?? 0, values: paymentRequestEntryValues(payment)
+    });
+    return { ...payment, businessEntrySnapshot };
+  }
+
+  private async submitPaymentRequest(
+    tx: Prisma.TransactionClient,
+    normalizedInput: NormalizedCreatePaymentRequest,
+    applicantUserId?: string,
+    revision?: PaymentRevision
+  ) {
+    const sourceType = normalizedInput.sourceType ?? "settlement";
+    if (sourceType === "contract_advance") {
+      return this.createContractAdvancePaymentRequest(tx, normalizedInput, applicantUserId, revision);
+    }
+
+    if (sourceType === "contract_due") {
+      return this.createContractDuePaymentRequest(tx, normalizedInput, applicantUserId, revision);
+    }
+
+    if (sourceType === "signed_settlement") {
+      return this.createSignedSettlementPaymentRequest(tx, normalizedInput, applicantUserId, revision);
+    }
+
+    if (sourceType !== "settlement") {
+      throw new Error("不支持的付款申请来源，请从结算或合同付款入口发起");
+    }
+
+    if (normalizedInput.signedSettlementId) {
+      throw new BadRequestException("已签结算依据只能用于已签结算付款来源");
+    }
+
+    if (!normalizedInput.settlementId) {
+      throw new Error("请选择已归档生效的结算后再发起付款申请");
+    }
+
+    let settlement = await tx.settlement.findUnique({
+      where: { id: normalizedInput.settlementId }
+    });
+
+    if (!settlement) {
+      throw new Error("未找到结算记录，请刷新结算台账后重试");
+    }
+
+    this.assertSettlementEffective(settlement.status as SettlementStatus);
+    await this.lockContractPaymentCapacityRows(tx, settlement.contractId);
+    settlement = await tx.settlement.findUnique({
+      where: { id: settlement.id }
+    });
+    if (!settlement) {
+      throw new Error("未找到结算记录，请刷新结算台账后重试");
+    }
+    this.assertSettlementEffective(settlement.status as SettlementStatus);
+    const settlementContract = await tx.contract.findUnique({
+      where: { id: settlement.contractId },
+      select: { contractTypeKey: true }
+    });
+    if (!settlementContract) {
+      throw new Error("未找到关联合同，请刷新合同台账后重试");
+    }
+    if (!SETTLEMENT_PAYMENT_CONTRACT_TYPES.has(settlementContract.contractTypeKey ?? "")) {
+      throw new BadRequestException("该合同类型应从合同已冻结的付款阶段发起付款");
+    }
+    const settlementContractVersion = await tx.contractVersion.findUnique({
+      where: { id: settlement.contractVersionId },
+      select: { signingSubjectType: true }
+    });
+    const paymentSubjectType = paymentSubjectForSigningSubject(
+      normalizedInput.paymentSubjectType,
+      settlementContractVersion?.signingSubjectType
+    );
+    await this.assertHistoricalTakeoverPaymentReady(tx, {
+      contractId: settlement.contractId,
+      contractVersionId: settlement.contractVersionId,
+      sourceType: "settlement",
+      actorUserId: applicantUserId
+    });
+
+    const existingApprovedOrPending = await tx.paymentRequest.findMany({
+      where: {
+        settlementId: settlement.id,
+        status: {
+          in: [...SETTLEMENT_CAPACITY_PAYMENT_STATUSES]
+        }
+      }
+    });
+    const proxyPaidCents = await this.sumProjectProxyPaymentCents(tx, settlement.id);
+    const contractDueAllocatedCents = await this.sumContractDueAllocatedCentsForSettlement(
+      tx,
+      settlement.id
+    );
+    const capacityView = calculateSettlementPaymentCapacityBigInt({
+      payableAmountCents: settlement.payableAmountCents,
+      actualPaidAmountCents: settlement.paidAmountCents,
+      proxyPaidAmountCents:
+        dbMoneyToBigInt(proxyPaidCents, "项目代付金额") +
+        dbMoneyToBigInt(contractDueAllocatedCents, "合同到期付款分摊金额"),
+      paymentRequests: existingApprovedOrPending
+    });
+    const capacity: PaymentCapacity = {
+      payableAmountCents: settlement.payableAmountCents,
+      approvedPendingPaymentCents: capacityView.outstandingPaymentCents,
+      paidAmountCents:
+        dbMoneyToBigInt(settlement.paidAmountCents, "结算已付金额") +
+        dbMoneyToBigInt(proxyPaidCents, "项目代付金额") +
+        dbMoneyToBigInt(contractDueAllocatedCents, "合同到期付款分摊金额")
+    };
+
+    this.amount.assertCanRequest(capacity, normalizedInput.requestedAmountCents);
+    await this.assertContractDuePaymentCapacity(tx, settlement, normalizedInput.requestedAmountCents);
+    const payment = await this.persistPaymentSubmission(tx, {
+      projectId: settlement.projectId,
+      settlementId: settlement.id,
+      sourceType: "settlement",
+      paymentSubjectType,
+      contractId: settlement.contractId,
+      contractVersionId: settlement.contractVersionId,
+      paymentTermsVersionId: settlement.paymentTermsVersionId,
+      code: normalizedInput.code,
+      status: "approval_pending",
+      requestedAmountCents: normalizedInput.requestedAmountCents,
+      approvedAmountCents: null,
+      paidAmountCents: 0n,
+      ...(optionalTrimmedText(normalizedInput.paymentMatter) ? { paymentMatter: optionalTrimmedText(normalizedInput.paymentMatter) } : {}),
+      ...(optionalTrimmedText(normalizedInput.amountCalculationExplanation) ? { amountCalculationExplanation: optionalTrimmedText(normalizedInput.amountCalculationExplanation) } : {})
+    }, revision);
+    return this.finishPaymentSubmission(tx, payment, applicantUserId, revision);
   }
 
   /**
@@ -859,7 +973,8 @@ export class PaymentRequestService {
   private async createSignedSettlementPaymentRequest(
     tx: Prisma.TransactionClient,
     input: NormalizedCreatePaymentRequest,
-    applicantUserId?: string
+    applicantUserId?: string,
+    revision?: PaymentRevision
   ) {
     if (input.settlementId) {
       throw new BadRequestException("已签结算付款不能同时选择旧结算单");
@@ -953,67 +1068,40 @@ export class PaymentRequestService {
     }
 
     const basisAt = new Date();
-    const payment = await tx.paymentRequest.create({
-      data: {
-        projectId: signedSettlement.projectId,
-        settlementId: null,
-        signedSettlementId: signedSettlement.id,
-        signedSettlementConfirmationNo: basis.latestConfirmed.confirmationNo,
-        signedSettlementConfirmedYuan: basis.latestConfirmed.amountYuan,
-        signedSettlementContractConfirmedYuan: basis.confirmedContractYuan,
-        signedSettlementOccupiedCents: basis.occupiedCents,
-        signedSettlementBasisAt: basisAt,
-        sourceType: "signed_settlement",
-        paymentSubjectType,
-        contractId: signedSettlement.contractId,
-        contractVersionId: contractVersion.id,
-        paymentTermsVersionId: paymentTermsVersion.id,
-        code: input.code,
-        status: "approval_pending",
-        requestedAmountCents: input.requestedAmountCents,
-        approvedAmountCents: null,
-        paidAmountCents: 0n,
-        ...(optionalTrimmedText(input.paymentMatter)
-          ? { paymentMatter: optionalTrimmedText(input.paymentMatter) }
-          : {}),
-        ...(optionalTrimmedText(input.amountCalculationExplanation)
-          ? { amountCalculationExplanation: optionalTrimmedText(input.amountCalculationExplanation) }
-          : {})
-      }
-    });
-
-    if (applicantUserId) {
-      await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES, applicantUserId);
-      const round = await tx.approvalInstance.create({
-        data: {
-          flowType: "payment.approve",
-          businessType: "payment_request",
-          businessId: payment.id,
-          status: "in_progress",
-          currentNodeIndex: 0,
-          frozenNodes: PAYMENT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
-          applicantUserId
-        }
-      });
-      await this.approvalNotifications?.queue(tx, payment, round, null);
-    }
-
-    await this.recordPaymentRequestCreated(tx, payment, applicantUserId);
-    if (!applicantUserId || !this.businessEntry) return payment;
-    const businessEntrySnapshot = await this.businessEntry.freezeSubmissionSnapshotInTransaction(tx, applicantUserId, {
-      sceneKey: PAYMENT_REQUEST_ENTRY_DEFINITION.key,
-      definitionVersion: PAYMENT_REQUEST_ENTRY_DEFINITION.version,
-      target: { projectId: payment.projectId, entityType: "payment_request", entityId: payment.id },
-      expectedRevision: 0,
-      values: paymentRequestEntryValues(payment)
-    });
-    return { ...payment, businessEntrySnapshot };
+    const payment = await this.persistPaymentSubmission(tx, {
+      projectId: signedSettlement.projectId,
+      settlementId: null,
+      signedSettlementId: signedSettlement.id,
+      signedSettlementConfirmationNo: basis.latestConfirmed.confirmationNo,
+      signedSettlementConfirmedYuan: basis.latestConfirmed.amountYuan,
+      signedSettlementContractConfirmedYuan: basis.confirmedContractYuan,
+      signedSettlementOccupiedCents: basis.occupiedCents,
+      signedSettlementBasisAt: basisAt,
+      sourceType: "signed_settlement",
+      paymentSubjectType,
+      contractId: signedSettlement.contractId,
+      contractVersionId: contractVersion.id,
+      paymentTermsVersionId: paymentTermsVersion.id,
+      code: input.code,
+      status: "approval_pending",
+      requestedAmountCents: input.requestedAmountCents,
+      approvedAmountCents: null,
+      paidAmountCents: 0n,
+      ...(optionalTrimmedText(input.paymentMatter)
+        ? { paymentMatter: optionalTrimmedText(input.paymentMatter) }
+        : {}),
+      ...(optionalTrimmedText(input.amountCalculationExplanation)
+        ? { amountCalculationExplanation: optionalTrimmedText(input.amountCalculationExplanation) }
+        : {})
+    }, revision);
+    return this.finishPaymentSubmission(tx, payment, applicantUserId, revision);
   }
 
   private async createContractDuePaymentRequest(
     tx: Prisma.TransactionClient,
     input: NormalizedCreatePaymentRequest,
-    applicantUserId?: string
+    applicantUserId?: string,
+    revision?: PaymentRevision
   ) {
     if (input.settlementId) {
       throw new Error("按合同应付款发起付款时不能选择结算，请从合同付款入口办理");
@@ -1136,45 +1224,25 @@ export class PaymentRequestService {
       paymentTermsStage!,
       input.requestedAmountCents
     );
-    const payment = await tx.paymentRequest.create({
-      data: {
-        projectId: contract.projectId,
-        settlementId: null,
-        sourceType: "contract_due",
-        paymentSubjectType,
-        contractId: contractVersion.contractId,
-        contractVersionId: contractVersion.id,
-        paymentTermsVersionId: paymentTermsVersion.id,
-        paymentTermsStageId: paymentTermsStage!.id,
-        code: input.code,
-        status: "approval_pending",
-        requestedAmountCents: input.requestedAmountCents,
-        approvedAmountCents: null,
-        paidAmountCents: 0n,
-        ...(paymentMatter === null || amountCalculationExplanation === null
-          ? {}
-          : { paymentMatter, amountCalculationExplanation })
-      }
-    });
-
-    if (applicantUserId) {
-      await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES, applicantUserId);
-      const round = await tx.approvalInstance.create({
-        data: {
-          flowType: "payment.approve",
-          businessType: "payment_request",
-          businessId: payment.id,
-          status: "in_progress",
-          currentNodeIndex: 0,
-          frozenNodes: PAYMENT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
-          applicantUserId
-        }
-      });
-      await this.approvalNotifications?.queue(tx, payment, round, null);
-    }
-
-    await this.recordPaymentRequestCreated(tx, payment, applicantUserId);
-    return payment;
+    const payment = await this.persistPaymentSubmission(tx, {
+      projectId: contract.projectId,
+      settlementId: null,
+      sourceType: "contract_due",
+      paymentSubjectType,
+      contractId: contractVersion.contractId,
+      contractVersionId: contractVersion.id,
+      paymentTermsVersionId: paymentTermsVersion.id,
+      paymentTermsStageId: paymentTermsStage!.id,
+      code: input.code,
+      status: "approval_pending",
+      requestedAmountCents: input.requestedAmountCents,
+      approvedAmountCents: null,
+      paidAmountCents: 0n,
+      ...(paymentMatter === null || amountCalculationExplanation === null
+        ? {}
+        : { paymentMatter, amountCalculationExplanation })
+    }, revision);
+    return this.finishPaymentSubmission(tx, payment, applicantUserId, revision);
   }
 
   private assertGenericContractPaymentStage(
@@ -1338,7 +1406,8 @@ export class PaymentRequestService {
   private async createContractAdvancePaymentRequest(
     tx: Prisma.TransactionClient,
     input: NormalizedCreatePaymentRequest,
-    applicantUserId?: string
+    applicantUserId?: string,
+    revision?: PaymentRevision
   ) {
     if (!input.contractVersionId) {
       throw new Error("请选择已归档生效的合同后再发起付款申请");
@@ -1447,48 +1516,32 @@ export class PaymentRequestService {
     });
 
     if (input.requestedAmountCents > capacity.remainingCents) {
-      throw new Error(
+      throw new BadRequestException(
         `合同预付款当前可申请金额不足，当前最多可申请 ${formatMoneyCentsAsYuan(
           capacity.remainingCents > 0n ? capacity.remainingCents : 0n
         )} 元`
       );
     }
 
-    const payment = await tx.paymentRequest.create({
-      data: {
-        projectId: contract.projectId,
-        settlementId: null,
-        sourceType: "contract_advance",
-        paymentSubjectType,
-        contractId: contractVersion.contractId,
-        contractVersionId: contractVersion.id,
-        paymentTermsVersionId: paymentTermsVersion.id,
-        code: input.code,
-        status: "approval_pending",
-        requestedAmountCents: input.requestedAmountCents,
-        approvedAmountCents: null,
-        paidAmountCents: 0n
-      }
-    });
-
-    if (applicantUserId) {
-      await assertProjectApprovalNodesConfigured(tx, payment.projectId, PAYMENT_APPROVAL_NODES, applicantUserId);
-      const round = await tx.approvalInstance.create({
-        data: {
-          flowType: "payment.approve",
-          businessType: "payment_request",
-          businessId: payment.id,
-          status: "in_progress",
-          currentNodeIndex: 0,
-          frozenNodes: PAYMENT_APPROVAL_NODES as unknown as Prisma.InputJsonValue,
-          applicantUserId
-        }
-      });
-      await this.approvalNotifications?.queue(tx, payment, round, null);
-    }
-
-    await this.recordPaymentRequestCreated(tx, payment, applicantUserId);
-    return payment;
+    const payment = await this.persistPaymentSubmission(tx, {
+      projectId: contract.projectId,
+      settlementId: null,
+      sourceType: "contract_advance",
+      paymentSubjectType,
+      contractId: contractVersion.contractId,
+      contractVersionId: contractVersion.id,
+      paymentTermsVersionId: paymentTermsVersion.id,
+      code: input.code,
+      status: "approval_pending",
+      requestedAmountCents: input.requestedAmountCents,
+      approvedAmountCents: null,
+      paidAmountCents: 0n,
+      ...(revision ? {
+        paymentMatter: optionalTrimmedText(input.paymentMatter),
+        amountCalculationExplanation: optionalTrimmedText(input.amountCalculationExplanation)
+      } : {})
+    }, revision);
+    return this.finishPaymentSubmission(tx, payment, applicantUserId, revision);
   }
 
   private async assertContractDuePaymentCapacity(

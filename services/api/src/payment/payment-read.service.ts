@@ -19,6 +19,7 @@ import { contractClassifications } from "../contract-ledger/contract-classificat
 import { registeredPaymentInstalled } from "../database/registered-payment-catalog";
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { PaymentRequestService } from "./payment-request.service";
+import { hasPaymentRevisionBasis } from "./payment-revision-basis";
 import { currentRegisteredPaymentApproval } from "./registered-payment-approval";
 import { currentRegisteredPaymentDomain } from "./registered-payment-domain";
 import { assertRegisteredPaymentActor } from "./registered-payment-funding";
@@ -90,6 +91,12 @@ type PaymentDetailLifecycleProjection = {
   blockedReasons: string[];
   reviewApprovalContext: PaymentApprovalReviewContext | null;
   executionContext: PaymentExecutionContext | null;
+  revisionSubmissionContext?: {
+    expectedUpdatedAt: string;
+    requestedAmountCents: string;
+    paymentMatter: string | null;
+    amountCalculationExplanation: string | null;
+  };
 };
 
 type PaymentLedgerView = "formal_ledger" | "my_drafts" | "returned_for_revision" | "ended";
@@ -99,6 +106,7 @@ type PaymentApprovalReviewContext = {
   expectedApprovalInstanceId: string;
   expectedNodeIndex: number;
   expectedApprovalUpdatedAt: string;
+  canReturnForRevision?: true;
 };
 
 type PaymentExecutionContext = {
@@ -1299,7 +1307,8 @@ export class PaymentReadService {
             expectedPaymentUpdatedAt: payment.updatedAt.toISOString(),
             expectedApprovalInstanceId: currentApprovalReview.approval.id,
             expectedNodeIndex: currentApprovalReview.approval.currentNodeIndex,
-            expectedApprovalUpdatedAt: currentApprovalReview.approval.updatedAt.toISOString()
+            expectedApprovalUpdatedAt: currentApprovalReview.approval.updatedAt.toISOString(),
+            ...(executions.length === 0 && hasPaymentRevisionBasis(payment) ? { canReturnForRevision: true as const } : {})
           }
         : null;
     const approvalReviewAccess = reviewApprovalContext
@@ -1331,6 +1340,20 @@ export class PaymentReadService {
       enabledExecutionActions.length === 1 && payment.updatedAt instanceof Date
         ? { expectedPaymentUpdatedAt: payment.updatedAt.toISOString() }
         : null;
+    const revisionSubmissionContext = returnedForRevision && actorUserId &&
+      latestApproval?.applicantUserId === actorUserId && payment.updatedAt instanceof Date &&
+      executions.length === 0 && hasPaymentRevisionBasis(payment) && canPerform("payment.create", roleKeys)
+      ? {
+          expectedUpdatedAt: payment.updatedAt.toISOString(),
+          requestedAmountCents: moneyCentsToApi(payment.requestedAmountCents),
+          paymentMatter: payment.paymentMatter,
+          amountCalculationExplanation: payment.amountCalculationExplanation
+        }
+      : undefined;
+    if (revisionSubmissionContext) availableActions.push(detailAction({
+      key: "revise_and_submit", label: "修改并重新提交", kind: "primary", roleKeys,
+      requiredAction: "payment.create", enabled: true
+    }));
     if (
       returnedForRevision &&
       actorUserId &&
@@ -1640,6 +1663,7 @@ export class PaymentReadService {
         .map((action) => action.key),
       reviewApprovalContext,
       executionContext,
+      ...(revisionSubmissionContext ? { revisionSubmissionContext } : {}),
       lifecycleKind,
       ledgerView,
       nextStep,

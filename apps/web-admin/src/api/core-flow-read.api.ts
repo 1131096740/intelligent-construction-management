@@ -527,6 +527,7 @@ export interface PaymentReviewApprovalContext {
   expectedApprovalInstanceId: string;
   expectedNodeIndex: number;
   expectedApprovalUpdatedAt: string;
+  canReturnForRevision?: true;
 }
 
 export interface PaymentExecutionContext {
@@ -539,6 +540,12 @@ export type PaymentLifecycleDetailReadModel = PaymentDetailReadModel & {
   lifecycleUpdatedAt: string | null;
   reviewApprovalContext: PaymentReviewApprovalContext | null;
   executionContext: PaymentExecutionContext | null;
+  revisionSubmissionContext?: {
+    expectedUpdatedAt: string;
+    requestedAmountCents: string;
+    paymentMatter: string | null;
+    amountCalculationExplanation: string | null;
+  };
   blockedReasons: string[];
 };
 
@@ -1213,7 +1220,7 @@ export interface CreatePaymentRequestReadModel {
 }
 
 export interface ReviewPaymentApprovalPayload {
-  decision: "approve" | "reject";
+  decision: PaymentApprovalReviewActionDecision;
   approvedAmountCents?: string;
   comment?: string;
   selfReviewReason?: string;
@@ -1224,7 +1231,7 @@ export interface ReviewPaymentApprovalPayload {
   expectedApprovalUpdatedAt: string;
 }
 
-export type PaymentApprovalReviewActionDecision = "approve" | "reject";
+export type PaymentApprovalReviewActionDecision = "approve" | "reject" | "return_to_applicant";
 
 export interface PaymentApprovalReviewActionContext
   extends PaymentReviewApprovalContext {
@@ -6715,6 +6722,15 @@ export function createPaymentRequest(body: CreatePaymentRequestPayload) {
   return postJson<CreatePaymentRequestReadModel>("/payments", body);
 }
 
+export function reviseAndSubmitPaymentRequest(paymentId: string, body: {
+  expectedUpdatedAt: string;
+  requestedAmountCents: string;
+  paymentMatter?: string;
+  amountCalculationExplanation?: string;
+}) {
+  return postJson<CreatePaymentRequestReadModel>(`/payments/${encodeURIComponent(paymentId)}/revision-submission`, body);
+}
+
 export function uploadContractArchiveFile(
   contractVersionId: string,
   body: UploadContractArchiveFilePayload
@@ -7753,7 +7769,7 @@ function paymentApprovalReviewActionPayload(
 ): ReviewPaymentApprovalPayload {
   if (
     context.decision !== decision ||
-    (decision === "reject" && !context.comment) ||
+    (decision !== "approve" && !context.comment) ||
     (context.requiresSelfReviewConfirmation &&
       (!context.selfReviewReason || !context.confirmationPassword?.trim()))
   ) {
@@ -7816,10 +7832,10 @@ function normalizePaymentApprovalReviewAction(
     input.operationId < 1 ||
     !Number.isInteger(input.expectedNodeIndex) ||
     input.expectedNodeIndex < 0 ||
-    (input.decision !== "approve" && input.decision !== "reject") ||
+    !["approve", "reject", "return_to_applicant"].includes(input.decision) ||
     (approvedAmountCents !== undefined &&
       !/^(?:0|[1-9]\d*)$/.test(approvedAmountCents)) ||
-    (input.decision === "reject" && !comment) ||
+    (input.decision !== "approve" && !comment) ||
     (input.requiresSelfReviewConfirmation &&
       (!selfReviewReason || !confirmationPassword?.trim()))
   ) {
@@ -7868,7 +7884,8 @@ function assertPaymentApprovalReviewPreflight(
       context.expectedApprovalInstanceId ||
     coordinates.expectedNodeIndex !== context.expectedNodeIndex ||
     coordinates.expectedApprovalUpdatedAt !==
-      context.expectedApprovalUpdatedAt
+      context.expectedApprovalUpdatedAt ||
+    (context.decision === "return_to_applicant" && coordinates.canReturnForRevision !== true)
   ) {
     throw new Error(
       "付款审批资格或审批坐标已变化，请重新读取当前付款"
