@@ -42,6 +42,9 @@ import {
   fetchProjectSetOperatingProjection,
   downloadOperatingProjectionExport,
   fetchProjectUpstreamFundFacts,
+  fetchProjectConstructionEnterpriseDeductions,
+  recordProjectConstructionEnterpriseDeduction,
+  fetchProjectConstructionEnterpriseDeductionCapability,
   fetchProjects,
   fetchContractCreateProjects,
   fetchProjectAffiliateMappingReport,
@@ -1319,6 +1322,42 @@ describe("core flow read API client", () => {
       JSON.stringify({
         confirmationPassword: "current-password",
         confirmationActionId: "6f9ac3b7-8c5e-4f98-8284-221ce7844a36"
+      })
+    );
+  });
+
+  it("registers and lists construction enterprise deductions through encoded project routes", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "deduction-1" })
+    } as Response);
+
+    await recordProjectConstructionEnterpriseDeduction("project/1", {
+      feeName: "管理费",
+      amountCents: "5000",
+      occurredAt: "2026-11-20",
+      evidenceFileId: "file-1",
+      idempotencyKey: "11111111-1111-4111-8111-111111111111"
+    });
+    await fetchProjectConstructionEnterpriseDeductions("project/1", {
+      cursor: "cursor/value",
+      pageSize: 100
+    });
+    await fetchProjectConstructionEnterpriseDeductionCapability("project/1");
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/projects/project%2F1/construction-enterprise-deductions",
+      "/api/projects/project%2F1/construction-enterprise-deductions?cursor=cursor%2Fvalue&pageSize=100",
+      "/api/projects/project%2F1/construction-enterprise-deductions/capability"
+    ]);
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("POST");
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(
+      JSON.stringify({
+        feeName: "管理费",
+        amountCents: "5000",
+        occurredAt: "2026-11-20",
+        evidenceFileId: "file-1",
+        idempotencyKey: "11111111-1111-4111-8111-111111111111"
       })
     );
   });

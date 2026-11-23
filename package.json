@@ -66,7 +66,8 @@
     "verify:pol108-operating-projection:impacts:local": "node scripts/pnpm-workspace.mjs --filter @jiangkong/api verify:pol108-operating-projection:impacts:local",
     "verify:issue422-archives:local": "node services/api/prisma/run-issue422-archives-local.cjs",
     "verify:issue413-construction-paid:local": "node services/api/prisma/run-issue413-construction-paid-local.cjs",
-    "verify:issue416-handover:local": "node services/api/prisma/run-issue416-takeover-handover-local.cjs"
+    "verify:issue416-handover:local": "node services/api/prisma/run-issue416-takeover-handover-local.cjs",
+    "verify:issue414-construction-deduction:local": "node services/api/prisma/run-issue414-construction-deduction-local.cjs"
   },
   "engines": {
     "node": ">=20.9.0",

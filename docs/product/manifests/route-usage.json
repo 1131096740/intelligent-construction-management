@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 826,
-    "exactRouteCount": 826,
-    "normalizedRouteCount": 826,
+    "routeCount": 829,
+    "exactRouteCount": 829,
+    "normalizedRouteCount": 829,
     "classificationOverrideCount": 220,
     "consumerSurfaceOverrideCount": 42,
     "classificationOverrideSha256": "72e5601ee6762e364be6d050efbfc9a7f8b0625714b80ecd3a03dae4d6c4e9aa",
     "consumerSurfaceOverrideSha256": "1e1be136bfca60ce98c0bcde4c0d538bad9dcb2a28bf9118e88c09ff86438939",
-    "derivedProductionPageCount": 606,
-    "pageRouteCount": 625,
+    "derivedProductionPageCount": 609,
+    "pageRouteCount": 628,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 91,
     "internalTaskCount": 40,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 677,
+      "web_api_wrapper": 680,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 3,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 677,
+    "productionWrapperRouteCount": 680,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -4774,7 +4774,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5860,
+            "sourceLine": 5933,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
@@ -8387,6 +8387,88 @@
     },
     {
       "method": "GET",
+      "path": "/projects/:projectId/construction-enterprise-deductions",
+      "normalizedKey": "GET /projects/:param/construction-enterprise-deductions",
+      "controller": "ProjectController",
+      "handler": "constructionEnterpriseDeductions",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.upstream_fund_fact.record",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchProjectConstructionEnterpriseDeductions",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/construction-enterprise-deductions",
+            "normalizedKey": "GET /projects/:param/construction-enterprise-deductions",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/construction-enterprise-deductions/capability",
+      "normalizedKey": "GET /projects/:param/construction-enterprise-deductions/capability",
+      "controller": "ProjectController",
+      "handler": "constructionEnterpriseDeductionCapability",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.upstream_fund_fact.record",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "fetchProjectConstructionEnterpriseDeductionCapability",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/construction-enterprise-deductions/capability",
+            "normalizedKey": "GET /projects/:param/construction-enterprise-deductions/capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
       "path": "/projects/:projectId/construction-enterprise-options",
       "normalizedKey": "GET /projects/:param/construction-enterprise-options",
       "controller": "ProjectController",
@@ -8509,6 +8591,7 @@
             "normalizedPath": "/projects/:param/construction-payment-corrections/capability",
             "normalizedKey": "GET /projects/:param/construction-payment-corrections/capability",
             "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
               "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
             ]
           }
@@ -25989,6 +26072,47 @@
     },
     {
       "method": "POST",
+      "path": "/projects/:projectId/construction-enterprise-deductions",
+      "normalizedKey": "POST /projects/:param/construction-enterprise-deductions",
+      "controller": "ProjectController",
+      "handler": "recordConstructionEnterpriseDeduction",
+      "sourceFile": "services/api/src/project/project.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "project.upstream_fund_fact.record",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "recordProjectConstructionEnterpriseDeduction",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/construction-enterprise-deductions",
+            "normalizedKey": "POST /projects/:param/construction-enterprise-deductions",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
       "path": "/projects/:projectId/construction-payment-corrections",
       "normalizedKey": "POST /projects/:param/construction-payment-corrections",
       "controller": "ProjectController",
@@ -26017,6 +26141,7 @@
             "normalizedPath": "/projects/:param/construction-payment-corrections",
             "normalizedKey": "POST /projects/:param/construction-payment-corrections",
             "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
               "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
             ]
           }
@@ -26058,6 +26183,7 @@
             "normalizedPath": "/projects/:param/construction-payment-corrections/:param/:param/confirmation",
             "normalizedKey": "POST /projects/:param/construction-payment-corrections/:param/:param/confirmation",
             "productionConsumers": [
+              "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
               "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaidDrawer.vue"
             ]
           }
@@ -29554,7 +29680,8 @@
             "normalizedPath": "/projects/:param/upstream-fund-facts/:param/confirmation",
             "normalizedKey": "POST /projects/:param/upstream-fund-facts/:param/confirmation",
             "productionConsumers": [
-              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
+              "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+              "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue"
             ]
           }
         ],
@@ -29596,6 +29723,7 @@
             "normalizedKey": "POST /projects/:param/upstream-fund-facts/file-uploads",
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+              "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
               "apps/web-admin/src/pages/projects/components/ConstructionEnterprisePaymentDialog.vue"
             ]
           }

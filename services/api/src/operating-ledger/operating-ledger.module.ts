@@ -37,6 +37,10 @@ import {
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE
 } from "../project/project-operating-source.adapter";
 import {
+  CONSTRUCTION_ENTERPRISE_FEE_SOURCE_TYPE,
+  ConstructionEnterpriseFeeOperatingSourceAdapter
+} from "../project/project-construction-enterprise-fee-operating-source.adapter";
+import {
   SPOT_PROCUREMENT_INVOICE_RECORD_SOURCE_TYPE,
   SPOT_PROCUREMENT_PAYMENT_EXECUTION_SOURCE_TYPE,
   SPOT_PROCUREMENT_RECEIPT_REVIEW_SOURCE_TYPE,
@@ -90,6 +94,7 @@ export const OPERATING_SOURCE_TYPES = Object.freeze([
   PROJECT_OWNER_SETTLEMENT_ENTRY_SOURCE_TYPE,
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE,
   PROJECT_UPSTREAM_FUND_SOURCE_TYPE,
+  CONSTRUCTION_ENTERPRISE_FEE_SOURCE_TYPE,
   PROJECT_AFFILIATE_CONTRACT_FACT_SOURCE_TYPE,
   PROJECT_AFFILIATE_SETTLEMENT_FACT_SOURCE_TYPE,
   PROJECT_AFFILIATE_PAYMENT_FACT_SOURCE_TYPE,
@@ -124,6 +129,7 @@ export function createOperatingSourceRegistry(): OperatingSourceAdapterRegistry 
       new ProjectOwnerSettlementEntryOperatingSourceAdapter(),
       new ProjectUpstreamSettlementOperatingSourceAdapter(),
       new ProjectUpstreamFundFactOperatingSourceAdapter(),
+      new ConstructionEnterpriseFeeOperatingSourceAdapter(),
       new ProjectAffiliateContractFactOperatingSourceAdapter(),
       new ProjectAffiliateSettlementFactOperatingSourceAdapter(),
       new ProjectAffiliatePaymentFactOperatingSourceAdapter(),
