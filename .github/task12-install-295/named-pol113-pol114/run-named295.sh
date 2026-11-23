@@ -38,14 +38,33 @@ sandbox=(--platform linux/amd64 --rm --pull never --network none --read-only --c
   --mount "type=bind,src=$prepared/prepared/product/predecessor,dst=/qualification/product,readonly"
   --mount "type=bind,src=$prepared/prepared/product/intermediate,dst=/qualification/product291,readonly"
   --env "JG_NAMED_CANDIDATE_SHA=$ref")
-docker run "${sandbox[@]}" --entrypoint node "$image" /qualification/loader-preflight.cjs --materials >"$evidence/preflight.json"
+docker run "${sandbox[@]}" --entrypoint node "$image" /qualification/loader-preflight.cjs --materials \
+  >"$evidence/preflight.json" 2>"$evidence/preflight.stderr" || {
+  status=$?
+  printf 'POL113_POL114_PREFLIGHT_FAILED mode=%s exit=%s\n' "$mode" "$status" >&2
+  exit "$status"
+}
 [[ -z $(docker ps -q) ]]
 if pgrep -x postgres >/dev/null; then exit 65; fi
 mkdir "$generated/consumed-$mode"
 status=0
 docker run "${sandbox[@]}" --entrypoint node "$image" /qualification/install-only.cjs "$mode" \
   > "$evidence/receipt.json" 2> "$evidence/private.stderr" || status=$?
-(( status == 0 )) || exit "$status"
+if (( status != 0 )); then
+  node - "$evidence/receipt.json" "$mode" "$ref" >&2 <<'JS' || true
+const [file,mode,sha]=process.argv.slice(2);
+let receipt;
+try { receipt=JSON.parse(require('node:fs').readFileSync(file,'utf8')); } catch { process.exit(1); }
+if(receipt?.mode!==mode||receipt.candidateSha!==sha||receipt.status!=='STOPPED')process.exit(1);
+const failure={mode};
+for(const key of ['stage','code','sqlstate','prismaCode']){
+  const value=receipt.failure?.[key];
+  if(typeof value==='string'&&/^[A-Z0-9_]{1,96}$/u.test(value))failure[key]=value;
+}
+process.stderr.write('POL113_POL114_FAILURE '+JSON.stringify(failure)+'\n');
+JS
+  exit "$status"
+fi
 node - "$evidence/receipt.json" "$mode" "$ref" "$prepared/source.json" <<'JS'
 const assert=require('node:assert/strict');
 const [receipt,mode,sha,source]=process.argv.slice(2),r=require(receipt);
