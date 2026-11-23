@@ -11,7 +11,7 @@ const { tmpdir } = require("node:os");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "../../..");
-const image = "docker.io/library/postgres:16";
+const image = "postgres:16";
 const database = "jiangkong_issue421_ledger";
 const specFile = "src/database/issue421-signed-settlement-ledger.http.pg.spec.ts";
 const runId = randomUUID();
