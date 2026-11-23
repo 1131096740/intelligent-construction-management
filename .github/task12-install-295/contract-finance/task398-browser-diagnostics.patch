@@ -1,11 +1,12 @@
 --- before
 +++ after
-@@ -23,3 +23,3 @@
+@@ -22,9 +22,12 @@
+ // Prisma findMany selects id internally even with the fromUserId-only projection.
  const approvalReadDependencies=Object.freeze({ApprovalDelegation:["id","toUserId","actionKey","resourceType","resourceId","enabled","startsAt","endsAt","fromUserId"],FundExecutionCase:["approvalInstanceId","auditAction"],PaymentExecutionPayerAttestation:["reauthorizationApprovalInstanceId"],ProjectFinancingQuotaUsage:["id","amountCents","paymentRequestId","status"]});
 -function command(bin,args,{env=process.env,input,quiet=false,timeout=180000}={}){
 +function command(bin,args,{env=process.env,input,quiet=false,timeout=180000,onFailure}={}){
   const result=spawnSync(bin,args,{cwd:root,env,input,encoding:"utf8",timeout,maxBuffer:32*1024*1024});
-@@ -27,3 +27,6 @@
+  const output=String(result.stdout??"")+String(result.stderr??"");
   if(!quiet||result.status!==0)process.stdout.write(output.replaceAll(password,"[redacted]").replaceAll(secret,"[redacted]"));
 - if(result.error||result.status!==0)throw new Error(`TASK398_COMMAND_FAILED:${path.basename(bin)}:${args[0]}`);
 + if(result.error||result.status!==0){
@@ -13,7 +14,9 @@
 +  throw new Error(`TASK398_COMMAND_FAILED:${path.basename(bin)}:${args[0]}`);
 + }
   return String(result.stdout??"").trim();
-@@ -330,4 +333,9 @@
+ }
+@@ -329,5 +332,10 @@
+   const reportFile=path.join(privateLogDir,"standard-290-jest.json");
    const selection=standard290||browser290?["--json","--outputFile",reportFile]:[];
 -  const output=command("pnpm",["--filter","@jiangkong/api","exec","jest","--runInBand",...scenarios,...selection],{env,timeout:300000});
 +  const browserDiagnostics=browser290?.purpose.endsWith("_EXACT_328")?require("/qualification/task398-browser-diagnostics.cjs"):undefined;
@@ -21,6 +24,6 @@
 +  const output=command("pnpm",["--filter","@jiangkong/api","exec","jest","--runInBand",...scenarios,...selection],{
 +   env,timeout:300000,onFailure:browserDiagnostics?result=>browserDiagnostics.recordBrowserJestFailure(browser290,reportFile,scenario,result):undefined
 +  });
++  browserDiagnostics?.markBrowserPhase(browser290,"VERIFY_BROWSER_EVIDENCE");
    if(browser290){
-+   browserDiagnostics?.markBrowserPhase(browser290,"VERIFY_BROWSER_EVIDENCE");
     const report=JSON.parse(readFileSync(reportFile,"utf8"));
