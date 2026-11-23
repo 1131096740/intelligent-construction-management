@@ -135,6 +135,7 @@ Use real business positions, not old generic roles:
 
 ## Verification
 
+- 变更分档（T1 资金与不可逆 / T2 业务行为 / T3 展示与文档）与各档必做检查见[开发规程的「变更分档与必做检查」](docs/agents/development-loop.md#变更分档与必做检查)。PR 正文须写 `验证分档: Tn`：CI 按改动路径自动计算，降档即失败；本地先跑 `pnpm verify:verification-tier:local`。
 - Web UI changes: run the narrowest relevant Vitest, then `typecheck`, `lint`, and `check:ui`.
 - API business changes: run targeted Jest plus `typecheck` and `lint`.
 - Money, permission, status transition, archive, PDF, and audit changes require backend tests.

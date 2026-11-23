@@ -62,6 +62,19 @@ jobs:
       - name: Verify migration baseline
         run: pnpm check:migration-baseline
 
+      - name: Verify change verification tier
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$PR_BODY" > "$RUNNER_TEMP/pr-body.txt"
+          node scripts/verify-verification-tier.mjs \
+            --base "$PR_BASE_SHA" \
+            --pr-body "$RUNNER_TEMP/pr-body.txt" \
+            --require-declaration
+
       - name: Verify CI orchestration contract
         run: |
           set -euo pipefail
@@ -250,6 +263,7 @@ jobs:
           - task409_principal_return
           - task410_company_proxy_repayment
           - line_a_real_db
+          - issue420_approval_center
         include:
           - group: pol113_pol115_business_entries
             shard: pol113_pol114

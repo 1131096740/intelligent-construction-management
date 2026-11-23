@@ -310,9 +310,9 @@ test("CI fans out independent static and database gates behind one stable summar
   assert.equal(manualGroups[0].runner.invocation, "task01_explicit_inputs");
   assert.equal(manualGroups[0].executionStatus, "NOT_EXECUTED");
   const ciGroups = manifest.coveredGroups.filter(group => group.ciExecution !== "manual-only");
-  assert.equal(ciGroups.length, 29);
-  assert.equal(ciGroups.reduce((n, group) => n + group.testFiles.length, 0), 87);
-  assert.equal(ciGroups.reduce((n, group) => n + group.pendingTests, 0), 565);
+  assert.equal(ciGroups.length, 30);
+  assert.equal(ciGroups.reduce((n, group) => n + group.testFiles.length, 0), 88);
+  assert.equal(ciGroups.reduce((n, group) => n + group.pendingTests, 0), 568);
   assert.doesNotMatch(workflow, /enterprise_task01_entry|run-enterprise-task01-local|--task01-(?:packet|inputs|confirm)/u);
   assert.deepEqual(
     configuredGroups,
@@ -459,4 +459,26 @@ with zipfile.ZipFile(p/'trace.zip','w') as z:
       ] }, `${resource} resources must not affect test events`);
     }
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test("变更分档在 PR 上强制执行，且规则入口有本地脚本与 PR 模板承载", async () => {
+  const [workflow, template, manifest] = await Promise.all([
+    readFile(join(root, ".github", "workflows", "ci.yml"), "utf8"),
+    readFile(join(root, ".github", "pull_request_template.md"), "utf8"),
+    readFile(join(root, "package.json"), "utf8")
+  ]);
+
+  const quality = jobBlock(workflow, "quality-gates");
+  const step = /      - name: Verify change verification tier\n        if: (.+)\n        env:\n([\s\S]*?)\n        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(quality);
+  assert.ok(step, "quality-gates 必须包含 Verify change verification tier 步骤");
+  assert.equal(step[1], "${{ github.event_name == 'pull_request' }}");
+  assert.match(step[2], /PR_BODY: \$\{\{ github\.event\.pull_request\.body \}\}/u);
+  assert.match(step[2], /PR_BASE_SHA: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/u);
+  assert.match(step[3], /node scripts\/verify-verification-tier\.mjs/u);
+  assert.match(step[3], /--require-declaration/u, "CI 必须要求显式声明");
+  assert.match(step[3], /--base "\$PR_BASE_SHA"/u);
+
+  assert.match(template, /^验证分档: T[123]$/mu, "PR 模板必须承载声明行");
+  assert.match(manifest, /"verify:verification-tier:local"/u);
+  assert.match(manifest, /scripts\/verify-verification-tier\.test\.mjs/u, "检查器自身的测试必须进入 CI 编排");
 });
