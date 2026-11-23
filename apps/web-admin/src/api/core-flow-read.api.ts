@@ -2706,12 +2706,7 @@ export interface WorkbenchSummaryReadModel {
 }
 
 export type WorkItemQueueKey = "pending" | "blocked" | "started" | "drafts";
-export type ApprovalCenterViewKey =
-  | "pendingApproval"
-  | "startedByMe"
-  | "handledByMe"
-  | "delegatedToMe"
-  | "overdueReminder";
+export type ApprovalCenterViewKey = "pendingApproval" | "startedByMe" | "handledByMe";
 
 export interface WorkItemReadModel {
   reminderId?: string;
@@ -2733,6 +2728,11 @@ export interface WorkItemReadModel {
   tone: WorkbenchCardTone;
   ageDays?: number;
   agingStatus?: "current" | "long_running" | "stale";
+  applicantName?: string;
+  businessStatus?: string;
+  overdue?: boolean;
+  canHandle?: boolean;
+  parallelCompletion?: { completed: number; total: number };
 }
 
 export interface WorkItemsReadModel {

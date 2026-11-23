@@ -1079,7 +1079,7 @@ describe("MeService", () => {
     const result = await service.getWorkItems("employee-1");
 
     expect(result.approvalCenter.pendingApproval).toEqual([]);
-    expect(result.approvalCenter.delegatedToMe).toEqual([]);
+    expect(result.approvalCenter).not.toHaveProperty("delegatedToMe");
     expect(prisma.approvalDelegation.findMany).not.toHaveBeenCalled();
   });
 
@@ -1208,13 +1208,12 @@ describe("MeService", () => {
       approvalInstanceId: { in: ["approval-1"] }, action: "remind"
     }) }));
     expect(result.approvalCenter.pendingApproval[0].id).toBe("approval:approval-1");
-    expect(result.approvalCenter.delegatedToMe[0].id).toBe("approval:approval-1");
+    expect(result.approvalCenter).not.toHaveProperty("delegatedToMe");
     expect(result.approvalCenter.startedByMe[0].id).toBe("approval:approval-started");
-    expect(prisma.approvalDelegation.findMany).toHaveBeenCalledTimes(3);
-    const firstEvaluatedAt = prisma.approvalDelegation.findMany.mock.calls[1]?.[0].where.startsAt.lte;
-    const secondEvaluatedAt = prisma.approvalDelegation.findMany.mock.calls[2]?.[0].where.startsAt.lte;
-    expect(firstEvaluatedAt).toBe(secondEvaluatedAt);
-    expect(result.generatedAt).toBe(firstEvaluatedAt.toISOString());
+    expect(prisma.approvalDelegation.findMany).toHaveBeenCalledTimes(2);
+    // 同一次审批中心读取共用一个评估时间，委托有效期不因多次查询漂移。
+    expect(prisma.approvalDelegation.findMany.mock.calls.some(call =>
+      call[0].where.startsAt.lte.getTime() === new Date(result.generatedAt).getTime())).toBe(true);
 
     prisma.user.findMany.mockResolvedValue([
       { id: "delegator-1", isActive: false },
@@ -1222,7 +1221,7 @@ describe("MeService", () => {
     ]);
     const inactiveDelegatorResult = await service.getWorkItems("delegatee-1");
     expect(inactiveDelegatorResult.approvalCenter.pendingApproval).toEqual([]);
-    expect(inactiveDelegatorResult.approvalCenter.delegatedToMe).toEqual([]);
+    expect(inactiveDelegatorResult.approvalCenter).not.toHaveProperty("delegatedToMe");
   });
 
   it("does not count project expense through standing delegation", async () => {
@@ -2338,5 +2337,82 @@ describe("MeService", () => {
     expect(archive).toHaveBeenCalledTimes(3);
     expect(archive.mock.calls.every((args) => args[7] === true)).toBe(true);
     expect(failed).toHaveBeenCalledWith(["project-1"], expect.any(Map), true);
+  });
+
+  it("审批中心委托并入待审批、逾期作为筛选，摘要显示发起人、状态和并联完成数", async () => {
+    const updatedAt = new Date(Date.now() - 72 * 3_600_000);
+    const instance = {
+      id: "approval-1",
+      businessType: "settlement",
+      businessId: "settlement-1",
+      status: "in_progress",
+      currentNodeIndex: 0,
+      frozenNodes: [
+        { name: "合同部主管", mode: "any", roleKeys: ["contract_director"], protocolVersion: 1,
+          executionMode: "parallel", approvedRoleKeys: ["contract_director"] },
+        { name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1,
+          executionMode: "parallel", approvedRoleKeys: [] }
+      ],
+      applicantUserId: "applicant-1",
+      createdAt: updatedAt,
+      updatedAt
+    };
+    const prisma = {
+      $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: {
+        findMany: jest.fn().mockResolvedValue([
+          { projectId: "project-1", positionKey: "project_manager" }
+        ])
+      },
+      project: {
+        findMany: jest.fn().mockImplementation(({ where }: { where?: { isActive?: boolean } }) => {
+          if (where?.isActive) return [{ id: "project-1" }];
+          return [{ id: "project-1", name: "测试项目" }];
+        })
+      },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      contractTakeover: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn() },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn() },
+      approvalActionLog: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: {
+        findMany: jest.fn().mockImplementation(({ where }: { where: { applicantUserId?: string } }) => {
+          if (where.applicantUserId) return [];
+          return [instance];
+        })
+      },
+      settlement: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "settlement-1", projectId: "project-1", contractId: "contract-1", code: "JS-001",
+            periodLabel: "2026-07", amountCents: 100000n }
+        ])
+      },
+      contractVersion: { findMany: jest.fn().mockResolvedValue([]) },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-1", projectId: "project-1", code: "HT-001", temporaryCode: null,
+            name: "测试合同", counterparty: "测试供应商" }
+        ])
+      },
+      user: {
+        findMany: jest.fn().mockResolvedValue([{ id: "applicant-1", name: "申请人甲" }])
+      }
+    };
+    const service = new MeService(prisma as never, {} as never);
+
+    const result = await service.getWorkItems("user-1");
+
+    expect(Object.keys(result.approvalCenter).sort()).toEqual(["handledByMe", "pendingApproval", "startedByMe"]);
+    expect(result.approvalCenter).not.toHaveProperty("delegatedToMe");
+    expect(result.approvalCenter).not.toHaveProperty("overdueReminder");
+    expect(result.approvalCenter.pendingApproval[0]).toMatchObject({
+      id: "approval:approval-1",
+      overdue: true,
+      canHandle: true,
+      applicantName: "申请人甲",
+      businessStatus: "in_progress",
+      parallelCompletion: { completed: 1, total: 2 }
+    });
   });
 });

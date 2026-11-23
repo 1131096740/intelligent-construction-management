@@ -268,8 +268,8 @@ export class IndependentApprovalProgressService {
       projectName: project?.name ?? '公司级审核', applicant: !subject.applicantUserId && subject.applicantName ? { id: '', name: subject.applicantName } : person(subject.applicantUserId), status: subject.status,
       createdAt: subject.createdAt.toISOString(), currentNodeIndex: subject.currentNodeIndex,
       currentNodeName: active ? subject.nodes[subject.currentNodeIndex]?.name ?? '待核对审核节点' : '流程已结束',
-      nodes: subject.nodes.map((node, index) => ({ name: node.name, mode: node.mode === 'all' ? '会签' : '或签', status: node.status, participants: nodeIds[index].map(person), legacyRoster: node.selectedUserIds === undefined, pending: pendingByNode[index].map(person) })),
-      pendingRecipients: pendingIds.map(person), remindableRecipients: reminderUnavailableReason ? [] : pendingIds.map(person), canRemind: reminderUnavailableReason === null, reminderUnavailableReason, nextRemindAt,
+      nodes: subject.nodes.map((node, index) => ({ name: node.name, mode: node.mode === 'all' ? '会签' : '或签', status: node.status, participants: nodeIds[index].map(person), legacyRoster: node.selectedUserIds === undefined, pending: pendingByNode[index].map(person), signatures: [] })),
+      pendingRecipients: pendingIds.map(person), parallelCompletion: undefined, viewerOnly: false, canHandle: false, remindableRecipients: reminderUnavailableReason ? [] : pendingIds.map(person), canRemind: reminderUnavailableReason === null, reminderUnavailableReason, nextRemindAt,
       reminderToken: createHash('sha256').update(JSON.stringify([id, subject.status, subject.currentNodeIndex, subject.updatedAt.toISOString(), subject.nodes.map(node => [node.name, node.status]), [...pendingIds].sort()])).digest('hex'),
       history: [
         ...subject.history.map((event, index) => ({ id: `${id}:history:${index}`, actor: person(event.actorUserId), action: event.action, comment: event.comment, createdAt: event.createdAt.toISOString() })),

@@ -16,9 +16,7 @@ function workItemsFixture(): WorkItemsReadModel {
     approvalCenter: {
       pendingApproval: [{ id: "approval-1" } as WorkItemsReadModel["queues"]["pending"][number]],
       startedByMe: [],
-      handledByMe: [],
-      delegatedToMe: [],
-      overdueReminder: []
+      handledByMe: []
     }
   };
 }

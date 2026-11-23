@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { PDFDocument } from "pdf-lib";
+import { BadRequestException } from "@nestjs/common";
 import { markFormalApprovalPdf } from "./approval-pdf-watermark";
 import {
   ApprovalFormService,
@@ -3289,6 +3290,71 @@ it("并联办理中下载当前轮未完成审批单，不读取旧缓存", asyn
   expect(result.fileName).toContain("审批未完成");
 });
 
+it("并联办理中的非合同流程可下载当前轮审批单：已签显示签字、未签留空并标记未完成", async () => {
+  const instance = { id: "pay-round-1", businessType: "payment_request", businessId: "pay-1", status: "in_progress",
+    applicantUserId: "user-applicant", currentNodeIndex: 0, updatedAt: new Date("2026-11-05T00:00:00Z"), frozenNodes: [
+      { name: "合同部主管", mode: "any", roleKeys: ["contract_director"], protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: [] as string[] },
+      { name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: ["project_manager"] },
+      { name: "财务主管", mode: "any", roleKeys: ["finance_director"], protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: [] as string[] },
+      { name: "总经理/董事长", mode: "any", roleKeys: ["chairman", "general_manager"], protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: [] as string[] }
+    ] };
+  const log = { id: "pay-log-1", action: "approve", actorUserId: "manager-1", approvedRoleKey: "project_manager",
+    signatureFileIdSnapshot: "sig-1", signatureVersionIdSnapshot: "signature-version-1",
+    signatureSha256Snapshot: createHash("sha256").update(PNG_1X1).digest("hex"),
+    metadata: { approverName: "项目经理甲" }, createdAt: new Date("2026-11-05T01:00:00Z") };
+  const prisma = buildPrisma({
+    approvalInstance: { findFirst: jest.fn(async () => instance) },
+    approvalActionLog: { findMany: jest.fn(async () => [log]), findFirst: jest.fn(async () => log) },
+    user: {
+      findMany: jest.fn(async () => [{ id: "user-applicant", name: "申请人甲" }, { id: "manager-1", name: "项目经理甲" }]),
+      findUnique: jest.fn(async () => ({ name: "下载人甲", isActive: true }))
+    }
+  });
+  const audit = { record: jest.fn(async () => ({})) };
+  const files = {
+    assertCanViewApprovalFlow: jest.fn(async () => undefined),
+    assertCanDownloadApprovalFormByBusiness: jest.fn(async () => undefined),
+    getFileBuffer: jest.fn(async () => ({ buffer: PNG_1X1 })),
+    assertApprovalFormArchiveAnchor: jest.fn(async () => undefined)
+  };
+  const service = new ApprovalFormService(prisma as never, files as never, audit as never,
+    { confirmPassword: async () => ({}) } as never);
+
+  await expect(service.downloadAvailability("payment_request", "pay-1", "user-applicant"))
+    .resolves.toEqual({ available: true, incomplete: true });
+  const result = await service.renderForDownload("payment_request", "pay-1", "user-applicant", "password", "查看办理进度");
+  expect(result.fileName).toContain("审批未完成");
+  expect(result.buffer.subarray(0, 5).toString()).toBe("%PDF-");
+  const rendered = pdfPublicTextItems(result.buffer).map(item => item.text).join("\n");
+  expect(rendered).toContain("审批未完成");
+  expect(rendered).toContain("项目经理甲");
+  expect(rendered).toContain("合同部主管");
+  expect(rendered).toContain("财务主管");
+  expect(files.assertCanViewApprovalFlow).toHaveBeenCalledWith("payment_request", "pay-1", "user-applicant");
+  expect(audit.record).toHaveBeenCalledWith(prisma, expect.objectContaining({
+    action: "approval.form.download", metadata: expect.objectContaining({ approvalInstanceId: "pay-round-1", incomplete: true })
+  }));
+});
+
+it("费用报销办理中不开放半成品审批单，保持完成版全部签批语义", async () => {
+  const instance = { id: "expense-round-1", businessType: "expense_claim", businessId: "claim-1", status: "in_progress",
+    applicantUserId: "user-applicant", currentNodeIndex: 0, updatedAt: new Date("2026-11-05T00:00:00Z"), frozenNodes: [
+      { name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"], protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: [] },
+      { name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: ["project_manager"] }
+    ] };
+  const prisma = buildPrisma({ approvalInstance: { findFirst: jest.fn(async () => instance) } });
+  const files = {
+    assertCanViewApprovalFlow: jest.fn(async () => undefined),
+    assertCanDownloadApprovalFormByBusiness: jest.fn(async () => { throw new BadRequestException("当前业务尚未完成审批，暂不能下载审批单"); })
+  };
+  const service = new ApprovalFormService(prisma as never, files as never, { record: jest.fn() } as never,
+    { confirmPassword: async () => ({}) } as never);
+
+  await expect(service.downloadAvailability("expense_claim", "claim-1", "user-applicant"))
+    .resolves.toEqual({ available: false });
+  expect(files.assertCanViewApprovalFlow).not.toHaveBeenCalled();
+});
+
 it("并联最终审批单按职责冻结逆序签字，个人签名后来变化不改已有签字", async () => {
   const { service, instance, logs } = parallelFormFixture();
   instance.status = "approved";
@@ -3454,7 +3520,7 @@ function pendingContractApprovalFixture() {
 
 it("新版合同公开下载只读取当前审批中的已同意签名，并固定空职责位置", async () => {
   const { service, version, prisma, audit, read, download } = pendingContractApprovalFixture();
-  await expect(service.downloadAvailability("contract_version", version.id, "applicant-1")).resolves.toEqual({ available: true });
+  await expect(service.downloadAvailability("contract_version", version.id, "applicant-1")).resolves.toEqual({ available: true, incomplete: true });
   const result = await download();
   expect(result.fileName).toBe("审批未完成-审批单-HT-2026-001.pdf");
   const rendered = pdfPublicTextItems(result.buffer).map(item => item.text).join("\n");
@@ -3531,11 +3597,11 @@ it("物资主管查看合同审批中PDF须持冻结职责指定的公司岗位"
   await expect(download()).rejects.toThrow("当前账号无权下载该合同审批单");
   expect(read).not.toHaveBeenCalled();
   prisma.projectMember.findMany.mockResolvedValue([{ positionKey: "contract_staff" }]);
-  await expect(availability()).resolves.toEqual({ available: true });
+  await expect(availability()).resolves.toEqual({ available: true, incomplete: true });
   expect((await download()).fileName).toContain("审批未完成");
   prisma.projectMember.findMany.mockResolvedValue([]);
   allowAt(null);
-  await expect(availability()).resolves.toEqual({ available: true });
+  await expect(availability()).resolves.toEqual({ available: true, incomplete: true });
   expect((await download()).fileName).toContain("审批未完成");
 });
 
@@ -3557,7 +3623,7 @@ it("新版合同审批单HTTP明确禁止缓存，并校验已签项目职责的
     const base = `${await app.getUrl()}/approval-forms/contract_version/${version.id}`;
     const capability = await fetch(`${base}/capability`);
     expect(capability.headers.get("Cache-Control")).toBe("no-store");
-    expect(await capability.json()).toEqual({ available: true });
+    expect(await capability.json()).toEqual({ available: true, incomplete: true });
     const download = () => fetch(`${base}/download`, {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ confirmationPassword: "password", downloadReason: "核对当前轮" })

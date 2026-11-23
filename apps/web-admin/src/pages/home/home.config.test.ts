@@ -131,9 +131,7 @@ describe("home workbench card helpers", () => {
       approvalCenter: {
         pendingApproval: [],
         startedByMe: [],
-        handledByMe: [],
-        delegatedToMe: [],
-        overdueReminder: []
+        handledByMe: []
       }
     };
 
@@ -309,9 +307,7 @@ function workItemsFixture(): WorkItemsReadModel {
     approvalCenter: {
       pendingApproval: [],
       startedByMe: [],
-      handledByMe: [],
-      delegatedToMe: [],
-      overdueReminder: []
+      handledByMe: []
     }
   };
 }

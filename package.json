@@ -41,6 +41,7 @@
     "verify:trial-run:preflight": "node services/api/prisma/verify-trial-run.cjs --preflight",
     "verify:line-a-real-db:local": "LINE_A_SKIP_CANDIDATE=20261119004200 node services/api/prisma/run-line-a-real-db-local.cjs",
     "verify:issue419-notification:local": "node services/api/prisma/run-issue419-notification-local.cjs",
+    "verify:issue420-approval-center:local": "node services/api/prisma/run-issue420-approval-center-local.cjs",
     "verify:line-a-real-db:candidate:local": "LINE_A_SKIP_CANDIDATE=20261119004200 node services/api/prisma/run-line-a-real-db-local.cjs",
     "verify:line-a-real-db:diagnose-gate:local": "node services/api/prisma/run-line-a-real-db-local.cjs --diagnose-archive-gate",
     "verify:docker-cleanup:local": "node services/api/prisma/verify-disposable-postgres-cleanup.cjs",

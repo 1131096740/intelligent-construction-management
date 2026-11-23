@@ -36,7 +36,7 @@ async function setup(page: Page, onRemind: (route: Route, body: ReminderRequest,
         { name: "项目经理", mode: "或签", status: "未开始", participants: [{ id: "later", name: "项目经理" }], pending: [], legacyRoster: false },
         { name: "财务主管", mode: "会签", status: "未开始", participants: [{ id: "finance", name: "财务主管" }], pending: [], legacyRoster: false }
       ],
-      pendingRecipients: [person], reminderToken: "a".repeat(64), canRemind: true, reminderUnavailableReason: null, nextRemindAt: null, history: [], reminders: []
+      pendingRecipients: [person], reminderToken: "a".repeat(64), canRemind: true, reminderUnavailableReason: null, nextRemindAt: null, history: [], reminders: [], viewerOnly: false, canHandle: true
     }
   };
   options.configure?.(state);
