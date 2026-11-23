@@ -1,6 +1,6 @@
 --- task12-onboarding-282-admission.cjs
 +++ task12-onboarding-282-admission.cjs
-@@ -37,5 +37,10 @@
+@@ -37,7 +37,12 @@
    requireScope(expectedGrants.some(line => line.includes(approvedAlias))
      && !expectedGrants.some(line => line.includes(rawLookup))
      && JSON.stringify(grantStatements(scoped)) === JSON.stringify(expectedGrants));
@@ -12,3 +12,5 @@
 +    "'public.jg_file_business_binding_columns_before_contract_archive_v2()', " +
 +    "'public.jg_file_business_binding_columns_before_signed_settlement()'] LOOP");
  }
+
+ function runtimeProbeSql(database, port) {
