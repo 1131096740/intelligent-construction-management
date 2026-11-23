@@ -260,6 +260,17 @@ DRILL_ROOT="$DRILL_ROOT" pnpm --silent --filter @jiangkong/api inspect:issue424-
 
 留存一行汇总 JSON。缺候选人证据、签名文件或存在歧义的旧轮次需核对原资料，盘点不启用并联审批。
 
+普通合同付款可在同一虚构恢复副本盘点结算付款、已签结算付款、合同预付款和合同直接付款。
+沿用本地签名副本和两份恢复指标。用 `ISSUE424_PAYMENT_PLAN_READER_URL` 提供独立
+`jg424_payment_reader` 账号，默认事务为只读。该账号只需读取 `PaymentRequest`、
+`ApprovalInstance`、`ApprovalActionLog`、`HandwrittenSignatureVersion` 和 `FileObject`。
+
+```bash
+DRILL_ROOT="$DRILL_ROOT" pnpm --silent --filter @jiangkong/api inspect:issue424-payment-cutover
+```
+
+留存汇总 JSON。`replayed` 表示可回放原审批事实；按阻断原因核查原动作和签名，不据此开放并联审批。
+
 2) 在本演练新建库中恢复初始连接权限，使用 owner SQL 构造恢复校验数据。执行前核对初始 ACL 与以下 GRANT 一致。正式开放验收需由应用身份走公开写入口。
 
 ```bash
