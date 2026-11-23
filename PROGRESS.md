@@ -32,7 +32,7 @@ POL114 合同版式浏览器夹具 `231144a10` 改用现行预览及下载入口
 
 现行 328 安装后，历史接管 `submitReview` 在 `contract-lifecycle-route.spec.ts:1871` 返回 SQLSTATE `23514`，实际约束 `ContractTakeover_status_check` 仍不接受 #416 的 `pending_finance`。定向复跑使用 `53e03c51` 隔离运行镜像，相关应用入口与迁移在后继 `58135d06` 保持同一实现，详见 `/private/tmp/jg382-takeover-db-probe.PxiMwtSP/run.log`。下一步追加向前迁移并验证新业务状态和历史状态保持；失败现场保留。保留清理分片的其余失败另行复核，独占复跑中 15 项原真库和 10 项原模型测试通过，6 项真库失败。当前库禁止物理删除的用例前段已通过，205 库上后继文件关联检查待修。
 
-草稿 `58135d06` 的 CI `45274650199` 终态 49 成功、7 失败。合同财务整链、POL113/POL114 及完整入职动态门在远端通过。#398 按含诊断的精确本地候选 `f4e09f23` 完成 328 安装，实际浏览器启动后在首屏读取失败：`/payments`、`/operating-projections/as-of` 各返回 500，其余四条读取 200，未进入本次实付执行；待确认受限运行角色下的具体错误。独占资源已清理。回执 `/private/tmp/jg382-task398-real.OqA8oALl/partial.log`。
+草稿 `58135d06` 的 CI `45274650199` 终态 49 成功、7 失败。合同财务整链、POL113/POL114 及完整入职动态门在远端通过。#398 按含诊断的精确本地候选 `f4e09f23` 完成 328 安装，实际浏览器启动后在首屏读取失败：`/payments`、`/operating-projections/as-of` 各返回 500，其余四条读取 200，未进入本次实付执行。同一应用镜像叠加只记录有限字段的异常观察器，确认两个查询分别因受限测试角色读取 `PaymentExecutionRefund`、`OperatingCostAttributionConfirmation` 返回 SQLSTATE `42501`。具体读取列和既有角色准入待核对。两次独占资源均已清理。回执 `/private/tmp/jg382-task398-real.OqA8oALl/partial.log` 与 `/private/tmp/jg382-task398-route-read.PYFABRit/run.log`。
 
 #416 已在精确 328 安装后施加独立 `f22a080f` 候选 SQL。六种既有状态及放弃检查保持，新提交可进入 `pending_finance`，修正旧预期后的合同台账与放弃场景通过。第 329 条完整迁移账、当前 CI 准入和精确集成仍在独立分支验收，草稿未包含该迁移。回执 `/private/tmp/jg382-takeover-329-proof.oB1gIpDA/run.log`。
 
