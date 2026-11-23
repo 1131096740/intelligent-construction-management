@@ -20,7 +20,7 @@ import { confirmApprovalSelfReview } from "../approval/approval-self-review";
 import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import { assertProjectApprovalNodesConfigured } from "../approval/project-approval-configuration";
 import { CompanyTransferNotificationService } from "./company-transfer-notification.service";
-export interface CreateCompanyTransfer { kind: "storage" | "loan" | "repayment"; sourceCompanyId: string; destinationCompanyId: string; sourceProjectId?: string | null; destinationProjectId?: string | null; sourceAccount: string; destinationAccount: string; amountCents: string; originalTransferId?: string; originalProxyId?: string; originalFundMovementRelationshipId?: string; originalInterEntityRelationshipId?: string; originalOperationalPaymentId?: string; reason: string; evidenceFileId: string; confirmationPassword: string; idempotencyKey: string }
+export interface CreateCompanyTransfer { kind: "storage" | "loan" | "repayment"; sourceCompanyId: string; destinationCompanyId: string; repaymentDebtorCompanyId?: string | null; sourceProjectId?: string | null; destinationProjectId?: string | null; sourceAccount: string; destinationAccount: string; amountCents: string; originalTransferId?: string; originalProxyId?: string; originalFundMovementRelationshipId?: string; originalInterEntityRelationshipId?: string; originalOperationalPaymentId?: string; reason: string; evidenceFileId: string; confirmationPassword: string; idempotencyKey: string }
 const hash = (s: unknown) => createHash("sha256").update(JSON.stringify(s)).digest("hex");
 @Injectable()
 export class CompanyTransferService {
@@ -39,22 +39,23 @@ export class CompanyTransferService {
     if (projects.some(p => !(byProject.get(p!) ?? []).some(r => ["finance_staff", "finance_director", "project_manager"].includes(r)))) throw new ForbiddenException("公司互转须由财务办理，项目负责人可查询所属项目"); return roles;
   }
   private async lock(tx: Prisma.TransactionClient, projects: Array<string | null>) { for (const p of [...new Set(projects.filter((p): p is string => !!p))].sort()) await this.funding.lockFundingContext(tx, p); await lockCompanyTransfers(tx); }
-  private async company(tx: Prisma.TransactionClient, id: string, projectId: string | null, date = new Date(), existingDebt = false) {
+  private async company(tx: Prisma.TransactionClient, id: string, projectId: string | null, date = new Date(), existingDebt = false, requireParticipant = true) {
     const c = await tx.companyEntity.findUnique({ where: { id } }); if (!c || (!existingDebt && !c.isActive) || !c.unifiedSocialCreditCode) throw new BadRequestException("请选择有完整法人档案的启用公司");
-    if (projectId && !existingDebt && !await tx.projectParticipatingCompany.findFirst({ where: { projectId, companyEntityId: id, effectiveFrom: { lte: date }, OR: [{ endedAt: null }, { endedAt: { gt: date } }] } })) throw new BadRequestException("公司在资金发生日不属于该项目的有效参与公司"); return { id: c.id, name: c.name, creditCode: c.unifiedSocialCreditCode };
+    if (projectId && requireParticipant && !existingDebt && !await tx.projectParticipatingCompany.findFirst({ where: { projectId, companyEntityId: id, effectiveFrom: { lte: date }, OR: [{ endedAt: null }, { endedAt: { gt: date } }] } })) throw new BadRequestException("公司在资金发生日不属于该项目的有效参与公司"); return { id: c.id, name: c.name, creditCode: c.unifiedSocialCreditCode };
   }
-  private async original(tx: Prisma.TransactionClient, input: Pick<CompanyTransfer, "kind" | "originalTransferId" | "originalProxyId" | "originalFundMovementRelationshipId" | "originalInterEntityRelationshipId" | "originalOperationalPaymentId" | "sourceCompanyId" | "destinationCompanyId" | "sourceProjectId" | "destinationProjectId">, excludeId?: string, at?: Date) {
+  private async original(tx: Prisma.TransactionClient, input: Pick<CompanyTransfer, "kind" | "originalTransferId" | "originalProxyId" | "originalFundMovementRelationshipId" | "originalInterEntityRelationshipId" | "originalOperationalPaymentId" | "sourceCompanyId" | "destinationCompanyId" | "repaymentDebtorCompanyId" | "sourceProjectId" | "destinationProjectId">, excludeId?: string, at?: Date) {
+    const debtor = input.repaymentDebtorCompanyId ?? input.sourceCompanyId;
     if (input.kind !== "repayment") { if (input.originalTransferId || input.originalProxyId || input.originalFundMovementRelationshipId || input.originalInterEntityRelationshipId || input.originalOperationalPaymentId) throw new BadRequestException("仅归还可以关联原往来"); return; }
     if ([input.originalTransferId, input.originalProxyId, input.originalFundMovementRelationshipId, input.originalInterEntityRelationshipId, input.originalOperationalPaymentId].filter(Boolean).length !== 1) throw new BadRequestException("归还必须选择一笔原借款或公司间代付");
     let limit = 0n;
-    if (input.originalTransferId) { const r = await tx.companyTransfer.findUnique({ where: { id: input.originalTransferId } }); if (!r || r.kind !== "loan" || r.status !== "approved" || r.sourceCompanyId !== input.destinationCompanyId || r.destinationCompanyId !== input.sourceCompanyId || r.sourceProjectId !== input.destinationProjectId || r.destinationProjectId !== input.sourceProjectId) throw new BadRequestException("归还双方和资金归属必须与原借款相反"); limit = transferTotals(await tx.companyTransferEvent.findMany({ where: { transferId: r.id, ...(at ? { occurredAt: { lte: at } } : {}) } })).received; }
+    if (input.originalTransferId) { const r = await tx.companyTransfer.findUnique({ where: { id: input.originalTransferId } }); if (!r || r.kind !== "loan" || r.status !== "approved" || r.sourceCompanyId !== input.destinationCompanyId || r.destinationCompanyId !== debtor || r.sourceProjectId !== input.destinationProjectId || r.destinationProjectId !== input.sourceProjectId) throw new BadRequestException("归还双方和资金归属必须与原借款相反"); limit = transferTotals(await tx.companyTransferEvent.findMany({ where: { transferId: r.id, ...(at ? { occurredAt: { lte: at } } : {}) } })).received; }
     else if (input.originalProxyId) {
 const r = await tx.contractProxyExecution.findUnique({ where: { id: input.originalProxyId! } }); const s = r?.frozenSource as { debtor?: { kind: string; id: string }; actualPayer?: { kind: string; id: string } } | undefined;
-      if (!r || r.status !== "confirmed" || r.entryKind !== "payment" || s?.debtor?.kind !== "participating_company" || s.actualPayer?.kind !== "participating_company" || s.debtor.id !== input.sourceCompanyId || s.actualPayer.id !== input.destinationCompanyId || r.projectId !== input.sourceProjectId || r.projectId !== input.destinationProjectId) throw new BadRequestException("请关联同项目、相反双方的已确认公司间代付");
+      if (!r || r.status !== "confirmed" || r.entryKind !== "payment" || s?.debtor?.kind !== "participating_company" || s.actualPayer?.kind !== "participating_company" || s.debtor.id !== debtor || s.actualPayer.id !== input.destinationCompanyId || r.projectId !== input.sourceProjectId || r.projectId !== input.destinationProjectId) throw new BadRequestException("请关联同项目、相反双方的已确认公司间代付");
       if (at && r.occurredAt > at) throw new BadRequestException("归还出款日期不能早于原代付");
       const old = await tx.contractProxyExecution.aggregate({ where: { originalId: r.id, status: { in: ["pending_confirm", "confirmed"] }, ...(at ? { occurredAt: { lte: at } } : {}) }, _sum: { amountCents: true } }); limit = r.amountCents - (old._sum.amountCents ?? 0n);
     }
-    else { const legacy = await readLegacyTransferDebt(tx, input, at); if (!legacy || legacy.sourceCompanyId !== input.sourceCompanyId || legacy.destinationCompanyId !== input.destinationCompanyId || legacy.sourceProjectId !== input.sourceProjectId || legacy.destinationProjectId !== input.destinationProjectId) throw new BadRequestException("归还双方和资金归属须对应原往来"); if (at && legacy.occurredAt > at) throw new BadRequestException("归还日期不能早于原往来确认"); limit = legacy.remainingCents; }
+    else { const legacy = await readLegacyTransferDebt(tx, input, at); if (!legacy || legacy.sourceCompanyId !== debtor || legacy.destinationCompanyId !== input.destinationCompanyId || legacy.sourceProjectId !== input.sourceProjectId || legacy.destinationProjectId !== input.destinationProjectId) throw new BadRequestException("归还双方和资金归属须对应原往来"); if (at && legacy.occurredAt > at) throw new BadRequestException("归还日期不能早于原往来确认"); limit = legacy.remainingCents; }
     const requests = await tx.companyTransfer.findMany({ where: { id: { not: excludeId ?? "" }, originalTransferId: input.originalTransferId, originalProxyId: input.originalProxyId, originalFundMovementRelationshipId: input.originalFundMovementRelationshipId, originalInterEntityRelationshipId: input.originalInterEntityRelationshipId, originalOperationalPaymentId: input.originalOperationalPaymentId, status: { in: ["submitted", "approved"] } } });
     for (const r of requests) {
       if (at) { const totals = transferTotals(await tx.companyTransferEvent.findMany({ where: { transferId: r.id, occurredAt: { lte: at } } })); limit -= totals.sent - totals.returned; }
@@ -65,11 +66,15 @@ const r = await tx.contractProxyExecution.findUnique({ where: { id: input.origin
   async create(actor: string, input: CreateCompanyTransfer) {
     if (!input || ![input.sourceCompanyId, input.destinationCompanyId, input.reason, input.evidenceFileId, input.idempotencyKey].every(v => typeof v === "string" && v.trim()) || input.reason.length > 2000 || !/^\d{1,16}$/u.test(input.amountCents) || BigInt(input.amountCents) <= 0n) throw new BadRequestException("请完整填写互转金额、用途和依据");
     if (input.sourceCompanyId === input.destinationCompanyId) throw new BadRequestException("公司互转须选择两家不同公司");
+    const repaymentDebtorCompanyId = input.kind === "repayment" ? (input.repaymentDebtorCompanyId ?? input.sourceCompanyId) : null;
+    if (input.kind !== "repayment" && input.repaymentDebtorCompanyId) throw new BadRequestException("仅归还已有往来可指定代还债务人");
+    if (repaymentDebtorCompanyId === input.destinationCompanyId) throw new BadRequestException("代还债务人不能与原债权公司相同");
+    const thirdPartyRepayment = !!repaymentDebtorCompanyId && repaymentDebtorCompanyId !== input.sourceCompanyId;
     const sourceProjectId = input.sourceProjectId || null, destinationProjectId = input.destinationProjectId || null; transferScope(input.kind, sourceProjectId, destinationProjectId);
     const source = accountIdentity(input.sourceAccount), destination = accountIdentity(input.destinationAccount), amount = BigInt(input.amountCents);
     const fingerprint = hash({ ...input, sourceAccount: source.hash, destinationAccount: destination.hash, confirmationPassword: undefined, actor }); await this.auth.confirmPassword(actor, input.confirmationPassword);
     const result = await this.prisma.$transaction(async tx => {
-      const lineage = { kind: input.kind, sourceCompanyId: input.sourceCompanyId, destinationCompanyId: input.destinationCompanyId, sourceProjectId, destinationProjectId, originalTransferId: input.originalTransferId ?? null, originalProxyId: input.originalProxyId ?? null, originalFundMovementRelationshipId: input.originalFundMovementRelationshipId ?? null, originalInterEntityRelationshipId: input.originalInterEntityRelationshipId ?? null, originalOperationalPaymentId: input.originalOperationalPaymentId ?? null };
+      const lineage = { kind: input.kind, sourceCompanyId: input.sourceCompanyId, destinationCompanyId: input.destinationCompanyId, repaymentDebtorCompanyId, sourceProjectId, destinationProjectId, originalTransferId: input.originalTransferId ?? null, originalProxyId: input.originalProxyId ?? null, originalFundMovementRelationshipId: input.originalFundMovementRelationshipId ?? null, originalInterEntityRelationshipId: input.originalInterEntityRelationshipId ?? null, originalOperationalPaymentId: input.originalOperationalPaymentId ?? null };
       const movementEntryKind = lineage.originalFundMovementRelationshipId
         ? (await tx.fundMovementRelationshipEntry.findUnique({
           where: { id: lineage.originalFundMovementRelationshipId }, select: { entryKind: true },
@@ -84,7 +89,9 @@ const r = await tx.contractProxyExecution.findUnique({ where: { id: input.origin
       } else await this.access(tx, actor, [sourceProjectId, destinationProjectId], true);
       await this.lock(tx, [sourceProjectId, destinationProjectId]);
       const prior = await tx.companyTransfer.findUnique({ where: { idempotencyKey: input.idempotencyKey } }); if (prior) { if (prior.requestFingerprint !== fingerprint) throw new ConflictException("操作凭据已用于另一申请"); return { id: prior.id, code: prior.code, status: prior.status }; }
-      const parties = { source: await this.company(tx, input.sourceCompanyId, sourceProjectId, new Date(), input.kind === "repayment"), destination: await this.company(tx, input.destinationCompanyId, destinationProjectId, new Date(), input.kind === "repayment") };
+      const sourceParty = await this.company(tx, input.sourceCompanyId, sourceProjectId, new Date(), input.kind === "repayment" && !thirdPartyRepayment, !thirdPartyRepayment);
+      const parties = { source: sourceParty, destination: await this.company(tx, input.destinationCompanyId, destinationProjectId, new Date(), input.kind === "repayment"),
+        ...(thirdPartyRepayment ? { debtor: await this.company(tx, repaymentDebtorCompanyId!, sourceProjectId, new Date(), true) } : {}) };
       const remaining = await this.original(tx, lineage); if (remaining !== undefined && amount > remaining) throw new ConflictException("归还超过原往来尚未清偿及未被申请占用的金额");
       await acquireFileBusinessBindingTransactionLock(tx); const evidence = await tx.fileObject.findUnique({ where: { id: input.evidenceFileId } }); if (!evidence || evidence.uploadedByUserId !== actor || evidence.storageStatus !== "active" || !evidence.contentSha256) throw new BadRequestException("请上传本人持有的有效互转申请依据");
       const id = randomUUID(), code = `HZ-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${id.slice(0, 8).toUpperCase()}`;
@@ -102,7 +109,7 @@ const r = await tx.contractProxyExecution.findUnique({ where: { id: input.origin
       }
       const approval = await tx.approvalInstance.create({ data: { flowType: "company_transfer.approve", businessType: "company_transfer", businessId: id, status: "in_progress", currentNodeIndex: 0, frozenNodes: nodes, applicantUserId: actor } });
       const row = await tx.companyTransfer.create({ data: { id, code, ...lineage, requiresParallelRepaymentApproval: proxyRepayment, sourceAccountHash: source.hash, sourceAccountLast4: source.last4, destinationAccountHash: destination.hash, destinationAccountLast4: destination.last4, amountCents: amount, reason: input.reason.trim(), evidenceFileId: evidence.id, evidenceSha256: evidence.contentSha256, frozenParties: parties, approvalInstanceId: approval.id, applicantUserId: actor, idempotencyKey: input.idempotencyKey, requestFingerprint: fingerprint } });
-      await this.audit.record(tx, { actorUserId: actor, action: "company_transfer.submit", businessType: "company_transfer", businessId: id, metadata: { code, kind: input.kind } });
+      await this.audit.record(tx, { actorUserId: actor, action: "company_transfer.submit", businessType: "company_transfer", businessId: id, metadata: { code, kind: input.kind, ...(thirdPartyRepayment ? { repaymentDebtorCompanyId } : {}) } });
       if (proxyRepayment) await this.notifications?.queueParallelReview(tx,row,approval);
       else await this.notifications?.queueFinalReview(tx,row,approval,candidateIds);
       return { id, code, status: row.status };
@@ -196,7 +203,8 @@ const r = await tx.contractProxyExecution.findUnique({ where: { id: input.origin
       if (row.status !== "approved") throw new ConflictException(row.requiresParallelRepaymentApproval ? "全部职责审批通过后才能登记实际归还" : "领导审批通过后才能登记实际互转");
       const project = input.kind === "incoming" ? row.destinationProjectId : row.sourceProjectId, companyId = input.kind === "incoming" ? row.destinationCompanyId : row.sourceCompanyId;
       const observation = await tx.verifiedBankTransactionObservation.findUnique({ where: { id: input.observationId } }); if (!observation) throw new BadRequestException("银行流水不存在");
-      await this.company(tx, companyId, project, observation.occurredAt, row.kind === "repayment");
+      const thirdPartyPayer = input.kind === "outgoing" && row.kind === "repayment" && !!row.repaymentDebtorCompanyId && row.repaymentDebtorCompanyId !== row.sourceCompanyId;
+      await this.company(tx, companyId, project, observation.occurredAt, row.kind === "repayment" && !thirdPartyPayer, !thirdPartyPayer);
       const proof = await tx.contractBankVerificationRequest.findFirst({ where: { observationId: observation.id } });
       if (!proof || proof.status !== "confirmed" || proof.companyEntityId !== companyId || proof.projectId !== project || proof.accountHash !== (input.kind === "incoming" ? row.destinationAccountHash : row.sourceAccountHash) || observation.direction !== (input.kind === "outgoing" ? "outflow" : "inflow")) throw new BadRequestException("流水开户公司、资金归属、银行账号或方向与批准申请不一致");
       const events = await tx.companyTransferEvent.findMany({ where: { transferId: id } });
