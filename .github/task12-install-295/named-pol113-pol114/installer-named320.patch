@@ -27,7 +27,7 @@
      ?verifyNamed292Inputs('/qualification/product/services/api/prisma','/qualification/product291/services/api/prisma','/qualification/named292/successor.sql')
      :undefined;
 -  const named295=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_295';
-+  const named320=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_320';
++  const named320=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_323';
 +  const named295=purpose===named292&&(named320||receipt.purpose==='NAMED_POL113_POL114_EXACT_295');
    let consumerLedger,named292Catalog,named295Tail;
 
@@ -87,7 +87,7 @@
          readPostgresLog:() => { onlyWhileOwned(); return fs.readFileSync(logPath, 'utf8'); },
        });
 -      enter(named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
-+      enter(named320?'EXACT_320_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
++      enter(named320?'EXACT_323_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
        for (const [key,role] of [['runtime','jg_task01_runtime'], ['observer','jg_task01_observer']]) {
          const observed = await jsonSql(`SELECT jsonb_build_object(
            'database',current_database(),'role',current_user,'sessionRole',session_user,
