@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 50,
-    "exportedFunctionCount": 761,
-    "transportWrapperCount": 737,
+    "exportedFunctionCount": 763,
+    "transportWrapperCount": 739,
     "pureExportCount": 24,
-    "mainRequestBindingCount": 811,
+    "mainRequestBindingCount": 813,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 767,
-    "productionConsumerCount": 648,
+    "requestEdgeCount": 769,
+    "productionConsumerCount": 650,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -6596,6 +6596,35 @@
       "unreachableConsumers": []
     },
     {
+      "name": "createArchiveDownloadPackage",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 5729,
+          "method": "POST",
+          "path": "/files/download-package",
+          "normalizedPath": "/files/download-package",
+          "normalizedKey": "POST /files/download-package",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createArchiveDownloadPackage"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/archives/ArchiveListPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "createCanvasSignatureHandoff",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -7035,7 +7064,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7375,
+          "sourceLine": 7439,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -7067,7 +7096,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7359,
+          "sourceLine": 7423,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -7097,7 +7126,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7359,
+          "sourceLine": 7423,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -7127,7 +7156,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5775,
+          "sourceLine": 5839,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -7156,7 +7185,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7359,
+          "sourceLine": 7423,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -7248,7 +7277,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5669,
+          "sourceLine": 5700,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -7341,7 +7370,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7402,
+          "sourceLine": 7466,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -7370,7 +7399,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7389,
+          "sourceLine": 7453,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -7399,7 +7428,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7417,
+          "sourceLine": 7481,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -7428,7 +7457,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7359,
+          "sourceLine": 7423,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -9592,6 +9621,36 @@
       "unreachableConsumers": []
     },
     {
+      "name": "getArchiveDownloadPackageCapability",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 80,
+          "method": "GET",
+          "path": "/files/download-package-capability?fileIds=:param",
+          "normalizedPath": "/files/download-package-capability",
+          "normalizedKey": "GET /files/download-package-capability",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "getArchiveDownloadPackageCapability",
+              "readJson"
+            ]
+          ]
+        }
+      ],
+      "testConsumers": [
+        "apps/web-admin/src/api/core-flow-read.api.test.ts"
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/archives/ArchiveListPage.vue"
+      ],
+      "unreachableConsumers": []
+    },
+    {
       "name": "getCanvasSignatureCapabilities",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -11404,6 +11463,7 @@
       "returnProvenance": "none",
       "requests": [],
       "productionConsumers": [
+        "apps/web-admin/src/pages/archives/ArchiveListPage.vue",
         "apps/web-admin/src/pages/payments/SignedSettlementPaymentBasisPanel.vue",
         "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue"
       ],

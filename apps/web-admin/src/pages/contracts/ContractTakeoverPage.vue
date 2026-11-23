@@ -1321,22 +1321,6 @@
                 </option>
               </select>
             </label>
-            <label>
-              <span>当前登录密码</span>
-              <t-input
-                v-model="evidenceDownloadPassword"
-                type="password"
-                autocomplete="current-password"
-                placeholder="下载前需校验当前登录密码"
-              />
-            </label>
-            <label>
-              <span>下载原因</span>
-              <t-input
-                v-model="evidenceDownloadReason"
-                placeholder="例如：复核历史付款凭证"
-              />
-            </label>
             <t-tooltip
               v-if="selectedEvidenceDownloadDisabledReason"
               :content="selectedEvidenceDownloadDisabledReason"
@@ -2509,8 +2493,6 @@ const historicalPaymentVoucherUpload = useTakeoverEvidenceUpload();
 const { file: historicalPaymentVoucherFile, busy: historicalPaymentVoucherUploading, error: historicalPaymentVoucherUploadError, success: historicalPaymentVoucherUploadSuccess } = historicalPaymentVoucherUpload;
 const historicalPaymentVoucherInputRef = ref<HTMLInputElement | null>(null);
 const evidenceDownloadFileId = ref("");
-const evidenceDownloadPassword = ref("");
-const evidenceDownloadReason = ref("");
 const companyEntityCorrectionFiles = ref<UploadFile[]>([]);
 const message = ref("");
 const messageTone = ref<"success" | "danger" | "default">("default");
@@ -3344,7 +3326,7 @@ const selectedEvidenceFiles = computed(() =>
     confirmedAt: null,
     canDownload: file.canDownload,
     disabledReason: file.disabledReason,
-    auditHint: "下载需当前密码、下载原因和短时效链接，并记录审计"
+    auditHint: "下载需单据可见权限、短时效链接和审计记录"
   }))
 );
 const selectedEvidenceDownloadOptions = computed(() =>
@@ -3355,15 +3337,14 @@ const selectedEvidenceDownloadOptions = computed(() =>
       value: file.fileId
     }))
 );
-const selectedEvidenceDownloadDisabledReason = computed(() =>
-  takeoverEvidenceDownloadDisabledReason({
-    fileId: evidenceDownloadFileId.value,
-    password: evidenceDownloadPassword.value,
-    downloadReason: evidenceDownloadReason.value,
-    availableFileIds: selectedEvidenceDownloadOptions.value.map((option) => option.value),
-    hasFiles: selectedEvidenceFiles.value.length > 0
-  })
-);
+const selectedEvidenceDownloadDisabledReason = computed(() => {
+  if (selectedEvidenceFiles.value.length === 0) return "当前接管合同暂无可下载资料";
+  if (!evidenceDownloadFileId.value) return "请选择要下载的接管资料";
+  if (!selectedEvidenceDownloadOptions.value.some((option) => option.value === evidenceDownloadFileId.value)) {
+    return "所选接管资料暂不可下载";
+  }
+  return "";
+});
 const selectedCompanyEntityCorrections = computed(() =>
   (selectedRow.value?.takeover.corrections ?? []).filter(
     (correction) => correction.correctionType === "company_entity"
@@ -4401,14 +4382,9 @@ async function submitEvidenceFileDownload() {
   try {
     const ticket = await createContractTakeoverFileDownloadTicketWithCapability(
       evidenceDownloadFileId.value,
-      {
-      confirmationPassword: requiredText(evidenceDownloadPassword.value, "当前登录密码"),
-      downloadReason: requiredText(evidenceDownloadReason.value, "下载原因")
-      }
+      {}
     );
     window.open(apiDownloadUrl(ticket.downloadUrl), "_blank", "noopener");
-    evidenceDownloadPassword.value = "";
-    evidenceDownloadReason.value = "";
     evidenceDownloadConfirmVisible.value = false;
     setMessage("已生成短时效下载链接，请在新窗口完成下载。", "success");
   } catch (error) {
@@ -4968,8 +4944,6 @@ function resetCompanyEntityCorrectionForm() {
 function resetEvidenceDownloadForm(takeover: ContractTakeoverReadModel | null) {
   evidenceDownloadFileId.value =
     takeover?.evidenceFiles.find((file) => file.canDownload)?.fileId ?? "";
-  evidenceDownloadPassword.value = "";
-  evidenceDownloadReason.value = "";
 }
 
 function formFromTakeover(takeover: ContractTakeoverReadModel): CreateFormState {

@@ -1,25 +1,19 @@
-import { IsIn, IsOptional } from "class-validator";
+import { IsIn, IsOptional, IsString } from "class-validator";
 import {
   IsMaxUnicodeTextLength,
-  IsOptionalNonBlankText,
-  IsRequiredText
+  IsOptionalNonBlankText
 } from "../../validation/static-field-validation";
 
 export class CreateDownloadTicketDto {
-  @IsRequiredText({
-    requiredMessage: "请输入当前登录密码",
-    typeMessage: "当前登录密码必须是文字",
-    blankMessage: "请输入当前登录密码"
-  })
-  confirmationPassword!: string;
+  // 兼容旧客户端仍提交密码字段；附件访问只按当前登录身份与单据可见权限鉴权。
+  @IsOptional()
+  @IsString({ message: "当前登录密码必须是文字" })
+  confirmationPassword?: string;
 
-  @IsRequiredText({
-    requiredMessage: "请填写下载原因",
-    typeMessage: "下载原因必须是文字",
-    blankMessage: "请填写下载原因"
-  })
+  @IsOptional()
+  @IsString({ message: "下载原因必须是文字" })
   @IsMaxUnicodeTextLength({ max: 200, message: "下载原因不能超过 200 个字" })
-  downloadReason!: string;
+  downloadReason?: string;
 
   @IsOptional()
   @IsIn(["download", "preview"], { message: "文件访问方式不正确" })

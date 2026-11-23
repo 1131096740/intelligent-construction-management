@@ -1,6 +1,5 @@
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Res, StreamableFile, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { ArrayMaxSize, IsArray, IsIn, IsInt, IsNotEmpty, IsString, MaxLength, Min, ValidateIf } from "class-validator";
-import { AuthService } from "../auth/auth.service";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { CreateDownloadTicketDto } from "../file/dto/create-download-ticket.dto";
@@ -88,8 +87,7 @@ class DownloadSignedSettlementAttachmentDto {
 export class SignedContractSettlementController {
   constructor(
     private readonly settlements: SignedContractSettlementService,
-    private readonly files: FileService,
-    private readonly auth: AuthService
+    private readonly files: FileService
   ) {}
 
   @Get()
@@ -123,9 +121,10 @@ export class SignedContractSettlementController {
     @Param("fileId") fileId: string, @CurrentUser() user: AuthenticatedUser, @Body() body: CreateDownloadTicketDto
   ) {
     if (body.delegatorUserId) throw new BadRequestException("已签结算附件须由本人查阅");
-    await this.auth.confirmPassword(user.id, body.confirmationPassword);
     return this.files.createSignedSettlementDownloadTicket({ projectId, settlementId, fileId }, {
-      actorUserId: user.id, downloadReason: body.downloadReason, accessMode: body.accessMode
+      actorUserId: user.id,
+      ...(body.downloadReason?.trim() ? { downloadReason: body.downloadReason } : {}),
+      accessMode: body.accessMode
     });
   }
 

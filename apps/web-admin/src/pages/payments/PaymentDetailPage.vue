@@ -2051,11 +2051,8 @@ function requestPaymentFileDownload() {
   }
   openSensitiveAction("fileDownload", {
     title: "确认下载敏感付款文件？",
-    description: "系统将校验当前密码，签发短时效下载票据，并记录文件、单据和下载原因。",
-    confirmText: "确认下载",
-    requireReason: true,
-    requirePassword: true,
-    reasonLabel: "下载原因"
+    description: "系统将校验当前单据可见权限，签发短时效下载票据，并记录文件、单据和访问审计。",
+    confirmText: "确认下载"
   });
 }
 
