@@ -1868,7 +1868,7 @@ describe("abandoned historical takeover Nest route and PostgreSQL regression", (
           })
         ]);
         const submitted = await takeovers.submitReview(ids.project, ids.takeover, ids.actor);
-        expect(submitted).toMatchObject({ ...readMoney, takeoverStatus: "pending_review", submittedAt: expect.any(Date) });
+        expect(submitted).toMatchObject({ ...readMoney, takeoverStatus: "pending_finance", submittedAt: expect.any(Date) });
         expect(submitted.evidenceFiles).toEqual(before.evidenceFiles);
         const closed = await takeovers.abandonDraft(ids.project, ids.takeover, {
           expectedUpdatedAt: submitted.updatedAt.toISOString(), action: "abandon_application", reason: "0"
