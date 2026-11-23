@@ -89,6 +89,13 @@ describe("historical takeover review recovery", () => {
     expect(page).toContain('responsibleUserId: auth.user?.id ?? ""');
   });
 
+  it("lets finance reject the maker and keeps the handover relay visible", () => {
+    expect(page).toContain("openFinanceSupplementReturn");
+    expect(page).toContain("returnContractTakeoverForFinanceSupplement");
+    expect(page).toContain(":can-return-finance");
+    expect(confirmationCard).toContain("财务驳回制单人");
+  });
+
   it("gives finance a dedicated payment-voucher handoff without takeover editing authority", () => {
     expect(page).toContain("canUploadHistoricalPaymentVouchers");
     expect(page).toContain("attachHistoricalPaymentVoucher");

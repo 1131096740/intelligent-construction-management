@@ -17,6 +17,23 @@
     </template>
 
     <div
+      v-if="moneySummary"
+      class="money-summary"
+      data-testid="contract-takeover-money-summary"
+    >
+      <span>历史已付合计：{{ centsTextToYuanText(moneySummary.historicalPaidTotalCents) }} 元</span>
+      <span>历史累计结算：{{ centsTextToYuanText(moneySummary.historicalSettledCents) }} 元</span>
+      <span>超付/预付：{{ centsTextToYuanText(moneySummary.historicalOverpaidCents) }} 元（{{ moneySummary.historicalOverpaymentLabel }}）</span>
+      <span v-if="moneySummary.relationship === 'upward'">
+        对上历史实收：{{ centsTextToYuanText(moneySummary.historicalReceiptsCents) }} 元；
+        超收：{{ centsTextToYuanText(moneySummary.historicalOverReceivedCents) }} 元
+        <template v-if="moneySummary.historicalOverReceivedPendingVerification">
+          （保留事实，提示核对，不自动退款）
+        </template>
+      </span>
+      <span>历史事实状态：{{ moneySummary.historicalFactStatusLabel }}</span>
+    </div>
+    <div
       v-if="modelValue"
       class="panel-form"
     >
@@ -33,7 +50,7 @@
         :disabled="!editable"
         @change="updateZeroPayment(Boolean($event))"
       >
-        截止接管日没有历史实付
+        {{ moneySummary?.relationship === "upward" ? "截止接管日没有历史实收" : "截止接管日没有历史实付" }}
       </t-checkbox>
 
       <div
@@ -42,7 +59,7 @@
         class="payment-card"
       >
         <div class="payment-head">
-          <strong>第 {{ index + 1 }} 笔历史实付</strong>
+          <strong>第 {{ index + 1 }} 笔{{ moneySummary?.relationship === "upward" ? "历史实收（施工企业付我方）" : "历史实付" }}</strong>
           <t-button
             v-if="editable"
             size="small"
@@ -55,7 +72,7 @@
         </div>
         <div class="form-grid">
           <label>
-            <span>实付金额（元）</span>
+            <span>{{ moneySummary?.relationship === "upward" ? "实收金额（元）" : "实付金额（元）" }}</span>
             <YuanMoneyInput
               :model-value="payment.amountCents"
               :disabled="!editable"
@@ -63,7 +80,7 @@
             />
           </label>
           <label>
-            <span>实付日期</span>
+            <span>{{ moneySummary?.relationship === "upward" ? "实收日期" : "实付日期" }}</span>
             <t-input
               :model-value="payment.paidAt"
               :disabled="!editable"
@@ -133,7 +150,7 @@
         variant="outline"
         @click="addPayment"
       >
-        增加一笔历史实付
+        {{ moneySummary?.relationship === "upward" ? "增加一笔历史实收" : "增加一笔历史实付" }}
       </t-button>
 
       <div class="form-grid">
@@ -220,6 +237,17 @@ type FinanceSideFormModel = Omit<
 };
 
 const props = defineProps<{
+  moneySummary?: {
+    relationship: "inside" | "outside" | "upward";
+    historicalPaidTotalCents: string;
+    historicalSettledCents: string;
+    historicalOverpaidCents: string;
+    historicalOverpaymentLabel: string;
+    historicalReceiptsCents: string;
+    historicalOverReceivedCents: string;
+    historicalOverReceivedPendingVerification: boolean;
+    historicalFactStatusLabel: string;
+  } | null;
   modelValue: FinanceSideFormModel | null;
   revision: number;
   basedOnContractRevision: number;
@@ -333,6 +361,16 @@ function handleExcessEvidenceChange(files: UploadFile[]) {
 </script>
 
 <style scoped>
+.money-summary {
+  display: grid;
+  gap: var(--jg-space-1);
+  padding: var(--jg-space-3);
+  margin-bottom: var(--jg-space-3);
+  border: 1px solid var(--jg-border-color);
+  border-radius: var(--jg-radius-md);
+  font-size: var(--jg-font-size-sm);
+  color: var(--jg-text-secondary);
+}
 .department-panel,
 .panel-form {
   min-width: 0;

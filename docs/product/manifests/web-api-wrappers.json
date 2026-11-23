@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 51,
-    "exportedFunctionCount": 773,
-    "transportWrapperCount": 749,
+    "exportedFunctionCount": 774,
+    "transportWrapperCount": 750,
     "pureExportCount": 24,
-    "mainRequestBindingCount": 823,
+    "mainRequestBindingCount": 824,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 779,
-    "productionConsumerCount": 660,
+    "requestEdgeCount": 780,
+    "productionConsumerCount": 661,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -6633,7 +6633,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5962,
+          "sourceLine": 5980,
           "method": "POST",
           "path": "/files/download-package",
           "normalizedPath": "/files/download-package",
@@ -7094,7 +7094,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7690,
+          "sourceLine": 7720,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -7126,7 +7126,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7674,
+          "sourceLine": 7704,
           "method": "GET",
           "path": "/contracts/ledger-export",
           "normalizedPath": "/contracts/ledger-export",
@@ -7156,7 +7156,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7674,
+          "sourceLine": 7704,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -7186,7 +7186,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6073,
+          "sourceLine": 6092,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -7215,7 +7215,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7674,
+          "sourceLine": 7704,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -7245,7 +7245,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2969,
+          "sourceLine": 2987,
           "method": "POST",
           "path": "/operating-projections/export",
           "normalizedPath": "/operating-projections/export",
@@ -7307,7 +7307,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5933,
+          "sourceLine": 5951,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -7341,7 +7341,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4055,
+          "sourceLine": 4073,
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
@@ -7400,7 +7400,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7717,
+          "sourceLine": 7747,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -7429,7 +7429,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7704,
+          "sourceLine": 7734,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -7458,7 +7458,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7732,
+          "sourceLine": 7762,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -7487,7 +7487,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7674,
+          "sourceLine": 7704,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -11338,6 +11338,34 @@
       "productionConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
       ],
+      "unreachableConsumers": []
+    },
+    {
+      "name": "returnContractTakeoverForFinanceSupplement",
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 86,
+          "method": "POST",
+          "path": "/projects/:param/contract-takeovers/:param/finance-supplement-return",
+          "normalizedPath": "/projects/:param/contract-takeovers/:param/finance-supplement-return",
+          "normalizedKey": "POST /projects/:param/contract-takeovers/:param/finance-supplement-return",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "returnContractTakeoverForFinanceSupplement",
+              "postJson"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue"
+      ],
+      "testConsumers": [],
       "unreachableConsumers": []
     },
     {

@@ -561,6 +561,7 @@ export type ContractLifecycleStatus =
 
 export type ContractTakeoverStatus =
   | "draft"
+  | "pending_finance"
   | "pending_review"
   | "confirmed"
   | "needs_supplement"
@@ -811,6 +812,21 @@ export interface ContractTakeoverReadModel {
   taxFactExplanation: string | null;
   taxFactMissingFields: string[];
   pricingItems: HistoricalPricingItemReadModel[];
+  relationship: "inside" | "outside" | "upward";
+  relationshipLabel: string;
+  frameworkNoTotal: boolean;
+  historicalFactStatus: "confirmed" | "pending_verification";
+  historicalFactStatusLabel: string;
+  historicalPaidTotalCents: ContractTakeoverCentsValue;
+  historicalOverpaidCents: ContractTakeoverCentsValue;
+  historicalOverpaymentKind:
+    | "none"
+    | "unsettled_advance"
+    | "pending_verification";
+  historicalOverpaymentLabel: string;
+  historicalReceiptsCents: ContractTakeoverCentsValue;
+  historicalOverReceivedCents: ContractTakeoverCentsValue;
+  historicalOverReceivedPendingVerification: boolean;
   takeoverLevel: ContractTakeoverLevel;
   suggestedTakeoverLevel: ContractTakeoverLevel | null;
   takeoverLevelAdjustmentReason: string | null;
@@ -997,9 +1013,11 @@ export interface CreateContractTakeoverPayload {
   taxFactExplanation?: string;
   taxFactEvidenceFileId?: string;
   pricingItems?: HistoricalPricingItemPayload[];
-  amountCents: string;
+  amountCents?: string;
   signedAt: string;
-  takeoverLevel: ContractTakeoverLevel;
+  relationship?: "inside" | "outside" | "upward";
+  frameworkNoTotal?: boolean;
+  takeoverLevel?: ContractTakeoverLevel;
   lifecycleStatus: ContractLifecycleStatus;
   paymentTermsOriginalText?: string;
   paymentStages?: HistoricalTakeoverDirectPaymentStagePayload[];
@@ -5994,6 +6012,7 @@ export type ContractTakeoverProjectAction =
   | "submit_review"
   | "register_handover"
   | "return_for_supplement"
+  | "return_finance_for_supplement"
   | "confirm_change_baseline"
   | "attach_contract_evidence"
   | "attach_payment_voucher"
@@ -6420,6 +6439,17 @@ export function reviewContractTakeoverCompanyEntityCorrection(
 export function submitContractTakeoverReview(projectId: string, takeoverId: string) {
   return postJson<ContractTakeoverReadModel>(
     `/projects/${projectId}/contract-takeovers/${takeoverId}/review-submission`
+  );
+}
+
+export function returnContractTakeoverForFinanceSupplement(
+  projectId: string,
+  takeoverId: string,
+  body: ReturnContractTakeoverForSupplementPayload
+) {
+  return postJson<ContractTakeoverReadModel>(
+    `/projects/${projectId}/contract-takeovers/${takeoverId}/finance-supplement-return`,
+    body
   );
 }
 

@@ -3691,6 +3691,31 @@
       ]
     },
     {
+      "id": "contract-takeover.finance-return-for-supplement",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "returnContractTakeoverForFinanceSupplementWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "return_finance_for_supplement"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "returnContractTakeoverForFinanceSupplement"
+        }
+      ]
+    },
+    {
       "id": "contract-takeover.confirm-change-baseline",
       "usage": "background",
       "routePaths": [
