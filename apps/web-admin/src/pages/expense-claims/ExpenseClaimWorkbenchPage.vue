@@ -203,7 +203,9 @@ function queryParams(page = currentPage.value): ExpenseClaimLedgerQuery {
     dateTo: dateTo.value || undefined,
     status: status.value || undefined,
     keyword: keyword.value.trim() || undefined,
-    sort: tableSort.value ? `${tableSort.value.key}:${tableSort.value.direction}` : undefined
+    sort: tableSort.value
+      ? `${tableSort.value.key === "requestedAmount" ? "requestedAmountCents" : tableSort.value.key}:${tableSort.value.direction}`
+      : undefined
   };
 }
 

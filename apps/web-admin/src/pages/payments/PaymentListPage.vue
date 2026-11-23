@@ -469,7 +469,7 @@ function ledgerQueryParams() {
     status: paymentFilters.status || undefined,
     keyword: paymentFilters.keyword.trim() || undefined,
     sort: tableSort.value
-      ? `${tableSort.value.key}:${tableSort.value.direction}`
+      ? `${tableSort.value.key === "requestedAmount" ? "requestedAmountCents" : tableSort.value.key}:${tableSort.value.direction}`
       : undefined
   };
 }
