@@ -11772,6 +11772,31 @@
           "name": "uploadProjectUpstreamFundPrivateFile"
         }
       ]
+    },
+    {
+      "id": "contract-takeover.register-handover",
+      "usage": "background",
+      "routePaths": [
+        "/历史合同接管"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractTakeoverHandoverPanel.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "saveContractTakeoverHandoverWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "register_handover"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "saveContractTakeoverHandover"
+        }
+      ]
     }
   ]
 }

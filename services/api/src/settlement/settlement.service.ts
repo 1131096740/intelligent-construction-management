@@ -1,5 +1,6 @@
 import { contractTaxForNewSettlement, readOrdinaryContractTaxFact } from "../contract/contract-effective-tax.service";
 import { finalApprovalEvidence } from "../approval/approval-evidence";
+import { assertTakeoverContinuationAllowed } from "../contract-takeover/contract-takeover-handover";
 import { assertSettlementApplicant } from "./settlement-applicant";
 import { assertEconomicContractReady, lockEconomicProject } from "../contract-ledger/contract-economic-coverage";
 import { loadProjectApprovalAssignments } from "../approval/project-approval-assignments";
@@ -1450,6 +1451,15 @@ export class SettlementService {
     const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
     if (!contract) {
       throw new Error("未找到结算关联合同，请刷新合同台账后重试");
+    }
+    if (contract.source === "historical_takeover") {
+      const takeover = await tx.contractTakeover.findUnique({
+        where: { contractVersionId: version.id },
+        select: { id: true, takeoverLevel: true }
+      });
+      if (takeover) {
+        await assertTakeoverContinuationAllowed(tx, takeover, "发起后续结算");
+      }
     }
     if (contract.settlementClosedAt || contract.finalSettlementId) {
       throw new BadRequestException("该合同已由最终结算关闭，不能再发起结算审批");

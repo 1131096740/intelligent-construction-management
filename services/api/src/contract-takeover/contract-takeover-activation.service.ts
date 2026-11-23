@@ -2,6 +2,7 @@ import { assertEconomicContractReady } from "../contract-ledger/contract-economi
 import { ConflictException, Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
+import { assertTakeoverHandoverReady } from "./contract-takeover-handover";
 import { dbMoneyToBigInt } from "../money/decimal-money";
 import {
   OperatingSourceReplayService,
@@ -112,14 +113,9 @@ export class ContractTakeoverActivationService {
     if (!financeFacts) {
       throw new ConflictException("财务侧资料尚未保存，不能激活");
     }
-    if (takeover.takeoverLevel === "C") {
-      throw new ConflictException(
-        "C级历史接管只能进入资料缺口，不能激活正式合同接管"
-      );
-    }
-    if (takeover.takeoverLevel !== "A" && takeover.takeoverLevel !== "B") {
-      throw new ConflictException("历史接管等级不在正式经营账支持范围内");
-    }
+    // A/B 为历史兼容等级；无等级/C 级必须先登记合同、财务和复核负责人，
+    // 分工登记只决定今后由谁办理，不改变任何历史事实。
+    await assertTakeoverHandoverReady(tx, takeover, "激活正式经营账");
     const takeoverId = takeover.id;
     if (payments.some((payment) => payment.status !== "draft")) {
       throw new ConflictException(

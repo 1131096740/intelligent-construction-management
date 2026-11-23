@@ -314,9 +314,10 @@ export interface TakeoverCorrectionRow {
 }
 
 export const takeoverLevelOptions: Array<ContractTakeoverOption<ContractTakeoverLevel>> = [
-  { value: "A", label: "A级：申报资料完整，可申请直接接管" },
-  { value: "B", label: "B级：申报资料基本完整，需补少量说明" },
-  { value: "C", label: "C级：申报资料缺口明显，接管后重点跟踪" }
+  { value: "NONE", label: "无等级：按合同、财务和复核分工接管" },
+  { value: "A", label: "A级（历史兼容）：申报资料完整" },
+  { value: "B", label: "B级（历史兼容）：申报资料基本完整" },
+  { value: "C", label: "C级（历史兼容）：资料缺口明显" }
 ];
 
 export const lifecycleStatusOptions: Array<ContractTakeoverOption<ContractLifecycleStatus>> = [
@@ -414,7 +415,13 @@ export const contractTakeoverColumns: PrimaryTableCol<ContractTakeoverTableRow>[
 ];
 
 export function takeoverLevelLabel(value: ContractTakeoverLevel | string): string {
-  return takeoverLevelOptions.find((option) => option.value === value)?.label.slice(0, 2) ?? "等级未读取";
+  const labels: Record<string, string> = {
+    NONE: "无等级",
+    A: "A级",
+    B: "B级",
+    C: "C级"
+  };
+  return labels[value] ?? "等级未读取";
 }
 
 export function invoiceTypeLabel(value: ContractInvoiceType | string | null): string {
@@ -805,7 +812,7 @@ export function takeoverLevelAdjustmentDisabledReason(
   suggestion: TakeoverLevelSuggestion,
   adjustmentReason: string
 ): string {
-  if (selectedLevel === suggestion.level || adjustmentReason.trim()) return "";
+  if (selectedLevel === "NONE" || selectedLevel === suggestion.level || adjustmentReason.trim()) return "";
   if (takeoverLevelRiskRank(selectedLevel) < takeoverLevelRiskRank(suggestion.level)) {
     return "确认等级低于系统建议，请说明资料已核验、风险由谁确认，以及是否仍需限制付款";
   }
@@ -818,6 +825,9 @@ export function takeoverLevelSelectionHint(
 ): string {
   const selected = takeoverLevelLabel(selectedLevel);
   const suggested = takeoverLevelLabel(suggestion.level);
+  if (selectedLevel === "NONE") {
+    return "无等级接管不要求选择 A/B/C；请登记合同、财务和复核负责人，后续按新分工继续办理。";
+  }
   if (selectedLevel === suggestion.level) {
     return `当前确认${selected}，与系统建议一致；复核时仍需核对资料清单、缺口说明和付款阻断提示。`;
   }
@@ -830,13 +840,14 @@ export function takeoverLevelSelectionHint(
 }
 
 function takeoverLevelRiskRank(level: ContractTakeoverLevel): number {
-  return { A: 1, B: 2, C: 3 }[level];
+  return { NONE: 0, A: 1, B: 2, C: 3 }[level];
 }
 
 export function takeoverSuggestionApplyDisabledReason(
   selectedLevel: ContractTakeoverLevel,
   suggestion: TakeoverLevelSuggestion
 ): string {
+  if (selectedLevel === "NONE") return "无等级接管不使用系统 A/B/C 建议";
   if (selectedLevel !== suggestion.level) return "";
   return "当前确认等级已采用系统建议";
 }
@@ -855,6 +866,10 @@ export function takeoverLevelReviewText(takeover: ContractTakeoverReadModel): st
   const savedSuggestedLevel = takeover.suggestedTakeoverLevel ?? suggestion.level;
   const suggestedLevel = takeoverLevelLabel(savedSuggestedLevel);
   const selectedLevel = takeoverLevelLabel(takeover.takeoverLevel);
+
+  if (takeover.takeoverLevel === "NONE") {
+    return "无等级接管不按 A/B/C 分级；登记合同、财务和复核负责人后按新分工继续办理，历史事实不变。";
+  }
 
   if (takeover.takeoverLevel === savedSuggestedLevel) {
     if (savedSuggestedLevel !== suggestion.level) {
@@ -1058,9 +1073,10 @@ export function takeoverPostConfirmationVerificationView(
 
 function takeoverLevelRiskText(level: ContractTakeoverLevel): string {
   const texts: Record<ContractTakeoverLevel, string> = {
-    A: "A级资料较完整，确认后可作为后续结算付款依据，仍需保留原始资料备查。",
-    B: "B级仍有少量资料或说明需要跟踪，确认后付款容量会受历史金额约束，缺口事项要继续补齐。",
-    C: "C级资料缺口明显，确认后只能作为受限期初事实，后续付款前应重点核验缺资料和争议说明。"
+    NONE: "无等级接管不改变历史事实；完成分工登记后，由合同、财务和复核负责人接续办理。",
+    A: "A级为历史兼容等级，确认后可作为后续结算付款依据，仍需保留原始资料备查。",
+    B: "B级为历史兼容等级，仍有少量资料或说明需要跟踪，缺口事项要继续补齐。",
+    C: "C级为历史兼容等级，资料缺口明显，后续付款前应重点核验缺资料和争议说明。"
   };
 
   return texts[level] ?? "请按接管等级复核资料完整性和后续付款风险。";

@@ -63,6 +63,7 @@ import { PaymentExecutionSharedAllocationService } from "../fund-execution/payme
 import { fundExecutionSelectionRefFingerprint } from "../fund-execution/fund-execution-selection-ref.service";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import { ContractTakeoverBalanceService } from "../contract-takeover/contract-takeover-balance.service";
+import { assertTakeoverContinuationAllowed } from "../contract-takeover/contract-takeover-handover";
 import {
   isPostgresSerializationFailure,
   postgresSqlState
@@ -509,7 +510,10 @@ export class PaymentRequestService {
         });
         throw new BadRequestException(`历史余额尚未确认，不能${actionLabel}`);
       }
-      if (takeover.takeoverLevel === "C") {
+      // 旧等级不再作为业务门槛；无等级/C 级改由接管分工登记决定今后由谁办理。
+      try {
+        await assertTakeoverContinuationAllowed(tx, takeover, actionLabel);
+      } catch (error) {
         await this.recordHistoricalTakeoverPaymentBlock(tx, {
           actorUserId: input.actorUserId,
           businessType: "contract_takeover",
@@ -517,10 +521,10 @@ export class PaymentRequestService {
           contractId: input.contractId,
           contractVersionId: input.contractVersionId,
           sourceType: input.sourceType,
-          reason: "takeover_level_c",
+          reason: "handover_required",
           takeoverStatus: takeover.takeoverStatus
         });
-        throw new BadRequestException(`C级历史接管仍有资料缺口或争议，不能${actionLabel}`);
+        throw error;
       }
       if (this.takeoverBalances) {
         try {

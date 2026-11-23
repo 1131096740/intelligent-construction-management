@@ -2416,3 +2416,125 @@ describe("MeService", () => {
     });
   });
 });
+
+describe("MeService takeover handover continuation", () => {
+  function fixture(settlementCount: number, paymentCount: number) {
+    const handover = {
+      schemaVersion: 1,
+      revision: 1,
+      assignments: {
+        contract: "contract-1",
+        finance: "finance-1",
+        supervisor: "supervisor-1"
+      }
+    };
+    const prisma = {
+      contractTakeover: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "takeover-1",
+            projectId: "project-1",
+            contractId: "contract-row-1",
+            contractVersionId: "version-1",
+            confirmedAt: new Date("2026-11-01T00:00:00Z")
+          }
+        ])
+      },
+      contractTakeoverConfirmationEvent: {
+        findMany: jest.fn().mockResolvedValue([
+          { takeoverId: "takeover-1", responseSnapshot: handover }
+        ])
+      },
+      settlement: {
+        groupBy: jest.fn().mockResolvedValue(
+          settlementCount
+            ? [{ contractVersionId: "version-1", _count: { _all: settlementCount } }]
+            : []
+        )
+      },
+      paymentRequest: {
+        groupBy: jest.fn().mockResolvedValue(
+          paymentCount
+            ? [{ contractVersionId: "version-1", _count: { _all: paymentCount } }]
+            : []
+        )
+      },
+      contract: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: "contract-row-1", code: "HT-416", temporaryCode: null, name: "历史合同" }
+        ])
+      }
+    };
+    const service = new MeService(prisma as never, {} as never) as unknown as {
+      contractTakeoverHandoverWorkItems(
+        userId: string,
+        scopes: Array<{ projectId: string }>,
+        projectNameById: Map<string, string>
+      ): Promise<WorkItem[]>;
+    };
+    return { service, prisma };
+  }
+
+  it("gives the registered contract handler the new-settlement todo only after takeover", async () => {
+    const { service } = fixture(0, 0);
+    const items = await service.contractTakeoverHandoverWorkItems(
+      "contract-1",
+      [{ projectId: "project-1" }],
+      new Map([["project-1", "一号项目"]])
+    );
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: "takeover-continuation:takeover-1:contract",
+        currentNode: "继续办理新结算",
+        targetPath: "/结算工作台/新建?project=project-1&contract=contract-row-1"
+      })
+    ]);
+    await expect(
+      service.contractTakeoverHandoverWorkItems(
+        "finance-1",
+        [{ projectId: "project-1" }],
+        new Map()
+      )
+    ).resolves.toEqual([]);
+    await expect(
+      service.contractTakeoverHandoverWorkItems(
+        "outsider",
+        [{ projectId: "project-1" }],
+        new Map()
+      )
+    ).resolves.toEqual([]);
+  });
+
+  it("moves the follow-up todo to the registered finance handler after a settlement exists", async () => {
+    const { service } = fixture(1, 0);
+    await expect(
+      service.contractTakeoverHandoverWorkItems(
+        "contract-1",
+        [{ projectId: "project-1" }],
+        new Map()
+      )
+    ).resolves.toEqual([]);
+    const items = await service.contractTakeoverHandoverWorkItems(
+      "finance-1",
+      [{ projectId: "project-1" }],
+      new Map()
+    );
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: "takeover-continuation:takeover-1:finance",
+        currentNode: "登记后续付款"
+      })
+    ]);
+  });
+
+  it("closes the finance todo once a payment exists", async () => {
+    const { service } = fixture(1, 1);
+    await expect(
+      service.contractTakeoverHandoverWorkItems(
+        "finance-1",
+        [{ projectId: "project-1" }],
+        new Map()
+      )
+    ).resolves.toEqual([]);
+  });
+});

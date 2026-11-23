@@ -380,6 +380,7 @@ describe("ContractTakeoverController", () => {
         "update_takeover",
         "abandon_takeover",
         "submit_review",
+        "register_handover",
         "return_for_supplement",
         "confirm_change_baseline",
         "attach_contract_evidence",
@@ -624,7 +625,7 @@ describe("ContractTakeoverController", () => {
   );
 
   it.each([
-    [{ takeoverLevel: "D" }, "接管等级请选择 A级、B级或C级"],
+    [{ takeoverLevel: "D" }, "接管等级不在系统支持范围内"],
     [{ lifecycleStatus: "unknown" }, "履约状态不在系统支持范围内"]
   ])("rejects an invalid takeover enum: %p", async (patch, message) => {
     const response = await getTakeoverValidationResponse("create", 1, {

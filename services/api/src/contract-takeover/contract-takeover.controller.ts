@@ -42,6 +42,7 @@ import {
 import { ContractTakeoverService } from "./contract-takeover.service";
 import { ContractTakeoverCorrectionService } from "./contract-takeover-correction.service";
 import { ContractTakeoverExcelService } from "./contract-takeover-excel.service";
+import { ContractTakeoverHandoverService } from "./contract-takeover-handover.service";
 import {
   AttachContractTakeoverEvidenceDto,
   AttachHistoricalPaymentVoucherDto
@@ -75,6 +76,7 @@ import { SaveContractTakeoverContractFactsDto } from "./dto/save-contract-takeov
 import { SaveContractTakeoverFinanceFactsDto } from "./dto/save-contract-takeover-finance-facts.dto";
 import { ConfirmContractTakeoverSideDto } from "./dto/confirm-contract-takeover-side.dto";
 import { WithdrawContractTakeoverSideConfirmationDto } from "./dto/withdraw-contract-takeover-side-confirmation.dto";
+import { SaveContractTakeoverHandoverDto } from "./dto/save-contract-takeover-handover.dto";
 
 const CONTRACT_TAKEOVER_PROJECT_ACTION_RULES = [
   { key: "create_takeover", actions: ["contract.create"] },
@@ -92,6 +94,7 @@ const CONTRACT_TAKEOVER_PROJECT_ACTION_RULES = [
   { key: "update_takeover", actions: ["contract.create"] },
   { key: "abandon_takeover", actions: ["contract.create"] },
   { key: "submit_review", actions: ["contract.submit"] },
+  { key: "register_handover", actions: ["contract.archive.confirm"] },
   { key: "return_for_supplement", actions: ["contract.archive.confirm"] },
   { key: "confirm_change_baseline", actions: ["contract.archive.confirm"] },
   {
@@ -157,7 +160,10 @@ export class ContractTakeoverController {
     private readonly files: FileService,
     @Optional()
     private readonly excel?: ContractTakeoverExcelService,
-    private readonly taxFacts?: ContractTaxFactsService
+    @Optional()
+    private readonly taxFacts?: ContractTaxFactsService,
+    @Optional()
+    private readonly handover?: ContractTakeoverHandoverService
   ) {}
 
   @Get()
@@ -659,6 +665,33 @@ export class ContractTakeoverController {
       body,
       user.id
     );
+  }
+
+  @Get(":takeoverId/handover")
+  @RequirePositions(...HISTORICAL_CONTRACT_TAKEOVER_READ_ROLE_KEYS)
+  readHandover(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    if (!this.handover) {
+      throw new BadRequestException("接管分工服务尚未就绪，请稍后重试");
+    }
+    return this.handover.read(projectId, takeoverId, user.id);
+  }
+
+  @Put(":takeoverId/handover")
+  @RequireProjectRole("contract.archive.confirm")
+  registerHandover(
+    @Param("projectId") projectId: string,
+    @Param("takeoverId") takeoverId: string,
+    @Body() body: SaveContractTakeoverHandoverDto,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    if (!this.handover) {
+      throw new BadRequestException("接管分工服务尚未就绪，请稍后重试");
+    }
+    return this.handover.register(projectId, takeoverId, user.id, body);
   }
 
   @Post(":takeoverId/review-submission")
