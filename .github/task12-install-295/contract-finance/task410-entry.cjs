@@ -13,25 +13,28 @@ const purpose='TASK410_COMPANY_PROXY_EXACT_'+count;
 const receipt = {schemaVersion:1,sourceSha:source.sourceSha,lane,purpose,business:'NOT_ENTERED',stages:[]};
 async function withGuardedReplay(context, consume) {
   const witness = 'public.jg_contract_work_completion_witness';
-  const sources = 'public.jg_contract_work_completion_cost_sources_v1(text,text,text)';
-  const initial = await context.sql(`SELECT NOT EXISTS(SELECT FROM ${witness})
-    AND NOT has_function_privilege('jg_task01_runtime','${sources}','EXECUTE');`);
+  const readers = [
+    'public.jg_contract_work_completion_cost_sources_v1(text,text,text)',
+    'public.jg_company_transfer_canonical_correction_plan(text)',
+  ];
+  const noFixtureAccess = `SELECT NOT EXISTS(SELECT FROM ${witness})
+    AND ${readers.map(reader=>`NOT has_function_privilege('jg_task01_runtime','${reader}','EXECUTE')`).join(' AND ')};`;
+  const initial = await context.sql(noFixtureAccess);
   assert.equal(initial.stdout.trim(),'t');
   await context.sql(`BEGIN;
     INSERT INTO ${witness}(singleton,"key","databaseOid","runtimeRoleOid")
     SELECT true,decode('${randomBytes(32).toString('hex')}','hex'),oid,'jg_task01_runtime'::regrole::oid
     FROM pg_database WHERE datname=current_database();
-    GRANT EXECUTE ON FUNCTION ${sources} TO jg_task01_runtime;
+    GRANT EXECUTE ON FUNCTION ${readers.join(', ')} TO jg_task01_runtime;
     COMMIT;`);
   try {
     await consume(context);
   } finally {
     await context.sql(`BEGIN;
-      REVOKE EXECUTE ON FUNCTION ${sources} FROM jg_task01_runtime;
+      REVOKE EXECUTE ON FUNCTION ${readers.join(', ')} FROM jg_task01_runtime;
       DELETE FROM ${witness} WHERE singleton AND "runtimeRoleOid"='jg_task01_runtime'::regrole::oid;
       COMMIT;`);
-    const restored = await context.sql(`SELECT NOT EXISTS(SELECT FROM ${witness})
-      AND NOT has_function_privilege('jg_task01_runtime','${sources}','EXECUTE');`);
+    const restored = await context.sql(noFixtureAccess);
     assert.equal(restored.stdout.trim(),'t');
   }
 }
