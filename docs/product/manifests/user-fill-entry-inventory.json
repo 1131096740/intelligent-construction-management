@@ -6,16 +6,16 @@
     "retiredSource": "route-usage exit_candidate mutations",
     "semantics": "active entries are the single non-production candidate; old reads remain read-only and old mutations return 410"
   },
-  "status": "ready",
+  "status": "blocked",
   "summary": {
-    "activeBusinessActionCount": 431,
+    "activeBusinessActionCount": 430,
     "technicalActionCount": 10,
-    "activeBindingCount": 521,
+    "activeBindingCount": 520,
     "retiredWriteEntryCount": 78,
-    "retainedReadonlyExitCount": 12,
+    "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
-    "blockerCount": 0
+    "blockerCount": 2
   },
   "activeEntries": [
     {
@@ -850,22 +850,6 @@
       "causalVerified": true
     },
     {
-      "id": "contract-change.create-draft",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/合同管理/:contractId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /contracts/:param/change-drafts"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
       "id": "contract-counterparty-signed.confirm",
       "status": "unified_candidate",
       "usage": "background",
@@ -1224,7 +1208,7 @@
         "POST /files/:param/download-ticket"
       ],
       "bindingCount": 2,
-      "productionConsumerCount": 1,
+      "productionConsumerCount": 2,
       "causalVerified": true
     },
     {
@@ -7845,6 +7829,13 @@
     },
     {
       "method": "GET",
+      "path": "/contracts/:contractVersionId/change-eligibility",
+      "controller": "ContractController",
+      "handler": "changeEligibility",
+      "status": "readonly"
+    },
+    {
+      "method": "GET",
       "path": "/contracts/workbench",
       "controller": "ContractController",
       "handler": "workbenchLedger",
@@ -7880,7 +7871,10 @@
     }
   ],
   "blockers": {
-    "upstreamManifests": [],
+    "upstreamManifests": [
+      "web_page_actions:blocked",
+      "route_usage:blocked"
+    ],
     "invalidActiveEntries": [],
     "uncoveredRetiredWrites": [],
     "staleRetiredWrites": []

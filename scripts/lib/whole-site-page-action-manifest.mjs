@@ -17690,8 +17690,14 @@ async function paymentApprovalSmsAuthorityIsProven(root) {
           return this.prisma.$transaction(async tx => ({
             notice: (await this.currentNotice(tx, paymentId, actorId))?.status ?? null
           }));
-        }`)) return false;
-    const loop = service.get("currentNotice")?.body?.find(statement => statement.type === "ForOfStatement");
+        }`) ||
+        !directRegistrationMatches(service.get("currentNotice"), `{
+    const active = await this.inProgressNotice(tx, paymentId, actorId);
+    return active ?? this.correctionNotice(tx, paymentId, actorId);
+  }`) ||
+        !directRegistrationMatches(service.get("correctionNotice")?.body?.find(statement => statement.type === "ForOfStatement")?.body?.body?.[1],
+          'if (data?.phase !== "correction" || data.recipientId !== actorId || data.paymentId !== paymentId || data.retryOf !== undefined) continue;')) return false;
+    const loop = service.get("inProgressNotice")?.body?.find(statement => statement.type === "ForOfStatement");
     const context = service.get("currentContext")?.body ?? [];
     const recipient = service.get("currentRecipient")?.body ?? [];
     if (!directRegistrationExpression(loop?.right, "entries") ||
@@ -17986,6 +17992,7 @@ const MULTI_SMS_PANEL = `${WEB_SOURCE_ROOT}/components/MultiDutySmsStatusPanel.v
 const MULTI_SMS_API = `${WEB_SOURCE_ROOT}/api/multi-duty-sms.api.ts`;
 const CONTRACT_SMS_CONTROLLER = "services/api/src/contract/contract.controller.ts";
 const CONTRACT_SMS_SERVICE = "services/api/src/contract/contract-duty-notification.service.ts";
+const CONTRACT_WORK_COMPLETION_SMS_SERVICE = "services/api/src/contract/contract-work-completion-notification.service.ts";
 const COMPANY_SMS_CONTROLLER = "services/api/src/company-transfer/company-transfer.controller.ts";
 const COMPANY_SMS_SERVICE = "services/api/src/company-transfer/company-transfer-notification.service.ts";
 const GENERAL_PROCUREMENT_SMS_CONTROLLER = "services/api/src/general-procurement/general-procurement.controller.ts";
@@ -18185,20 +18192,41 @@ async function spotProcurementDutySmsAuthorityIsProven(root) {
 
 async function contractDutySmsAuthorityIsProven(root) {
   try {
-    const [controller, service] = await Promise.all([
-      dutySmsMethods(root, CONTRACT_SMS_CONTROLLER), dutySmsMethods(root, CONTRACT_SMS_SERVICE)
+    const [controller, service, completion] = await Promise.all([
+      dutySmsMethods(root, CONTRACT_SMS_CONTROLLER), dutySmsMethods(root, CONTRACT_SMS_SERVICE),
+      dutySmsMethods(root, CONTRACT_WORK_COMPLETION_SMS_SERVICE)
     ]);
-    if (!directRegistrationMatches(controller.get("dutySmsStatus"), "{ return {notices:await this.dutyNotifications?.notificationStatus(versionId,user.id)??[]}; }") ||
+    if (!directRegistrationMatches(controller.get("dutySmsStatus"), `{
+    const [versionNotices,completionNotices]=await Promise.all([
+      this.dutyNotifications?.notificationStatus(versionId,user.id)??[],
+      this.workCompletionNotifications?.notificationStatusForVersion(versionId,user.id)??[]
+    ]);
+    return {notices:[...versionNotices,...completionNotices]};
+  }`) ||
         !directRegistrationMatches(controller.get("retryDutySms"), `{
-          if(!this.dutyNotifications)throw new BadRequestException("短信通知暂不可用");
-          return this.dutyNotifications.retry(versionId,user.id,input.attemptId);
-        }`) ||
+    const completionNotice=await this.workCompletionNotifications?.retry(versionId,user.id,input.attemptId);
+    if(completionNotice)return completionNotice;
+    if(!this.dutyNotifications)throw new BadRequestException("短信通知暂不可用");
+    return this.dutyNotifications.retry(versionId,user.id,input.attemptId);
+  }`) ||
+        !directRegistrationMatches(completion.get("notificationStatusForVersion")?.body?.[0], `const rows = await this.prisma.$queryRaw<Array<{ businessId: string }>>(Prisma.sql\`
+      SELECT DISTINCT ON (queued."businessId") queued."businessId"
+      FROM "AuditLog" queued
+      WHERE queued."businessType" = \${KIND} AND queued."action" = 'queued'
+        AND queued."metadata"->>'contractVersionId' = \${versionId}
+        AND queued."metadata"->>'recipientId' = \${actorId}
+      ORDER BY queued."businessId", queued."createdAt" DESC, queued."id" DESC
+    \`)`) ||
+        !directRegistrationMatches(completion.get("retry")?.body?.[1], `const data = object(intent?.metadata);`) ||
+        !directRegistrationMatches(completion.get("retry")?.body?.[2], `if (!intent || intent.businessType !== KIND || intent.action !== "queued" || !intent.businessId ||
+      !data || data.kind !== KIND || data.contractVersionId !== versionId || data.recipientId !== actorId) return null;`) ||
         !directRegistrationMatches(service.get("notificationStatus"), `{
           return this.prisma.$transaction(async tx=>(await this.currentNoticeAttempts(tx,versionId,actor)).notices.map(row=>row.status));
         }`) ||
         !directRegistrationMatches(service.get("authorized"), `{
           if (stage === "approval") return Boolean(await contractParallelDutyIdentity(tx, round, contract.projectId, actor, index, false));
           if (stage === "seal") return hasActiveContractGlobalRole(tx, actor, "comprehensive_director");
+          if (stage === "correction") return actor === round.applicantUserId && contract.ownerUserId === round.applicantUserId;
           return actor === contract.ownerUserId && (await resolveGovernedFinalArchiveAccess(tx, {
             actorUserId: actor, projectId: contract.projectId, handlerUserId: round.applicantUserId
           })).canUpload;
