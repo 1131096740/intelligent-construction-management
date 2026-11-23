@@ -11772,6 +11772,81 @@
           "name": "uploadProjectUpstreamFundPrivateFile"
         }
       ]
+    },
+    {
+      "id": "project.construction-deduction.record",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "recordDeductionWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "record_construction_enterprise_deduction"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "recordProjectConstructionEnterpriseDeduction"
+        }
+      ]
+    },
+    {
+      "id": "project.construction-deduction.correction-request",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "requestDeductionCorrectionWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "request_construction_payment_correction"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "requestConstructionPaymentCorrection"
+        }
+      ]
+    },
+    {
+      "id": "project.construction-deduction.correction-confirm",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "confirmDeductionCorrectionWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "confirm_construction_payment_correction"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "confirmConstructionPaymentCorrection"
+        }
+      ]
     }
   ]
 }

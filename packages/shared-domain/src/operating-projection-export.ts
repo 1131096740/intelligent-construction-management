@@ -25,7 +25,7 @@ export interface OperatingProjectionExportFilters {
 
 // Read-side catalog only: registering a source here does not authorize a writer.
 export const OPERATING_SOURCE_TYPES = Object.freeze([
-  "owner_settlement", "project_upstream_settlement", "project_owner_settlement_entry", "project_upstream_fund_fact",
+  "owner_settlement", "project_upstream_settlement", "project_owner_settlement_entry", "project_upstream_fund_fact", "construction_enterprise_fee",
   "project_affiliate_contract_fact", "project_affiliate_settlement_fact",
   "project_affiliate_payment_fact", "project_proxy_payment", "contract_version", "contract_economic_review", "contract_work_completion", "contract_proxy_execution", "company_transfer_event", "company_transfer_debt_correction", "upward_receipt_match",
   "fund_execution_counterparty",
@@ -59,7 +59,7 @@ const flow = Object.freeze([ledger, cashflow] as const);
 const history = Object.freeze([takeover] as const);
 
 export const OPERATING_EXPORT_SOURCE_KINDS = Object.freeze({
-  owner_settlement: none, project_upstream_settlement: none, project_owner_settlement_entry: none, project_upstream_fund_fact: none,
+  owner_settlement: none, project_upstream_settlement: none, project_owner_settlement_entry: none, project_upstream_fund_fact: none, construction_enterprise_fee: none,
   project_affiliate_contract_fact: none, project_affiliate_settlement_fact: none,
   project_affiliate_payment_fact: none, project_proxy_payment: none, contract_version: none, contract_economic_review: none, contract_work_completion: none, contract_proxy_execution: none, company_transfer_event:none, company_transfer_debt_correction:none, upward_receipt_match: none, fund_execution_counterparty:none,
   settlement: none, signed_contract_settlement: none, payment_execution: none, expense_claim_approval: none,

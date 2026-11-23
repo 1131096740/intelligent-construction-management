@@ -48,6 +48,10 @@ export class RequestConstructionPaymentCorrectionDto {
   counterpartyName?: string;
 
   @ValidateIf((_object, value) => value !== undefined)
+  @IsString({ message: "更正后的费用名称必须是文字" })
+  feeName?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString({ message: "更正后的施工企业合同编号必须是文字" })
   contractLedgerId?: string;
 

@@ -3177,13 +3177,14 @@ export function confirmProjectAffiliatePaymentFact(
 }
 
 export interface RequestConstructionPaymentCorrectionPayload {
-  sourceType: "downstream_payment" | "affiliate_remittance_to_company";
+  sourceType: "downstream_payment" | "affiliate_remittance_to_company" | "affiliate_deduction";
   originalFactId: string;
   correctionReason: string;
   idempotencyKey: string;
   amountCents?: string;
   occurredAt?: string;
   counterpartyName?: string;
+  feeName?: string;
   contractLedgerId?: string;
   settlementLedgerId?: string;
   paymentRequestId?: string;
@@ -3196,7 +3197,7 @@ export interface RequestConstructionPaymentCorrectionPayload {
 }
 
 export interface ConstructionPaymentCorrectionReadModel {
-  sourceType: "downstream_payment" | "affiliate_remittance_to_company";
+  sourceType: "downstream_payment" | "affiliate_remittance_to_company" | "affiliate_deduction";
   originalFactId: string;
   reversalFactId: string;
   replacementFactId: string;
@@ -3209,6 +3210,78 @@ export interface ConfirmConstructionPaymentCorrectionPayload {
   confirmationPassword: string;
   confirmationActionId: string;
   selfReviewReason?: string;
+}
+
+export interface ProjectConstructionEnterpriseDeductionReadModel {
+  id: string;
+  projectId: string;
+  feeName: string;
+  occurredAt: string;
+  amountCents: string;
+  direction: "increase" | "decrease";
+  entryKind: "original" | "correction" | "reversal";
+  adjustsFactId: string | null;
+  status: "pending_confirm" | "confirmed";
+  basisType: "written" | "oral";
+  evidenceFileId: string | null;
+  deductionCategory: "management_fee" | "tax" | "deposit" | "insurance" | "other" | null;
+  counterpartyName: string;
+  confirmedAt: string | null;
+  createdAt: string;
+}
+
+export interface ProjectConstructionEnterpriseDeductionListItemReadModel
+  extends ProjectConstructionEnterpriseDeductionReadModel {
+  signedAmountCents: string;
+  hasReversal: boolean;
+  correctable: boolean;
+}
+
+export interface ProjectConstructionEnterpriseDeductionPageReadModel {
+  projectId: string;
+  items: ProjectConstructionEnterpriseDeductionListItemReadModel[];
+  summary: {
+    deductedCents: string;
+    pendingCents: string;
+  };
+  nextCursor: string | null;
+}
+
+export interface RecordProjectConstructionEnterpriseDeductionPayload {
+  feeName: string;
+  amountCents: string;
+  occurredAt: string;
+  evidenceFileId?: string;
+  idempotencyKey: string;
+}
+
+export function recordProjectConstructionEnterpriseDeduction(
+  projectId: string,
+  body: RecordProjectConstructionEnterpriseDeductionPayload
+) {
+  return postJson<ProjectConstructionEnterpriseDeductionReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/construction-enterprise-deductions`,
+    body
+  );
+}
+
+export function fetchProjectConstructionEnterpriseDeductions(
+  projectId: string,
+  input: { cursor?: string; pageSize?: number } = {}
+) {
+  const query = new URLSearchParams();
+  if (input.cursor) query.set("cursor", input.cursor);
+  if (input.pageSize !== undefined) query.set("pageSize", String(input.pageSize));
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return readJson<ProjectConstructionEnterpriseDeductionPageReadModel>(
+    `/projects/${encodeURIComponent(projectId)}/construction-enterprise-deductions${suffix}`
+  );
+}
+
+export function fetchProjectConstructionEnterpriseDeductionCapability(projectId: string) {
+  return readJson<{ projectId: string; availableActions: string[] }>(
+    `/projects/${encodeURIComponent(projectId)}/construction-enterprise-deductions/capability`
+  );
 }
 
 export function fetchConstructionEnterprisePaid(

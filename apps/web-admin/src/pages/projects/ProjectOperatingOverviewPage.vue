@@ -229,6 +229,15 @@
                 <small>按真实凭据登记付下游或转我方；先有对应结算，真实超付如实提示</small>
               </button>
               <button
+                v-if="canRecordUpstreamFunds && selectedProjectId"
+                type="button"
+                class="project-entry"
+                @click="constructionDeductionVisible = true"
+              >
+                <span>登记施工企业扣费</span>
+                <small>费用名称 + 实际金额简单登记，已有依据可附；确认后只减少施工企业持有资金</small>
+              </button>
+              <button
                 v-for="entry in projectBusinessEntries"
                 :key="entry.label"
                 type="button"
@@ -1012,6 +1021,15 @@
       :can-confirm="canConfirmConstructionPayment"
     />
 
+    <ConstructionEnterpriseDeductionDrawer
+      v-if="selectedProjectId"
+      v-model="constructionDeductionVisible"
+      :project-id="selectedProjectId"
+      :can-confirm-written="canConfirmConstructionDeductionWritten"
+      :can-confirm-oral="canConfirmConstructionDeductionOral"
+      @saved="loadOverview"
+    />
+
     <SensitiveActionDialog
       v-model="expenseLeaveDialogVisible"
       title="放弃未提交的项目支出填写？"
@@ -1099,6 +1117,7 @@ import { useUnsavedChangesGuard } from "../../lib/use-unsaved-changes-guard";
 import AffiliateBusinessLedgerPanel from "./components/AffiliateBusinessLedgerPanel.vue";
 import ConstructionEnterprisePaymentDialog from "./components/ConstructionEnterprisePaymentDialog.vue";
 import ConstructionEnterprisePaidDrawer from "./components/ConstructionEnterprisePaidDrawer.vue";
+import ConstructionEnterpriseDeductionDrawer from "./components/ConstructionEnterpriseDeductionDrawer.vue";
 import ProjectPersonnelPanel from "./components/ProjectPersonnelPanel.vue";
 import ProjectRenameForm from "./components/ProjectRenameForm.vue";
 import ProjectCreateForm from "./components/ProjectCreateForm.vue";
@@ -1585,6 +1604,7 @@ async function submitOwnerSettlement() {
 
 const constructionPaymentVisible = ref(false);
 const constructionPaidVisible = ref(false);
+const constructionDeductionVisible = ref(false);
 const canRecordUpstreamFunds = computed(
   () =>
     auth.user?.roleKeys.some((role) =>
@@ -1598,6 +1618,15 @@ const canRecordConstructionPayments = computed(
     ) ?? false
 );
 const canConfirmConstructionPayment = computed(
+  () => auth.user?.roleKeys.includes("finance_director") ?? false
+);
+const canConfirmConstructionDeductionWritten = computed(
+  () =>
+    auth.user?.roleKeys.some((role) =>
+      ["finance_staff", "finance_director"].includes(role)
+    ) ?? false
+);
+const canConfirmConstructionDeductionOral = computed(
   () => auth.user?.roleKeys.includes("finance_director") ?? false
 );
 const canExportOperatingProjection = computed(
@@ -1767,6 +1796,13 @@ async function loadProjects() {
       canRecordConstructionPayments.value
     ) {
       constructionPaymentVisible.value = true;
+    }
+    if (
+      route.query.registerConstructionDeduction === "1" &&
+      selectedProjectId.value &&
+      canRecordUpstreamFunds.value
+    ) {
+      constructionDeductionVisible.value = true;
     }
     loadedProjectId.value = selectedProjectId.value;
     if (!canReadProjectOverview.value && canCreateProjectExpense.value) {

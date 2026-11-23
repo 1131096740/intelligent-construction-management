@@ -118,6 +118,13 @@ onMounted(() => void loadWorkbench());
         登记施工企业付款
       </t-button>
       <t-button
+        v-if="canRegisterConstructionPayment"
+        variant="outline"
+        @click="router.push({ path: '/项目经营', query: { registerConstructionDeduction: '1' } })"
+      >
+        登记施工企业扣费
+      </t-button>
+      <t-button
         variant="outline"
         @click="router.push('/资金账户')"
       >

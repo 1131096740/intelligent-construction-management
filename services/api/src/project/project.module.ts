@@ -7,6 +7,7 @@ import { OperatingLedgerModule } from "../operating-ledger/operating-ledger.modu
 import { OperatingProjectionModule } from "../operating-projection/operating-projection.module";
 import { ProjectAffiliateBusinessService } from "./project-affiliate-business.service";
 import { ProjectConstructionPaymentCorrectionService } from "./project-construction-payment-correction.service";
+import { ProjectConstructionEnterpriseDeductionService } from "./project-construction-enterprise-deduction.service";
 import { ProjectAffiliateCompanyContractService } from "./project-affiliate-company-contract.service";
 import { ProjectController } from "./project.controller";
 import { ProjectService } from "./project.service";
@@ -27,6 +28,7 @@ import { ProjectUpstreamFundBusinessEntryService } from "./project-upstream-fund
     ProjectService,
     ProjectAffiliateBusinessService,
     ProjectConstructionPaymentCorrectionService,
+    ProjectConstructionEnterpriseDeductionService,
     ProjectAffiliateCompanyContractService,
     ProjectOperatingProfileService,
     ProjectUpstreamFundBusinessEntryService

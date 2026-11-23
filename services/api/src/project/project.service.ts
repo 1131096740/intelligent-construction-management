@@ -65,6 +65,7 @@ import {
   PROJECT_PROXY_PAYMENT_SOURCE_TYPE,
   PROJECT_UPSTREAM_SETTLEMENT_SOURCE_TYPE
 } from "./project-operating-source.adapter";
+import { CONSTRUCTION_ENTERPRISE_FEE_SOURCE_TYPE } from "./project-construction-enterprise-fee-operating-source.adapter";
 import { readAffiliateSnapshot, stableNamedSubjectId } from "../operating-ledger/formal-operating-source.helpers";
 import type { AssignProjectAffiliateDto } from "./dto/assign-project-affiliate.dto";
 import type { ConfirmProjectUpstreamSettlementDto } from "./dto/confirm-project-upstream-settlement.dto";
@@ -1986,6 +1987,19 @@ export class ProjectService {
         },
         actorUserId
       );
+      if (confirmed.factType === "affiliate_deduction") {
+        // OPS-08：扣费确认时同一事务追加独立成本贡献；上游资金来源本身仍只
+        // 减少施工企业持有资金，不产 confirmed_cost（POL-08 口径不变）。
+        await this.operatingSources.appendConfirmedSourceIfEnabledInTransaction(
+          tx,
+          {
+            projectId,
+            sourceType: CONSTRUCTION_ENTERPRISE_FEE_SOURCE_TYPE,
+            sourceBusinessId: confirmed.id
+          },
+          actorUserId
+        );
+      }
 
       await this.audit.record(tx, {
         actorUserId,

@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 91,
+    "pendingFiles": 92,
     "fullyPendingSuites": 78,
-    "partiallyPendingSuites": 13,
-    "pendingTests": 574,
-    "coveredFiles": 91,
-    "coveredTests": 574,
+    "partiallyPendingSuites": 14,
+    "pendingTests": 575,
+    "coveredFiles": 92,
+    "coveredTests": 575,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -893,14 +893,31 @@
         "path": "services/api/prisma/run-issue422-archives-local.cjs"
       },
       "state": "executable_local_runner"
+    },
+    {
+      "id": "issue414_construction_deduction",
+      "pendingTests": 1,
+      "testFiles": [
+        {
+          "path": "services/api/src/database/issue414-construction-enterprise-deduction.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "partial_pending"
+        }
+      ],
+      "runner": {
+        "kind": "workspaceScript",
+        "script": "verify:issue414-construction-deduction:local",
+        "path": "services/api/prisma/run-issue414-construction-deduction-local.cjs"
+      },
+      "state": "executable_local_runner"
     }
   ],
   "remainingFiles": [],
   "executionInventory": {
     "ciEligible": {
-      "groups": 32,
-      "files": 90,
-      "tests": 573
+      "groups": 33,
+      "files": 91,
+      "tests": 574
     },
     "manualOnly": {
       "groups": 1,

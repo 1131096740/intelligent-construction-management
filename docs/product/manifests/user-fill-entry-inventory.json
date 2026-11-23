@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 451,
+    "activeBusinessActionCount": 454,
     "technicalActionCount": 10,
-    "activeBindingCount": 550,
+    "activeBindingCount": 553,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
@@ -5241,6 +5241,54 @@
       "causalVerified": true
     },
     {
+      "id": "project.construction-deduction.correction-confirm",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/construction-payment-corrections/:param/:param/confirmation"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "project.construction-deduction.correction-request",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/construction-payment-corrections"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "project.construction-deduction.record",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/项目经营"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/components/ConstructionEnterpriseDeductionDrawer.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /projects/:param/construction-enterprise-deductions"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "project.construction-payment.correction-confirm",
       "status": "unified_candidate",
       "usage": "background",
@@ -5495,7 +5543,7 @@
         "POST /projects/:param/upstream-fund-facts/:param/confirmation"
       ],
       "bindingCount": 1,
-      "productionConsumerCount": 1,
+      "productionConsumerCount": 2,
       "causalVerified": true
     },
     {
@@ -5511,7 +5559,7 @@
         "POST /projects/:param/upstream-fund-facts/file-uploads"
       ],
       "bindingCount": 1,
-      "productionConsumerCount": 2,
+      "productionConsumerCount": 3,
       "causalVerified": true
     },
     {
