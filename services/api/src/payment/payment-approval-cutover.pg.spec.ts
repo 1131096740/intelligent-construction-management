@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PrismaService } from "../database/prisma.service";
 import { FileService, PrivateFileStorage } from "../file/file.service";
-import { inspectPendingPaymentApprovalCutover } from "./payment-approval-cutover";
+import { inspectPendingPaymentApprovalCutover, inspectPendingPaymentApprovalInventory } from "./payment-approval-cutover";
 
 // Run by path with ISSUE424_PAYMENT_REHEARSAL_URL pointing to a disposable
 // PostgreSQL database initialized from the current Prisma schema.
@@ -92,6 +92,7 @@ rehearse("retains effective historical signatures, original pending roles and as
     } });
     await storage.write(revoked.file.objectKey, Buffer.from("historical revoked bytes unavailable"));
     const inspect = () => inspectPendingPaymentApprovalCutover(prisma, files, payment.id);
+    const inventory = () => inspectPendingPaymentApprovalInventory(prisma, files);
     const actionsBefore = await prisma.approvalActionLog.findMany({
       where: { approvalInstanceId: round.id }, orderBy: { id: "asc" }
     });
@@ -106,13 +107,21 @@ rehearse("retains effective historical signatures, original pending roles and as
       ]
     });
 
+    await expect(inventory()).resolves.toEqual({ total: 1, replayed: 1, blocked: 0, blockedByReason: {} });
+
     await storage.write(replacement.file.objectKey, Buffer.from("effective bytes corrupted"));
     await expect(inspect()).rejects.toThrow("资料文件完整性校验失败");
+    await expect(inventory()).resolves.toEqual({
+      total: 1, replayed: 0, blocked: 1, blockedByReason: { signature_file_unavailable: 1 }
+    });
     await storage.write(replacement.file.objectKey, png);
     const unknown = await append(9, "system_notification", applicant, { metadata: {
       kind: "unknown_notice", event: "queued"
     } });
     await expect(inspect()).rejects.toThrow("原付款审批通知记录不一致");
+    await expect(inventory()).resolves.toEqual({
+      total: 1, replayed: 0, blocked: 1, blockedByReason: { invalid_notification_history: 1 }
+    });
     await prisma.approvalActionLog.delete({ where: { id: unknown.id } });
     const unbound = await append(9, "system_notification", applicant, { metadata: {
       kind: "payment_approval_duty_notification", event: "queued", paymentId: payment.id, projectId: payment.projectId,

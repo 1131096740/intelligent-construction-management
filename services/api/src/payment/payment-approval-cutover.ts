@@ -10,42 +10,51 @@ import type { FileService } from "../file/file.service";
 const NOTICE_KIND = "payment_approval_duty_notification";
 const NOTICE_OUTCOMES = new Set(["dispatch_claimed", "accepted", "failed", "unknown", "cancelled"]);
 const BUSINESS_ROLES = new Set<string>(BUSINESS_APPROVAL_ROLES);
+const CONTRACT_PAYMENT_SOURCES = ["settlement", "signed_settlement", "contract_advance", "contract_due"];
 const hasText = (value: unknown): value is string => typeof value === "string" && !!value.trim();
 
 type Assignment = { kind: string; fromUserId: string; fromRoleKey: string; toUserId: string };
+type EvidenceReason = "unsupported_frozen_duties" | "ambiguous_action_history" | "invalid_notification_history" |
+  "invalid_signature_evidence" | "signature_file_unavailable";
+
+class PaymentCutoverEvidenceError extends BadRequestException {
+  constructor(readonly reason: EvidenceReason, message: string) {
+    super(message);
+  }
+}
 
 function readAssignment(value: unknown, roles: readonly string[]): Assignment {
   const { kind, fromUserId, fromRoleKey, toUserId } = approvalEvidenceMetadata(value);
   if ((kind !== "transfer" && kind !== "delegate") || !hasText(fromUserId) || !hasText(toUserId) ||
       !hasText(fromRoleKey) || !roles.includes(fromRoleKey)) {
-    throw new BadRequestException("原付款审批转派记录不一致");
+    throw new PaymentCutoverEvidenceError("ambiguous_action_history", "原付款审批转派记录不一致");
   }
   return { kind, fromUserId, fromRoleKey, toUserId };
 }
 
 function readFrozenDuties(value: unknown) {
   if (!Array.isArray(value) || !value.length || hasVersionedApprovalNodes(value)) {
-    throw new BadRequestException("原付款审批岗位快照不受支持");
+    throw new PaymentCutoverEvidenceError("unsupported_frozen_duties", "原付款审批岗位快照不受支持");
   }
   const seenRoles = new Set<string>();
   return value.map(raw => {
     const node = approvalEvidenceMetadata(raw);
     const { name, mode, roleKeys, approvedRoleKeys, assignments } = node;
     if (!hasText(name) || mode !== "any" || !Array.isArray(roleKeys) || !roleKeys.length) {
-      throw new BadRequestException("原付款审批岗位快照不受支持");
+      throw new PaymentCutoverEvidenceError("unsupported_frozen_duties", "原付款审批岗位快照不受支持");
     }
     for (const role of roleKeys) {
       if (!hasText(role) || !BUSINESS_ROLES.has(role) || seenRoles.has(role)) {
-        throw new BadRequestException("原付款审批岗位无法唯一对应");
+        throw new PaymentCutoverEvidenceError("unsupported_frozen_duties", "原付款审批岗位无法唯一对应");
       }
       seenRoles.add(role);
     }
     if (approvedRoleKeys !== undefined && (!Array.isArray(approvedRoleKeys) || approvedRoleKeys.length > 1 ||
         approvedRoleKeys.some(role => !roleKeys.includes(role)))) {
-      throw new BadRequestException("原付款审批签批与岗位快照不一致");
+      throw new PaymentCutoverEvidenceError("ambiguous_action_history", "原付款审批签批与岗位快照不一致");
     }
     if (assignments !== undefined && !Array.isArray(assignments)) {
-      throw new BadRequestException("原付款审批转派记录不一致");
+      throw new PaymentCutoverEvidenceError("ambiguous_action_history", "原付款审批转派记录不一致");
     }
     return {
       node, mode, roleKeys: roleKeys as string[], approvedRoleKeys: (approvedRoleKeys ?? []) as string[],
@@ -60,7 +69,7 @@ function verifyNoticeHistory(
 ) {
   const queued = new Map<string, Record<string, unknown>>();
   const entries = notices.map(log => ({ log, metadata: approvalEvidenceMetadata(log.metadata) }));
-  const invalid = () => new BadRequestException("原付款审批通知记录不一致");
+  const invalid = () => new PaymentCutoverEvidenceError("invalid_notification_history", "原付款审批通知记录不一致");
   for (const { log, metadata } of entries) {
     if (metadata.kind !== NOTICE_KIND || log.actorUserId !== applicantId) throw invalid();
     if (metadata.event !== "queued") continue;
@@ -91,7 +100,7 @@ function replayPendingDuties(
   const assignments = duties.map((): Assignment[] => []);
   const openedAt = new Map([[round.id, 0]]);
   const notices: ApprovalActionLog[] = [];
-  const invalid = () => new BadRequestException("原付款审批操作记录与岗位快照不一致");
+  const invalid = () => new PaymentCutoverEvidenceError("ambiguous_action_history", "原付款审批操作记录与岗位快照不一致");
   let priorTransitionAt: number | undefined;
   for (const log of logs) {
     if (log.action !== "approve" &&
@@ -156,35 +165,75 @@ export function inspectPendingPaymentApprovalCutover(
 ) {
   return prisma.$transaction(async tx => {
     await tx.$executeRaw`SET TRANSACTION READ ONLY`;
-    const payment = await tx.paymentRequest.findUnique({
-      where: { id: paymentId }, select: { id: true, projectId: true, status: true }
-    });
-    if (payment?.status !== "approval_pending") {
-      throw new ConflictException("只有在途普通付款可核对审批切换记录");
-    }
-    const rounds = await tx.approvalInstance.findMany({
-      where: { businessType: "payment_request", businessId: payment.id, flowType: "payment.approve", status: "in_progress" },
-      take: 2
-    });
-    if (rounds.length !== 1) throw new ConflictException("在途普通付款审批轮次缺失或不唯一");
-    const [round] = rounds;
-    const logs = await tx.approvalActionLog.findMany({
-      where: { approvalInstanceId: round.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }]
-    });
-    const { effective, pendingDuties } = replayPendingDuties(round, payment, logs);
-    for (const log of effective) {
-      const signature = await tx.handwrittenSignatureVersion.findUnique({ where: { id: log.signatureVersionIdSnapshot! } });
-      if (!signature || signature.source !== "canvas" || signature.userId !== log.actorUserId ||
-          signature.fileId !== log.signatureFileIdSnapshot ||
-          signature.contentSha256.toLowerCase() !== log.signatureSha256Snapshot?.toLowerCase()) {
-        throw new BadRequestException("原付款审批签名版本与签批记录不一致");
-      }
-      const { file, buffer } = await files.getFileBuffer(signature.fileId, tx);
-      if (file.storageStatus !== "active" || file.contentSha256?.toLowerCase() !== signature.contentSha256.toLowerCase()) {
-        throw new BadRequestException("原付款审批签名文件状态或摘要不一致");
-      }
-      verifyApprovalSignatureSnapshot(buffer, signature.contentSha256);
-    }
-    return { roundId: round.id, completedActionIds: effective.map(log => log.id), pendingDuties };
+    return inspectPayment(tx, files, paymentId);
   }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+}
+
+export function inspectPendingPaymentApprovalInventory(
+  prisma: Pick<PrismaService, "$transaction">,
+  files: Pick<FileService, "getFileBuffer">
+) {
+  return prisma.$transaction(async tx => {
+    await tx.$executeRaw`SET TRANSACTION READ ONLY`;
+    const payments = await tx.paymentRequest.findMany({
+      where: { status: "approval_pending", sourceType: { in: CONTRACT_PAYMENT_SOURCES } },
+      select: { id: true }, orderBy: { id: "asc" }
+    });
+    const blockedByReason: Partial<Record<EvidenceReason | "active_round_not_unique", number>> = {};
+    let replayed = 0;
+    for (const { id } of payments) {
+      try {
+        await inspectPayment(tx, files, id);
+        replayed++;
+      } catch (error) {
+        const reason = error instanceof PaymentCutoverEvidenceError ? error.reason
+          : error instanceof ConflictException ? "active_round_not_unique"
+          : error instanceof BadRequestException ? "invalid_signature_evidence" : null;
+        if (!reason) throw error;
+        blockedByReason[reason] = (blockedByReason[reason] ?? 0) + 1;
+      }
+    }
+    return { total: payments.length, replayed, blocked: payments.length - replayed, blockedByReason };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 60_000 });
+}
+
+async function inspectPayment(
+  tx: Prisma.TransactionClient,
+  files: Pick<FileService, "getFileBuffer">,
+  paymentId: string
+) {
+  const payment = await tx.paymentRequest.findUnique({
+    where: { id: paymentId }, select: { id: true, projectId: true, status: true }
+  });
+  if (payment?.status !== "approval_pending") {
+    throw new ConflictException("只有在途普通付款可核对审批切换记录");
+  }
+  const rounds = await tx.approvalInstance.findMany({
+    where: { businessType: "payment_request", businessId: payment.id, flowType: "payment.approve", status: "in_progress" },
+    take: 2
+  });
+  if (rounds.length !== 1) throw new ConflictException("在途普通付款审批轮次缺失或不唯一");
+  const [round] = rounds;
+  const logs = await tx.approvalActionLog.findMany({
+    where: { approvalInstanceId: round.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+  });
+  const { effective, pendingDuties } = replayPendingDuties(round, payment, logs);
+  for (const log of effective) {
+    const signature = await tx.handwrittenSignatureVersion.findUnique({ where: { id: log.signatureVersionIdSnapshot! } });
+    if (!signature || signature.source !== "canvas" || signature.userId !== log.actorUserId ||
+        signature.fileId !== log.signatureFileIdSnapshot ||
+        signature.contentSha256.toLowerCase() !== log.signatureSha256Snapshot?.toLowerCase()) {
+      throw new PaymentCutoverEvidenceError("invalid_signature_evidence", "原付款审批签名版本与签批记录不一致");
+    }
+    const { file, buffer } = await files.getFileBuffer(signature.fileId, tx).catch((error: unknown) => {
+      // FileService wraps unavailable content as Error; database and programming failures stop the entire report.
+      if (!(error instanceof Error) || error.constructor !== Error) throw error;
+      throw new PaymentCutoverEvidenceError("signature_file_unavailable", error.message);
+    });
+    if (file.storageStatus !== "active" || file.contentSha256?.toLowerCase() !== signature.contentSha256.toLowerCase()) {
+      throw new PaymentCutoverEvidenceError("invalid_signature_evidence", "原付款审批签名文件状态或摘要不一致");
+    }
+    verifyApprovalSignatureSnapshot(buffer, signature.contentSha256);
+  }
+  return { roundId: round.id, completedActionIds: effective.map(log => log.id), pendingDuties };
 }
