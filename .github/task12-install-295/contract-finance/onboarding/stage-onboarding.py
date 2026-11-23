@@ -70,7 +70,15 @@ for lane in pins['lanes']:
             raise SystemExit('ONBOARDING_295_ROSTER_SEED_PREIMAGE')
         seed.write_bytes(material.replace(b'a1be083076018686dd8afba68c44ff9c75502014',application_tree.encode()))
         subprocess.run(['node','--check',str(seed)],check=True)
-    for file in [entry,runner]:
+    staged_scripts = [entry,runner]
+    if current320:
+        admission = lane_root/'task12-onboarding-282-admission.cjs'
+        if hashlib.sha256(admission.read_bytes()).hexdigest()!='799d0d437bc7dee46f6426526b66cededadbf9f50143b929c8f9ff0491578a91':
+            raise SystemExit('ONBOARDING_328_FILE_REGISTRY_PREIMAGE')
+        subprocess.run(['patch','--batch','--forward','--fuzz=0','--silent',str(admission),
+                        str(plan/'onboarding-signed-settlement-registry.patch')],check=True)
+        staged_scripts.append(admission)
+    for file in staged_scripts:
         subprocess.run(['node','--check',str(file)],check=True)
 (out/'workspace-inputs.json').write_text(json.dumps({'tree':application_tree,
     'sourceSha':source_record['sourceSha'],'files':actual},ensure_ascii=False)+'\n')

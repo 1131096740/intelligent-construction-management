@@ -1,0 +1,14 @@
+--- task12-onboarding-282-admission.cjs
++++ task12-onboarding-282-admission.cjs
+@@ -37,5 +37,10 @@
+   requireScope(expectedGrants.some(line => line.includes(approvedAlias))
+     && !expectedGrants.some(line => line.includes(rawLookup))
+     && JSON.stringify(grantStatements(scoped)) === JSON.stringify(expectedGrants));
+-  return scoped;
++  // The forward registry calls one additional invoker function.
++  const endOfRegistry = "'public.jg_file_business_binding_columns_before_contract_archive_v2()'] LOOP";
++  requireScope(scoped.split(endOfRegistry).length === 2);
++  return scoped.replace(endOfRegistry,
++    "'public.jg_file_business_binding_columns_before_contract_archive_v2()', " +
++    "'public.jg_file_business_binding_columns_before_signed_settlement()'] LOOP");
+ }
