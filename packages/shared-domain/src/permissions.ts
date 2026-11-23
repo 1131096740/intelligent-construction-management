@@ -99,6 +99,10 @@ export const BUSINESS_ACTIONS = [
   "operating_takeover.confirm",
   "operating_takeover.activate",
   "operating_takeover.file.upload",
+  "history_expense.manage",
+  "history_expense.verify",
+  "history_expense.confirm",
+  "history_expense.activate",
   "payment.create",
   "payment.approve",
   "payment.execution",
@@ -355,6 +359,10 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
     "finance_staff",
     "finance_director"
   ],
+  "history_expense.manage": ["comprehensive_director"],
+  "history_expense.verify": ["finance_staff", "finance_director"],
+  "history_expense.confirm": ["finance_director"],
+  "history_expense.activate": ["finance_director"],
   "payment.create": [
     "contract_staff",
     "contract_director",

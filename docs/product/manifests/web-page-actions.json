@@ -12,24 +12,24 @@
     "registeredActionCount": 470,
     "pageActionCount": 100,
     "backgroundActionCount": 370,
-    "reachableVueFileCount": 235,
-    "routeRootCount": 78,
-    "totalVueFileCount": 248,
-    "parsedVueFileCount": 248,
-    "reachableProductionModuleCount": 408,
-    "templateEventDirectiveCount": 1579,
+    "reachableVueFileCount": 236,
+    "routeRootCount": 79,
+    "totalVueFileCount": 249,
+    "parsedVueFileCount": 249,
+    "reachableProductionModuleCount": 410,
+    "templateEventDirectiveCount": 1589,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 461,
     "candidateProductionMutationConsumerCount": 461,
     "acceptedProductionMutationConsumerCount": 461,
-    "productionMutationConsumerPairCount": 466,
-    "blockerCount": 5
+    "productionMutationConsumerPairCount": 471,
+    "blockerCount": 10
   },
   "evidence": {
-    "totalProductionModuleCount": 427,
-    "reachableProductionModuleCount": 408,
-    "totalVueFileCount": 248,
-    "parsedVueFileCount": 248
+    "totalProductionModuleCount": 429,
+    "reachableProductionModuleCount": 410,
+    "totalVueFileCount": 249,
+    "parsedVueFileCount": 249
   },
   "actions": [
     {
@@ -12069,7 +12069,7 @@
         "event": "call",
         "handler": "appendExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 198,
+        "sourceLine": 199,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12134,7 +12134,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimAppendAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 322,
+        "sourceLine": 323,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12199,7 +12199,7 @@
         "event": "call",
         "handler": "attachExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 187,
+        "sourceLine": 188,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12264,7 +12264,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimDraftAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 314,
+        "sourceLine": 315,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12329,7 +12329,7 @@
         "event": "call",
         "handler": "removeExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 209,
+        "sourceLine": 210,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12394,7 +12394,7 @@
         "event": "call",
         "handler": "createExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 271,
+        "sourceLine": 362,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12459,7 +12459,7 @@
         "event": "call",
         "handler": "deleteExpenseClaimDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 354,
+        "sourceLine": 355,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12560,7 +12560,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalPaymentPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 246,
+        "sourceLine": 247,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12625,7 +12625,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanDisbursementVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 338,
+        "sourceLine": 339,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12690,7 +12690,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanDisbursementWithCapability",
         "kind": "background_call",
-        "sourceLine": 254,
+        "sourceLine": 255,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12755,7 +12755,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalDisbursementPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 265,
+        "sourceLine": 266,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12820,7 +12820,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanRepaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 346,
+        "sourceLine": 347,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12885,7 +12885,7 @@
         "event": "call",
         "handler": "confirmExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 284,
+        "sourceLine": 285,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12950,7 +12950,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 273,
+        "sourceLine": 274,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13015,7 +13015,7 @@
         "event": "call",
         "handler": "reverseExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 299,
+        "sourceLine": 300,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13080,7 +13080,7 @@
         "event": "call",
         "handler": "adjustExpenseClaimPaymentSubjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 224,
+        "sourceLine": 225,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13149,7 +13149,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 330,
+        "sourceLine": 331,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13214,7 +13214,7 @@
         "event": "call",
         "handler": "recordExpenseClaimPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 235,
+        "sourceLine": 236,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13279,7 +13279,7 @@
         "event": "call",
         "handler": "reviewExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 176,
+        "sourceLine": 177,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13344,7 +13344,7 @@
         "event": "call",
         "handler": "submitExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 168,
+        "sourceLine": 169,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -35418,6 +35418,51 @@
         "sourceFile": "apps/web-admin/src/components/ActualPurchaseBatchPanel.vue",
         "normalizedKeys": [
           "POST /actual-purchase-batches/:param/corrections"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+        "wrapper": "activateHistoryExpenseBatch",
+        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+        "normalizedKeys": [
+          "POST /projects/:param/history-expenses/batches/:param/activation"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+        "wrapper": "confirmHistoryExpenseBatch",
+        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+        "normalizedKeys": [
+          "POST /projects/:param/history-expenses/batches/:param/confirmations"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+        "wrapper": "createHistoryExpenseBatch",
+        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+        "normalizedKeys": [
+          "POST /projects/:param/history-expenses/batches"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+        "wrapper": "precheckHistoryExpenses",
+        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+        "normalizedKeys": [
+          "POST /projects/:param/history-expenses/precheck"
+        ]
+      },
+      {
+        "code": "PRODUCTION_WRITE_WRAPPER_WITHOUT_ACTION_OR_CLASSIFICATION",
+        "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+        "wrapper": "verifyHistoryExpenseRow",
+        "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+        "normalizedKeys": [
+          "PATCH /projects/:param/history-expenses/batches/:param/rows/:param"
         ]
       }
     ],
