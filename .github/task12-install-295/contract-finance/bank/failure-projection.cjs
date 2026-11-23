@@ -15,7 +15,7 @@ const knownDenials={
     'jg_company_transfer_original_checkpoints','jg_company_transfer_correction_delta',
     'jg_check_company_transfer_loan_repayment_insert_v1',
     'jg_check_company_transfer_loan_repayment_approval_v1',
-    'jg_has_exclusive_file_business_binding','jg_file_business_binding_columns_before_registered_payment',
+    'jg_has_exclusive_file_business_binding','jg_file_business_binding_columns_before_registered_payment','jg_file_business_binding_columns_before_signed_settlement',
     'jg_check_normal_archive_voucher_v1','jg_registered_payment_voucher_bound',
   ]),
   table:new Set([
