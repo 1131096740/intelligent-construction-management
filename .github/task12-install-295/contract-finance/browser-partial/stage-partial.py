@@ -55,5 +55,7 @@ for name in sorted(partial_pins.keys() | completion_pins.keys()):
         subprocess.run(['patch', '--batch', '--fuzz=0', '--silent', str(target), str(patch)], check=True)
         forward = Path(__file__).with_name('partial320.patch')
         subprocess.run(['patch', '--batch', '--fuzz=0', '--silent', str(target), str(forward)], check=True)
+        diagnostics = Path(__file__).resolve().parents[1] / 'task398-browser-diagnostics.patch'
+        subprocess.run(['patch', '--batch', '--fuzz=0', '--silent', str(target), str(diagnostics)], check=True)
     target.chmod(0o644)
     print(name)

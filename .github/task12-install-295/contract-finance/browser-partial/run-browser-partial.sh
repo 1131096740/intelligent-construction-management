@@ -44,6 +44,7 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
   --mount "type=bind,src=$work/owned,dst=/run/task398-browser"
+  --mount "type=bind,src=$base/task398-browser-diagnostics.cjs,dst=/qualification/task398-browser-diagnostics.cjs,readonly"
   --mount "type=bind,src=$plan/task398-partial-entry.cjs,dst=/qualification/task398-partial-entry.cjs,readonly")
 for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
