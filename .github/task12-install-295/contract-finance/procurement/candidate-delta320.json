@@ -432,7 +432,7 @@
   {
     "path": "services/api/prisma/database-dynamic-gate-manifest.json",
     "expected": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
-    "candidate": "8e475695a75f7bf0ac2cec4e93bfb715eccc3c25866acd9f348ef896cf13afa5"
+    "candidate": "5e35796144515672fe7c82fc88a22d7d772052ebe9048dc8ae769f8a118c41bc"
   },
   {
     "path": "services/api/prisma/fixtures/project-approval-configuration.ts",
@@ -457,7 +457,7 @@
   {
     "path": "services/api/prisma/run-database-dynamic-gate-local.test.cjs",
     "expected": "78a8d474a9bef166001372b1e096b4f9b190d1d6fce3988bee01ad7f9b6eb09d",
-    "candidate": "c0687f80fd6751564f95f03f69811ffaa55f1ea5f184fe91386ce366e5be363c"
+    "candidate": "cef910184398ffee25c65ceb9eb04c1ffef96f751e0be749c769dcf18a38727f"
   },
   {
     "path": "services/api/prisma/run-database-dynamic-remaining-local.cjs",
@@ -1287,7 +1287,7 @@
   {
     "path": "services/api/src/spot-procurement/spot-procurement-payment.service.ts",
     "expected": "76a821443d942f49a6c942c3948c86619312391fcd40560c452ca4ef947aa39e",
-    "candidate": "3a1f932193c73a9b0352040e63e99131215a3dcdf533e1cd649444ff5d412887"
+    "candidate": "d9ca6efab5730398307185e775c733816fc07b53648334647b181a2e495e32d0"
   },
   {
     "path": "services/api/src/spot-procurement/spot-procurement-read.service.spec.ts",

@@ -24,12 +24,13 @@ import { pendingRoleKeysForFrozenApprovalNode } from "../approval/approval-node-
 import {
   hasInvalidLegacySerialCutoverMarker,
   isLegacySerialCutoverRound,
-  pendingSpotPaymentPayerApprovalRoles
+  pendingSpotPaymentPayerApprovalRoles,
+  planSpotPaymentApprovalCutover
 } from "./spot-payment-approval-cutover";
 import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { confirmApprovalSelfReview } from "../approval/approval-self-review";
-import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
+import { snapshotApprovalSignature, verifyApprovalSignatureSnapshot, withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
 import { PrismaService } from "../database/prisma.service";
@@ -249,6 +250,93 @@ export class SpotProcurementPaymentService {
     @Optional() private readonly paymentNotifications?: SpotPaymentExecutionNotificationService,
     @Optional() private readonly actualBatches?: ActualPurchaseBatchService
   ) {}
+
+  /** Internal cutover operation for an authorized caller with application writers frozen. */
+  migrateLegacyApprovalRound(paymentId: string, actorUserId: string) {
+    return this.runWrite(() => this.runSerializable(async (tx) => {
+      const version = await this.requireLockedVersionForPayment(tx, paymentId);
+      const payments = await this.lockProcurementPayments(tx, version.procurementId);
+      const payment = this.requirePayment(payments, paymentId);
+      if (payment.status !== "approval_pending") {
+        throw new ConflictException("只有在途零采付款可迁移审批轮次");
+      }
+      const paymentSource = await tx.spotProcurementPayment.findUnique({
+        where: { id: paymentId },
+        select: { actualPurchaseBatchId: true }
+      });
+      if (!paymentSource || paymentSource.actualPurchaseBatchId) {
+        throw new ConflictException("采购批次付款不适用历史审批迁移");
+      }
+      const approval = await this.requireLockedApproval(tx, paymentId);
+      const pendingRounds = await tx.approvalInstance.count({
+        where: {
+          businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+          businessId: paymentId,
+          status: "approval_pending"
+        }
+      });
+      if (pendingRounds !== 1) {
+        throw new ConflictException("在途审批轮次不唯一，请核对原付款记录");
+      }
+      await this.requireActiveUser(tx, actorUserId, "审批迁移经办人不存在或已停用");
+      if (isLegacySerialCutoverRound(approval.frozenNodes)) {
+        return { status: "already_mapped" as const };
+      }
+
+      const methodCount = await tx.spotProcurementPaymentMethodOption.count({
+        where: { paymentId }
+      });
+      if (!isSpotPaymentPayerTaskComplete(payment, methodCount)) {
+        throw new ConflictException("原付款主体或拟付款方式未核对完成");
+      }
+      const actionLogs = await tx.approvalActionLog.findMany({
+        where: { approvalInstanceId: approval.id },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+      });
+      const plan = planSpotPaymentApprovalCutover({ ...approval, actionLogs });
+      if (plan.status === "blocked") {
+        throw new ConflictException("原审批岗位或签批记录无法唯一对应，请核对后再迁移");
+      }
+      for (const log of actionLogs.filter(({ action }) => action === "approve")) {
+        const signature = await tx.handwrittenSignatureVersion.findUnique({
+          where: { id: log.signatureVersionIdSnapshot! }
+        });
+        if (!signature || signature.source !== "canvas" ||
+            signature.userId !== log.actorUserId ||
+            signature.fileId !== log.signatureFileIdSnapshot ||
+            signature.contentSha256.toLowerCase() !== log.signatureSha256Snapshot?.toLowerCase()) {
+          throw new BadRequestException("原审批签名版本与签批记录不一致");
+        }
+        const { file, buffer } = await this.files.getFileBuffer(signature.fileId, tx);
+        if (file.storageStatus !== "active" ||
+            file.contentSha256?.toLowerCase() !== signature.contentSha256.toLowerCase()) {
+          throw new BadRequestException("原审批签名文件状态或摘要不一致");
+        }
+        verifyApprovalSignatureSnapshot(buffer, signature.contentSha256);
+      }
+
+      await tx.approvalInstance.update({
+        where: { id: approval.id },
+        data: {
+          currentNodeIndex: plan.pendingNodeIndexes[0]!,
+          frozenNodes: plan.frozenNodes as unknown as Prisma.InputJsonValue
+        }
+      });
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "spot_procurement.payment.approval.legacy_cutover",
+        businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.payment,
+        businessId: payment.id,
+        metadata: {
+          approvalInstanceId: approval.id,
+          previousNodeIndex: approval.currentNodeIndex,
+          completedActionIds: plan.completedActionIds,
+          pendingNodeIndexes: plan.pendingNodeIndexes
+        }
+      });
+      return { status: "mapped" as const, pendingNodeIndexes: plan.pendingNodeIndexes };
+    }));
+  }
 
   async recordExecution(
     paymentId: string,

@@ -218,6 +218,8 @@ jobs:
         run: pnpm --filter @jiangkong/web-admin check:ui
 
       - name: Verify capability and usage manifests
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
         run: pnpm inspect:release-manifests
 
       - name: Install upload and draft feedback browser runtime

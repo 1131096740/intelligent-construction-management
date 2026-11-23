@@ -29,9 +29,9 @@
     "pendingFiles": 103,
     "fullyPendingSuites": 82,
     "partiallyPendingSuites": 21,
-    "pendingTests": 609,
+    "pendingTests": 610,
     "coveredFiles": 103,
-    "coveredTests": 609,
+    "coveredTests": 610,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -930,11 +930,11 @@
     },
     {
       "id": "issue403_actual_purchase_batch",
-      "pendingTests": 2,
+      "pendingTests": 3,
       "testFiles": [
         {
           "path": "services/api/src/database/issue403-actual-purchase-batch.pg.spec.ts",
-          "pendingTests": 2,
+          "pendingTests": 3,
           "suiteStatus": "partial_pending"
         }
       ],
@@ -1104,7 +1104,7 @@
     "ciEligible": {
       "groups": 44,
       "files": 102,
-      "tests": 608
+      "tests": 609
     },
     "manualOnly": {
       "groups": 1,
