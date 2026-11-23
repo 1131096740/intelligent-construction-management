@@ -1643,15 +1643,28 @@ describe("ContractTakeoverService", () => {
     ).rejects.toThrow("历史接管已激活，不能撤回部门确认");
   });
 
-  it("replays the first confirmation response by action idempotency key", async () => {
+  it.each([
+    {
+      side: "contract", takeoverStatus: "confirmed", revision: 3,
+      actor: "contract-director", positionKey: "contract_director",
+      activatedAt: new Date("2026-07-29T01:00:00.000Z")
+    },
+    {
+      side: "finance", takeoverStatus: "pending_review", revision: 2,
+      actor: "finance-director", positionKey: "finance_director", activatedAt: null
+    }
+  ] as const)("replays the $side confirmation after the takeover advances", async ({
+    side, takeoverStatus, revision, actor, positionKey, activatedAt
+  }) => {
     const responseSnapshot = {
-      side: "contract",
-      revision: 3,
+      side,
+      revision,
       confirmed: true,
-      activated: false
+      activated: side === "contract"
     };
     const tx = sideConfirmationTransaction({
-      takeover: takeoverRecord({ takeoverStatus: "pending_review" }),
+      positionKey,
+      takeover: takeoverRecord({ takeoverStatus, activatedAt }),
       financeFacts: {
         takeoverId: "takeover-1",
         revision: 2,
@@ -1666,13 +1679,13 @@ describe("ContractTakeoverService", () => {
       event: {
         idempotencyKey: "33333333-3333-4333-8333-333333333333",
         takeoverId: "takeover-1",
-        side: "contract",
+        side,
         action: "confirm",
-        revision: 3,
-        observedOtherSideRevision: 2,
+        revision,
+        observedOtherSideRevision: side === "contract" ? 2 : 3,
         observedFinanceBasisRevision: 4,
         reason: null,
-        actorUserId: "contract-director",
+        actorUserId: actor,
         responseSnapshot
       }
     });
@@ -1688,16 +1701,19 @@ describe("ContractTakeoverService", () => {
       files as never
     );
 
-    await expect(
-      service.confirmContractSide(
-        "project-1",
-        "takeover-1",
-        confirmSideInput() as never,
-        "contract-director"
-      )
-    ).resolves.toEqual(responseSnapshot);
+    const input = confirmSideInput({
+      expectedRevision: revision,
+      ...(side === "finance" ? { basedOnContractRevision: 3, basedOnFinanceBasisRevision: 4 } : {})
+    });
+    const replay = side === "contract"
+      ? service.confirmContractSide("project-1", "takeover-1", input as never, actor)
+      : service.confirmFinanceSide("project-1", "takeover-1", input as never, actor);
+    await expect(replay).resolves.toEqual(responseSnapshot);
     expect(tx.contractTakeoverContractFacts.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractTakeoverFinanceFacts.updateMany).not.toHaveBeenCalled();
+    expect(tx.contractTakeover.updateMany).not.toHaveBeenCalled();
     expect(tx.contractTakeoverConfirmationEvent.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("lists active, inactive and legacy-incomplete company entities for historical matching", async () => {

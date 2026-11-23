@@ -1786,31 +1786,6 @@ export class ContractTakeoverService {
           actorUserId,
           side
         );
-        if (side === "finance") {
-          if (aggregate.takeover.takeoverStatus !== "pending_finance") {
-            throw new BadRequestException(
-              "财务侧只能在合同部提交后填写核对，请先由合同部提交复核"
-            );
-          }
-        } else {
-          if (aggregate.takeover.takeoverStatus !== "pending_review") {
-            throw new BadRequestException(
-              "合同主管复核必须在财务填写核对完成后进行"
-            );
-          }
-          const financeFacts = aggregate.financeFacts;
-          if (
-            !financeFacts ||
-            financeFacts.confirmedRevision === null ||
-            financeFacts.confirmedRevision !== financeFacts.revision ||
-            financeFacts.confirmedFinanceBasisRevision !==
-              aggregate.contractFacts.financeBasisRevision
-          ) {
-            throw new BadRequestException(
-              "请先完成财务填写并由财务主管核对，再由合同主管复核"
-            );
-          }
-        }
         const priorEvent =
           await tx.contractTakeoverConfirmationEvent.findUnique({
             where: { idempotencyKey }
@@ -1835,6 +1810,31 @@ export class ContractTakeoverService {
             throw new ConflictException("部门确认幂等键已用于其他请求");
           }
           return priorEvent.responseSnapshot;
+        }
+        if (side === "finance") {
+          if (aggregate.takeover.takeoverStatus !== "pending_finance") {
+            throw new BadRequestException(
+              "财务侧只能在合同部提交后填写核对，请先由合同部提交复核"
+            );
+          }
+        } else {
+          if (aggregate.takeover.takeoverStatus !== "pending_review") {
+            throw new BadRequestException(
+              "合同主管复核必须在财务填写核对完成后进行"
+            );
+          }
+          const financeFacts = aggregate.financeFacts;
+          if (
+            !financeFacts ||
+            financeFacts.confirmedRevision === null ||
+            financeFacts.confirmedRevision !== financeFacts.revision ||
+            financeFacts.confirmedFinanceBasisRevision !==
+              aggregate.contractFacts.financeBasisRevision
+          ) {
+            throw new BadRequestException(
+              "请先完成财务填写并由财务主管核对，再由合同主管复核"
+            );
+          }
         }
         if (aggregate.takeover.activatedAt) {
           throw new ConflictException("历史接管已激活，无需重复确认");
