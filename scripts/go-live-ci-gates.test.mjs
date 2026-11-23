@@ -310,9 +310,9 @@ test("CI fans out independent static and database gates behind one stable summar
   assert.equal(manualGroups[0].runner.invocation, "task01_explicit_inputs");
   assert.equal(manualGroups[0].executionStatus, "NOT_EXECUTED");
   const ciGroups = manifest.coveredGroups.filter(group => group.ciExecution !== "manual-only");
-  assert.equal(ciGroups.length, 28);
-  assert.equal(ciGroups.reduce((n, group) => n + group.testFiles.length, 0), 85);
-  assert.equal(ciGroups.reduce((n, group) => n + group.pendingTests, 0), 553);
+  assert.equal(ciGroups.length, 29);
+  assert.equal(ciGroups.reduce((n, group) => n + group.testFiles.length, 0), 87);
+  assert.equal(ciGroups.reduce((n, group) => n + group.pendingTests, 0), 565);
   assert.doesNotMatch(workflow, /enterprise_task01_entry|run-enterprise-task01-local|--task01-(?:packet|inputs|confirm)/u);
   assert.deepEqual(
     configuredGroups,
@@ -331,7 +331,7 @@ test("CI fans out independent static and database gates behind one stable summar
   assert.match(dynamic, /pnpm check:migration-baseline/u);
   assert.match(
     dynamic,
-    /"\$DYNAMIC_GROUP" == contract_finance_acceptance[^\n]*\n\s+if \[\[ "\$count" == 320 \]\]; then\n\s+exec bash \.github\/task12-install-295\/contract-finance\/run\.sh "\$CI_SOURCE_SHA" --current-320 "\$predecessor"\n\s+fi\n\s+exec bash \.github\/task12-install-295\/contract-finance\/run\.sh "\$CI_SOURCE_SHA"/u
+    /"\$DYNAMIC_GROUP" == contract_finance_acceptance[^\n]*\n\s+if \[\[ "\$count" == 323 \]\]; then\n\s+exec bash \.github\/task12-install-295\/contract-finance\/run\.sh "\$CI_SOURCE_SHA" --current-320 "\$predecessor"\n\s+fi\n\s+exec bash \.github\/task12-install-295\/contract-finance\/run\.sh "\$CI_SOURCE_SHA"/u
   );
   assert.match(
     dynamic,

@@ -336,7 +336,13 @@ const reviewedBusinessTables = Object.freeze({
   ContractOfflineRevision: "测试合同线下修订",
   ContractNegotiationRound: "测试合同洽谈轮次",
   ContractDocumentComparison: "测试合同文书比对",
-  ContractDocumentDifference: "测试合同文书差异"
+  ContractDocumentDifference: "测试合同文书差异",
+  ContractSignedChange: "测试合同补充协议签署变更",
+  ContractWorkCompletion: "测试合同履约完工确认",
+  ContractWorkCompletionFact: "测试合同履约完工确认事实",
+  PaymentRequestAgreementSnapshot: "测试付款申请约定快照",
+  SignedContractSettlement: "测试已签结算登记",
+  SignedContractSettlementAttachment: "测试已签结算附件绑定"
 });
 
 const tables = [

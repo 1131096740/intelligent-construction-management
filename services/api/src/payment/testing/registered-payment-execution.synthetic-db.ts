@@ -111,6 +111,31 @@ export function createRegisteredPaymentSyntheticDb() {
       return [{revision:marker?.revision??null}];
     }
     if (sql.includes("registered_payment_voucher_catalog")) return [{ state: "installed" }];
+    if (sql.includes("jg_read_payment_detail_pdf_v1")) return [];
+    if (sql.includes("jg_read_payment_detail_allocations_v1")) return [];
+    if (sql.includes("jg_read_payment_detail_snapshots_v1")) return [];
+    if (sql.includes("jg_read_payment_contract_agreement_detail_v1")) {
+      const payment = await rows.paymentRequest.findFirst({ where: { id: args[0], projectId: args[1], contractId: args[2] } });
+      return payment ? [{ submittedText: null, currentText: null }] : [];
+    }
+    if (sql.includes("jg_read_payment_detail_activity_v1")) {
+      const [paymentId, projectId, contractId] = args;
+      const payment = await rows.paymentRequest.findFirst({ where: { id: paymentId, projectId, contractId } });
+      if (!payment) return [];
+      const activity = [
+        ...(await rows.paymentExecution.findMany({ where: { paymentRequestId: payment.id } })).map(row => ({
+          kind: "execution", id: row.id, amountCents: row.amountCents,
+          paidAt: row.paidAt ?? null, createdAt: row.createdAt ?? null,
+          executedByUserId: row.executedByUserId ?? null, voucherFileId: row.voucherFileId ?? null
+        })),
+        ...(await rows.financeRecord.findMany({ where: { paymentRequestId: payment.id } })).map(row => ({
+          kind: "finance", id: row.id, amountCents: row.amountCents,
+          paidAt: null, createdAt: null, executedByUserId: null, voucherFileId: null
+        }))
+      ];
+      return activity.sort((left, right) => String(left.kind).localeCompare(String(right.kind)) ||
+        Number(right.paidAt ?? 0) - Number(left.paidAt ?? 0));
+    }
     if (sql.includes("registered_payment_voucher_download")) {
       const voucher=await rows.registeredPaymentVoucher.findFirst({where:{fileId:args[0]}});
       if(!voucher)return [];

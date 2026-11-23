@@ -33,6 +33,9 @@ function completionFixture() {
       if(sql.includes("candidate_ids"))return [{replacementCount:0n,snapshotBytes:0n,maxSnapshotBytes:0}];
       if(sql.includes('FROM "Project"')||sql.includes('FROM "ProjectCloseAggregate"'))return [{id:"p1",projectId:"p1"}];
       if(sql.includes("pg_advisory"))return [];
+      // No confirmed ordinary-contract tax revision is modeled in this synthetic
+      // store, so the freeze reader reports none and the version facts stand.
+      if(sql.includes("jg_read_ordinary_contract_tax_fact_v1"))return [];
       throw new Error(`Unexpected synthetic DB query: ${sql.slice(0,160)}`);
     },
     projectCloseAggregate:{upsert:async()=>({projectId:"p1",revision:0}),update:async()=>({projectId:"p1",revision:1})},
