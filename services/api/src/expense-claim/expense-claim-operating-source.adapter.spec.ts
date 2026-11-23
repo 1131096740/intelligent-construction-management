@@ -221,7 +221,38 @@ describe("POL-06 expense operating source adapters", () => {
       })
     });
   });
-});
+
+  it("does not record a second cost when the expense claim belongs to an actual purchase batch", () => {
+    const mapped = new ExpenseClaimApprovalOperatingSourceAdapter().toOperatingFactInput(
+      snapshot("expense_claim_approval", "claim-batch-1", {
+        claimType: "incidental_expense",
+        incidentalExpenseCategory: "procurement_office_supplies",
+        actualPurchaseBatchId: "batch-1",
+        companyEntityId: "company-1",
+        applicantUserId: "buyer-1",
+        applicantNameSnapshot: "采购经办",
+        applicantPhoneSnapshot: "13800000002",
+        payeeNameSnapshot: "合成供应商",
+        requestedAmountCents: "300000",
+        companyPayableAmountCents: "300000",
+        approvedAt: "2026-11-20T01:00:00.000Z",
+        confirmedAt: "2026-11-20T02:00:00.000Z",
+        confirmedByUserId: "finance-director-1"
+      })
+    );
+
+    expect(mapped.input.impacts).toEqual([
+      expect.objectContaining({
+        impactKind: "payable_increase",
+        amountCents: 300000n,
+        subject: { kind: "downstream_counterparty", id: "downstream_counterparty:合成供应商" }
+      })
+    ]);
+    expect(mapped.input.impacts).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ impactKind: "confirmed_cost" })])
+    );
+  });
+})
 
 function snapshot(
   sourceType: string,

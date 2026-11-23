@@ -1,4 +1,5 @@
 import { ExpenseClaimFundingNotificationService } from "./expense-claim-funding-notification.service";
+import { ActualPurchaseBatchModule } from "../actual-purchase/actual-purchase-batch.module";
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { ApprovalModule } from "../approval/approval.module";
@@ -12,6 +13,7 @@ import { ExpenseClaimService } from "./expense-claim.service";
 
 @Module({
   imports: [
+    ActualPurchaseBatchModule,
     ApprovalModule,
     AuditModule,
     AuthModule,

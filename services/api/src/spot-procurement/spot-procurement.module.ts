@@ -1,6 +1,7 @@
 import { SpotPaymentExecutionNotificationService } from "./spot-payment-execution-notification.service";
 import { SpotProcurementReceiptReviewNotificationService } from "./spot-procurement-receipt-review-notification.service";
 import { Module } from "@nestjs/common";
+import { ActualPurchaseBatchModule } from "../actual-purchase/actual-purchase-batch.module";
 import { AuditModule } from "../audit/audit.module";
 import { ApprovalModule } from "../approval/approval.module";
 import { AuthModule } from "../auth/auth.module";
@@ -42,7 +43,8 @@ import { SpotProcurementPaymentArchiveService } from "./spot-procurement-payment
     BusinessEntryTransactionModule,
     BusinessEntryDefinitionModule,
     SpotProcurementClosureModule,
-    SpotProcurementAccessModule
+    SpotProcurementAccessModule,
+    ActualPurchaseBatchModule
   ],
   controllers: [
     SpotProcurementController,

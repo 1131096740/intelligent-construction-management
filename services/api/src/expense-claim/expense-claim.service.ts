@@ -1,4 +1,5 @@
 import { ExpenseClaimFundingNotificationService } from "./expense-claim-funding-notification.service";
+import { ActualPurchaseBatchService } from "../actual-purchase/actual-purchase-batch.service";
 import { prepareProcurementPayment } from "../general-procurement/general-procurement-payment";
 import { generalProcurementActor } from "../general-procurement/general-procurement-access";
 import { GENERAL_PROCUREMENT_PAYMENT_CATEGORIES } from "@jiangkong/shared-domain";
@@ -86,7 +87,8 @@ export class ExpenseClaimService {
     private readonly operatingSources: OperatingSourceAppendPort =
       missingOperatingSourceReplayService(),
     @Optional() private readonly approvalProgress?: ApprovalProgressService,
-    @Optional() private readonly fundingNotifications?: ExpenseClaimFundingNotificationService
+    @Optional() private readonly fundingNotifications?: ExpenseClaimFundingNotificationService,
+    @Optional() private readonly actualBatches?: ActualPurchaseBatchService
   ) {}
 
   async createOptions(actorUserId: string) {
@@ -223,7 +225,16 @@ export class ExpenseClaimService {
       if (!actor?.isActive) throw new ForbiddenException("当前办理人不存在或已停用");
       if (!company) throw new NotFoundException("使用单位不存在或已停用");
       if (input.projectId?.trim() && !project) throw new NotFoundException("项目不存在或已停用");
-      const procurementPayment = await prepareProcurementPayment(tx, this.prisma, actorUserId, input, requestedAmountCents);
+      const procurementPayment = await prepareProcurementPayment(
+        tx,
+        this.prisma,
+        actorUserId,
+        input,
+        requestedAmountCents,
+        this.actualBatches
+          ? async (client, batch) => this.actualBatches!.assertClaimCommitInTransaction(client, batch)
+          : undefined
+      );
       if (procurementPayment?.existing) {
         const existing = procurementPayment.existing;
         return { id: existing.id, code: existing.code, status: existing.status, requestedAmountCents: moneyCentsToApi(existing.requestedAmountCents) };
@@ -247,6 +258,7 @@ export class ExpenseClaimService {
       );
       const claim = await tx.expenseClaim.create({
         data: {
+          actualPurchaseBatchId: input.actualPurchaseBatchId ?? null,
           generalProcurementId: input.generalProcurementId ?? null,
           generalProcurementRequestKey: input.generalProcurementRequestKey ?? null,
           generalProcurementFingerprint: procurementPayment?.fingerprint ?? null,
@@ -930,8 +942,8 @@ export class ExpenseClaimService {
     const result = await translateProjectOperatingSerializationConflict(
       this.prisma.$transaction(async (tx) => {
       const claims = await tx.$queryRaw<Array<{
-        id: string; claimType: string; status: string; projectId: string | null; applicantUserId: string | null; handledByUserId: string; factWitnessUserId: string | null; requestedAmountCents: bigint; loanOffsetAmountCents: bigint; companyPayableAmountCents: bigint;
-      }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "applicantUserId", "handledByUserId", "factWitnessUserId", "requestedAmountCents", "loanOffsetAmountCents", "companyPayableAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
+        id: string; claimType: string; status: string; projectId: string | null; actualPurchaseBatchId: string | null; applicantUserId: string | null; handledByUserId: string; factWitnessUserId: string | null; requestedAmountCents: bigint; loanOffsetAmountCents: bigint; companyPayableAmountCents: bigint;
+      }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "actualPurchaseBatchId", "applicantUserId", "handledByUserId", "factWitnessUserId", "requestedAmountCents", "loanOffsetAmountCents", "companyPayableAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
       const claim = claims[0];
       if (!claim) throw new NotFoundException("费用申请不存在");
       if (claim.status !== "approval_pending") throw new BadRequestException("当前费用申请不可审批");
@@ -1014,6 +1026,14 @@ export class ExpenseClaimService {
           signatureVersionIdSnapshot: signature.versionId
         }, signature)
       });
+      if (completed && claim.actualPurchaseBatchId) {
+        await this.actualBatches?.confirmCostForClaimInTransaction(
+          tx,
+          claim.id,
+          actorUserId,
+          updated.approvedAt ?? new Date()
+        );
+      }
       if (
         completed &&
         claim.projectId &&

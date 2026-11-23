@@ -51,6 +51,8 @@ export class CreateExpenseClaimDto {
   generalProcurementId?: string;
   @IsOptional() @IsUUID("4", { message: "请款提交标识不正确" })
   generalProcurementRequestKey?: string;
+  @IsOptional() @IsUUID("4", { message: "实际采购批次编号不正确" })
+  actualPurchaseBatchId?: string;
 
   @IsIn(["reimbursement", "loan", "incidental_expense"], {
     message: "费用业务类型不正确"

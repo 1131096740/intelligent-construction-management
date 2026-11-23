@@ -52,6 +52,7 @@ import {
   type SpotProcurementPaymentPath,
   type UpdateSpotProcurementPaymentDraftDto
 } from "./dto/update-spot-procurement-payment-draft.dto";
+import { ActualPurchaseBatchService } from "../actual-purchase/actual-purchase-batch.service";
 import { SpotProcurementBalanceService } from "./spot-procurement-balance.service";
 import { SpotProcurementClosureService } from "./spot-procurement-closure.service";
 import {
@@ -238,7 +239,8 @@ export class SpotProcurementPaymentService {
     @Inject(OperatingSourceReplayService)
     private readonly operatingSources: OperatingSourceAppendPort =
       missingOperatingSourceReplayService(),
-    @Optional() private readonly paymentNotifications?: SpotPaymentExecutionNotificationService
+    @Optional() private readonly paymentNotifications?: SpotPaymentExecutionNotificationService,
+    @Optional() private readonly actualBatches?: ActualPurchaseBatchService
   ) {}
 
   async recordExecution(
@@ -495,6 +497,12 @@ export class SpotProcurementPaymentService {
             } 分`
           );
         }
+
+        await this.actualBatches?.assertSpotPaymentExecutionInTransaction(
+          tx,
+          payment.id,
+          amountCents
+        );
 
         const vouchers = isRealFormPayment
           ? await tx.fileObject.findMany({
@@ -1852,6 +1860,11 @@ export class SpotProcurementPaymentService {
           return this.paymentReadModel(payment);
         }
 
+        await this.actualBatches?.assertSpotPaymentCommitInTransaction(
+          tx,
+          payment.id,
+          payment.approvalAmountCents
+        );
         const now = new Date();
         await tx.approvalInstance.update({
           where: { id: approval.id },
@@ -1867,6 +1880,12 @@ export class SpotProcurementPaymentService {
             approvedAt: now
           }
         });
+        await this.actualBatches?.confirmCostForSpotPaymentInTransaction(
+          tx,
+          payment.id,
+          actorUserId,
+          now
+        );
         await this.recordReviewAudit(
           tx,
           actorUserId,
@@ -3690,29 +3709,41 @@ export class SpotProcurementPaymentService {
             select: { id: true }
           })
         ]);
+        const batchLinked = Boolean(payment.actualPurchaseBatchId);
         if (
           !payment.paymentType ||
           !payment.merchantNameSnapshot ||
           !payment.payeeNameSnapshot ||
-          !lines.length ||
+          (!batchLinked && !lines.length) ||
           !channels.length ||
           !methods.length ||
           channels.filter((channel) => channel.isPrimary).length !== 1
         ) {
           throw new BadRequestException("请完整填写付款商户、明细、收款对象、收款渠道和拟付款方式后再提交");
         }
-        if (siblingPayments.length) {
-          throw new ConflictException("同一材料申请已有活动付款，不能拆分或重复提交");
-        }
-        this.assertCompleteRealFormMaterialScope(procurementLines, lines);
-        const total = lines.reduce((sum, line) => sum + line.amountCents, 0n);
-        if (total <= 0n || total !== payment.approvalAmountCents) {
-          throw new ConflictException("付款申请金额与付款明细不一致，请刷新后重试");
-        }
-        if (total >= SPOT_MATERIAL_PAYMENT_LIMIT_CENTS) {
-          throw new BadRequestException(
-            "材料申请合计达到 3000 元，请重新走材料采购审批流程"
+        if (batchLinked) {
+          if (payment.approvalAmountCents <= 0n) {
+            throw new ConflictException("实际采购批次付款金额必须大于 0，请刷新后重试");
+          }
+          await this.actualBatches?.assertSpotPaymentCommitInTransaction(
+            tx,
+            payment.id,
+            payment.approvalAmountCents
           );
+        } else {
+          if (siblingPayments.length) {
+            throw new ConflictException("同一材料申请已有活动付款，不能拆分或重复提交");
+          }
+          this.assertCompleteRealFormMaterialScope(procurementLines, lines);
+          const total = lines.reduce((sum, line) => sum + line.amountCents, 0n);
+          if (total <= 0n || total !== payment.approvalAmountCents) {
+            throw new ConflictException("付款申请金额与付款明细不一致，请刷新后重试");
+          }
+          if (total >= SPOT_MATERIAL_PAYMENT_LIMIT_CENTS) {
+            throw new BadRequestException(
+              "材料申请合计达到 3000 元，请重新走材料采购审批流程"
+            );
+          }
         }
         await assertProjectApprovalNodesConfigured(tx, payment.projectId, paymentApprovalNodes(), payment.handlerUserId);
         const now = new Date();
@@ -3745,7 +3776,7 @@ export class SpotProcurementPaymentService {
             approvalInstanceId: approval.id,
             procurementId: payment.procurementId,
             procurementVersionId: payment.procurementVersionId,
-            approvalAmountCents: total.toString(),
+            approvalAmountCents: payment.approvalAmountCents.toString(),
             payerCompanyEntityId:
               payment.payerCompanyEntityId
           }
