@@ -90,6 +90,7 @@ export const RETIRED_WRITE_ENTRIES: readonly RetiredWriteEntry[] = [
   { controller: "ProjectController", handler: "recordReceipt" },
   { controller: "ProjectController", handler: "requestSettlementExceptionQuota" },
   { controller: "ProjectController", handler: "reviewSettlementExceptionQuota" },
+  { controller: "ProjectExpenseController", handler: "confirmPurchaseReceipt" },
   { controller: "SettlementController", handler: "create" },
   { controller: "SettlementController", handler: "remindApproval" },
   { controller: "SettlementTemplateGovernanceController", handler: "clone" },

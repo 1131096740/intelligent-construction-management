@@ -7,31 +7,31 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `0227dbadedb7c9b2c24d91e769749093ac6afa276034dbccef0b5988dd9ca853` |
-| webApiWrappers | ready | `fcd0a4c32219ee727a9ae55df61ba95cc99ad4e5fbf2f4bba309b9214a025dbd` |
-| webPageActions | ready | `18e4f9e839b05ec18843c8c0dfa6a3f484eae1ff0e48320a4b93cfb108f892d1` |
-| routeUsage | ready | `3f2635c3c645132ec449fbb0bf712eac4d70a1767bbaafd3ae5612b62faf1540` |
+| webApiWrappers | ready | `e5d40e9424df4e0ded6ebe875b9d6bbdf9f45a39af7f3fe5e5a917440c36dc35` |
+| webPageActions | ready | `e5643f9466eb9bb9aa2d8a54d9a955a9584aa21cf5801f08bde8babdb47a3c2d` |
+| routeUsage | ready | `a7c329a3b24ba9ea13f0e91c46c28accb8dbd9434c100501b013052f7d6242b2` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 879 |
-| pageRouteCount | 664 |
+| pageRouteCount | 663 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 91 |
+| exitCandidateRouteCount | 92 |
 | internalTaskRouteCount | 54 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 860 |
+| mainRequestBindingCount | 858 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 487 |
-| actionBindingCount | 588 |
-| acceptedActionBindingCount | 540 |
+| registeredActionCount | 486 |
+| actionBindingCount | 586 |
+| acceptedActionBindingCount | 539 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 477 |
-| coveredProductionMutationConsumerPairCount | 477 |
+| productionMutationConsumerPairCount | 476 |
+| coveredProductionMutationConsumerPairCount | 476 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -261,7 +261,7 @@
 | GET | /projects/:projectId/contract-takeovers/ledger-export | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractTakeoverLedgerExport | — | not_applicable | — |
 | GET | /projects/:projectId/contract-takeovers | external_takeover | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#listContractTakeovers | — | not_applicable | — |
 | GET | /projects/:projectId/cost-attributions | page | web_api_wrapper | apps/web-admin/src/api/cost-attribution.api.ts#fetchCostAttributions | — | not_applicable | — |
-| GET | /projects/:projectId/expense-requests/:expenseRequestId/approval-detail | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectExpenseReceiptWithPreflight<br>apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseApprovalDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseWithdrawalAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseFinanceWithPreflight | project-expense.execution-local-status<br>project-expense.finance-local-status<br>project-expense.receipt-confirm-local-status | not_applicable | — |
+| GET | /projects/:projectId/expense-requests/:expenseRequestId/approval-detail | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseApprovalDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseApprovalReviewAction<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareProjectExpenseWithdrawalAction<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecutionWithUpload<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseFinanceWithPreflight | project-expense.execution-local-status<br>project-expense.finance-local-status | not_applicable | — |
 | GET | /projects/:projectId/expense-requests/:expenseRequestId/capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseActionCapability | — | not_applicable | — |
 | GET | /projects/:projectId/expense-requests/create-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseCreateCapability | — | not_applicable | — |
 | GET | /projects/:projectId/expense-requests | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseRequests | — | not_applicable | — |
@@ -742,7 +742,7 @@
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/executions | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecution<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseExecutionWithUpload | project-expense.execution-local-status | covered | — |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/finance-records | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseFinance<br>apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpenseFinanceWithPreflight | project-expense.finance-local-status | covered | — |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/purchase-execution | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectExpensePurchaseExecution | project-expense.purchase-execution | covered | — |
-| POST | /projects/:projectId/expense-requests/:expenseRequestId/receipt-confirmation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmProjectExpenseReceiptWithPreflight | project-expense.receipt-confirm-local-status | covered | — |
+| POST | /projects/:projectId/expense-requests/:expenseRequestId/receipt-confirmation | exit_candidate | none | — | — | not_applicable | — |
 | POST | /projects/:projectId/expense-requests/:expenseRequestId/voiding | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#voidProjectExpenseRequest | project-expense.void | covered | — |
 | POST | /projects/:projectId/expense-requests/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadProjectExpensePrivateFile | project-expense.attachment-upload | covered | — |
 | POST | /projects/:projectId/expense-requests | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createProjectExpenseRequest | project-expense.create-local-role | covered | — |

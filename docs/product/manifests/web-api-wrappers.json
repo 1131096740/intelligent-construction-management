@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 56,
-    "exportedFunctionCount": 810,
-    "transportWrapperCount": 786,
-    "pureExportCount": 24,
-    "mainRequestBindingCount": 860,
+    "exportedFunctionCount": 806,
+    "transportWrapperCount": 785,
+    "pureExportCount": 21,
+    "mainRequestBindingCount": 858,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 816,
-    "productionConsumerCount": 695,
+    "requestEdgeCount": 814,
+    "productionConsumerCount": 694,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -6590,56 +6590,6 @@
       "unreachableConsumers": []
     },
     {
-      "name": "confirmProjectExpenseReceiptWithPreflight",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "transport",
-      "returnProvenance": "unverified",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 80,
-          "method": "GET",
-          "path": "/projects/:param/expense-requests/:param/approval-detail",
-          "normalizedPath": "/projects/:param/expense-requests/:param/approval-detail",
-          "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
-          "bodyKind": "none",
-          "localCallChains": [
-            [
-              "confirmProjectExpenseReceiptWithPreflight",
-              "executeProjectExpenseReceiptConfirmation",
-              "verifyProjectExpenseReceiptPreflight",
-              "fetchProjectExpenseApprovalDetail",
-              "readJson"
-            ]
-          ]
-        },
-        {
-          "kind": "main",
-          "sourceLine": 86,
-          "method": "POST",
-          "path": "/projects/:param/expense-requests/:param/receipt-confirmation",
-          "normalizedPath": "/projects/:param/expense-requests/:param/receipt-confirmation",
-          "normalizedKey": "POST /projects/:param/expense-requests/:param/receipt-confirmation",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "confirmProjectExpenseReceiptWithPreflight",
-              "executeProjectExpenseReceiptConfirmation",
-              "confirmProjectExpenseReceipt",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/pages/projects/project-expense-receipt-action.test.ts"
-      ],
-      "unreachableConsumers": []
-    },
-    {
       "name": "confirmProjectOwnerContract",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -6853,7 +6803,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6215,
+          "sourceLine": 5818,
           "method": "POST",
           "path": "/files/download-package",
           "normalizedPath": "/files/download-package",
@@ -7145,20 +7095,6 @@
       "unreachableConsumers": []
     },
     {
-      "name": "createProjectExpenseReceiptConfirmationAttemptState",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "pure",
-      "returnProvenance": "unverified",
-      "requests": [],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/pages/projects/project-expense-receipt-action.test.ts"
-      ],
-      "unreachableConsumers": []
-    },
-    {
       "name": "createProjectExpenseRequest",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -7314,7 +7250,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7974,
+          "sourceLine": 7577,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -7346,7 +7282,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7958,
+          "sourceLine": 7561,
           "method": "GET",
           "path": "/contracts/ledger-export?:param",
           "normalizedPath": "/contracts/ledger-export",
@@ -7376,7 +7312,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7958,
+          "sourceLine": 7561,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -7406,7 +7342,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 6327,
+          "sourceLine": 5930,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -7435,7 +7371,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7958,
+          "sourceLine": 7561,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -7465,7 +7401,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3053,
+          "sourceLine": 2998,
           "method": "POST",
           "path": "/operating-projections/export",
           "normalizedPath": "/operating-projections/export",
@@ -7495,7 +7431,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7958,
+          "sourceLine": 7561,
           "method": "GET",
           "path": "/payments/ledger-export?:param",
           "normalizedPath": "/payments/ledger-export",
@@ -7555,7 +7491,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 6186,
+          "sourceLine": 5789,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -7589,7 +7525,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4139,
+          "sourceLine": 4073,
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
@@ -7648,7 +7584,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 8001,
+          "sourceLine": 7604,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -7677,7 +7613,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7988,
+          "sourceLine": 7591,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -7706,7 +7642,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 8016,
+          "sourceLine": 7619,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -7735,7 +7671,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7958,
+          "sourceLine": 7561,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -7765,7 +7701,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7958,
+          "sourceLine": 7561,
           "method": "GET",
           "path": "/settlements/signed-ledger-export?:param",
           "normalizedPath": "/settlements/signed-ledger-export",
@@ -10713,32 +10649,6 @@
     },
     {
       "name": "projectExpenseFinanceFailureDisposition",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "pure",
-      "returnProvenance": "unverified",
-      "requests": [],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
-      ],
-      "testConsumers": [],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "projectExpenseReceiptCompletionIsAuthoritative",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "pure",
-      "returnProvenance": "unverified",
-      "requests": [],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/pages/projects/project-expense-receipt-action.test.ts"
-      ],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "projectExpenseReceiptFailureDisposition",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "pure",
       "returnProvenance": "unverified",
@@ -25534,10 +25444,6 @@
     {
       "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
       "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "confirmProjectExpenseReceiptWithPreflight"
-        },
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "fetchProjectExpenseApprovalDetail"
