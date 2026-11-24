@@ -39,7 +39,7 @@ async function withGuardedReplay(context, consume) {
     SELECT true,decode('${randomBytes(32).toString('hex')}','hex'),oid,'${role}'::regrole::oid
     FROM pg_database WHERE datname=current_database();
     GRANT EXECUTE ON FUNCTION ${readers.join(', ')} TO ${role};
-    GRANT SELECT ON public."ProjectOwnerSettlementEntry" TO ${role};
+    GRANT SELECT ON public."ProjectOwnerSettlementEntry",public."SignedContractSettlement" TO ${role};
     COMMIT;`);
   try {
     await consume({...context,replayDatabaseUrl:replayDatabaseUrl.href});
