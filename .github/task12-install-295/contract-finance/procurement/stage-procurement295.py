@@ -125,6 +125,18 @@ if current320:
         if text.count(anchor) != 1:
             raise ValueError('PROCUREMENT_320_PAYMENT_DETAIL_OBSERVATION_ANCHOR')
         text = text.replace(anchor, observation + anchor)
+        anchor = '  await ownerSql("ROLE_SETUP",defaultSetup);'
+        reads = r'''  const currentSetup=defaultSetup.replace(/\nCOMMIT;\s*$/u,`
+    GRANT SELECT (id,"paymentRequestId","paymentExecutionId","amountCents","receivedAt","fundRegistrationId")
+      ON public."PaymentExecutionRefund" TO project_business_scope_runtime;
+    GRANT SELECT ("paymentRequestId",status,"amountDeltaCents")
+      ON public."PaymentExecutionCorrection" TO project_business_scope_runtime;
+    COMMIT;`);
+  condition(currentSetup!==defaultSetup,"PROJECT_SCOPE_329_PAYMENT_DETAIL_READS");
+  await ownerSql("ROLE_SETUP",currentSetup);'''
+        if text.count(anchor) != 1:
+            raise ValueError('PROCUREMENT_320_PROJECT_READ_ANCHOR')
+        text = text.replace(anchor, reads)
     if lane == 'general16':
         anchor = '  await ownerSql("ROLE_SETUP",roleSetup("procurement",database,password));'
         reads = r'''  const originalSetup=roleSetup("procurement",database,password);
