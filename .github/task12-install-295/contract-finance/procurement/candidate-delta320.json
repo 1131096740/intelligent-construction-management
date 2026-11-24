@@ -47,7 +47,7 @@
   {
     "path": "apps/web-admin/e2e/spot-procurement-workbenches.e2e.ts",
     "expected": "6309ac5b274915f79c0f6e29d62b2a0d9214cdc74cf8496a9858d4737fdbc9cb",
-    "candidate": "7503dee666bb6197d0af00c28ee6b18c580b0ff2c3b89098e94551d875ddf34b"
+    "candidate": "01414d50b98ed824be1bf4a7f55bbab0b7823fb43c23b39f9ecc5ee1236eae53"
   },
   {
     "path": "apps/web-admin/e2e/v61-business-recovery.e2e.ts",

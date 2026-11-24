@@ -460,7 +460,7 @@ test("renders A4 application, A5 payment and historical receipt without legacy b
   await page.getByRole("button", { name: "新建采购申请" }).click();
   await page.getByRole("button", { name: "采购申请填写说明" }).hover();
   await expect(page.getByText("采购申请单号会在保存草稿时由系统自动生成。")).toBeVisible();
-  await expect(page.getByText("XM-001 · 一号项目", { exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "XM-001 · 一号项目", exact: true })).toBeVisible();
   await expect(page.getByText("系统申请单编号", { exact: true })).toHaveCount(0);
 
   await page.goto("/零星材料付款工作台");
