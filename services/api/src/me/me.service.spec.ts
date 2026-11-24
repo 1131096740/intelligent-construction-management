@@ -253,7 +253,7 @@ describe("MeService", () => {
     ]);
   });
 
-  it("creates distinct handler work items for offline sealing and final-file upload", async () => {
+  it("keeps the historical final-file upload task and omits independent seal completion", async () => {
     const prisma = {
       $queryRaw:jest.fn().mockResolvedValue([]),
       contractSealTask: { findMany: jest.fn().mockResolvedValue([
@@ -283,15 +283,14 @@ describe("MeService", () => {
     };
     const service = new MeService(prisma as never, {} as never);
     const items = await (service as unknown as {
-      contractSealHandlerWorkItems(
+      contractSealFinalUploadWorkItems(
         userId: string,
         names: ReadonlyMap<string, string>
       ): Promise<Array<{ currentNode: string; nextAction: string }>>;
-    }).contractSealHandlerWorkItems("handler-1", new Map([["project-1", "项目一"]]));
+    }).contractSealFinalUploadWorkItems("handler-1", new Map([["project-1", "项目一"]]));
 
-    expect(items.map((item) => item.currentNode)).toEqual(["线下签署盖章", "上传双方最终版"]);
+    expect(items.map((item) => item.currentNode)).toEqual(["上传双方最终版"]);
     expect(items.map((item) => item.nextAction)).toEqual([
-      "确认我方签署盖章完成",
       "上传双方最终签署 PDF"
     ]);
   });
@@ -2243,7 +2242,7 @@ describe("MeService", () => {
       projectNames(projectIds: string[]): Promise<Map<string, string>>;
       projectIdsFor(scopes: unknown[], actions: string[]): string[];
       contractArchiveWorkItems(...args: unknown[]): Promise<WorkItem[]>;
-      contractSealHandlerWorkItems(...args: unknown[]): Promise<WorkItem[]>;
+      contractSealFinalUploadWorkItems(...args: unknown[]): Promise<WorkItem[]>;
       contractFinalUploadSubstituteWorkItems(...args: unknown[]): Promise<WorkItem[]>;
       approvalWorkItems(scopes: unknown[], userId: string, mode: string, evaluatedAt: Date): Promise<WorkItem[]>;
     };
@@ -2254,7 +2253,7 @@ describe("MeService", () => {
     const archive = jest.spyOn(service, "contractArchiveWorkItems").mockResolvedValue([
       { businessType: "contract_version", businessId: "archive-1" }
     ] as WorkItem[]);
-    const handler = jest.spyOn(service, "contractSealHandlerWorkItems").mockResolvedValue([
+    const handler = jest.spyOn(service, "contractSealFinalUploadWorkItems").mockResolvedValue([
       { businessType: "contract_version", businessId: "seal-1" }
     ] as WorkItem[]);
     jest.spyOn(service, "contractFinalUploadSubstituteWorkItems").mockResolvedValue([
@@ -2271,8 +2270,10 @@ describe("MeService", () => {
       { businessType: "contract_version", businessId: "substitute-1" },
       { businessType: "contract_version", businessId: "approval-1" }
     ]));
-    expect(archive).toHaveBeenCalledTimes(4);
-    expect(archive.mock.calls.every((args) => args[8] === undefined)).toBe(true);
+    expect(archive.mock.calls.map((args) => args[1])).toEqual([
+      ["seal_approved_pending_archive"], ["pending_archive_confirm"]
+    ]);
+    expect(archive.mock.calls.every((args) => args[7] === undefined)).toBe(true);
     expect(handler).toHaveBeenCalledWith("contract-1", expect.any(Map), undefined);
   });
 
@@ -2290,14 +2291,14 @@ describe("MeService", () => {
       projectNames(): Promise<Map<string, string>>;
       contractV2LifecycleWorkItems(): Promise<{ pending: WorkItem[] }>;
       contractArchiveWorkItems(): Promise<WorkItem[]>;
-      contractSealHandlerWorkItems(): Promise<WorkItem[]>;
+      contractSealFinalUploadWorkItems(): Promise<WorkItem[]>;
       contractFinalUploadSubstituteWorkItems(): Promise<WorkItem[]>;
     };
     jest.spyOn(sources, "loadProjectRoleScopes").mockResolvedValue([]);
     jest.spyOn(sources, "projectNames").mockResolvedValue(new Map());
     jest.spyOn(sources, "contractV2LifecycleWorkItems").mockResolvedValue({ pending: [] });
     jest.spyOn(sources, "contractArchiveWorkItems").mockResolvedValue([]);
-    jest.spyOn(sources, "contractSealHandlerWorkItems").mockResolvedValue([]);
+    jest.spyOn(sources, "contractSealFinalUploadWorkItems").mockResolvedValue([]);
     jest.spyOn(sources, "contractFinalUploadSubstituteWorkItems").mockResolvedValue([]);
 
     await expect(service.getContractPendingWorkItems("handler")).resolves.toEqual([]);

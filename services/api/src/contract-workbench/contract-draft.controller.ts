@@ -4,10 +4,9 @@ import {
   Body,
   Controller,
   Delete,
-  forwardRef,
   Get,
+  GoneException,
   Headers,
-  Inject,
   Param,
   ParseUUIDPipe,
   Post,
@@ -21,7 +20,6 @@ import { createHash } from "node:crypto";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { ContractV2SubmissionService } from "../contract/contract-v2-submission.service";
-import { ContractService } from "../contract/contract.service";
 import { ContractDocumentService } from "../contract-document/contract-document.service";
 import { ContractCutoverSurface } from "../contract-cutover/contract-cutover.decorators";
 import {
@@ -46,8 +44,6 @@ export class ContractDraftController {
   constructor(
     private readonly aggregate: ContractDraftAggregateService,
     private readonly editLease: ContractDraftEditLeaseService,
-    @Inject(forwardRef(() => ContractService))
-    private readonly contracts: ContractService,
     private readonly deletion: PristineDraftDeletionService,
     private readonly documents: ContractDocumentService,
     private readonly v2Submission: ContractV2SubmissionService
@@ -174,9 +170,14 @@ export class ContractDraftController {
     @Body() body: SubmitContractDraftDto,
     @CurrentUser() user: AuthenticatedUser
   ) {
-    return body.submissionProtocolVersion === 2
-      ? this.v2Submission.submit(contractVersionId, user.id, body, leaseToken)
-      : this.contracts.submitApproval(contractVersionId, user.id, body, leaseToken);
+    if (body.submissionProtocolVersion !== 2) {
+      throw new GoneException({
+        statusCode: 410,
+        code: "OLD_WRITE_ENTRY_RETIRED",
+        message: "旧合同提交入口已停止使用，请刷新合同工作台后提交"
+      });
+    }
+    return this.v2Submission.submit(contractVersionId, user.id, body, leaseToken);
   }
 
   @Post(":contractVersionId/edit-lease")

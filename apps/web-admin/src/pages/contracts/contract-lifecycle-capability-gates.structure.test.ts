@@ -25,8 +25,6 @@ describe("contract lifecycle capability gates", () => {
   it.each([
     ["download_approval_form", "downloadContractApprovalFormWithCapability"],
     ["confirm_archive", "confirmContractArchiveWithCapability"],
-    ["approve_seal", "approveLegacyContractSealWithCapability"],
-    ["complete_seal", "completeContractSealWithCapability"],
     ["upload_final_contract", "associateContractFinalFileWithCapability"],
     ["return_final_contract", "returnContractFinalFileWithCapability"],
     ["confirm_final_contract", "confirmContractFinalFileWithCapability"],

@@ -84,6 +84,15 @@ describe("POL-19E retired write entry guard", () => {
     }))).toThrow(HttpException);
   });
 
+  it.each(["approveSeal", "approveGovernedSeal", "completeGovernedSeal"])(
+    "blocks the independent contract seal entry %s",
+    (handler) => {
+      expect(() => new RetiredWriteEntryGuard().canActivate(contextFor({
+        controller: "ContractController", handler
+      }))).toThrow(HttpException);
+    }
+  );
+
   it("covers every non-read-only exit candidate without an extra tombstone", () => {
     expect(
       RETIRED_WRITE_ENTRIES.map(

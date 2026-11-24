@@ -4,24 +4,24 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 879,
-    "classificationOverrideCount": 276,
-    "derivedProductionPageCount": 603,
-    "classificationOverrideSha256": "4597f15fbb5eedd90a45fd49184232a5ee96c23ac98df1f4f0fc8dd793a3e8a9",
-    "consumerSurfaceOverrideSha256": "c64094bda97716a57e411f568842c74595fab4dc275bb51928156402948108d5",
+    "classificationOverrideCount": 280,
+    "derivedProductionPageCount": 599,
+    "classificationOverrideSha256": "4dc333b5454ab01e2eacc72aa666a9065c55ff99d37b519481432d1edc22ae9c",
+    "consumerSurfaceOverrideSha256": "eca55802ee997184c86b317eda49e270db814a41a22c1866b2551f6e322bfa4d",
     "usageCounts": {
-      "page": 622,
+      "page": 618,
       "external_takeover": 70,
-      "exit_candidate": 122,
-      "internal_task": 65,
+      "exit_candidate": 125,
+      "internal_task": 66,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 674,
+      "web_api_wrapper": 670,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 2,
-      "operator_endpoint": 63,
-      "none": 133
+      "operator_endpoint": 64,
+      "none": 136
     }
   },
   "overrides": [
@@ -531,6 +531,24 @@
     },
     {
       "method": "POST",
+      "path": "/contracts/:contractVersionId/seal-approval",
+      "usage": "exit_candidate",
+      "reason": "issue_425_independent_contract_seal_write_closed_use_parallel_approval_seal_confirmation"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/seal/approve",
+      "usage": "exit_candidate",
+      "reason": "issue_425_independent_contract_seal_write_closed_use_parallel_approval_seal_confirmation"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/seal/complete",
+      "usage": "exit_candidate",
+      "reason": "issue_425_independent_contract_seal_write_closed_use_parallel_approval_seal_confirmation"
+    },
+    {
+      "method": "POST",
       "path": "/contracts/:contractVersionId/copies",
       "usage": "exit_candidate",
       "reason": "stage_d_c_p1_03_p1_04_readonly_isolation_candidate_only_no_deletion_authorization"
@@ -540,6 +558,12 @@
       "path": "/contracts/:contractVersionId/formal-files/approval",
       "usage": "exit_candidate",
       "reason": "issue_13_legacy_approval_upload_retired_candidate_only_no_deletion_authorization"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/readiness",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_contract_readiness_retained_for_controlled_diagnostics"
     },
     {
       "method": "POST",
@@ -1732,6 +1756,12 @@
       "path": "/health/readiness",
       "consumerSurface": "machine_probe",
       "reason": "deployment_and_runtime_database_readiness_monitoring"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/readiness",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_legacy_contract_readiness_retained_for_controlled_diagnostics"
     },
     {
       "method": "POST",

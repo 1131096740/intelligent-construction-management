@@ -131,9 +131,6 @@ import {
   generateContractPdfArchive,
   generatePaymentPdfArchive,
   generateSettlementPdfArchive,
-  approveContractSeal,
-  approveGovernedContractSeal,
-  completeContractSeal,
   executeContractSigningMaterialChange,
   uploadMutuallySignedContract,
   returnMutuallySignedContractForCorrection,
@@ -642,13 +639,6 @@ describe("core flow read API client", () => {
       json: async () => ({ status: "ok" })
     } as Response);
 
-    await approveGovernedContractSeal("version/1", { confirmationPassword: "current-password" });
-    await completeContractSeal("version/1", {
-      firstPartySignedOrStamped: true,
-      companySealCompleted: true,
-      crossPageSealCompleted: true,
-      signingDateCompleted: true
-    });
     await uploadMutuallySignedContract("version/1", {
       fileId: "file-1",
       sourceRevision: 3,
@@ -674,8 +664,6 @@ describe("core flow read API client", () => {
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
-      "/api/contracts/version%2F1/seal/approve",
-      "/api/contracts/version%2F1/seal/complete",
       "/api/contracts/version%2F1/formal-files/final",
       "/api/contracts/version%2F1/formal-files/final/return",
       "/api/contracts/version%2F1/formal-files/final/confirmation"
@@ -2978,7 +2966,6 @@ describe("core flow read API client", () => {
     await delegateContractApproval("contract-version-1", {
       toUserId: "contract-delegate-user"
     });
-    await approveContractSeal("contract-version-1");
     await reviewSettlementApproval("settlement-1", {
       decision: "approve",
       selfReviewReason: "不会在非自审页面生成",
@@ -2997,7 +2984,6 @@ describe("core flow read API client", () => {
       "/api/contracts/contract-version-1/approval-reminder",
       "/api/contracts/contract-version-1/approval-transfer",
       "/api/contracts/contract-version-1/approval-delegation",
-      "/api/contracts/contract-version-1/seal-approval",
       "/api/settlements/settlement-1/approval",
       "/api/settlements/settlement-1/approval-reminder",
       "/api/settlements/settlement-1/approval-transfer",
@@ -3005,7 +2991,7 @@ describe("core flow read API client", () => {
     ]);
     expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
     expect(fetchMock.mock.calls.slice(1).every((call) => call[1]?.method === "POST")).toBe(true);
-    expect(fetchMock.mock.calls[5][1]?.body).toBe(
+    expect(fetchMock.mock.calls[4][1]?.body).toBe(
       JSON.stringify({
         decision: "approve",
         selfReviewReason: "不会在非自审页面生成",

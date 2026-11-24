@@ -1286,31 +1286,6 @@
       ]
     },
     {
-      "id": "contract-workbench.check-submission-readiness",
-      "usage": "background",
-      "routePaths": [
-        "/合同工作台/:contractId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "checkContractSubmissionReadinessWithCapability"
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "operationCapabilities.draftOperationAvailableActions",
-        "key": "check_contract_submission_readiness"
-      },
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "name": "checkContractSubmissionReadiness"
-        }
-      ]
-    },
-    {
       "id": "contract-workbench.confirm-settlement-mode",
       "usage": "background",
       "routePaths": [
@@ -1909,81 +1884,6 @@
         {
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "name": "delegateContractApproval"
-        }
-      ]
-    },
-    {
-      "id": "contract-seal.approve-legacy",
-      "usage": "background",
-      "routePaths": [
-        "/合同管理/:contractId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "approveLegacyContractSealWithCapability"
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActionKeys",
-        "key": "approve_seal"
-      },
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "approveContractSeal"
-        }
-      ]
-    },
-    {
-      "id": "contract-seal.approve-governed",
-      "usage": "background",
-      "routePaths": [
-        "/合同管理/:contractId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "approveGovernedContractSealWithCapability"
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActionKeys",
-        "key": "approve_seal"
-      },
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "approveGovernedContractSeal"
-        }
-      ]
-    },
-    {
-      "id": "contract-seal.complete",
-      "usage": "background",
-      "routePaths": [
-        "/合同管理/:contractId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "completeContractSealWithCapability"
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActionKeys",
-        "key": "complete_seal"
-      },
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "completeContractSeal"
         }
       ]
     },

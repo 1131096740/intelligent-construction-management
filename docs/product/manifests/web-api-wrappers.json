@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 56,
-    "exportedFunctionCount": 788,
-    "transportWrapperCount": 767,
+    "exportedFunctionCount": 785,
+    "transportWrapperCount": 764,
     "pureExportCount": 21,
-    "mainRequestBindingCount": 838,
+    "mainRequestBindingCount": 835,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 796,
-    "productionConsumerCount": 655,
+    "requestEdgeCount": 793,
+    "productionConsumerCount": 651,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -3136,9 +3136,7 @@
       "testConsumers": [
         "apps/web-admin/src/api/contract-workbench.api.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-      ],
+      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -6021,66 +6019,6 @@
       "unreachableConsumers": []
     },
     {
-      "name": "approveContractSeal",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 86,
-          "method": "POST",
-          "path": "/contracts/:param/seal-approval",
-          "normalizedPath": "/contracts/:param/seal-approval",
-          "normalizedKey": "POST /contracts/:param/seal-approval",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "approveContractSeal",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
-      ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-      ],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "approveGovernedContractSeal",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 86,
-          "method": "POST",
-          "path": "/contracts/:param/seal/approve",
-          "normalizedPath": "/contracts/:param/seal/approve",
-          "normalizedKey": "POST /contracts/:param/seal/approve",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "approveGovernedContractSeal",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
-      ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-      ],
-      "unreachableConsumers": []
-    },
-    {
       "name": "archiveSignedContractV2",
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "kind": "transport",
@@ -6227,36 +6165,6 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/settings/HandwrittenSignaturePage.vue"
-      ],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "completeContractSeal",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 86,
-          "method": "POST",
-          "path": "/contracts/:param/seal/complete",
-          "normalizedPath": "/contracts/:param/seal/complete",
-          "normalizedKey": "POST /contracts/:param/seal/complete",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "completeContractSeal",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
-      ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
       ],
       "unreachableConsumers": []
     },
@@ -7222,7 +7130,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7560,
+          "sourceLine": 7538,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -7254,7 +7162,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7544,
+          "sourceLine": 7522,
           "method": "GET",
           "path": "/contracts/ledger-export?:param",
           "normalizedPath": "/contracts/ledger-export",
@@ -7284,7 +7192,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7544,
+          "sourceLine": 7522,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -7343,7 +7251,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7544,
+          "sourceLine": 7522,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -7403,7 +7311,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7544,
+          "sourceLine": 7522,
           "method": "GET",
           "path": "/payments/ledger-export?:param",
           "normalizedPath": "/payments/ledger-export",
@@ -7556,7 +7464,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7587,
+          "sourceLine": 7565,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -7585,7 +7493,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7574,
+          "sourceLine": 7552,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -7614,7 +7522,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7602,
+          "sourceLine": 7580,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -7643,7 +7551,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7544,
+          "sourceLine": 7522,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -7673,7 +7581,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7544,
+          "sourceLine": 7522,
           "method": "GET",
           "path": "/settlements/signed-ledger-export?:param",
           "normalizedPath": "/settlements/signed-ledger-export",
@@ -24190,6 +24098,12 @@
       "wrapper": "uploadContractNegotiationRevision",
       "classification": "test_only",
       "reason": "Contract negotiation flow retired in #13; wrappers have no production consumer and are retained for tests and read-only history."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "wrapper": "checkContractSubmissionReadiness",
+      "classification": "test_only",
+      "reason": "Issue #425: V2 submission uses generated-document and frozen-party validation; V1 readiness is no longer a Web submission step."
     },
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",

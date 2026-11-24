@@ -851,27 +851,7 @@ export class MeService {
         projectNameById
       )),
       ...contractLifecyclePending,
-      ...(await this.contractArchiveWorkItems(
-        this.projectIdsFor(scopes, ["contract.seal"]),
-        ["approved_pending_seal"],
-        projectNameById,
-        "待同意用章",
-        "核对审批结果后同意经办人线下取章",
-        "warning",
-        undefined,
-        "governed"
-      )),
-      ...(await this.contractArchiveWorkItems(
-        this.projectIdsFor(scopes, ["contract.seal"]),
-        ["approved_pending_seal"],
-        projectNameById,
-        "待确认用章",
-        "确认后上传盖章合同",
-        "warning",
-        undefined,
-        "legacy"
-      )),
-      ...(await this.contractSealHandlerWorkItems(
+      ...(await this.contractSealFinalUploadWorkItems(
         userId,
         projectNameById
       )),
@@ -1207,23 +1187,15 @@ export class MeService {
     const projectNameById = await this.projectNames(projectIds);
     const pending = [
       ...(await this.contractV2LifecycleWorkItems(userId, projectIds, projectNameById)).pending,
-      ...(await this.contractArchiveWorkItems(
-        this.projectIdsFor(scopes, ["contract.seal"]), ["approved_pending_seal"], projectNameById,
-        "待同意用章", "核对审批结果后同意经办人线下取章", "warning", undefined, "governed", undefined
-      )),
-      ...(await this.contractArchiveWorkItems(
-        this.projectIdsFor(scopes, ["contract.seal"]), ["approved_pending_seal"], projectNameById,
-        "待确认用章", "确认后上传盖章合同", "warning", undefined, "legacy", undefined
-      )),
-      ...(await this.contractSealHandlerWorkItems(userId, projectNameById, undefined)),
+      ...(await this.contractSealFinalUploadWorkItems(userId, projectNameById, undefined)),
       ...(await this.contractFinalUploadSubstituteWorkItems(userId, projectIds, projectNameById)),
       ...(await this.contractArchiveWorkItems(
         this.projectIdsFor(scopes, ["contract.archive.upload"]), ["seal_approved_pending_archive"], projectNameById,
-        "上传盖章合同", "上传后等待合同部主管确认归档", "primary", undefined, undefined, undefined
+        "上传盖章合同", "上传后等待合同部主管确认归档", "primary", undefined, undefined
       )),
       ...(await this.contractArchiveWorkItems(
         this.projectIdsFor(scopes, ["contract.archive.confirm"]), ["pending_archive_confirm"], projectNameById,
-        "确认合同归档", "确认后合同版本生效", "warning", userId, undefined, undefined
+        "确认合同归档", "确认后合同版本生效", "warning", userId, undefined
       )),
       ...(await this.approvalWorkItems(scopes, userId, "pending", evaluatedAt, "contract"))
     ];
@@ -2223,7 +2195,6 @@ export class MeService {
     nextAction: string,
     tone: WorkbenchCardTone,
     actorUserId?: string,
-    governanceMode?: "governed" | "legacy",
     limit: number | undefined = 30
   ): Promise<WorkItem[]> {
     if (!projectIds.length) {
@@ -2239,12 +2210,7 @@ export class MeService {
       ? await this.prisma.contractVersion.findMany({
           where: {
             contractId: { in: contracts.map((contract) => contract.id) },
-            status: { in: statuses },
-            ...(governanceMode === "governed"
-              ? { contractGovernanceVersion: 1 }
-              : governanceMode === "legacy"
-                ? { contractGovernanceVersion: null }
-                : {})
+            status: { in: statuses }
           },
           orderBy: { updatedAt: "desc" },
           ...(limit === undefined ? {} : { take: limit }),
@@ -2310,13 +2276,13 @@ export class MeService {
     });
   }
 
-  private async contractSealHandlerWorkItems(
+  private async contractSealFinalUploadWorkItems(
     userId: string,
     projectNameById: ReadonlyMap<string, string>,
     limit: number | undefined = 30
   ): Promise<WorkItem[]> {
     const tasks = await this.prisma.contractSealTask?.findMany({
-      where: { handlerUserId: userId, status: { in: ["in_seal", "completed"] } },
+      where: { handlerUserId: userId, status: "completed" },
       orderBy: { updatedAt: "desc" },
       ...(limit === undefined ? {} : { take: limit })
     }) ?? [];
@@ -2324,7 +2290,7 @@ export class MeService {
     const versions = await this.prisma.contractVersion.findMany({
       where: {
         id: { in: tasks.map((item) => item.contractVersionId) },
-        status: { in: ["in_seal", "seal_approved_pending_archive"] }
+        status: "seal_approved_pending_archive"
       },
       select: { id: true, contractId: true, status: true, amountCents: true, numericProtocolVersion: true, signingSubjectType: true, updatedAt: true }
     });
@@ -2341,7 +2307,7 @@ export class MeService {
       const contract = contractById.get(version.contractId);
       if (!contract) return [];
       const code = contract.code ?? contract.temporaryCode ?? contract.id;
-      const completing = version.status === "in_seal";
+      if (version.status !== "seal_approved_pending_archive") return [];
       return [{
         id: `contract-seal-handler:${version.id}`,
         type: "archive" as const,
@@ -2351,10 +2317,10 @@ export class MeService {
         projectName: projectNameById.get(contract.projectId) ?? contract.projectId,
         businessCode: code,
         amountText: this.amountText(version.amountCents),
-        currentNode: completing ? "线下签署盖章" : "上传双方最终版",
+        currentNode: "上传双方最终版",
         [workItemNoticeAt]: version.updatedAt,
         stayedText: this.stayedText(version.updatedAt),
-        nextAction: completing ? "确认我方签署盖章完成" : "上传双方最终签署 PDF",
+        nextAction: "上传双方最终签署 PDF",
         targetPath: `/合同管理/${code}`,
         tone: "primary" as const
       }];

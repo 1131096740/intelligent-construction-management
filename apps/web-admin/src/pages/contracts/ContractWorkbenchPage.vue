@@ -924,16 +924,13 @@
     <SensitiveActionDialog
       v-model="submissionConfirmVisible"
       title="确认提交合同审批？"
-      :description="workbench?.version.numericProtocolVersion === 2 ? '系统将保存当前资料，核对已检查的正文及同版Word和PDF，提交内部并联审批；双方签章在线下审批后办理。' : '系统将先保存草稿，检查双方授权、乙方签章文件确认和审批人员，全部通过后才会冻结并提交。'"
+      description="系统将保存当前资料，核对已检查的正文及同版Word和PDF，提交内部并联审批。双方签章在审批后线下办理。"
       confirm-text="确认提交审批"
       :loading="submissionBusy"
       :error="submissionError"
       @confirm="confirmSubmission"
     >
-      <label
-        v-if="workbench?.version.numericProtocolVersion === 2"
-        class="field"
-      >
+      <label class="field">
         <span>本次提交的生成文件</span>
         <t-select
           v-model="selectedSubmissionDocumentId"
@@ -1106,7 +1103,6 @@ import { formatUnknownApiError } from "../../api/error-message";
 import { useAuthStore } from "../../auth/auth.store";
 import {
   applyContractTypeChange,
-  checkContractSubmissionReadiness,
   confirmContractSettlementMode,
   executeContractBillRemainderCancellation,
   fetchContractDraftBody,
@@ -1149,19 +1145,6 @@ async function assertCurrentContractDraftOperationCapability(
   if (!operationCapabilities.draftOperationAvailableActions.includes(operation)) {
     throw new ContractDraftAuthorityRefreshRequiredError(deniedMessage);
   }
-}
-
-async function checkContractSubmissionReadinessWithCapability(
-  contractVersionId: string,
-  expectedRevision: number
-) {
-  await assertCurrentContractDraftOperationCapability(
-    contractVersionId,
-    expectedRevision,
-    "check_contract_submission_readiness",
-    "当前用户不能检查合同提交条件"
-  );
-  return checkContractSubmissionReadiness(contractVersionId);
 }
 
 async function confirmContractSettlementModeWithCapability(
@@ -2806,23 +2789,22 @@ async function requestSubmission() {
   selectedSubmissionDocumentId.value = "";
   submissionDocumentOptions.value = [];
   const current = workbench.value;
-  if (current?.version.numericProtocolVersion === 2) {
-    const receipt = bodyBlankReviewReceipt.value;
-    if (!receipt || isDirty.value) {
-      submissionMessageTone.value = "error";
-      submissionMessage.value = "请先检查当前保存版本的正文空位；确认后可继续，未填写空位不必强行补齐。";
-      return;
-    }
-    try {
-      const matching = matchingSubmissionDocuments(current, receipt.sourceSha256, await listContractDocuments(current.version.id));
-      if (receipt !== bodyBlankReviewReceipt.value || current.version.id !== workbench.value?.version.id) return;
-      submissionDocumentOptions.value = matching.map((document, index) => ({ value: document.id, label: `第${index + 1}份当前Word/PDF` }));
-      if (matching.length === 1) selectedSubmissionDocumentId.value = matching[0].id;
-    } catch (cause) {
-      submissionMessageTone.value = "error";
-      submissionMessage.value = formatUnknownApiError(cause, "当前生成文件读取失败，请保留草稿后重试。");
-      return;
-    }
+  if (current?.version.numericProtocolVersion !== 2) return;
+  const receipt = bodyBlankReviewReceipt.value;
+  if (!receipt || isDirty.value) {
+    submissionMessageTone.value = "error";
+    submissionMessage.value = "请先检查当前保存版本的正文空位；确认后可继续，未填写空位不必强行补齐。";
+    return;
+  }
+  try {
+    const matching = matchingSubmissionDocuments(current, receipt.sourceSha256, await listContractDocuments(current.version.id));
+    if (receipt !== bodyBlankReviewReceipt.value || current.version.id !== workbench.value?.version.id) return;
+    submissionDocumentOptions.value = matching.map((document, index) => ({ value: document.id, label: `第${index + 1}份当前Word/PDF` }));
+    if (matching.length === 1) selectedSubmissionDocumentId.value = matching[0].id;
+  } catch (cause) {
+    submissionMessageTone.value = "error";
+    submissionMessage.value = formatUnknownApiError(cause, "当前生成文件读取失败，请保留草稿后重试。");
+    return;
   }
   submissionConfirmVisible.value = true;
 }
@@ -2881,45 +2863,27 @@ async function confirmSubmission() {
   const reviewedBody = bodyBlankReviewReceipt.value;
   const selectedDocumentId = selectedSubmissionDocumentId.value;
   try {
-    const current = await prepareGovernanceMutation();
-    if (!current) throw new Error("草稿保存失败，本次未提交审批。");
-    const readiness = await checkContractSubmissionReadinessWithCapability(
-      current.version.id,
-      current.version.draftRevision
-    ) as {
-      ready?: boolean;
-      blocking?: unknown[];
-      blockingMessages?: string[];
-    };
-    await loadExpectedWorkbench(contractId.value);
-    const blocking = structuredMessages(readiness.blocking) ?? stringMessages(readiness.blockingMessages);
-    if (!readiness.ready || blocking.length) {
-      selectWorkbenchSection("inspection");
-      throw new Error(blocking[0] ?? "合同尚未满足提交条件，请按就绪检查补齐资料。");
+    const latest = await prepareGovernanceMutation();
+    if (!latest) throw new Error("草稿保存失败，本次未提交审批。");
+    if (latest.version.numericProtocolVersion !== 2) throw new Error("旧版草稿提交已停止，请联系合同部核对原记录");
+    const body = await fetchContractDraftBody(latest.version.id);
+    const remaining = body.blocks.flatMap((block, index) => block.editable && block.blankFields.length
+      ? [{ positionId: block.id, number: index + 1, labels: block.blankFields }] : []);
+    if (!reviewedBody || reviewedBody.contractVersionId !== latest.version.id || reviewedBody.draftRevision !== latest.version.draftRevision ||
+      reviewedBody.documentContentFingerprint !== latest.version.documentContentFingerprint ||
+      reviewedBody.documentContentRevision !== latest.version.documentContentRevision || body.documentContentRevision !== reviewedBody.documentContentRevision ||
+      body.contractVersionId !== reviewedBody.contractVersionId || body.draftRevision !== reviewedBody.draftRevision ||
+      body.layoutTemplateVersionId !== reviewedBody.layoutTemplateVersionId || latest.version.layoutTemplateVersionId !== reviewedBody.layoutTemplateVersionId ||
+      body.sourceSha256 !== reviewedBody.sourceSha256 || JSON.stringify(remaining) !== JSON.stringify(reviewedBody.remaining) ||
+      JSON.stringify(model.extraDraftData.documentBody ?? null) !== reviewedBody.planJson || !latest.version.documentContentFingerprint) {
+      throw new Error("请在合同正文检查当前保存版本的空位；确认后可继续，未填写空位不必强行补齐。");
     }
-    const latest = workbench.value;
-    if (!latest) throw new Error("当前合同版本读取失败，本次未提交。");
-    let intent: ContractDraftV2SubmissionIntent | undefined;
-    if (latest.version.numericProtocolVersion === 2) {
-      const body = await fetchContractDraftBody(latest.version.id);
-      const remaining = body.blocks.flatMap((block, index) => block.editable && block.blankFields.length
-        ? [{ positionId: block.id, number: index + 1, labels: block.blankFields }] : []);
-      if (!reviewedBody || reviewedBody.contractVersionId !== latest.version.id || reviewedBody.draftRevision !== latest.version.draftRevision ||
-        reviewedBody.documentContentFingerprint !== latest.version.documentContentFingerprint ||
-        reviewedBody.documentContentRevision !== latest.version.documentContentRevision || body.documentContentRevision !== reviewedBody.documentContentRevision ||
-        body.contractVersionId !== reviewedBody.contractVersionId || body.draftRevision !== reviewedBody.draftRevision ||
-        body.layoutTemplateVersionId !== reviewedBody.layoutTemplateVersionId || latest.version.layoutTemplateVersionId !== reviewedBody.layoutTemplateVersionId ||
-        body.sourceSha256 !== reviewedBody.sourceSha256 || JSON.stringify(remaining) !== JSON.stringify(reviewedBody.remaining) ||
-        JSON.stringify(model.extraDraftData.documentBody ?? null) !== reviewedBody.planJson || !latest.version.documentContentFingerprint) {
-        throw new Error("请在合同正文检查当前保存版本的空位；确认后可继续，未填写空位不必强行补齐。");
-      }
-      const documents = await listContractDocuments(latest.version.id);
-      const selected = matchingSubmissionDocuments(latest, body.sourceSha256, documents).find(document => document.id === selectedDocumentId);
-      if (!selected) throw new Error("请先核对并选择当前正文的Word和PDF生成记录，再提交审批。");
-      intent = { expectedRevision: latest.version.draftRevision, submissionProtocolVersion: 2,
-        documentContentRevision: body.documentContentRevision, documentContentFingerprint: latest.version.documentContentFingerprint,
-        generatedDocumentId: selected.id, sourceSha256: body.sourceSha256, blanksReviewed: true };
-    }
+    const documents = await listContractDocuments(latest.version.id);
+    const selected = matchingSubmissionDocuments(latest, body.sourceSha256, documents).find(document => document.id === selectedDocumentId);
+    if (!selected) throw new Error("请先核对并选择当前正文的Word和PDF生成记录，再提交审批。");
+    const intent: ContractDraftV2SubmissionIntent = { expectedRevision: latest.version.draftRevision, submissionProtocolVersion: 2,
+      documentContentRevision: body.documentContentRevision, documentContentFingerprint: latest.version.documentContentFingerprint,
+      generatedDocumentId: selected.id, sourceSha256: body.sourceSha256, blanksReviewed: true };
     const submitted = await submitNow(intent);
     if (!submitted) {
       throw new Error("合同草稿未能以当前修订提交，请核对保存状态和编辑租约。");

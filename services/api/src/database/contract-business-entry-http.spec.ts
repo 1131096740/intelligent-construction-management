@@ -17,6 +17,7 @@ import { SEED_LAYOUT_FONT } from "../contract-document/seed-layout-docx-source";
 import { PrismaService } from "./prisma.service";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { createApiValidationPipe } from "../validation/api-validation";
+import { contractRoundSubmissionSnapshot } from "../contract/contract-parallel-duty-access";
 import { openSignedSettlementQualification } from "./signed-settlement-qualification.test-support";
 
 const enabled = process.env.RUN_POL114_HTTP_PG16 === "1";
@@ -28,7 +29,8 @@ const { createSignedChangeQualification } = createRequire(__filename)("../../pri
 type Identified = { id: string };
 type CreatedDraft = { version: Identified; contract: Identified };
 type Workbench = {
-  version: { draftRevision: number };
+  version: { draftRevision: number; documentContentRevision: number; documentContentFingerprint: string };
+  documents?: Array<Identified & { status: string; docxFileId?: string; pdfFileId?: string }>;
   businessEntry: { definition: BusinessEntrySceneDefinition; values: Record<string, unknown> };
   templateEntry?: { definition: BusinessEntrySceneDefinition; values: Record<string, unknown> };
   billEntries?: Array<{ billKey: string; definition: BusinessEntrySceneDefinition }>;
@@ -39,7 +41,7 @@ type Workbench = {
   };
   bills: Array<{ id: string; billKey: string; revision: number; rows: Array<Record<string, unknown>> }>;
 };
-type Submission = { approvalInstanceId: string; draftRevision: number; businessEntrySnapshot: BusinessEntryFrozenSnapshot; templateEntrySnapshot: BusinessEntryFrozenSnapshot; billEntrySnapshots: BusinessEntryFrozenSnapshot[]; partyEntrySnapshots: BusinessEntryFrozenSnapshot[]; commercialEntrySnapshot: BusinessEntryFrozenSnapshot; paymentTermsEntrySnapshot: BusinessEntryFrozenSnapshot; paymentStageEntrySnapshots: BusinessEntryFrozenSnapshot[] };
+type Submission = { contractVersionId: string; approvalInstanceId: string; formalCode: string; status: string };
 if (enabled) {
   const url = new URL(process.env.DATABASE_URL ?? "");
   if (process.env.NODE_ENV === "production" ||
@@ -143,6 +145,7 @@ if (enabled) {
         method,
         headers: {
           "content-type": "application/json",
+          "x-contract-numeric-protocol": "2",
           ...(leaseToken ? { "x-contract-draft-lease": leaseToken } : {}),
           ...(token ? { authorization: `Bearer ${token}` } : {})
         },
@@ -238,7 +241,7 @@ if (enabled) {
       changeSummary: "合成数据公开接口验证"
     } });
     const template = { version: { id: templateVersion.id } };
-    const draft = await request<CreatedDraft>("POST", "/contracts", {
+    let draft = await request<CreatedDraft>("POST", "/contracts", {
       projectId: project.id, contractTypeKey,
       businessTemplateVersionId: template.version.id, signingSubjectType: "our_company"
     });
@@ -300,7 +303,7 @@ if (enabled) {
       expect.objectContaining({ id: companyRecord.id, unifiedSocialCreditCode: creditCode })
     ]));
     const company = { id: companyRecord.id };
-    if (paymentFinance) {
+    if (paymentFinance || entryMode === "aggregate") {
       const values = { name: `公开链合成施工企业-${randomUUID()}` };
       const idempotencyKey = randomUUID();
       const fingerprint = createHash("sha256").update(JSON.stringify({ attachments: [], name: values.name, type: "organization" })).digest("hex");
@@ -352,7 +355,7 @@ if (enabled) {
     zip.file("word/document.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${sourceParagraphs}<w:sectPr/></w:body></w:document>`);
     const docx = await upload("合成合同版式.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", zip.generate({ type: "nodebuffer" }));
     const layout = await request<{ version: Identified }>("POST", "/contract-layout-templates", {
-      name: "合成合同版式", contractTypeKey, docxFileId: docx.id, placeholderSchema: { bills: [] }
+      name: "合成合同版式", contractTypeKey: contractTypeKey === "generic_contract" && entryMode === "aggregate" ? "other" : contractTypeKey, docxFileId: docx.id, placeholderSchema: { bills: [] }
     });
     const layoutPath = `/contract-layout-template-versions/${layout.version.id}`;
     const positions = await request<{
@@ -397,7 +400,6 @@ if (enabled) {
       draft: {
         companyEntityId: company.id, draftData: { contractName: "合成材料采购合同", fieldValues: { deliveryLocation: "合成仓库", adjustment: "-1.234e-7" } },
         clauses: [], pricingNature: "fixed_total", amountSource: "manual", manualAmountCents: "500000",
-        layoutTemplateVersionId: layout.version.id,
         taxFacts: { invoiceType: "vat_general", taxMode: "single_rate", defaultTaxRatePercent: "13", source: "contract_document" }
       },
       parties: [{ roleKey: "party_b", displayOrder: 0, ...(controlledCounterpartyVersionId?{businessPartyVersionId:controlledCounterpartyVersionId}:{}), snapshot: { name: "合成材料供应商" } }],
@@ -414,6 +416,13 @@ if (enabled) {
     };
     await request("PUT", `/contract-drafts/${draft.version.id}`, completeDraftInput, lease.token);
     let current = await request<Workbench>("GET", `/contract-drafts/${draft.version.id}/workbench`);
+    expect(current.bills).toEqual(expect.arrayContaining([expect.objectContaining({
+      billKey: "reference", rows: expect.arrayContaining([expect.objectContaining({
+        itemName: "合成材料", quantity: expect.stringMatching(/^2(?:\.0+)?$/u),
+        unitPrice: expect.stringMatching(/^10(?:\.0+)?$/u), customData: { brand: "合成品牌" }
+      })])
+    })]));
+    expect(current.templateEntry?.values).toMatchObject({ deliveryLocation: "合成仓库", adjustment: "-1.234e-7" });
     const modeConfirmation = await request<{ settlementModeSnapshot: BusinessEntryFrozenSnapshot }>("POST", `/contract-workbench/${draft.version.id}/settlement-mode/confirm`, {
       expectedRevision: current.version.draftRevision, settlementMode
     });
@@ -428,26 +437,12 @@ if (enabled) {
     const confirmedMode = await request<Workbench>("GET", `/contract-drafts/${draft.version.id}/workbench`);
     expect(confirmedMode.settlementModeEntry?.history).toEqual([modeConfirmation.settlementModeSnapshot]);
     expect(confirmedMode.settlementModeEntry?.values).toEqual({ settlementMode });
-    for (const side of ["first_party", "counterparty"]) {
-      current = await request<Workbench>("GET", `/contract-drafts/${draft.version.id}/workbench`);
-      await request("POST", `/contracts/${draft.version.id}/authorizations`, {
-        side, expectedRevision: current.version.draftRevision, required: false
-      });
-    }
-    const pdf = await PDFDocument.create();
-    pdf.addPage().drawText("Synthetic contract for integration test");
-    const formal = await upload("合成审批文件.pdf", "application/pdf", await pdf.save());
-    current = await request<Workbench>("GET", `/contract-drafts/${draft.version.id}/workbench`);
-    const signed = await request<{ previewFormalFileId: string }>("POST", `/contracts/${draft.version.id}/formal-files/counterparty`, {
-      fileIds: [formal.id], sourceRevision: current.version.draftRevision
-    });
-    await request("POST", `/contracts/${draft.version.id}/formal-files/counterparty/confirmation`, {
-      formalFileId: signed.previewFormalFileId, expectedDraftRevision: current.version.draftRevision
-    });
-    current = await request<Workbench>("GET", `/contract-drafts/${draft.version.id}/workbench`);
-    const submission = {
+    current = confirmedMode;
+    await expect(request("POST", `/contract-drafts/${draft.version.id}/submission`, {
       idempotencyKey: randomUUID(), expectedRevision: current.version.draftRevision
-    };
+    }, lease.token)).rejects.toThrow(/410.*OLD_WRITE_ENTRY_RETIRED/u);
+    expect(await prisma.contractDraftSubmissionRequest.count({ where: { contractVersionId: draft.version.id } })).toBe(0);
+    expect(await prisma.approvalInstance.count({ where: { businessType: "contract_version", businessId: draft.version.id } })).toBe(0);
     if (entryMode !== "aggregate") {
       const ownerToken = token;
       await expect(request("POST", `/contracts/${draft.version.id}/approval-submission`, {}))
@@ -487,60 +482,93 @@ if (enabled) {
       expect((await request<Workbench>("GET", `/contract-drafts/${draft.version.id}/workbench`)).version.draftRevision).toBe(current.version.draftRevision);
       return;
     }
-    const submitted = await request<Submission>("POST", `/contract-drafts/${draft.version.id}/submission`, submission, lease.token);
-    expect(submitted.businessEntrySnapshot).toMatchObject({
-      sceneKey: "contract_basic", revision: 1,
-      values: { contractName: "合成材料采购合同", companyEntityId: company.id }
+    const currentTypeKey = contractTypeKey === "generic_contract" ? "other" : contractTypeKey;
+    draft = await request<CreatedDraft>("POST", "/contracts", {
+      projectId: project.id, contractTypeKey: currentTypeKey, relationship: "inside",
+      numericProtocolVersion: 2, amountLimitType: "capped"
     });
-    expect(submitted.draftRevision).toBeGreaterThan(submitted.businessEntrySnapshot.revision);
-    expect(submitted.templateEntrySnapshot).toMatchObject({
-      sceneKey: "contract_template_fields", revision: 1,
-      definition: { source: { id: template.version.id, version: 1 } },
-      values: { deliveryLocation: "合成仓库", adjustment: "-1.234e-7" }
-    });
-    expect(submitted.billEntrySnapshots).toEqual([expect.objectContaining({
-      sceneKey: "contract_bill_row", target: expect.objectContaining({ entityType: "contract_bill_row" }),
-      definition: expect.objectContaining({ source: expect.objectContaining({ id: template.version.id, billKey: "reference" }) }),
-      values: expect.objectContaining({ itemName: "合成材料", quantity: "2", unitPrice: "10", brand: "合成品牌" })
-    })]);
-    expect(submitted.partyEntrySnapshots).toEqual([expect.objectContaining({
-      sceneKey: "contract_party", values: expect.objectContaining({ roleName: "乙方", displayOrder: 0, name: "合成材料供应商" })
-    })]);
-    expect(submitted.commercialEntrySnapshot).toMatchObject({
-      sceneKey: "contract_commercial_terms",
-      values: expect.objectContaining({ pricingNature: "fixed_total", amountSource: "manual", contractAmountYuan: "5000.00", invoiceType: "vat_general", taxMode: "single_rate", defaultTaxRatePercent: 13, taxFactSource: "contract_document" })
-    });
-    expect(submitted.paymentTermsEntrySnapshot).toMatchObject({ sceneKey: "contract_payment_terms", values: { originalText: "验收后付款" } });
-    expect(submitted.paymentStageEntrySnapshots).toEqual([expect.objectContaining({
-      sceneKey: "contract_payment_stage", values: expect.objectContaining({ name: "合同款", basis: settlementFinance ? "current_settlement" : "contract_amount", ratioBps: 10000, dueDays: 0, requiresInvoice: false, allowsEarlyPayment: false, allowsInstallments: true })
-    })]);
-    await prisma.contractBusinessTemplateVersion.create({ data: {
-      templateId: templateRecord.id, versionNo: 2, status: "published",
-      fieldSchema: [{ key: "deliveryLocation", label: "新版本交货地址", type: "text", required: true }],
-      billSchema: [], clauseSchema: [], attachmentSchema: [], validationSchema: [],
-      submittedByUserId: actorUserId, publishedByUserId: actorUserId,
-      publishedAt: new Date(), changeSummary: "合成新版本，不改变旧合同"
-    } });
-    const repeated = await request("POST", `/contract-drafts/${draft.version.id}/submission`, submission, lease.token);
-    expect(repeated).toEqual(submitted);
-    const detail = await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${draft.version.id}`);
-    expect(detail.businessEntrySubmissions).toContainEqual({
-      approvalInstanceId: submitted.approvalInstanceId,
-      snapshot: submitted.businessEntrySnapshot
-    });
-    expect(detail.businessEntrySubmissions).toContainEqual({
-      approvalInstanceId: submitted.approvalInstanceId,
-      snapshot: submitted.templateEntrySnapshot
-    });
-    expect(detail.businessEntrySubmissions).toContainEqual({
-      approvalInstanceId: submitted.approvalInstanceId,
-      snapshot: submitted.billEntrySnapshots[0]
-    });
-    for (const snapshot of [submitted.commercialEntrySnapshot, ...submitted.partyEntrySnapshots,
-      submitted.paymentTermsEntrySnapshot, ...submitted.paymentStageEntrySnapshots]) {
-      expect(detail.businessEntrySubmissions).toContainEqual({ approvalInstanceId: submitted.approvalInstanceId, snapshot });
+    const draftPath = `/contract-drafts/${draft.version.id}`;
+    const detailPath = `/contracts/${draft.contract.id}?versionId=${draft.version.id}`;
+    const newLease = await request<{ token: string }>("POST", `${draftPath}/edit-lease`);
+    const getCurrentWorkbench = () => request<Workbench>("GET", `${draftPath}/workbench`);
+    current = await getCurrentWorkbench();
+    const counterpartyName = "合成材料供应商";
+    if (!controlledCounterpartyVersionId) {
+      const party = await prisma.businessParty.create({ data: {
+        name: counterpartyName, normalizedName: `${counterpartyName}-${randomUUID()}`, createdByUserId: actorUserId
+      } });
+      controlledCounterpartyVersionId = (await prisma.businessPartyVersion.create({ data: {
+        businessPartyId: party.id, versionNo: 1, snapshot: { name: counterpartyName }, createdByUserId: actorUserId
+      } })).id;
     }
-    if (entryMode === "aggregate" && paymentFinance) {
+    const { manualAmountCents: _legacyAmount, draftData: legacyDraftData, ...commercialDraft } = completeDraftInput.draft;
+    await request("PUT", draftPath, {
+      ...completeDraftInput,
+      idempotencyKey: randomUUID(),
+      expectedRevision: current.version.draftRevision,
+      draft: {
+        ...commercialDraft, numericProtocolVersion: 2, manualAmountYuan: "5000.0000", layoutTemplateVersionId: layout.version.id,
+        draftData: {
+          contractName: legacyDraftData.contractName,
+          contractBasics: { businessType: currentTypeKey, relationship: "inside", amountBasis: "tax_inclusive", invoiceStatus: "pending" }
+        }
+      },
+      parties: [
+        { roleKey: "party_a", displayOrder: 0, snapshot: { name: companyRecord.name } },
+        { roleKey: "party_b", displayOrder: 0, businessPartyVersionId: controlledCounterpartyVersionId, snapshot: {} }
+      ],
+      bills: current.bills.map((bill) => ({
+        billKey: bill.billKey, expectedRevision: bill.revision, numericProtocolVersion: 2, rows: []
+      }))
+    }, newLease.token);
+    current = await getCurrentWorkbench();
+    await request("POST", `/contract-workbench/${draft.version.id}/settlement-mode/confirm`, {
+      expectedRevision: current.version.draftRevision, settlementMode
+    });
+    current = await getCurrentWorkbench();
+    const generated = await request<{ generationId: string }>("POST", `${draftPath}/preview-generation`, {
+      sourceRevision: current.version.draftRevision
+    });
+    const document = await request<{ sourceSha256: string }>("GET", `${draftPath}/document-body`);
+    for (let attempt = 0; attempt < 250; attempt += 1) {
+      const poll = (await getCurrentWorkbench()).documents?.find(item => item.id === generated.generationId);
+      if (poll?.status === "success") {
+        expect(poll.docxFileId).toBeTruthy();
+        expect(poll.pdfFileId).toBeTruthy();
+        break;
+      }
+      if (poll?.status === "failed" || attempt === 249) throw new Error("POL114_V2_GENERATION_INCOMPLETE");
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    const submission = {
+      idempotencyKey: randomUUID(), expectedRevision: current.version.draftRevision,
+      submissionProtocolVersion: 2, documentContentRevision: current.version.documentContentRevision,
+      documentContentFingerprint: current.version.documentContentFingerprint,
+      generatedDocumentId: generated.generationId, sourceSha256: document.sourceSha256, blanksReviewed: true
+    };
+    const submitted = await request<Submission>("POST", `${draftPath}/submission`, submission, newLease.token);
+    expect(submitted).toMatchObject({ contractVersionId: draft.version.id, status: "in_approval" });
+    expect(await request("POST", `${draftPath}/submission`, submission, newLease.token)).toEqual(submitted);
+    const round = await prisma.approvalInstance.findUniqueOrThrow({ where: { id: submitted.approvalInstanceId } });
+    expect(contractRoundSubmissionSnapshot(round.frozenNodes)).toMatchObject({
+      contractVersionId: draft.version.id, submissionProtocolVersion: 2,
+      documentContentRevision: submission.documentContentRevision,
+      documentContentFingerprint: submission.documentContentFingerprint,
+      generatedDocumentId: generated.generationId,
+      draftData: { contractName: "合成材料采购合同" },
+      amountYuan: "5000.0000",
+      versionFacts: { companyEntityIdSnapshot: company.id, pricingNature: "fixed_total", amountSource: "manual", settlementMode },
+      taxFacts: { invoiceType: "vat_general", taxMode: "single_rate", defaultTaxRatePercent: "13" },
+      parties: expect.arrayContaining([expect.objectContaining({ roleKey: "party_b", businessPartyVersionId: controlledCounterpartyVersionId })]),
+      paymentTerms: { originalText: "验收后付款", ...(paymentFinance ? {
+        stages: [expect.objectContaining({
+          name: "合同款", basis: settlementFinance ? "current_settlement" : "contract_amount",
+          ratioBps: 10000, dueDays: 0, requiresInvoice: false, allowsEarlyPayment: false, allowsInstallments: true
+        })]
+      } : {}) }
+    });
+    expect((await request<ContractDetailReadModel>("GET", detailPath)).contractVersionId).toBe(draft.version.id);
+    if (paymentFinance) {
       const loginAs = async (userId: string) => {
         const identity = identities.get(userId);
         if (!identity) throw new Error("公开链缺少本次合成账号");
@@ -579,29 +607,42 @@ if (enabled) {
         roles: [engineering ? "engineering_director" : contractTypeKey === "generic_contract" ? "comprehensive_director" : "material_director", "contract_director", "project_manager", "finance_director", "chairman"], label: `合同-${contractTypeKey}` });
       const sealPosition = await prisma.position.findUniqueOrThrow({ where: { key: "comprehensive_director" } });
       const sealActor = await prisma.userPosition.findFirstOrThrow({ where: { positionId: sealPosition.id, projectId: null, userId: { in: [...identities.keys()] } } });
-      const sealIdentity = await loginAs(sealActor.userId);
-      // V6 requires every actual approver to have their own stored signature, including the seal approver.
-      const sealSignature = new FormData();
-      sealSignature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "synthetic-seal-signature.png");
-      expect((await fetch(`${baseUrl}/me/signature/canvas`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: sealSignature })).status).toBe(201);
-      await request("POST", `/contracts/${draft.version.id}/seal/approve`, { confirmationPassword: sealIdentity.password });
-      const sealTask = await prisma.contractSealTask.findFirstOrThrow({ where: { contractVersionId: draft.version.id } });
-      await verifyApprovedPdf({ db: prisma, baseUrl, token, password: sealIdentity.password,
-        businessType: "contract_seal", businessId: sealTask.id, roles: ["comprehensive_director"], label: "合同用章" });
+      await loginAs(sealActor.userId);
+      const pendingSeal = (await request<ContractDetailReadModel>("GET", detailPath)).v2Lifecycle;
+      if (pendingSeal?.status !== "ready" || pendingSeal.state !== "pending_seal") {
+        throw new Error("POL114_V2_SEAL_HANDOFF_MISSING");
+      }
+      expect(pendingSeal.sealAction).toMatchObject({ key: "confirm_seal_v2", enabled: true });
+      const seal = {
+        expectedApprovalInstanceId: submitted.approvalInstanceId,
+        expectedSealTaskId: pendingSeal.sealTaskId,
+        documentContentRevision: pendingSeal.documentContentRevision,
+        documentContentFingerprint: pendingSeal.documentContentFingerprint,
+        confirmed: true
+      };
+      for (const retired of ["seal-approval", "seal/approve", "seal/complete"]) {
+        await expect(request("POST", `/contracts/${draft.version.id}/${retired}`, {}))
+          .rejects.toThrow(/410.*OLD_WRITE_ENTRY_RETIRED/u);
+      }
       await loginAs(actorUserId);
-      const declaration = { firstPartySignedOrStamped: true, companySealCompleted: true, crossPageSealCompleted: true, signingDateCompleted: true };
-      await request("POST", `/contracts/${draft.version.id}/seal/complete`, declaration);
-      const finalDocument = await PDFDocument.load(await pdf.save());
-      finalDocument.getPages()[0]!.drawText("SYNTHETIC FIRST PARTY SIGNATURE / SEAL / DATE", { y: 650 });
-      const finalFile = await upload("synthetic-final.pdf", "application/pdf", await finalDocument.save());
-      const finalVersion = await prisma.contractVersion.findUniqueOrThrow({ where: { id: draft.version.id }, select: { draftRevision: true } });
-      const final = await request<Identified>("POST", `/contracts/${draft.version.id}/formal-files/final`, {
-        ...declaration, fileId: finalFile.id, sourceRevision: finalVersion.draftRevision,
-        onlyPermittedSignatureChanges: true, documentOrderConfirmed: true
+      await expect(request("POST", `/contracts/${draft.version.id}/seal-confirmation`, seal)).rejects.toThrow("403");
+      await loginAs(sealActor.userId);
+      const sealed = await request("POST", `/contracts/${draft.version.id}/seal-confirmation`, seal);
+      expect(sealed).toMatchObject({ status: "seal_approved_pending_archive", sealTaskId: pendingSeal.sealTaskId });
+      expect(await request("POST", `/contracts/${draft.version.id}/seal-confirmation`, seal)).toEqual(sealed);
+      expect(await prisma.approvalInstance.count({ where: { businessType: "contract_seal", businessId: pendingSeal.sealTaskId } })).toBe(0);
+      await loginAs(actorUserId);
+      const pdf = await PDFDocument.create();
+      pdf.addPage().drawText("SYNTHETIC FIRST PARTY SIGNATURE / SEAL / DATE", { y: 650 });
+      const finalFile = await upload("synthetic-final.pdf", "application/pdf", await pdf.save());
+      await request("POST", `/contracts/${draft.version.id}/signed-archive`, {
+        expectedApprovalInstanceId: seal.expectedApprovalInstanceId, expectedSealTaskId: seal.expectedSealTaskId,
+        documentContentRevision: seal.documentContentRevision, documentContentFingerprint: seal.documentContentFingerprint,
+        archiveProtocolVersion: 2, archiveSource: "generated_approval", idempotencyKey: randomUUID(),
+        fileIds: [finalFile.id], confirmedMatchingSignedDocument: true
       });
-      await request("POST", `/contracts/${draft.version.id}/formal-files/final/confirmation`, {
-        ...declaration, formalFileId: final.id, onlyPermittedSignatureChanges: true, documentOrderConfirmed: true
-      });
+      await expect(prisma.contractVersion.findUnique({ where: { id: draft.version.id }, select: { status: true } }))
+        .resolves.toEqual({ status: "effective" });
       let payment: Identified & { businessEntrySnapshot?: BusinessEntryFrozenSnapshot };
       if (settlementFinance) {
         if (!signedSettlementQualification) {

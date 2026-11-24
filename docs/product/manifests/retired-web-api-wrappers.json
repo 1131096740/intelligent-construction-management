@@ -49,6 +49,14 @@
     {
       "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
       "classification": "test_only",
+      "reason": "Issue #425: V2 submission uses generated-document and frozen-party validation; V1 readiness is no longer a Web submission step.",
+      "wrappers": [
+        "checkContractSubmissionReadiness"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
+      "classification": "test_only",
       "reason": "No production consumer; retained only by API unit tests.",
       "wrappers": [
         "abandonContractDraft",

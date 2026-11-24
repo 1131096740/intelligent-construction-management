@@ -15,7 +15,7 @@ import { saveDirectPendingAggregate, readDirectPendingInput } from "../contract/
 import { resolveContractDraftBusinessType } from "./contract-draft-basics";
 import { assertDirectPendingSourceQualification, assertDirectPendingSourceContinuity, hasDirectSigningInput } from "../contract/contract-direct-pending-source";
 import { assertSelectableLayoutVersion } from "../contract-template/layout-selection-policy";
-import { assertContractDraftNumericProtocol, CONTRACT_PRECISE_SUBMISSION_REASON } from "./contract-draft-numeric-protocol";
+import { assertContractDraftNumericProtocol } from "./contract-draft-numeric-protocol";
 import {
   BadRequestException,
   ConflictException,
@@ -270,7 +270,9 @@ export class ContractDraftAggregateService {
       draftOperationAvailableActions: upwardSaveReady
         ? [...UPWARD_PENDING_SAVE_ACTIONS]
         : draftOperationAvailableActions,
-      ...(version.numericProtocolVersion === 2 ? { draftSubmissionUnavailableReason: CONTRACT_PRECISE_SUBMISSION_REASON } : {}),
+      ...(isOwner && version.status === "draft" && version.numericProtocolVersion !== 2
+        ? { draftSubmissionUnavailableReason: "旧版草稿提交已停止，请联系合同部核对原记录" }
+        : {}),
       lease: {
         state: leaseState,
         holderDisplayName: holder?.name ?? null,
@@ -1362,7 +1364,7 @@ export class ContractDraftAggregateService {
         ...(version.contractGovernanceVersion === 1 ? [
           "set_contract_authorization"
         ] : []),
-        ...(version.status === "draft" && version.numericProtocolVersion !== 2 ? ["submit_contract_draft"] : []),
+        ...(version.status === "draft" && version.numericProtocolVersion === 2 && version.changeType === "original" ? ["submit_contract_draft"] : []),
         ...(version.contractGovernanceVersion === 1 ? [
           "upload_contract_formal_approval_file",
           "upload_contract_counterparty_signed_files",
