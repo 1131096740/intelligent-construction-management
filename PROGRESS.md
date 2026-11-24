@@ -42,9 +42,9 @@ POL114 合同版式浏览器夹具 `231144a10` 改用现行预览及下载入口
 
 #410 以 `555a2f57a` 的完整 329 安装复现履约成本来源拒绝安装器所有者读取。精确独立候选 `1d09ae4c` 保留完整比对，两个用例均进入已核验 TLS 与角色的受限连接，后续原债更正只读例程拒绝执行。独立 `443beba6` 加入该隔离例程的临时执行权限与撤销核验，精确镜像的定向诊断显示两条比对均继续到业主结算来源读取才被拒绝。两轮 329 隔离资源均已清理，未扩大该表权限，#410 完整分片仍失败。[原首错回执](/private/tmp/jg382-task410-diagnostic.yVrjmFP9/jg-finance-company-proxy-repayment.mIL6pUDC/receipt.json) · [后续精确诊断](/private/tmp/jg382-task410-plan-runtime.YCPVCwUT/narrow.log)。
 
-#410 独立候选 `4fb32494` 为完整台账比对使用单独的临时只读 TLS 角色，保持原测试角色不能直读业主结算表。两条用例进入新连接的台账比对后仍失败，回执仅给出调用点，具体失败原因仍待定位。329 环境已清理，未合入草稿。[只读角色复验](/private/tmp/jg382-task410-reader-runtime.W3ase1sW/exact.log)。
+#410 独立候选 `4fb32494` 为完整台账比对使用单独的临时只读 TLS 角色，保持原测试角色不能直读业主结算表。精确镜像的定向诊断确认两条用例已越过业主结算来源，随后被已签结算来源读取拒绝。329 环境已清理。独立 `15ebf39f` 仅给这次隔离复验的只读角色补充已签结算读取，尚待复验，未合入草稿。[只读角色诊断](/private/tmp/jg382-task410-reader-runtime.W3ase1sW/narrow.log)。
 
-综合采购在 `b689df80` 的 329 精确应用与诊断叠加层上复现 11 通过、5 失败。业务启动后确认 `ActualPurchaseBatch` 及 `PaymentExecutionRefund` 读取拒绝。独立候选 `5e518aae` 限定采购列表及费用实付相关读取列，未增加表级读写权限，综合采购及项目采购备料通过。仅叠加该夹具的原始完整用例已启动，结果待收。[权限诊断回执](/private/tmp/jg382-general-procurement-runtime.zoTehRW6/diagnostic.log)。
+综合采购在 `b689df80` 的 329 精确应用与诊断叠加层上复现 11 通过、5 失败，业务启动后确认 `ActualPurchaseBatch` 及 `PaymentExecutionRefund` 读取拒绝。独立候选 `2c20c371` 将采购列表及费用实付所需列的只读权限放入原角色事务。精确应用仍为 `b689df80`，仅叠加该候选夹具与有限诊断，原 16 项全部通过，前后 329 及 B7 一致，资源已清理。综合采购及项目采购备料通过。夹具已合入本地 `9955e821`，远端待复验。[权限诊断回执](/private/tmp/jg382-general-procurement-runtime.zoTehRW6/diagnostic.log) · [修复复验](/private/tmp/jg382-general-procurement-runtime.zoTehRW6/atomic-read-fix-probe.log)。
 
 Line A 精确候选 `f5f6430be` 在隔离 PostgreSQL 16 完整安装 329 条迁移，原 HTTP 用例 12 项全通过，零跳过。覆盖补充协议复核、已签结算及付款依据、履约三职责与并发付款唯一占用。前后账本和 B7 一致，临时角色及见证已清理。当前已和 `58a8f801` 的历史接管重放修复一并合入本地，各自执行源码与实跑候选一致。[Line A 精确回执](docs/progress/2026-11-24-line-a-329.md)。
 
