@@ -50,11 +50,10 @@ const form = reactive({
   payeeAccountName: "",
   payeeBankName: "",
   payeeBankAccount: "",
-  loanExpectedClearanceOn: "",
   lines: [emptyLine()] as ExpenseClaimLineDraft[]
 });
 
-const stepLabels = ["业务与身份", "费用明细", "收款与借款", "复核保存"];
+const stepLabels = ["业务与身份", "费用明细", "收款信息", "复核保存"];
 const auth = useAuthStore();
 const recoveryMessage = ref("");
 const submissionUncertain = ref(false);
@@ -96,13 +95,12 @@ const purchaseBatchOptions = computed(() => selectableBatches.value.map((batch) 
 })));
 const selectedPurchaseBatch = computed(() => selectableBatches.value.find((batch) => batch.batchId === form.actualPurchaseBatchId) ?? null);
 const payeeFields = computed({
-  get: () => ({ payeeName: form.payeeName, payeeAccountName: form.payeeAccountName, payeeBankName: form.payeeBankName, payeeBankAccount: form.payeeBankAccount, loanExpectedClearanceOn: form.loanExpectedClearanceOn }),
+  get: () => ({ payeeName: form.payeeName, payeeAccountName: form.payeeAccountName, payeeBankName: form.payeeBankName, payeeBankAccount: form.payeeBankAccount }),
   set: (value) => {
     form.payeeName = value.payeeName;
     form.payeeAccountName = value.payeeAccountName;
     form.payeeBankName = value.payeeBankName;
     form.payeeBankAccount = value.payeeBankAccount;
-    form.loanExpectedClearanceOn = value.loanExpectedClearanceOn;
   }
 });
 const isSelfApplicant = computed(() => form.applicantMode === "self"
@@ -146,7 +144,6 @@ function resetForm() {
   form.payeeAccountName = "";
   form.payeeBankName = "";
   form.payeeBankAccount = "";
-  form.loanExpectedClearanceOn = "";
   form.lines = [emptyLine()];
 }
 
@@ -164,12 +161,15 @@ async function loadOptions() {
     options.value = loaded;
     expenseCategoryOptions.value = loaded.expenseCategories ?? [];
     resetForm();
+    recoveryMessage.value = "";
     submissionUncertain.value = false;
     if (owner) {
       recovery = localBusinessForm(localStorage, owner, "expense-create");
       try {
         const saved = recovery.restore();
-        if (saved) {
+        if (saved?.form.claimType === "loan") {
+          recoveryMessage.value = "员工借款申请已停止办理，旧借款暂存未载入。";
+        } else if (saved) {
           Object.assign(form, saved.form); step.value = saved.step; submissionUncertain.value = saved.submissionUncertain;
           recoveryMessage.value = "已恢复本机填写，请核对项目、人员与金额后继续。";
         }
@@ -264,7 +264,6 @@ function incidentalPayeeError(): string {
 function validateCurrentStep(): string {
   if (step.value === 0) {
     if (!form.companyEntityId) return "请选择使用单位";
-    if (form.claimType === "loan" && !form.projectId) return "借款申请必须选择项目";
     if (form.claimType === "incidental_expense" && !form.projectId) return "零星费用申请必须选择项目";
     if (form.claimType === "incidental_expense" && !form.incidentalExpenseCategory) return "请选择零星费用分类";
     if (requiresFactWitness.value && !form.factWitnessUserId) return "非项目报销必须选择事实证明人";
@@ -292,7 +291,6 @@ function validateCurrentStep(): string {
     if (incidentalPayeeError()) return incidentalPayeeError();
     if (!form.reason.trim()) return "请填写事由";
     try { if (BigInt(yuanTextToCentsText(form.requestedAmountYuan.trim())) <= 0n) return "申请金额必须大于 0"; } catch { return "金额必须是非负数字，最多保留两位小数"; }
-    if (form.claimType === "loan" && !form.loanExpectedClearanceOn) return "请填写预计清账日期";
   }
   return "";
 }
@@ -317,8 +315,7 @@ function payload(): CreateExpenseClaimPayload {
     payeeName: form.payeeName.trim() || undefined,
     payeeAccountName: form.payeeAccountName.trim() || undefined,
     payeeBankName: form.payeeBankName.trim() || undefined,
-    payeeBankAccount: form.payeeBankAccount.trim() || undefined,
-    loanExpectedClearanceOn: form.claimType === "loan" ? form.loanExpectedClearanceOn : undefined
+    payeeBankAccount: form.payeeBankAccount.trim() || undefined
   };
   if (form.claimType === "reimbursement") {
     base.lines = form.lines.map((line) => ({
@@ -393,7 +390,7 @@ function finishRecovery() {
   >
     <template #header>
       <div class="expense-claim-create__title">
-        <span>新建费用报销 / 借款 / 零星费用</span><small>首次成功保存后分配正式日流水编号；历史项目支出不在此迁移或改写。</small>
+        <span>新建费用申请</span><small>首次成功保存后分配正式日流水编号；历史项目支出不在此迁移或改写。</small>
       </div>
     </template>
     <div
@@ -451,8 +448,6 @@ function finishRecovery() {
                 <t-radio-group v-model="form.claimType">
                   <t-radio value="reimbursement">
                     费用报销
-                  </t-radio><t-radio value="loan">
-                    借款申请
                   </t-radio><t-radio value="incidental_expense">
                     零星费用
                   </t-radio>
@@ -505,7 +500,7 @@ function finishRecovery() {
                   v-model="form.projectId"
                   :options="projectOptions"
                   :disabled="form.claimType !== 'reimbursement' && !availableProjects.length"
-                  :placeholder="form.claimType !== 'reimbursement' && !availableProjects.length ? '暂无可申请的所属项目' : '报销项目可选；借款及零星费用必选'"
+                  :placeholder="form.claimType !== 'reimbursement' && !availableProjects.length ? '暂无可申请的所属项目' : '报销项目可选；零星费用必选'"
                 />
               </t-form-item>
               <t-form-item
@@ -601,7 +596,7 @@ function finishRecovery() {
             <t-alert
               v-else
               theme="info"
-              :message="form.claimType === 'loan' ? '借款不填写费用明细；实际放款、凭证和台账将在审批后的资金环节登记。' : '零星费用不填写报销明细；按已选零星费用分类提交审批。'"
+              message="零星费用不填写报销明细，按所选分类提交审批。"
             />
           </section>
           <section
@@ -618,7 +613,6 @@ function finishRecovery() {
               <ExpenseClaimPayeeFields
                 v-model="payeeFields"
                 :definition="options.entryDefinition"
-                :is-loan="form.claimType === 'loan'"
                 :is-incidental="form.claimType === 'incidental_expense'"
                 :payee-name-error="payeeNameError"
               />
@@ -633,7 +627,7 @@ function finishRecovery() {
               bordered
             >
               <t-descriptions-item label="业务类型">
-                {{ form.claimType === 'loan' ? '借款申请' : form.claimType === 'incidental_expense' ? '零星费用' : '费用报销' }}
+                {{ form.claimType === 'incidental_expense' ? '零星费用' : '费用报销' }}
               </t-descriptions-item><t-descriptions-item label="事由">
                 {{ form.reason || '未填写' }}
               </t-descriptions-item><t-descriptions-item label="申请金额">

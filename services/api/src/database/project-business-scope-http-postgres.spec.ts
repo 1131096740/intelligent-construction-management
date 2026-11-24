@@ -181,9 +181,9 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     try {
       expect(await request("/payments", companyContract, input)).toMatchObject({ status: 400, body: { message: expect.stringContaining("项目经理") } });
       expect(await db.paymentRequest.count({ where: { code: input.code } })).toBe(0);
-      const claim = await request("/expense-claims", materialDirector, { claimType: "loan", companyEntityId: company, projectId: second, applicantUserId: materialDirector.id, reason: "合成缺经理费用", requestedAmountCents: "100", loanExpectedClearanceOn: "2026-12-31" });
+      const claim = await request("/expense-claims", materialDirector, { claimType: "incidental_expense", incidentalExpenseCategory: "temporary_service", payeeName: "合成收款方", companyEntityId: company, projectId: second, applicantUserId: materialDirector.id, reason: "合成缺经理费用", requestedAmountCents: "100" });
       expectStatus(claim, 201);
-      expect(await request(`/expense-claims/${claim.body.id}/submission`, materialDirector, {})).toMatchObject({ status: 400, body: { message: expect.stringContaining("项目经理") } });
+      expect(await request(`/expense-claims/${claim.body.id}/submission`, materialDirector, {})).toMatchObject({ status: 201, body: { status: "approval_pending" } });
       const position = await db.position.findUniqueOrThrow({ where: { key: "project_manager" } });
       const selfManager = await db.userPosition.create({ data: { userId: companyContract.id, positionId: position.id, projectId: second } });
       try {
@@ -253,8 +253,8 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     const options = await request("/expense-claims/create-options", materialDirector);
     expect(options.status).toBe(200);
     expect(options.body.selfProjectIds).toEqual(expect.arrayContaining([first, second]));
-    const input = { claimType: "loan", companyEntityId: company, projectId: second,
-      reason: "合成乙项目备用金", requestedAmountCents: "12300", loanExpectedClearanceOn: "2026-12-31" };
+    const input = { claimType: "incidental_expense", incidentalExpenseCategory: "temporary_service", payeeName: "合成收款方", companyEntityId: company, projectId: second,
+      reason: "合成乙项目费用", requestedAmountCents: "12300" };
     expect((await request("/expense-claims", materialDirector, { ...input, applicantUserId: materialDirector.id })).status).toBe(201);
     expect((await request("/expense-claims", employee, { ...input, applicantUserId: employee.id })).status).toBe(403);
     expect((await request("/expense-claims", materialDirector, { ...input, applicantUserId: employee.id })).status).toBe(403);

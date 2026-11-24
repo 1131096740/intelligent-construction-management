@@ -174,20 +174,31 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     return await response.json() as BrowserAuthSession;
   }
 
-  function selfInput(userId: string, claimType: "reimbursement" | "loan" | "incidental_expense" = "loan") {
+  function selfInput(userId: string, claimType: "reimbursement" | "incidental_expense" = "incidental_expense") {
     return {
       claimType, companyEntityId, projectId, applicantUserId: userId, reason: "合成本人费用申请", requestedAmountCents: "1",
-      ...(claimType === "loan" ? { loanExpectedClearanceOn: "2026-12-01" } : {}),
       ...(claimType === "incidental_expense" ? { incidentalExpenseCategory: "temporary_service", payeeName: "合成服务提供方" } : {}),
       ...(claimType === "reimbursement" ? { lines: [{ expenseCategory: "办公费", occurredOn: "2026-10-16", purpose: "合成文具", receiptCount: 0, amountCents: "1", evidenceType: "none", noEvidenceReason: "隔离测试" }] } : {})
     };
   }
 
+  function seedHistoricalLoan(status: "draft" | "approved_pending_disbursement", reason: string, loanProjectId = projectId, requestedAmountCents = 1n) {
+    const now = new Date();
+    const approved = status === "approved_pending_disbursement";
+    return app.get(PrismaService).expenseClaim.create({ data: {
+      code: "JK-HIST-" + randomUUID(), claimType: "loan", status, companyEntityId, projectId: loanProjectId,
+      companyEntityNameSnapshot: "入口合成公司", applicantUserId, applicantNameSnapshot: browserSession.user.name,
+      handledByUserId: applicantUserId, handledByNameSnapshot: browserSession.user.name, reason, requestedAmountCents,
+      loanExpectedClearanceAt: new Date("2026-12-01"), submittedAt: approved ? now : null, approvedAt: approved ? now : null
+    } });
+  }
+
   (enabled ? it.each(["loan", "reimbursement", "incidental_expense"] as const) : it.skip.each(["loan", "reimbursement", "incidental_expense"] as const))("删除未提交草稿：%s 实体和明细彻底删除，审计保留", async claimType => {
     const prisma = app.get(PrismaService);
-    const created = await request("/expense-claims", selfInput(applicantUserId, claimType));
-    expect(created.status).toBe(201);
-    const row = await prisma.expenseClaim.findUniqueOrThrow({ where: { id: created.body.id } });
+    const historical = claimType === "loan" ? await seedHistoricalLoan("draft", "删除旧借款草稿测试") : null;
+    const created = claimType === "loan" ? null : await request("/expense-claims", selfInput(applicantUserId, claimType));
+    if (created) expect(created.status).toBe(201);
+    const row = await prisma.expenseClaim.findUniqueOrThrow({ where: { id: historical?.id ?? created!.body.id } });
     const result = await request(`/expense-claims/${row.id}/draft-deletion`, { expectedUpdatedAt: row.updatedAt.toISOString() });
     expect(result).toMatchObject({ status: 201, body: { id: row.id } });
     expect(await prisma.expenseClaim.findUnique({ where: { id: row.id } })).toBeNull();
@@ -195,7 +206,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const audit = await prisma.auditLog.findFirstOrThrow({ where: { businessId: row.id, action: "expense_claim.draft.delete" } });
     expect(audit).toMatchObject({ actorUserId: applicantUserId, businessType: "expense_claim" });
     expect(audit.metadata).toMatchObject({ code: row.code, claimType, projectId, companyEntityId, requestedAmountCents: "1", previousStatus: "draft", applicantUserId, handledByUserId: applicantUserId });
-    expect(await prisma.auditLog.count({ where: { businessId: row.id, action: claimType === "incidental_expense" ? "incidental_expense.draft.create" : "expense_claim.draft.create" } })).toBe(1);
+    expect(await prisma.auditLog.count({ where: { businessId: row.id, action: claimType === "incidental_expense" ? "incidental_expense.draft.create" : "expense_claim.draft.create" } })).toBe(claimType === "loan" ? 0 : 1);
     expect(await prisma.auditLog.count({ where: { businessId: row.id, action: "expense_claim.draft.delete" } })).toBe(1);
     expect((await request(`/expense-claims/${row.id}`)).status).toBe(404);
   });
@@ -248,7 +259,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
 
   (enabled ? it : it.skip)("删除未提交草稿：附件关联删除，文件保留既有私有回收边界", async () => {
     const prisma = app.get(PrismaService);
-    for (const claimType of ["loan", "incidental_expense"] as const) {
+    for (const claimType of ["reimbursement", "incidental_expense"] as const) {
     const created = await request("/expense-claims", selfInput(applicantUserId, claimType));
     const form = new FormData();
     form.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成凭证.png");
@@ -335,19 +346,17 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       status: 200, body: { projects: expect.arrayContaining([expect.objectContaining({ id: projectId })]), selfProjectIds: expect.arrayContaining([projectId]), selfApplicantUserId: financeSession.user.id }
     });
     expect(await request("/expense-claims", {
-      claimType: "loan", companyEntityId, projectId, applicantUserId: financeSession.user.id,
-      reason: "公司财务本人项目申请", requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01"
+      ...selfInput(financeSession.user.id), reason: "公司财务本人项目申请"
     }, financeToken)).toMatchObject({ status: 201 });
     expect(await request("/expense-claims", {
-      claimType: "loan", companyEntityId, projectId, applicantUserId,
-      reason: "仍禁止财务代他人申请", requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01"
+      ...selfInput(applicantUserId), reason: "仍禁止财务代他人申请"
     }, financeToken)).toMatchObject({ status: 403 });
   });
 
-  (enabled ? it : it.skip).each([undefined, ...ROLE_KEYS])("本人申请：启用岗位 %s 可以为本人创建并提交三类费用", async (role) => {
+  (enabled ? it : it.skip).each([undefined, ...ROLE_KEYS])("本人申请：启用岗位 %s 可以为本人创建并提交报销和零星费用", async (role) => {
     const session = await selfAccount(role);
     await app.get(PrismaService).projectRosterMember.create({ data: { userId: session.user.id, projectId } });
-    for (const claimType of ["reimbursement", "loan", "incidental_expense"] as const) {
+    for (const claimType of ["reimbursement", "incidental_expense"] as const) {
       const created = await request("/expense-claims", selfInput(session.user.id, claimType), session.tokens.accessToken);
       expect(created.status).toBe(201);
       const path = `/expense-claims/${created.body.id}`;
@@ -438,7 +447,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
   });
 
   (enabled ? it : it.skip)("草稿附件上传仍拒绝无关账号和非法幂等键，不改变草稿或提交快照", async () => {
-    const created = await request("/expense-claims", { claimType: "loan", companyEntityId, projectId, applicantUserId, reason: "附件权限验证", requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01" });
+    const created = await request("/expense-claims", { ...selfInput(applicantUserId), reason: "附件权限验证" });
     expect(created.status).toBe(201);
     const path = `/expense-claims/${created.body.id}`;
     async function upload(accessToken: string, idempotencyKey?: string) {
@@ -455,7 +464,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
   });
 
   (enabled ? it : it.skip)("提交后经办人通过真实上传接口追加资料并从详情回读", async () => {
-    const created = await request("/expense-claims", { claimType: "loan", companyEntityId, projectId, applicantUserId, reason: "追加资料验证", requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01" });
+    const created = await request("/expense-claims", { ...selfInput(applicantUserId), reason: "追加资料验证" });
     expect(created.status).toBe(201);
     const path = `/expense-claims/${created.body.id}`;
     expect((await request(`${path}/submission`, {})).status).toBe(201);
@@ -502,15 +511,9 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     await expect(replay.json()).resolves.toMatchObject({ id: firstBody.id });
   }, 60_000);
 
-  (enabled ? it : it.skip)("已完成真实审批的待放款借款可上传单字段幂等放款凭证", async () => {
-    const created = await request("/expense-claims", { claimType: "loan", companyEntityId, projectId, applicantUserId, reason: "放款凭证上传验证", requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01" });
-    expect(created.status).toBe(201);
-    const path = `/expense-claims/${created.body.id}`;
-    expect((await request(`${path}/submission`, {})).status).toBe(201);
-    for (const [approvalIndex, approvalToken] of approvalTokens.entries()) {
-      const approval = await request(`${path}/approval`, { decision: "approve" }, approvalToken);
-      if (approval.status !== 201) throw new Error(`借款真实审批${approvalIndex + 1}失败：${approval.status} ${JSON.stringify(approval.body)}`);
-    }
+  (enabled ? it : it.skip)("历史已批待放款借款仍可上传单字段幂等放款凭证", async () => {
+    const historical = await seedHistoricalLoan("approved_pending_disbursement", "放款凭证上传验证");
+    const path = "/expense-claims/" + historical.id;
     expect(await request(path)).toMatchObject({ status: 200, body: { status: "approved_pending_disbursement", requestedAmountCents: "1" } });
 
     const idempotencyKey = randomUUID();
@@ -546,11 +549,8 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
         const capability = await capabilityResponse.json() as { lifecycleToken: string };
         expect((await request(`/projects/${targetProjectId}/financing-quotas/${quotaId}/approval`, { actionId: randomUUID(), expectedLifecycleToken: capability.lifecycleToken, decision: "approve", confirmationPassword: accountPassword }, approvalToken)).status).toBe(201);
       }
-      const created = await request("/expense-claims", { claimType: "loan", companyEntityId, projectId: targetProjectId, applicantUserId, reason: `合成${label}还款验证`, requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01" });
-      expect(created.status).toBe(201);
-      const claimPath = `/expense-claims/${created.body.id}`;
-      expect((await request(`${claimPath}/submission`, {})).status).toBe(201);
-      for (const approvalToken of approvalTokens) expect((await request(`${claimPath}/approval`, { decision: "approve" }, approvalToken)).status).toBe(201);
+      const historical = await seedHistoricalLoan("approved_pending_disbursement", "合成" + label + "还款验证", targetProjectId);
+      const claimPath = "/expense-claims/" + historical.id;
       const disbursementUploadBody = new FormData();
       disbursementUploadBody.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), `合成实际放款凭证-${label}.png`);
       disbursementUploadBody.append("idempotencyKey", randomUUID());
@@ -559,7 +559,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       const disbursementFile = await disbursementUpload.json() as { id: string };
       expect((await request(`${claimPath}/disbursements`, { amountCents: "1", paidAt: "2026-09-17", paymentMethod: "合成银行转账", voucherFileId: disbursementFile.id, confirmationPassword: accountPassword }, financeToken)).status).toBe(201);
       expect(await request(claimPath)).toMatchObject({ status: 200, body: { status: "disbursed", fundedAmountCents: "1", loanAccount: { balanceAmountCents: "1" } } });
-      return { id: created.body.id, path: claimPath };
+      return { id: historical.id, path: claimPath };
     };
 
     const created = await createDisbursedLoan(projectId, "PG");
@@ -681,15 +681,31 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
   );
 
   (enabled ? it.each(["reimbursement", "loan", "incidental_expense"] as const) : it.skip.each(["reimbursement", "loan", "incidental_expense"] as const))("V6 正式 PDF：%s 逐节点签名及未通过下载边界", async claimType => {
-    const created = await request("/expense-claims", selfInput(applicantUserId, claimType));
-    expect(created.status).toBe(201);
-    const path = `/expense-claims/${created.body.id}`;
-    const capability = `/approval-forms/expense_claim/${created.body.id}/capability`;
+    const db = app.get(PrismaService);
+    const historical = claimType === "loan" ? await seedHistoricalLoan("draft", "历史借款正式审批单验证") : null;
+    const created = claimType === "loan" ? null : await request("/expense-claims", selfInput(applicantUserId, claimType));
+    if (created) expect(created.status).toBe(201);
+    const claimId = historical?.id ?? created!.body.id;
+    const path = "/expense-claims/" + claimId;
+    const capability = "/approval-forms/expense_claim/" + claimId + "/capability";
     expect(await request(capability)).toMatchObject({ status: 200, body: { available: false } });
-    expect((await request(`${path}/submission`, {})).status).toBe(201);
+    const roles = ["comprehensive_director", "project_manager", "finance_director", "chairman"];
+    if (historical) {
+      const instance = await db.approvalInstance.create({ data: {
+        businessType: "expense_claim", businessId: historical.id, flowType: "expense_claim.approve", status: "in_progress",
+        currentNodeIndex: 0, applicantUserId, frozenNodes: roles.map((role, index) => ({
+          name: role, mode: "any", roleKeys: [role], candidateUserIds: [approvalActorIds[index]!],
+          candidateUserIdsByRole: { [role]: [approvalActorIds[index]!] }
+        }))
+      } });
+      await db.expenseClaim.update({ where: { id: historical.id }, data: {
+        status: "approval_pending", approvalInstanceId: instance.id, submittedAt: new Date()
+      } });
+    } else {
+      expect((await request(path + "/submission", {})).status).toBe(201);
+    }
     const parallel = claimType !== "loan";
     const order = parallel ? [2, 3, 0, 1] : [0, 1, 2, 3];
-    const roles = ["comprehensive_director", "project_manager", "finance_director", "chairman"];
     for (const index of order) {
       const approvalToken = approvalTokens[index]!;
       expect(await request(capability)).toMatchObject({ status: 200, body: parallel
@@ -707,9 +723,9 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       }
     }
     await verifyApprovedPdf({ db: app.get(PrismaService), baseUrl, token, password: accountPassword,
-      businessType: "expense_claim", businessId: created.body.id,
+      businessType: "expense_claim", businessId: claimId,
       roles: order.map(index => roles[index]!), label: `费用-${claimType}` });
-    expect((await request(`/approval-forms/expense_claim/${created.body.id}/download`, { confirmationPassword: accountPassword, downloadReason: "无关人员边界" }, strangerToken)).status).toBe(403);
+    expect((await request(`/approval-forms/expense_claim/${claimId}/download`, { confirmationPassword: accountPassword, downloadReason: "无关人员边界" }, strangerToken)).status).toBe(403);
   }, 60_000);
 
   (enabled ? it : it.skip)("历史合同附件即时回包含本人删除动作，连续删除保留上传与删除审计", async () => {
@@ -873,31 +889,32 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     }
   }, 180_000);
 
-  (enabled ? it : it.skip)("项目借款明确提交后按原授权回读当时字段与金额，重复提交不增加快照", async () => {
-    const created = await request("/expense-claims", { claimType: "loan", companyEntityId, projectId, applicantUserId, reason: "现场备用金", requestedAmountCents: "12500", loanExpectedClearanceOn: "2026-12-01" });
-    if (created.status !== 201) throw new Error(JSON.stringify(created));
-    expect(created).toMatchObject({ status: 201 });
-    const path = `/expense-claims/${created.body.id}`;
-    const submitted = await request(`${path}/submission`, {});
-    expect(submitted.status).toBe(201);
-    const detail = await request(path);
-    expect(detail.status).toBe(200);
-    expect(detail.body.entrySnapshots).toHaveLength(1);
-    expect(detail.body.entrySnapshots[0]).toMatchObject({
-      sceneKey: "expense_claim.application", businessAction: "expense_claim.submit", definitionVersion: 1,
-      valuesSnapshot: { claimType: "loan", reason: "现场备用金", requestedAmountCents: "12500", loanExpectedClearanceOn: "2026-12-01" }
-    });
-    expect(detail.body.entrySnapshots[0].definitionSnapshot.fields).toEqual(expect.arrayContaining([expect.objectContaining({ key: "requestedAmountYuan", label: "申请金额", unit: "元", precision: 2 })]));
-    expect(detail.body.entrySnapshots[0]!.valuesSnapshot.requestedAmountYuan).toBe("125.00");
-    expect((await request(`${path}/submission`, {})).status).toBe(400);
-    expect((await request(path)).body.entrySnapshots).toEqual(detail.body.entrySnapshots);
-    for (const approvalToken of approvalTokens) {
-      expect((await request(`${path}/approval`, { decision: "approve" }, approvalToken)).status).toBe(201);
-    }
-    await verifyApprovedPdf({ db: app.get(PrismaService), baseUrl, token, password: accountPassword,
-      businessType: "expense_claim", businessId: created.body.id,
-      roles: ["comprehensive_director", "project_manager", "finance_director", "chairman"], label: "费用-备用金用途" });
-  }, 60_000);
+  (enabled ? it : it.skip)("员工借款拒绝新建和重提，仍按原权限读取历史冻结事实", async () => {
+    const legacyInput = { claimType: "loan", companyEntityId, projectId, applicantUserId, reason: "现场备用金", requestedAmountCents: "12500", loanExpectedClearanceOn: "2026-12-01" };
+    expect((await request("/expense-claims", legacyInput)).status).toBe(410);
+    const historical = await seedHistoricalLoan("draft", legacyInput.reason, projectId, 12500n);
+    const path = "/expense-claims/" + historical.id;
+    const db = app.get(PrismaService);
+    const snapshot = {
+      claimType: "loan", reason: "现场备用金", requestedAmountCents: "12500", requestedAmountYuan: "125.00", loanExpectedClearanceOn: "2026-12-01"
+    };
+    const definition = { key: "expense_claim.application", fields: [{ key: "loanExpectedClearanceOn", label: "预计清账日期", type: "date" }] };
+    await db.expenseClaimEntrySnapshot.create({ data: {
+      expenseClaimId: historical.id, operationObjectId: historical.id, operationObjectType: "expense_claim",
+      sceneKey: "expense_claim.application", businessAction: "expense_claim.submit", submissionRevision: "historical",
+      definitionVersion: 1, definitionSnapshot: definition, valuesSnapshot: snapshot, frozenByUserId: applicantUserId
+    } });
+    await db.expenseClaim.update({ where: { id: historical.id }, data: { submittedAt: new Date() } });
+    expect(await request(path)).toMatchObject({ status: 200, body: {
+      claimType: "loan", canEditReturnedDraft: false, entrySnapshots: [expect.objectContaining({ valuesSnapshot: snapshot, definitionSnapshot: definition })]
+    } });
+    expect((await request(path, undefined, strangerToken)).status).toBe(404);
+    expect(await request(path + "/capability")).toMatchObject({ status: 200, body: { availableActions: expect.not.arrayContaining(["submit_expense_claim"]) } });
+    expect((await request(path + "/submission", {})).status).toBe(410);
+    expect((await request(path + "/draft", { reason: "旧借款修订", expectedUpdatedAt: historical.updatedAt.toISOString() }, token, "PATCH")).status).toBe(410);
+    expect(await db.expenseClaimEntrySnapshot.count({ where: { expenseClaimId: historical.id } })).toBe(1);
+    expect(await db.approvalInstance.count({ where: { businessType: "expense_claim", businessId: historical.id } })).toBe(0);
+  });
 
   (enabled ? it : it.skip)("填写选项提供与提交快照相同的统一字段定义，非项目报销不借用个人资料授权", async () => {
     const options = await request("/expense-claims/create-options");
@@ -923,7 +940,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect(await request(path)).toMatchObject({ status: 200, body: { status: "approved_pending_payment" } });
     expect((await request(path, undefined, strangerToken)).status).toBe(404);
     const illegalLoan = await request("/expense-claims", { claimType: "loan", companyEntityId, applicantUserId, factWitnessUserId, reason: "无项目借款", requestedAmountCents: "100" });
-    expect(illegalLoan.status).toBe(400);
+    expect(illegalLoan.status).toBe(410);
   }, 60_000);
 
   (enabled ? it : it.skip)("在途纯报销缺岗不跳过，到岗接续同一并联轮次", async () => {
@@ -1081,14 +1098,15 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     });
   }, 60_000);
 
-  (enabled ? it : it.skip)("缺少项目审批岗位时提交失败，原草稿与空快照可继续回读", async () => {
+  (enabled ? it : it.skip)("不具项目归属时提交失败，原草稿与空快照可继续回读", async () => {
     const db = app.get(PrismaService);
     const project = await db.project.create({ data: { code: `NO-PM-${randomUUID()}`, name: "尚未配置审批岗位的项目" } });
     await db.projectMember.create({ data: { projectId: project.id, userId: applicantUserId, positionKey: "employee" } });
-    const created = await request("/expense-claims", { claimType: "loan", companyEntityId, projectId: project.id, applicantUserId, reason: "审批配置失败回读", requestedAmountCents: "1200" });
+    const created = await request("/expense-claims", { ...selfInput(applicantUserId), projectId: project.id, reason: "审批配置失败回读", requestedAmountCents: "1200" });
     expect(created.status).toBe(201);
     const path = `/expense-claims/${created.body.id}`;
-    expect((await request(`${path}/submission`, {})).status).toBe(400);
+    await db.projectMember.deleteMany({ where: { projectId: project.id, userId: applicantUserId } });
+    expect((await request(path + "/submission", {})).status).toBe(403);
     const detail = await request(path);
     expect(detail.body.status).toBe("draft");
     expect(detail.body.entrySnapshots).toEqual([]);
@@ -1106,7 +1124,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
   }, 60_000);
 
   (enabled ? it.each : it.skip.each)([["1", "0.01"], ["12345", "123.45"], ["9223372036854775807", "92233720368547758.07"]])("金额%s分的字段快照按元精确回显%s，不经浮点数", async (cents, yuan) => {
-    const created = await request("/expense-claims", { claimType: "loan", companyEntityId, projectId, applicantUserId, reason: "精确金额回显", requestedAmountCents: cents });
+    const created = await request("/expense-claims", { ...selfInput(applicantUserId), reason: "精确金额回显", requestedAmountCents: cents });
     expect(created.status).toBe(201);
     const path = `/expense-claims/${created.body.id}`;
     expect((await request(`${path}/submission`, {})).status).toBe(201);
@@ -1115,6 +1133,6 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
   }, 60_000);
 
   (enabled ? it.each : it.skip.each)(["", "1.1", "9223372036854775808"])("非法或超大分金额%s仍由原HTTP校验拒绝", async (requestedAmountCents) => {
-    expect((await request("/expense-claims", { claimType: "loan", companyEntityId, projectId, applicantUserId, reason: "无效金额", requestedAmountCents })).status).toBe(400);
+    expect((await request("/expense-claims", { ...selfInput(applicantUserId), reason: "无效金额", requestedAmountCents })).status).toBe(400);
   });
 });

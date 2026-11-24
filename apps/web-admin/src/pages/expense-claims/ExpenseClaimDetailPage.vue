@@ -472,7 +472,7 @@ async function deleteDraft() {
 async function submit() {
   const claimId = detail.value?.id;
   const actorId = auth.user?.id;
-  if (!claimId || !actorId || submitting.value || !matchesExpenseActor(claimId, actorId)) return;
+  if (!claimId || detail.value?.claimType === "loan" || !actorId || submitting.value || !matchesExpenseActor(claimId, actorId)) return;
   submitting.value = true;
   actionError.value = "";
   try {
@@ -510,7 +510,7 @@ async function withdrawApproval() {
 function openReturnedDraftEditor() {
   const row = detail.value;
   const actorId = auth.user?.id;
-  if (!actorId || !row?.canEditReturnedDraft || !matchesExpenseActor(row.id, actorId)) return;
+  if (!actorId || !row?.canEditReturnedDraft || row.claimType === "loan" || !matchesExpenseActor(row.id, actorId)) return;
   const lines = row.lines.map((line): ExpenseClaimLineDraft => ({
     expenseCategory: line.expenseCategory,
     occurredOn: line.occurredOn.slice(0, 10),
@@ -936,7 +936,7 @@ onMounted(() => void loadDetail());
               撤回审批
             </t-button>
             <t-button
-              v-if="detail.canEditReturnedDraft"
+              v-if="detail.claimType !== 'loan' && detail.canEditReturnedDraft"
               variant="outline"
               :disabled="submitting"
               @click="openReturnedDraftEditor"
@@ -959,7 +959,7 @@ onMounted(() => void loadDetail());
               </t-button>
             </t-popconfirm>
             <t-popconfirm
-              v-if="detail.status === 'draft' && (!detail.submittedAt || detail.canEditReturnedDraft)"
+              v-if="detail.claimType !== 'loan' && detail.status === 'draft' && (!detail.submittedAt || detail.canEditReturnedDraft)"
               :content="detail.canEditReturnedDraft
                 ? '重新提交后将开启新审批轮次，所有岗位都需要重新办理。'
                 : '提交后将按当前有效岗位冻结审批候选，草稿不能再按原方式修改。'"

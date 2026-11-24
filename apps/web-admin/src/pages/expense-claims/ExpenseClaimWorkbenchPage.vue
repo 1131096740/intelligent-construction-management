@@ -156,7 +156,7 @@ const mobileRows = computed(() => rows.value.map((row) => ({
     { label: "报销单位", value: row.companyName },
     { label: "收款对象", value: row.payeeName }
   ],
-  nextAction: row.status === "draft" ? "继续填写" : "查看办理进度"
+  nextAction: row.status === "draft" && row.claimType !== "loan" ? "继续填写" : "查看办理进度"
 })));
 
 function claimTypeLabel(value: string) {
@@ -331,7 +331,7 @@ onMounted(async () => {
         theme="primary"
         @click="createVisible = true"
       >
-        新建费用报销 / 借款
+        新建费用申请
       </t-button>
       <t-button
         variant="outline"

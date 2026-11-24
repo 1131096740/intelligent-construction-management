@@ -7,7 +7,7 @@ import { prepareProcurementPayment } from "../general-procurement/general-procur
 import { generalProcurementActor } from "../general-procurement/general-procurement-access";
 import { GENERAL_PROCUREMENT_CATEGORIES, GENERAL_PROCUREMENT_PAYMENT_CATEGORIES } from "@jiangkong/shared-domain";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, GoneException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { GLOBAL_BUSINESS_ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 import { resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../approval/approval-review-identity";
@@ -456,14 +456,12 @@ export class ExpenseClaimService {
 
   async create(actorUserId: string, input: CreateExpenseClaimDto) {
     const claimType = input.claimType;
+    if (claimType === "loan") throw new GoneException("员工借款申请已停止办理");
     const requestedAmountCents = positiveCents(input.requestedAmountCents, "申请金额必须大于零");
     const lines = claimType === "reimbursement" ? this.lines(input.lines) : [];
     const lineAmountCents = lines.reduce((total, line) => total + positiveCents(line.amountCents, "费用明细金额必须大于零"), 0n);
     if (claimType === "reimbursement" && lineAmountCents !== requestedAmountCents) {
       throw new BadRequestException("费用明细合计必须等于申请金额");
-    }
-    if (claimType === "loan" && !input.projectId?.trim()) {
-      throw new BadRequestException("借款申请必须选择项目");
     }
     if (claimType === "incidental_expense" && !input.projectId?.trim()) {
       throw new BadRequestException("零星费用必须选择项目");
@@ -530,11 +528,7 @@ export class ExpenseClaimService {
       const factWitness = await this.factWitnessSnapshot(tx, input, project?.id);
       const code = await this.numbering.allocateDaily(
         tx,
-        claimType === "reimbursement"
-          ? "BX"
-          : claimType === "loan"
-            ? "JK"
-            : "LXFY"
+        claimType === "reimbursement" ? "BX" : "LXFY"
       );
       const claim = await tx.expenseClaim.create({
         data: {
@@ -768,7 +762,7 @@ export class ExpenseClaimService {
     const sourcePurchase = claim.actualPurchaseBatchId
       ? await this.readSourcePurchase(claim.actualPurchaseBatchId)
       : null;
-    const canEditReturnedDraft = claim.handledByUserId === actorUserId && isReturnedExpenseDraft(claim);
+    const canEditReturnedDraft = claim.claimType !== "loan" && claim.handledByUserId === actorUserId && isReturnedExpenseDraft(claim);
     const { companyEntityId, voidedAt, ...displayClaim } = claim;
     return {
       ...displayClaim,
@@ -878,7 +872,7 @@ export class ExpenseClaimService {
 
     if (detail.status === "draft" && isHandler) {
       availableActions.push(
-        "submit_expense_claim",
+        ...(detail.claimType === "loan" ? [] : ["submit_expense_claim"]),
         "attach_expense_claim_attachment"
       );
       if (detail.attachments.some((attachment) => !attachment.removedAt)) {
@@ -1229,6 +1223,7 @@ export class ExpenseClaimService {
       const claim = await tx.expenseClaim.findUnique({ where: { id: claimId } });
       if (!claim) throw new NotFoundException("费用申请不存在");
       if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有原经办人可以修改退回的费用申请");
+      if (claim.claimType === "loan") throw new GoneException("员工借款申请已停止办理");
       await this.assertActiveExpenseActor(tx, actorUserId);
       if (!isReturnedExpenseDraft(claim) || claim.updatedAt.getTime() !== new Date(input.expectedUpdatedAt).getTime()) {
         throw new ConflictException("费用草稿状态或版本已变化，请刷新后重试");
@@ -1321,6 +1316,7 @@ export class ExpenseClaimService {
       const claim = rows[0];
       if (!claim) throw new NotFoundException("费用申请不存在");
       if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有经办人可以提交费用申请");
+      if (claim.claimType === "loan") throw new GoneException("员工借款申请已停止办理");
       if (claim.status !== "draft") throw new BadRequestException("当前费用申请不可提交");
       const source = await tx.expenseClaim.findUnique({ where: { id: claim.id }, select: { generalProcurementId: true } });
       const currentActor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });

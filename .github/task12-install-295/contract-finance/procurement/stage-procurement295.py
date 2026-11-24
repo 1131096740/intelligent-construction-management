@@ -216,7 +216,23 @@ if current320:
             if payment_case.count(spread) != expected:
                 raise ValueError('PROCUREMENT_320_PROJECT_APPROVAL_COORDINATES_ANCHOR')
             payment_case = payment_case.replace(spread, f'...paymentApprovalCoordinates({detail}.body.reviewApprovalContext)')
-        write(spec, (fixture[:start] + payment_case + fixture[end:]).encode())
+        fixture = fixture[:start] + payment_case + fixture[end:]
+        current_fixture = (workspace / spec.relative_to(out / 'workspace')).read_text()
+        loan_regions = [
+            ('      const claim = await request("/expense-claims", materialDirector,',
+             '      const position = await db.position.findUniqueOrThrow'),
+            ('    const input = { claimType: ',
+             '    expect((await request("/expense-claims", materialDirector, { ...input, applicantUserId: materialDirector.id }))'),
+        ]
+        for start_marker, end_marker in loan_regions:
+            if any(text.count(start_marker) != 1 for text in (fixture, current_fixture)):
+                raise ValueError('PROCUREMENT_329_EXPENSE_INTAKE_FIXTURE_ANCHOR')
+            start = fixture.index(start_marker)
+            end = fixture.index(end_marker, start)
+            current_start = current_fixture.index(start_marker)
+            current_end = current_fixture.index(end_marker, current_start)
+            fixture = fixture[:start] + current_fixture[current_start:current_end] + fixture[end:]
+        write(spec, fixture.encode())
     if lane == 'general16':
         anchor = '  await ownerSql("ROLE_SETUP",roleSetup("procurement",database,password));'
         reads = r'''  const originalSetup=roleSetup("procurement",database,password);

@@ -55,6 +55,21 @@ for lane in pins['lanes']:
         file=out/'lanes'/lane/'fixtures'/name
         if hashlib.sha256(file.read_bytes()).hexdigest()!=sha:
             raise SystemExit('ONBOARDING_295_FIXTURE_PIN '+name)
+    if current320 and lane=='roster':
+        fixture_name='services/api/src/database/project-roster-http-postgres.owned282.spec.ts'
+        fixture_file=out/'lanes'/lane/'fixtures'/fixture_name
+        fixture=fixture_file.read_text()
+        current_fixture=(workspace/'services/api/src/database/project-roster-http-postgres.spec.ts').read_text()
+        start_marker='    const created = await request("/expense-claims", applicant.token, {'
+        end_marker='    const ready = await request("/organization/project-roster/preview", chairman.token, body);'
+        if any(text.count(start_marker)!=1 for text in (fixture,current_fixture)):
+            raise SystemExit('ONBOARDING_329_ROSTER_EXPENSE_INTAKE_ANCHOR')
+        start=fixture.index(start_marker)
+        end=fixture.index(end_marker,start)
+        current_start=current_fixture.index(start_marker)
+        current_end=current_fixture.index(end_marker,current_start)
+        fixture_file.write_text(fixture[:start]+current_fixture[current_start:current_end]+fixture[end:])
+        profiles[lane]['fixturePins'][fixture_name]=hashlib.sha256(fixture_file.read_bytes()).hexdigest()
     lane_root=out/'lanes'/lane
     entry=lane_root/'entry.cjs'
     text=entry.read_text().replace('290','295').replace('?.size!==289','?.size!==295')
@@ -101,7 +116,10 @@ if current320:
   }
 '''+anchor)
 (out/'verify-application-source.cjs').write_text(verifier)
-(out/'lanes.json').write_bytes((archive/'lanes.json').read_bytes())
+if current320:
+    (out/'lanes.json').write_text(json.dumps(profiles,ensure_ascii=False)+'\n')
+else:
+    (out/'lanes.json').write_bytes((archive/'lanes.json').read_bytes())
 installer=out/'installer.cjs'
 installer.write_bytes((common/'installer.cjs').read_bytes())
 subprocess.run(['patch','--batch','--forward','--fuzz=0','--silent',str(installer),str(plan/'installer-onboarding.patch')],check=True)

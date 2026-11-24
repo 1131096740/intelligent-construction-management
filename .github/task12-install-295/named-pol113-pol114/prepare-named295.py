@@ -155,6 +155,10 @@ for name,pin in pins['workspace'].items():
             before['migrationBaseline'][key] = original['migrationBaseline'][key]
         write(path,(json.dumps(before,ensure_ascii=False,indent=2)+'\n').encode())
     else:
+        if current320 and name == 'services/api/src/database/base-entry-http-postgres.spec.ts':
+            pin = {**pin,
+                   'base': '2c336da20dd664b623f2b715c49d1963b6c0f3253df433145fa762daf9cfb37b',
+                   'result': 'f7153477589137d7cb5bd624686c3926d2a6e676cf04bb05a79cb95862de4343'}
         write(path,overlay(material,pin))
 
 files=sorted(p for p in workspace.rglob('*') if p.is_file())
