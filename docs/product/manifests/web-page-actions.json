@@ -9,25 +9,25 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 448,
-    "pageActionCount": 109,
-    "backgroundActionCount": 339,
+    "registeredActionCount": 444,
+    "pageActionCount": 108,
+    "backgroundActionCount": 336,
     "reachableVueFileCount": 235,
     "routeRootCount": 80,
     "totalVueFileCount": 255,
     "parsedVueFileCount": 255,
-    "reachableProductionModuleCount": 406,
-    "templateEventDirectiveCount": 1547,
+    "reachableProductionModuleCount": 405,
+    "templateEventDirectiveCount": 1539,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 439,
-    "candidateProductionMutationConsumerCount": 439,
-    "acceptedProductionMutationConsumerCount": 439,
-    "productionMutationConsumerPairCount": 439,
+    "coveredProductionMutationConsumerCount": 435,
+    "candidateProductionMutationConsumerCount": 435,
+    "acceptedProductionMutationConsumerCount": 435,
+    "productionMutationConsumerPairCount": 435,
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 437,
-    "reachableProductionModuleCount": 406,
+    "totalProductionModuleCount": 436,
+    "reachableProductionModuleCount": 405,
     "totalVueFileCount": 255,
     "parsedVueFileCount": 255
   },
@@ -2331,7 +2331,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5772,
+              "sourceLine": 5678,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2377,7 +2377,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5772,
+              "sourceLine": 5678,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3525,7 +3525,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5772,
+              "sourceLine": 5678,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3569,7 +3569,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5772,
+              "sourceLine": 5678,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5132,7 +5132,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5772,
+              "sourceLine": 5678,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5176,7 +5176,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5772,
+              "sourceLine": 5678,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6238,7 +6238,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5772,
+              "sourceLine": 5678,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6284,7 +6284,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5772,
+              "sourceLine": 5678,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7526,7 +7526,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5772,
+              "sourceLine": 5678,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7570,7 +7570,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5772,
+              "sourceLine": 5678,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -15783,7 +15783,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5772,
+              "sourceLine": 5678,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -15827,7 +15827,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5772,
+              "sourceLine": 5678,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17424,7 +17424,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5772,
+              "sourceLine": 5678,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17468,7 +17468,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5772,
+              "sourceLine": 5678,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20665,7 +20665,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5772,
+              "sourceLine": 5678,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20709,7 +20709,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5772,
+              "sourceLine": 5678,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -27793,91 +27793,6 @@
       ]
     },
     {
-      "id": "settlement-approval.withdraw",
-      "usage": "page_action",
-      "routePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "ownerRoutePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-      "trigger": {
-        "element": "sensitive-action-dialog",
-        "event": "confirm",
-        "handler": "confirmSettlementWithdrawal",
-        "kind": "event",
-        "sourceLine": 745,
-        "sourceColumn": 6
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "settlementApprovalCapability.availableActions",
-        "key": "withdraw_approval",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "executeSettlementApprovalWithdrawalAction",
-          "method": "POST",
-          "path": "/settlements/:param/approval-withdrawal",
-          "normalizedKey": "POST /settlements/:param/approval-withdrawal",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/settlements/:settlementId/approval-withdrawal",
-            "normalizedKey": "POST /settlements/:param/approval-withdrawal",
-            "controller": "SettlementController",
-            "handler": "withdrawApproval",
-            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "positions",
-            "isPublic": false,
-            "requiredPositions": [
-              "budget_director",
-              "budget_staff",
-              "chairman",
-              "comprehensive_director",
-              "contract_director",
-              "contract_staff",
-              "employee",
-              "engineering_department_director",
-              "engineering_department_member",
-              "engineering_director",
-              "engineering_foreman",
-              "engineering_tech",
-              "finance_director",
-              "finance_staff",
-              "general_manager",
-              "material_director",
-              "material_staff",
-              "project_manager",
-              "super_admin"
-            ],
-            "requiredProjectAction": null
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "confirmSettlementWithdrawal",
-              "executeSettlementApprovalWithdrawalAction"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
       "id": "settlement-detail.approval-pdf",
       "usage": "background",
       "routePaths": [
@@ -27892,7 +27807,7 @@
         "event": "call",
         "handler": "downloadSettlementApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 1319,
+        "sourceLine": 1021,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -27957,7 +27872,7 @@
         "event": "call",
         "handler": "confirmSettlementArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1353,
+        "sourceLine": 1055,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28022,7 +27937,7 @@
         "event": "call",
         "handler": "uploadSettlementArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1336,
+        "sourceLine": 1038,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28109,71 +28024,6 @@
       ]
     },
     {
-      "id": "settlement-detail.delegate",
-      "usage": "background",
-      "routePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "ownerRoutePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "delegateSettlementApprovalWithCapability",
-        "kind": "background_call",
-        "sourceLine": 1307,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "delegate_approval",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "delegateSettlementApproval",
-          "method": "POST",
-          "path": "/settlements/:param/approval-delegation",
-          "normalizedKey": "POST /settlements/:param/approval-delegation",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/settlements/:settlementId/approval-delegation",
-            "normalizedKey": "POST /settlements/:param/approval-delegation",
-            "controller": "SettlementController",
-            "handler": "delegateApproval",
-            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "settlement.approve"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "delegateSettlementApprovalWithCapability",
-              "delegateSettlementApproval"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
       "id": "settlement-detail.file-download-ticket",
       "usage": "background",
       "routePaths": [
@@ -28188,7 +28038,7 @@
         "event": "call",
         "handler": "downloadSettlementPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1406,
+        "sourceLine": 1108,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28253,7 +28103,7 @@
         "event": "call",
         "handler": "retrySettlementSignedDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1384,
+        "sourceLine": 1086,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28318,7 +28168,7 @@
         "event": "call",
         "handler": "generateSettlementPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 1395,
+        "sourceLine": 1097,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28369,71 +28219,6 @@
       ]
     },
     {
-      "id": "settlement-detail.review",
-      "usage": "background",
-      "routePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "ownerRoutePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "reviewSettlementApprovalWithCapability",
-        "kind": "background_call",
-        "sourceLine": 1283,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "review_approval",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "reviewSettlementApproval",
-          "method": "POST",
-          "path": "/settlements/:param/approval",
-          "normalizedKey": "POST /settlements/:param/approval",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/settlements/:settlementId/approval",
-            "normalizedKey": "POST /settlements/:param/approval",
-            "controller": "SettlementController",
-            "handler": "reviewApproval",
-            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "settlement.approve"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "reviewSettlementApprovalWithCapability",
-              "reviewSettlementApproval"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
       "id": "settlement-detail.signed-document-regenerate",
       "usage": "background",
       "routePaths": [
@@ -28448,7 +28233,7 @@
         "event": "call",
         "handler": "regenerateSettlementSignedDocumentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1368,
+        "sourceLine": 1070,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -28492,71 +28277,6 @@
             "localCallChain": [
               "regenerateSettlementSignedDocumentWithCapability",
               "regenerateSettlementSignedDocument"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "settlement-detail.transfer",
-      "usage": "background",
-      "routePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "ownerRoutePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "transferSettlementApprovalWithCapability",
-        "kind": "background_call",
-        "sourceLine": 1295,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "transfer_approval",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "transferSettlementApproval",
-          "method": "POST",
-          "path": "/settlements/:param/approval-transfer",
-          "normalizedKey": "POST /settlements/:param/approval-transfer",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/settlements/:settlementId/approval-transfer",
-            "normalizedKey": "POST /settlements/:param/approval-transfer",
-            "controller": "SettlementController",
-            "handler": "transferApproval",
-            "sourceFile": "services/api/src/settlement/settlement.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "settlement.approve"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "transferSettlementApprovalWithCapability",
-              "transferSettlementApproval"
             ]
           },
           "ticketFollowups": []

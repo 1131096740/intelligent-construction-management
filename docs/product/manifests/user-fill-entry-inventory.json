@@ -8,10 +8,10 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 436,
+    "activeBusinessActionCount": 432,
     "technicalActionCount": 8,
-    "activeBindingCount": 530,
-    "retiredWriteEntryCount": 116,
+    "activeBindingCount": 526,
+    "retiredWriteEntryCount": 120,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
@@ -5874,22 +5874,6 @@
       "causalVerified": true
     },
     {
-      "id": "settlement-approval.withdraw",
-      "status": "unified_candidate",
-      "usage": "page_action",
-      "routePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-      "capabilityKind": "detail_action",
-      "bindingKeys": [
-        "POST /settlements/:param/approval-withdrawal"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
       "id": "settlement-detail.approval-pdf",
       "status": "unified_candidate",
       "usage": "background",
@@ -5935,22 +5919,6 @@
         "POST /settlements/:param/archive-files"
       ],
       "bindingCount": 2,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "settlement-detail.delegate",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /settlements/:param/approval-delegation"
-      ],
-      "bindingCount": 1,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -6003,22 +5971,6 @@
       "causalVerified": true
     },
     {
-      "id": "settlement-detail.review",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /settlements/:param/approval"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
       "id": "settlement-detail.signed-document-regenerate",
       "status": "unified_candidate",
       "usage": "background",
@@ -6029,22 +5981,6 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /settlements/:param/signed-document-regeneration"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "settlement-detail.transfer",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /settlements/:param/approval-transfer"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
@@ -7912,9 +7848,37 @@
     },
     {
       "method": "POST",
+      "path": "/settlements/:settlementId/approval",
+      "controller": "SettlementController",
+      "handler": "reviewApproval",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/settlements/:settlementId/approval-delegation",
+      "controller": "SettlementController",
+      "handler": "delegateApproval",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
       "path": "/settlements/:settlementId/approval-reminder",
       "controller": "SettlementController",
       "handler": "remindApproval",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/settlements/:settlementId/approval-transfer",
+      "controller": "SettlementController",
+      "handler": "transferApproval",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/settlements/:settlementId/approval-withdrawal",
+      "controller": "SettlementController",
+      "handler": "withdrawApproval",
       "status": "gone"
     },
     {

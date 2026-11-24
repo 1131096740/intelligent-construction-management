@@ -7,31 +7,31 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `0227dbadedb7c9b2c24d91e769749093ac6afa276034dbccef0b5988dd9ca853` |
-| webApiWrappers | ready | `4609917dc07c65be0577b16c719f6636b02976a1d11ca692e83372a148610f1a` |
-| webPageActions | ready | `5b4eb1c27a2d467bc3a7bf1443a2b05cef9abb1bfd98f7d62fb5ae6e766fb895` |
-| routeUsage | ready | `be3b0f22f6788fff99dac73898fb812fa6e1fced1aa0194d80b52907915f5744` |
+| webApiWrappers | ready | `ec096f6f523eace3b4f3929485373fe5cf7bc136f9d791ca5e72827af207cacd` |
+| webPageActions | ready | `2f8a492f9d3b83608b5bd13d39a14c6a6dd74fdbb444796d3ed49bf083d7d4e7` |
+| routeUsage | ready | `17ac2e2437436bcd6341dcb989789ebee3a771b411a1f71e9d74e7dad4264497` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 879 |
-| pageRouteCount | 614 |
+| pageRouteCount | 610 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 129 |
+| exitCandidateRouteCount | 133 |
 | internalTaskRouteCount | 66 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 830 |
+| mainRequestBindingCount | 824 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 448 |
-| actionBindingCount | 543 |
-| acceptedActionBindingCount | 498 |
+| registeredActionCount | 444 |
+| actionBindingCount | 539 |
+| acceptedActionBindingCount | 494 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 439 |
-| coveredProductionMutationConsumerPairCount | 439 |
+| productionMutationConsumerPairCount | 435 |
+| coveredProductionMutationConsumerPairCount | 435 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -323,7 +323,7 @@
 | GET | /settlements/:settlementId/draft-excel | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementDraftExcel | — | not_applicable | — |
 | GET | /settlements/:settlementId/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /settlements/:settlementId/recovery | page | web_api_wrapper | apps/web-admin/src/api/settlement-recovery.api.ts#fetchSettlementRecovery | — | not_applicable | — |
-| GET | /settlements/:settlementId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementDetail<br>apps/web-admin/src/api/core-flow-read.api.ts#prepareSettlementApprovalWithdrawalAction | — | not_applicable | — |
+| GET | /settlements/:settlementId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementDetail | — | not_applicable | — |
 | GET | /settlements/ledger-export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementLedgerExport | — | not_applicable | — |
 | GET | /settlements/lifecycle-ledger | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLifecycleLedger | — | not_applicable | — |
 | GET | /settlements | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementLedger | — | not_applicable | — |
@@ -832,12 +832,12 @@
 | POST | /settlement-workbench/contract-versions/:contractVersionId/imports/preview | exit_candidate | none | apps/web-admin/src/api/settlement-workbench.api.ts#previewSettlementImport | — | not_applicable | — |
 | POST | /settlement-workbench/contract-versions/:contractVersionId/preview | internal_task | operator_endpoint | apps/web-admin/src/api/settlement-workbench.api.ts#previewSettlementLines | — | not_applicable | — |
 | POST | /settlement-workbench/projects/:projectId/imports/:importId/apply | exit_candidate | none | apps/web-admin/src/api/settlement-workbench.api.ts#applySettlementImport | — | not_applicable | — |
-| POST | /settlements/:settlementId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegateSettlementApproval | settlement-detail.delegate | covered | — |
+| POST | /settlements/:settlementId/approval-delegation | exit_candidate | none | — | — | not_applicable | — |
 | POST | /settlements/:settlementId/approval-pdf/latest | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementLatestApprovalPdf | settlement-detail.approval-pdf | covered | — |
-| POST | /settlements/:settlementId/approval-reminder | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#remindSettlementApproval | — | not_applicable | — |
-| POST | /settlements/:settlementId/approval-transfer | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#transferSettlementApproval | settlement-detail.transfer | covered | — |
-| POST | /settlements/:settlementId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#executeSettlementApprovalWithdrawalAction | settlement-approval.withdraw | covered | — |
-| POST | /settlements/:settlementId/approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewSettlementApproval | settlement-detail.review | covered | — |
+| POST | /settlements/:settlementId/approval-reminder | exit_candidate | none | — | — | not_applicable | — |
+| POST | /settlements/:settlementId/approval-transfer | exit_candidate | none | — | — | not_applicable | — |
+| POST | /settlements/:settlementId/approval-withdrawal | exit_candidate | none | — | — | not_applicable | — |
+| POST | /settlements/:settlementId/approval | exit_candidate | none | — | — | not_applicable | — |
 | POST | /settlements/:settlementId/archive-confirmation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmSettlementArchive | settlement-detail.archive-confirm-or-regenerate | covered | — |
 | POST | /settlements/:settlementId/archive-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadSettlementArchivePrivateFile | settlement-detail.archive-upload | covered | — |
 | POST | /settlements/:settlementId/archive-files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadSettlementArchiveFile | settlement-detail.archive-upload | covered | — |

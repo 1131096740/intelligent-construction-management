@@ -13,29 +13,29 @@
     "routeCount": 879,
     "exactRouteCount": 879,
     "normalizedRouteCount": 879,
-    "classificationOverrideCount": 284,
+    "classificationOverrideCount": 288,
     "consumerSurfaceOverrideCount": 68,
-    "classificationOverrideSha256": "73311f685f6200285cb6bd1a5fe2b488095667d2b2ba00be06795ffacd4e2a4d",
+    "classificationOverrideSha256": "7a71d84ed8ac9e067eb8438ec4d12ce932deb425775d75860d89c6d7ee57ebdb",
     "consumerSurfaceOverrideSha256": "aecd8b55f30ad018e11d328e7529b559a22fb60ff1bfdbbd52538c2044a6466a",
-    "derivedProductionPageCount": 595,
-    "pageRouteCount": 614,
+    "derivedProductionPageCount": 591,
+    "pageRouteCount": 610,
     "externalTakeoverCount": 70,
-    "exitCandidateCount": 129,
+    "exitCandidateCount": 133,
     "internalTaskCount": 66,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 666,
+      "web_api_wrapper": 662,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 2,
       "operator_endpoint": 64,
-      "none": 140
+      "none": 144
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 666,
+    "productionWrapperRouteCount": 662,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -731,8 +731,7 @@
               "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
               "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
               "apps/web-admin/src/pages/delegations/DelegationListPage.vue",
-              "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-              "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
+              "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
             ]
           }
         ],
@@ -4965,7 +4964,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5772,
+            "sourceLine": 5678,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
@@ -12198,16 +12197,6 @@
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
             "wrapper": "fetchSettlementDetail",
-            "method": "GET",
-            "normalizedPath": "/settlements/:param",
-            "normalizedKey": "GET /settlements/:param",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-            ]
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "prepareSettlementApprovalWithdrawalAction",
             "method": "GET",
             "normalizedPath": "/settlements/:param",
             "normalizedKey": "GET /settlements/:param",
@@ -32493,29 +32482,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_old_serial_settlement_approval_retired_preserve_history",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "reviewSettlementApproval",
-            "method": "POST",
-            "normalizedPath": "/settlements/:param/approval",
-            "normalizedKey": "POST /settlements/:param/approval",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -32534,29 +32512,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_old_serial_settlement_approval_retired_preserve_history",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "delegateSettlementApproval",
-            "method": "POST",
-            "normalizedPath": "/settlements/:param/approval-delegation",
-            "normalizedKey": "POST /settlements/:param/approval-delegation",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -32618,7 +32585,7 @@
       "contractCutoverTombstoneWrite": false,
       "usage": "exit_candidate",
       "classificationSource": "registry_override",
-      "classificationReason": "unified_approval_progress_sms_ui_replaces_legacy_reminder_http_410_retired_no_deletion_authorization",
+      "classificationReason": "issue_425_old_serial_settlement_approval_retired_preserve_history",
       "consumerSurface": "none",
       "consumerEvidence": {
         "webApiWrappers": [],
@@ -32646,29 +32613,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_old_serial_settlement_approval_retired_preserve_history",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "transferSettlementApproval",
-            "method": "POST",
-            "normalizedPath": "/settlements/:param/approval-transfer",
-            "normalizedKey": "POST /settlements/:param/approval-transfer",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -32707,29 +32663,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_old_serial_settlement_approval_retired_preserve_history",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "executeSettlementApprovalWithdrawalAction",
-            "method": "POST",
-            "normalizedPath": "/settlements/:param/approval-withdrawal",
-            "normalizedKey": "POST /settlements/:param/approval-withdrawal",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
