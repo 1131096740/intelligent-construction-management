@@ -10,7 +10,7 @@ build=$(cd "$4" && pwd -P)
 count=$(node -e '
   const source=require(process.argv[1]);
   if(source.sourceSha!==process.argv[2])process.exit(65);
-  if(source.mode==="current-320"&&source.migrationCount===329)console.log(322);
+  if(source.mode==="current-320"&&source.migrationCount===329)console.log(source.migrationCount);
   else if(source.mode===undefined&&source.migrationCount===295)console.log(295);
   else process.exit(65);
 ' "$prepared/source.json" "$sha")
