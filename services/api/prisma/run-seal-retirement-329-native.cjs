@@ -265,7 +265,7 @@ async function main(args) {
     const files = path.join(directory, "files");
     fs.mkdirSync(files, { mode: 0o700 });
     stage("PUBLIC_LIFECYCLE");
-    const outcome = run(process.execPath, [require.resolve("jest/bin/jest"), "--runInBand", "--testRegex", "seal-retirement-329[.]native[.]ts$", "--runTestsByPath", "src/database/seal-retirement-329.native.ts"], {
+    const outcome = run(process.execPath, [require.resolve("jest/bin/jest"), "--runInBand", "--testRegex", "seal-retirement-329[.]native[.]test-support[.]ts$", "--runTestsByPath", "src/database/seal-retirement-329.native.test-support.ts"], {
       NODE_ENV: "test", TMPDIR: directory, SEAL_329_NATIVE_PACKET: packet, DATABASE_URL: appUrl.toString(),
       FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: files, FILE_DOWNLOAD_SECRET: secret(), JWT_ACCESS_SECRET: secret(), JWT_REFRESH_SECRET: secret(),
       CONTRACT_DOCX4J_RUNTIME_MANIFEST: runtime.document, DOC_CONVERTER_COMMAND: runtime.office

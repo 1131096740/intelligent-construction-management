@@ -8,6 +8,9 @@ import { resolve } from "node:path";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { AppModule } from "../app.module";
 import { apiJsonReplacer } from "../api-json-replacer";
+import { configureApiSecurity } from "../api-security";
+import { PrismaService } from "./prisma.service";
+import { CONTRACT_BODY_DOCX4J_ENGINE_VERSION } from "../contract-document/contract-document.service";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { extractContractDocx } from "../contract-document/contract-docx-extractor";
 import { createTask12Con18DefaultHttp } from "./task12-con18-default-http";
@@ -44,6 +47,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
   const passwords = Array.from({length: 8}, () => randomBytes(32).toString("hex"));
   let app: INestApplication | undefined;
   let stage = "IDENTITY";
+  let databaseFailure: { model?: string; action: string; code: string; sqlState?: string } | undefined;
   try {
     const [identity] = await readOnlyApplication.$queryRaw<Array<{ safe: boolean; oid: string }>>`
       SELECT current_database()  = ${packet.database} AND current_user = session_user
@@ -78,12 +82,26 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
         unifiedSocialCreditCode: counterparty.unifiedSocialCreditCode, registeredAddress: "隔离供应地址" } } });
     stage = "HTTP_BOOT";
     app = await NestFactory.create(AppModule, { logger: false, abortOnError: false });
+    configureApiSecurity(app);
+    app.get(PrismaService).$use(async (params, next) => {
+      try {
+        return await next(params);
+      } catch (error) {
+        const detail = error as { code?: string; meta?: { code?: string } };
+        if (typeof detail?.code === "string" && /^P[0-9]{4}$/u.test(detail.code)) {
+          const sqlState = detail.meta?.code;
+          databaseFailure = { model: params.model, action: params.action, code: detail.code,
+            sqlState: typeof sqlState === "string" && /^[A-Z0-9]{5}$/u.test(sqlState) ? sqlState : undefined };
+        }
+        throw error;
+      }
+    });
     app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
     app.useGlobalPipes(createApiValidationPipe());
     await app.listen(0, "127.0.0.1");
     const http = createTask12Con18DefaultHttp(await app.getUrl(), AbortSignal.timeout(360_000));
     const send = (actor: number, path: string, method: Task12LocalLifecycleRequest["method"] = "GET", details: RequestDetails = {}) =>
-      http.send(actor, { path, method, ...details });
+      http.send(actor, { path, method, ...details, headers: { "x-contract-numeric-protocol": "2", ...details.headers } });
     const expectStatus = async (response: ReturnType<typeof send>, expected: number): Promise<Payload> => {
       const result = await response;
       const body = result.body as Payload;
@@ -96,7 +114,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     const get = (actor: number, path: string) => expectStatus(send(actor, path), 200);
     const post = (actor: number, path: string, json?: Payload, headers?: Record<string, string>) =>
       expectStatus(send(actor, path, "POST", { json, headers }), 201);
-    const port = (actor: number) => ({ now: http.now, wait: http.wait, send: (request: Task12LocalLifecycleRequest) => http.send(actor, request) });
+    const port = (actor: number) => ({ now: http.now, wait: http.wait, send: (request: Task12LocalLifecycleRequest) => send(actor, request.path, request.method, request) });
     stage = "LOGIN";
     for (const [actor, user] of seed.users.entries()) await post(actor, "/auth/login", { phone: user.phone, password: passwords[actor] });
     stage = "SIGNATURES";
@@ -158,6 +176,13 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     };
     const docx = await download(generated.docxFileId, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     const pdf = await download(generated.pdfFileId, "application/pdf");
+    const job = await owner.contractGeneratedDocument.findUniqueOrThrow({ where: { id: generated.generationId } });
+    expect(job).toMatchObject({ status: "success", engineVersion: CONTRACT_BODY_DOCX4J_ENGINE_VERSION,
+      docxFileId: generated.docxFileId, pdfFileId: generated.pdfFileId });
+    for (const [id, bytes] of [[generated.docxFileId, docx], [generated.pdfFileId, pdf]] as const) {
+      const file = await owner.fileObject.findUniqueOrThrow({ where: { id } });
+      expect(file.contentSha256).toBe(hash(bytes));
+    }
     expect(extractContractDocx(docx).blocks.map(block => block.text).join(" ")).toContain(addedClause);
     expect((await PDFDocument.load(pdf)).getPageCount()).toBeGreaterThan(0);
 
@@ -227,7 +252,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     const marker = typeof detail?.message === "string" && /^(?:NATIVE_329|TASK12)_[A-Z0-9_]{1,100}$/u.test(detail.message) ? detail.message : undefined;
     const status = typeof detail?.status === "number" ? detail.status : undefined;
     const expected = typeof detail?.expected === "number" ? detail.expected : undefined;
-    const diagnostic = JSON.stringify({ stage, code, marker, status, expected });
+    const diagnostic = JSON.stringify({ stage, code, marker, status, expected, databaseFailure });
     process.stdout.write("SEAL_329_NATIVE_FAILURE " + diagnostic + "\n");
     throw new Error(diagnostic);
   } finally {
