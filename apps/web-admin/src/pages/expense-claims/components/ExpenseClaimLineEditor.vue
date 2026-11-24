@@ -15,7 +15,7 @@ export interface ExpenseClaimLineDraft extends Record<string, string> {
   remark: string;
 }
 
-const props = defineProps<{ definition: BusinessEntrySceneDefinition; modelValue: ExpenseClaimLineDraft[]; readonly?: boolean }>();
+const props = defineProps<{ definition: BusinessEntrySceneDefinition; modelValue: ExpenseClaimLineDraft[]; readonly?: boolean; amountDerivedFromLines?: boolean }>();
 const emit = defineEmits<{ "update:modelValue": [value: ExpenseClaimLineDraft[]] }>();
 
 const definition = computed(() => ({ ...props.definition, fields: props.definition.fields.filter((field) => field.scope === "line") }));
@@ -69,7 +69,11 @@ defineExpose({ emptyLine });
     <header>
       <div>
         <h3>费用明细</h3>
-        <p>每行金额最多两位小数；保存时系统校验费用明细合计与申请金额完全一致。</p>
+        <p>
+          {{ amountDerivedFromLines
+            ? "每行金额最多两位小数，申请金额由费用明细加总。"
+            : "每行金额最多两位小数；保存时系统校验费用明细合计与申请金额完全一致。" }}
+        </p>
       </div>
       <t-button
         v-if="!readonly"

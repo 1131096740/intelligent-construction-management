@@ -28,11 +28,14 @@ import {
   reviewExpenseClaim,
   submitExpenseClaim,
   deleteExpenseClaimDraft,
+  editReturnedExpenseClaimDraft,
+  withdrawExpenseClaim,
   uploadExpenseClaimAppendAttachmentFile,
   uploadExpenseClaimDraftAttachmentFile,
   uploadExpenseClaimLoanDisbursementVoucherFile,
   uploadExpenseClaimLoanRepaymentVoucherFile,
   uploadExpenseClaimPaymentVoucherFile,
+  type EditReturnedExpenseClaimDraftInput,
   type ExpenseClaimDetailReadModel,
   type ExpenseClaimPaymentInput,
   type ExpenseRegisteredFundingInput
@@ -43,7 +46,8 @@ import JgDetailTabs from "../../components/JgDetailTabs.vue";
 import JgPageHeader from "../../components/JgPageHeader.vue";
 import JgResultState from "../../components/JgResultState.vue";
 import ExpenseClaimSubmissionHistory from "./components/ExpenseClaimSubmissionHistory.vue";
-import { centsTextToYuanText } from "../../lib/money";
+import ExpenseClaimLineEditor, { type ExpenseClaimLineDraft } from "./components/ExpenseClaimLineEditor.vue";
+import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import { SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY } from "../../components/file-upload-policy.config";
 
 const route = useRoute();
@@ -59,6 +63,12 @@ const loading = ref(false);
 const loadError = ref("");
 const actionError = ref("");
 const submitting = ref(false);
+const withdrawalVisible = ref(false);
+const draftEditorVisible = ref(false);
+const draftWriteError = ref("");
+const withdrawalTarget = ref<{ claimId: string; actorId: string; approvalInstanceId: string } | null>(null);
+const draftEditTarget = ref<{ claimId: string; actorId: string; expectedUpdatedAt: string; originalLines: string } | null>(null);
+const draftForm = ref<{ reason: string; amountYuan: string; lines: ExpenseClaimLineDraft[] }>({ reason: "", amountYuan: "", lines: [] });
 const reviewVisible = ref(false);
 const reviewConfirmVisible = ref(false);
 const reviewing = ref(false);
@@ -88,6 +98,14 @@ const attachmentCategory = ref<"invoice" | "receipt_or_other" | "other">("receip
 const attachmentExpenseCategory = ref("");
 const reviewForm = ref({ decision: "approve" as "approve" | "reject", comment: "", selfReviewReason: "", confirmationPassword: "" });
 const detail = ref<ExpenseClaimDetailReadModel | null>(null);
+watch([() => route.params.claimId, () => auth.user?.id], () => {
+  withdrawalVisible.value = false;
+  draftEditorVisible.value = false;
+  withdrawalTarget.value = null;
+  draftEditTarget.value = null;
+  draftForm.value = { reason: "", amountYuan: "", lines: [] };
+  draftWriteError.value = "";
+});
 const reviewTarget = ref<{ claimId: string; actorId?: string; parallel: boolean; approvalInstanceId?: string } | null>(null);
 const selectedApprovalDutyIndex = ref<number>();
 const approvalDuties = computed(() => detail.value?.approval?.actionableDuties);
@@ -178,13 +196,39 @@ async function loadDetail() {
   catch (error) { loadError.value = formatUnknownApiError(error, "费用详情读取失败"); }
   finally { loading.value = false; }
 }
-async function submitExpenseClaimWithCapability(claimId: string) {
+async function submitExpenseClaimWithCapability(claimId: string, actorId: string) {
   const capability = await fetchExpenseClaimActionCapability(claimId);
   const matchesRequestedClaim = capability.claimId === claimId;
   if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
   const operationAllowed = capability.availableActions.includes("submit_expense_claim");
   if (!operationAllowed) throw new Error("当前费用申请不可提交");
+  if (!matchesExpenseActor(claimId, actorId)) throw new Error("费用申请或当前用户已变化，请重新提交");
   return submitExpenseClaim(claimId);
+}
+async function withdrawExpenseClaimWithCapability(target: NonNullable<typeof withdrawalTarget.value>) {
+  const { claimId, approvalInstanceId, actorId } = target;
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  if (capability.claimId !== claimId || !capability.availableActions.includes("withdraw_expense_claim")) {
+    throw new Error("当前费用审批不能撤回，请刷新后核对");
+  }
+  if (!withdrawalVisible.value || withdrawalTarget.value !== target || !matchesExpenseActor(claimId, actorId)) {
+    throw new Error("费用申请或当前用户已变化，请重新发起撤回");
+  }
+  return withdrawExpenseClaim(claimId, approvalInstanceId);
+}
+async function editReturnedExpenseClaimWithCapability(
+  target: NonNullable<typeof draftEditTarget.value>,
+  body: EditReturnedExpenseClaimDraftInput
+) {
+  const { claimId, actorId } = target;
+  const capability = await fetchExpenseClaimActionCapability(claimId);
+  if (capability.claimId !== claimId || !capability.availableActions.includes("edit_returned_expense_claim")) {
+    throw new Error("当前费用草稿不能修改，请刷新后核对");
+  }
+  if (!draftEditorVisible.value || draftEditTarget.value !== target || !matchesExpenseActor(claimId, actorId)) {
+    throw new Error("费用草稿或当前用户已变化，请重新打开修改");
+  }
+  return editReturnedExpenseClaimDraft(claimId, body);
 }
 async function reviewExpenseClaimWithCapability(
   claimId: string,
@@ -395,12 +439,106 @@ async function deleteDraft() {
 }
 
 async function submit() {
-  if (!detail.value || submitting.value) return;
+  const claimId = detail.value?.id;
+  const actorId = auth.user?.id;
+  if (!claimId || !actorId || submitting.value || !matchesExpenseActor(claimId, actorId)) return;
   submitting.value = true;
   actionError.value = "";
-  try { await submitExpenseClaimWithCapability(detail.value.id); await loadDetail(); }
-  catch (error) { actionError.value = formatUnknownApiError(error, "提交费用申请失败"); }
-  finally { submitting.value = false; }
+  try {
+    await submitExpenseClaimWithCapability(claimId, actorId);
+    if (matchesExpenseActor(claimId, actorId)) await loadDetail();
+  } catch (error) {
+    if (matchesExpenseActor(claimId, actorId)) actionError.value = formatUnknownApiError(error, "提交费用申请失败");
+  } finally { submitting.value = false; }
+}
+function matchesExpenseActor(claimId: string, actorId: string) {
+  return route.params.claimId === claimId && detail.value?.id === claimId && auth.user?.id === actorId;
+}
+function openWithdrawal() {
+  const row = detail.value;
+  const actorId = auth.user?.id;
+  const approvalInstanceId = row?.approval?.approvalInstanceId;
+  if (!actorId || !row?.canWithdrawApproval || !approvalInstanceId || !matchesExpenseActor(row.id, actorId)) return;
+  withdrawalTarget.value = { claimId: row.id, actorId, approvalInstanceId };
+  draftWriteError.value = "";
+  withdrawalVisible.value = true;
+}
+async function withdrawApproval() {
+  const target = withdrawalTarget.value;
+  if (!target || submitting.value || !matchesExpenseActor(target.claimId, target.actorId)) return;
+  submitting.value = true;
+  draftWriteError.value = "";
+  try {
+    await withdrawExpenseClaimWithCapability(target);
+    if (withdrawalTarget.value === target) withdrawalVisible.value = false;
+    if (matchesExpenseActor(target.claimId, target.actorId)) await loadDetail();
+  } catch (error) {
+    if (withdrawalTarget.value === target) draftWriteError.value = formatUnknownApiError(error, "撤回费用审批失败");
+  } finally { submitting.value = false; }
+}
+function openReturnedDraftEditor() {
+  const row = detail.value;
+  const actorId = auth.user?.id;
+  if (!actorId || !row?.canEditReturnedDraft || !matchesExpenseActor(row.id, actorId)) return;
+  const lines = row.lines.map((line): ExpenseClaimLineDraft => ({
+    expenseCategory: line.expenseCategory,
+    occurredOn: line.occurredOn.slice(0, 10),
+    purpose: line.purpose,
+    quantity: line.quantity ?? "",
+    receiptCount: String(line.receiptCount),
+    amountYuan: centsTextToYuanText(line.amountCents).replaceAll(",", ""),
+    evidenceType: line.evidenceType === "none" || line.evidenceType === "receipt_or_other" ? line.evidenceType : "invoice",
+    noEvidenceReason: line.noEvidenceReason ?? "",
+    remark: line.remark ?? ""
+  }));
+  draftEditTarget.value = { claimId: row.id, actorId, expectedUpdatedAt: row.updatedAt, originalLines: JSON.stringify(lines) };
+  draftForm.value = {
+    reason: row.reason,
+    amountYuan: centsTextToYuanText(row.requestedAmountCents).replaceAll(",", ""),
+    lines
+  };
+  draftWriteError.value = "";
+  draftEditorVisible.value = true;
+}
+async function saveReturnedDraft() {
+  const target = draftEditTarget.value;
+  const row = detail.value;
+  if (!target || !row || submitting.value || !matchesExpenseActor(target.claimId, target.actorId)) return;
+  submitting.value = true;
+  draftWriteError.value = "";
+  try {
+    const { reason, amountYuan, lines } = draftForm.value;
+    if (!reason.trim()) throw new Error("请填写费用事由");
+    const payload: EditReturnedExpenseClaimDraftInput = { expectedUpdatedAt: target.expectedUpdatedAt, reason: reason.trim() };
+    if (row.claimType === "incidental_expense") {
+      const amountCents = yuanTextToCentsText(amountYuan.trim());
+      if (BigInt(amountCents) <= 0n) throw new Error("申请金额必须大于 0");
+      if (amountCents !== row.requestedAmountCents) payload.requestedAmountCents = amountCents;
+    }
+    if (row.claimType === "reimbursement" && JSON.stringify(lines) !== target.originalLines) {
+      payload.lines = lines.map((line, index) => {
+        const position = `第 ${index + 1} 行`;
+        if (!line.expenseCategory.trim() || !line.occurredOn || !line.purpose.trim()) throw new Error(`${position}请补全费用类别、发生日期和用途`);
+        const receiptCount = Number(line.receiptCount);
+        if (!/^\d+$/u.test(line.receiptCount) || receiptCount > 10000) throw new Error(`${position}单据张数须为 0 到 10000 的整数`);
+        const amountCents = yuanTextToCentsText(line.amountYuan.trim());
+        if (BigInt(amountCents) <= 0n) throw new Error(`${position}费用金额必须大于 0`);
+        if (line.evidenceType === "none" && !line.noEvidenceReason.trim()) throw new Error(`${position}无凭证费用须填写原因`);
+        return {
+          expenseCategory: line.expenseCategory.trim(), occurredOn: line.occurredOn,
+          purpose: line.purpose.trim(), quantity: line.quantity.trim() || undefined,
+          receiptCount, amountCents, evidenceType: line.evidenceType,
+          noEvidenceReason: line.evidenceType === "none" ? line.noEvidenceReason.trim() : undefined,
+          remark: line.remark.trim() || undefined
+        };
+      });
+    }
+    await editReturnedExpenseClaimWithCapability(target, payload);
+    if (draftEditTarget.value === target) draftEditorVisible.value = false;
+    if (matchesExpenseActor(target.claimId, target.actorId)) await loadDetail();
+  } catch (error) {
+    if (draftEditTarget.value === target) draftWriteError.value = formatUnknownApiError(error, "修改费用草稿失败");
+  } finally { submitting.value = false; }
 }
 function isReviewTargetCurrent(target: NonNullable<typeof reviewTarget.value>) {
   return reviewVisible.value && reviewTarget.value === target &&
@@ -643,7 +781,7 @@ async function review() {
   const form = { ...reviewForm.value, comment: reviewForm.value.comment.trim() };
   actionError.value = "";
   try {
-    if (form.decision === "reject" && !form.comment) throw new Error("驳回必须填写审批意见");
+    if (form.decision === "reject" && !form.comment) throw new Error(target.parallel ? "请填写退回原因" : "驳回必须填写审批意见");
     const dutyIndex = selectedApprovalDutyIndex.value;
     if (target.parallel && (!canSubmitReview.value || dutyIndex === undefined)) {
       throw new Error("请选择当前可办理的审批职责");
@@ -752,7 +890,28 @@ onMounted(() => void loadDetail());
           :requested-amount="amount(detail.requestedAmountCents)"
         >
           <template #actions>
-<ApprovalDocumentDownload  business-type="expense_claim" :business-id="detail.id" :refresh-key="detail.status" />
+            <ApprovalDocumentDownload
+              business-type="expense_claim"
+              :business-id="detail.id"
+              :approval-instance-id="detail.approvalInstanceId ?? detail.approval?.approvalInstanceId"
+              :refresh-key="detail.status"
+            />
+            <t-button
+              v-if="detail.canWithdrawApproval && detail.approval?.approvalInstanceId"
+              variant="outline"
+              :disabled="submitting"
+              @click="openWithdrawal"
+            >
+              撤回审批
+            </t-button>
+            <t-button
+              v-if="detail.canEditReturnedDraft"
+              variant="outline"
+              :disabled="submitting"
+              @click="openReturnedDraftEditor"
+            >
+              修改草稿
+            </t-button>
             <t-popconfirm
               v-if="detail.canDeleteDraft"
               content="彻底删除此未提交草稿及其明细、附件关联？删除后无法恢复。"
@@ -769,8 +928,10 @@ onMounted(() => void loadDetail());
               </t-button>
             </t-popconfirm>
             <t-popconfirm
-              v-if="detail.status === 'draft'"
-              content="提交后将按当前有效岗位冻结审批候选，草稿不能再按原方式修改。"
+              v-if="detail.status === 'draft' && (!detail.submittedAt || detail.canEditReturnedDraft)"
+              :content="detail.canEditReturnedDraft
+                ? '重新提交后将开启新审批轮次，所有岗位都需要重新办理。'
+                : '提交后将按当前有效岗位冻结审批候选，草稿不能再按原方式修改。'"
               confirm-btn="确认提交"
               cancel-btn="继续核对"
               @confirm="submit"
@@ -779,7 +940,7 @@ onMounted(() => void loadDetail());
                 theme="primary"
                 :loading="submitting"
               >
-                提交审批
+                {{ detail.canEditReturnedDraft ? "重新提交审批" : "提交审批" }}
               </t-button>
             </t-popconfirm>
             <t-button
@@ -832,6 +993,81 @@ onMounted(() => void loadDetail());
           close
           @close="actionError = ''"
         />
+        <t-dialog
+          v-model:visible="withdrawalVisible"
+          header="撤回费用审批"
+          :confirm-btn="{ content: '确认撤回', loading: submitting }"
+          :cancel-btn="{ content: '继续审批', disabled: submitting }"
+          :close-btn="!submitting"
+          :close-on-overlay-click="false"
+          :close-on-esc-keydown="!submitting"
+          @confirm="withdrawApproval"
+        >
+          <p>撤回后申请返回草稿。再次提交时，所有岗位都需要重新办理。</p>
+          <t-alert
+            v-if="draftWriteError"
+            theme="error"
+            :message="draftWriteError"
+          />
+        </t-dialog>
+        <t-drawer
+          v-model:visible="draftEditorVisible"
+          header="修改费用草稿"
+          size="min(880px, 100vw)"
+          :close-btn="!submitting"
+          :close-on-overlay-click="false"
+          :close-on-esc-keydown="!submitting"
+        >
+          <div class="expense-claim-detail__review-form">
+            <t-alert
+              v-if="draftWriteError"
+              theme="error"
+              :message="draftWriteError"
+            />
+            <t-form-item label="费用事由">
+              <t-textarea
+                v-model="draftForm.reason"
+                placeholder="请填写费用事由"
+                :disabled="submitting"
+              />
+            </t-form-item>
+            <t-form-item
+              v-if="detail.claimType === 'incidental_expense'"
+              label="申请金额"
+            >
+              <t-input
+                v-model="draftForm.amountYuan"
+                inputmode="decimal"
+                placeholder="请填写申请金额"
+                suffix="元"
+                :disabled="submitting"
+              />
+            </t-form-item>
+            <ExpenseClaimLineEditor
+              v-if="detail.claimType === 'reimbursement' && detail.returnedDraftEntryDefinition"
+              v-model="draftForm.lines"
+              :definition="detail.returnedDraftEntryDefinition"
+              :readonly="submitting"
+              amount-derived-from-lines
+            />
+          </div>
+          <template #footer>
+            <t-button
+              variant="outline"
+              :disabled="submitting"
+              @click="draftEditorVisible = false"
+            >
+              取消
+            </t-button>
+            <t-button
+              theme="primary"
+              :loading="submitting"
+              @click="saveReturnedDraft"
+            >
+              保存修改
+            </t-button>
+          </template>
+        </t-drawer>
         <t-drawer
           v-model:visible="reviewVisible"
           header="办理费用审批"
@@ -869,12 +1105,12 @@ onMounted(() => void loadDetail());
               <t-radio value="approve">
                 批准
               </t-radio><t-radio value="reject">
-                驳回
+                {{ reviewTarget?.parallel ? "退回修改" : "驳回" }}
               </t-radio>
             </t-radio-group>
             <t-textarea
               v-model="reviewForm.comment"
-              :placeholder="reviewForm.decision === 'reject' ? '驳回意见必填' : '审批意见（选填）'"
+              :placeholder="reviewForm.decision === 'reject' ? (reviewTarget?.parallel ? '请填写退回原因' : '驳回意见必填') : '审批意见（选填）'"
             />
             <ApprovalSelfReviewFields
               v-model:self-review-reason="reviewForm.selfReviewReason"
@@ -917,7 +1153,9 @@ onMounted(() => void loadDetail());
         <t-dialog
           v-model:visible="reviewConfirmVisible"
           header="确认费用审批"
-          :body="selectedApprovalDuty ? `确认办理“${selectedApprovalDuty.name}”职责？` : '所选审批职责已变化，请重新选择'"
+          :body="selectedApprovalDuty
+            ? reviewForm.decision === 'reject' ? '确认退回草稿供经办人修改？' : `确认办理“${selectedApprovalDuty.name}”职责？`
+            : '所选审批职责已变化，请重新选择'"
           :confirm-btn="{ content: '确认办理', disabled: !canSubmitReview, loading: reviewing }"
           :close-btn="!reviewing"
           :close-on-overlay-click="false"

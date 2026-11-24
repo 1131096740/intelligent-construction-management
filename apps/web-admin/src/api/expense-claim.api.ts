@@ -31,6 +31,10 @@ export interface ExpenseClaimListItemReadModel {
 
 export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemReadModel, "handledByNameSnapshot"> {
   canDeleteDraft?: boolean;
+  approvalInstanceId?: string | null;
+  canWithdrawApproval?: boolean;
+  canEditReturnedDraft?: boolean;
+  returnedDraftEntryDefinition?: BusinessEntrySceneDefinition | null;
   generalProcurement?: { id: string; code: string } | null;
   entrySnapshots: ExpenseClaimEntrySnapshotReadModel[];
   applicantPhoneSnapshot: string | null;
@@ -407,7 +411,34 @@ export async function createExpenseClaim(payload: CreateExpenseClaimPayload) {
 export async function submitExpenseClaim(claimId: string) {
   const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/submission`, { method: "POST" });
   await ensureOk(response);
-  return response.json() as Promise<{ id: string; status: string; submittedAt: string }>;
+  return response.json() as Promise<{ id: string; status: string; submittedAt: string; approvalInstanceId?: string }>;
+}
+
+export interface EditReturnedExpenseClaimDraftInput {
+  expectedUpdatedAt: string;
+  reason: string;
+  lines?: CreateExpenseClaimPayload["lines"];
+  requestedAmountCents?: string;
+}
+
+export async function withdrawExpenseClaim(claimId: string, approvalInstanceId: string) {
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/withdrawal`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ approvalInstanceId })
+  });
+  await ensureOk(response);
+  return response.json() as Promise<{ id: string; status: string }>;
+}
+
+export async function editReturnedExpenseClaimDraft(claimId: string, body: EditReturnedExpenseClaimDraftInput) {
+  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/draft`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  await ensureOk(response);
+  return response.json() as Promise<{ id: string; status: string; updatedAt: string; requestedAmountCents: string }>;
 }
 
 export async function reviewExpenseClaim(claimId: string, body: {

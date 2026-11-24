@@ -174,6 +174,120 @@ test("报销并联审批重新核对所选职责后提交准确轮次和职责",
   await expect.poll(() => writes).toEqual([parallelWrite, { decision: "approve" }]);
 });
 
+test("撤回零星费用后修改同一份草稿并提交新审批轮次", async ({ page }) => {
+  await mockExpenseClaimSession(page, []);
+  const claimId = "expense-claim-1";
+  const editedAt = "2026-11-24T08:00:00.000Z";
+  const writes: unknown[] = [];
+  let status = "approval_pending";
+  let roundId: string | null = "round-original";
+  let reason = "现场临时费用";
+  let requestedAmountCents = "123456";
+  await page.route("**/api/expense-claims/expense-claim-1", route => route.fulfill({
+    json: {
+      ...expenseClaim({ claimType: "incidental_expense", status, reason, requestedAmountCents }),
+      updatedAt: editedAt,
+      approvalInstanceId: roundId,
+      canWithdrawApproval: status === "approval_pending",
+      canEditReturnedDraft: status === "draft",
+      approval: roundId ? { currentNodeName: "并联审批", approvalInstanceId: roundId, canReview: false, actionableDuties: [] } : null,
+      attachmentPermissions: { canAppendEvidence: false },
+      lines: [], attachments: [], paymentExecutions: [], entrySnapshots: []
+    }
+  }));
+  await page.route("**/api/expense-claims/expense-claim-1/capability", route => route.fulfill({
+    json: { claimId, availableActions: status === "draft"
+      ? ["edit_returned_expense_claim", "submit_expense_claim"] : ["withdraw_expense_claim"] }
+  }));
+  await page.route("**/api/expense-claims/expense-claim-1/withdrawal", route => {
+    writes.push(route.request().postDataJSON());
+    status = "draft";
+    roundId = null;
+    return route.fulfill({ status: 201, json: { id: claimId, status } });
+  });
+  await page.route("**/api/expense-claims/expense-claim-1/draft", route => {
+    const body = route.request().postDataJSON();
+    writes.push(body);
+    reason = body.reason;
+    requestedAmountCents = body.requestedAmountCents;
+    return route.fulfill({ json: { id: claimId, status, requestedAmountCents } });
+  });
+  await page.route("**/api/expense-claims/expense-claim-1/submission", route => {
+    writes.push("submission");
+    status = "approval_pending";
+    roundId = "round-new";
+    return route.fulfill({ status: 201, json: { id: claimId, status, approvalInstanceId: roundId } });
+  });
+
+  await login(page);
+  await page.goto(`/费用与报销/${claimId}`);
+  await page.getByRole("button", { name: "撤回审批" }).click();
+  await page.getByRole("button", { name: "确认撤回" }).click();
+  await page.getByRole("button", { name: "修改草稿" }).click();
+  await page.getByPlaceholder("请填写费用事由").fill("修订现场临时费用");
+  await page.getByPlaceholder("请填写申请金额").fill("128.50");
+  await page.getByRole("button", { name: "保存修改" }).click();
+  await expect(page.getByRole("button", { name: "保存修改" })).toBeHidden();
+  await expect(page.getByText("修订现场临时费用", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "重新提交审批" }).click();
+  await page.getByRole("button", { name: "确认提交" }).click();
+  await expect.poll(() => writes).toEqual([
+    { approvalInstanceId: "round-original" },
+    { expectedUpdatedAt: editedAt, reason: "修订现场临时费用", requestedAmountCents: "12850" },
+    "submission",
+  ]);
+  await expect(page.getByRole("button", { name: "修改草稿" })).toBeHidden();
+});
+
+test("手机修改退回报销的明细，金额校验失败后保留输入", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockExpenseClaimSession(page, []);
+  const claimId = "expense-claim-1";
+  const expectedUpdatedAt = "2026-11-24T08:00:00.000Z";
+  const savedLine = { expenseCategory: "交通费", occurredOn: "2026-11-23", purpose: "现场交通",
+    receiptCount: 0, amountCents: "123456", evidenceType: "none", noEvidenceReason: "遗失车票", remark: "补说明" };
+  const writes: unknown[] = [];
+  await page.route("**/api/expense-claims/expense-claim-1", route => route.fulfill({
+    json: {
+      ...expenseClaim({ status: "draft" }),
+      updatedAt: expectedUpdatedAt,
+      canEditReturnedDraft: true,
+      returnedDraftEntryDefinition: EXPENSE_CLAIM_ENTRY_DEFINITION,
+      approval: null,
+      lines: [{ id: "original-line", sortOrder: 1, quantity: null, ...savedLine }],
+      attachments: [], paymentExecutions: [], entrySnapshots: []
+    }
+  }));
+  await page.route("**/api/expense-claims/expense-claim-1/capability", route => route.fulfill({ json: {
+    claimId, availableActions: ["edit_returned_expense_claim", "submit_expense_claim"]
+  } }));
+  await page.route("**/api/expense-claims/expense-claim-1/draft", route => {
+    writes.push(route.request().postDataJSON());
+    return writes.length === 1
+      ? route.fulfill({ status: 422, json: { message: "请复核原始单据金额" } })
+      : route.fulfill({ json: { id: claimId, status: "draft" } });
+  });
+
+  await login(page);
+  await page.goto(`/费用与报销/${claimId}`);
+  await page.getByRole("button", { name: "修改草稿" }).click();
+  const lineAmount = page.locator('[data-field="amountYuan"] input, input[data-field="amountYuan"]');
+  await expect(lineAmount).toHaveValue("1234.56");
+  await lineAmount.fill("128.50");
+  const save = page.getByRole("button", { name: "保存修改" });
+  await save.click();
+  await expect(page.getByText("请复核原始单据金额", { exact: true })).toBeVisible();
+  await expect(lineAmount).toHaveValue("128.50");
+  await save.click();
+  await expect(save).toBeHidden();
+  const edit = {
+    expectedUpdatedAt,
+    reason: "项目现场交通费",
+    lines: [{ ...savedLine, amountCents: "12850" }]
+  };
+  expect(writes).toEqual([edit, edit]);
+});
+
 test("已批待付款报销只通过受权接口调整实际付款主体并显示审计原因", async ({ page }) => {
   const requestedViews: string[] = [];
   const payerAdjustments: unknown[] = [];

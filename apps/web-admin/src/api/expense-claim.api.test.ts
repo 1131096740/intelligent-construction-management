@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, confirmExpenseClaimLoanRepayment, createExpenseClaim, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaimExpenseCategories, fetchExpenseClaimSelectablePurchaseBatches, generateExpenseClaimFinalDisbursementPdf, generateExpenseClaimFinalPaymentPdf, recordExpenseClaimLoanDisbursement, recordExpenseClaimLoanRepayment, recordExpenseClaimPayment, removeExpenseClaimAttachment, reverseExpenseClaimLoanRepayment, reviewExpenseClaim, submitExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
+import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, confirmExpenseClaimLoanRepayment, createExpenseClaim, editReturnedExpenseClaimDraft, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaimExpenseCategories, fetchExpenseClaimSelectablePurchaseBatches, generateExpenseClaimFinalDisbursementPdf, generateExpenseClaimFinalPaymentPdf, recordExpenseClaimLoanDisbursement, recordExpenseClaimLoanRepayment, recordExpenseClaimPayment, removeExpenseClaimAttachment, reverseExpenseClaimLoanRepayment, reviewExpenseClaim, submitExpenseClaim, withdrawExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
 
 vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
 
@@ -119,6 +119,24 @@ describe("expense claim API", () => {
     mockApiFetch.mockResolvedValue(new Response(JSON.stringify({ id: "claim-1", status: "approval_pending", submittedAt: "2026-07-23T10:00:00.000Z" }), { status: 201 }));
     await expect(submitExpenseClaim("claim/1")).resolves.toMatchObject({ status: "approval_pending" });
     expect(mockApiFetch).toHaveBeenCalledWith("/expense-claims/claim%2F1/submission", { method: "POST" });
+  });
+
+  it("withdraws a named approval round and updates the same draft with its saved version", async () => {
+    const updatedAt = "2026-11-24T08:00:00.000Z";
+    const draftEdit = { expectedUpdatedAt: updatedAt, reason: "调整零星费用", requestedAmountCents: "12500" };
+    mockApiFetch
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "claim-1", status: "draft" }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "claim-1", status: "draft", requestedAmountCents: "12500" }), { status: 200 }));
+
+    await expect(withdrawExpenseClaim("claim/1", "round-1")).resolves.toMatchObject({ status: "draft" });
+    await expect(editReturnedExpenseClaimDraft("claim/1", draftEdit)).resolves.toMatchObject({ requestedAmountCents: "12500" });
+
+    expect(mockApiFetch).toHaveBeenNthCalledWith(1, "/expense-claims/claim%2F1/withdrawal", expect.objectContaining({
+      method: "POST", body: JSON.stringify({ approvalInstanceId: "round-1" })
+    }));
+    expect(mockApiFetch).toHaveBeenNthCalledWith(2, "/expense-claims/claim%2F1/draft", expect.objectContaining({
+      method: "PATCH", body: JSON.stringify(draftEdit)
+    }));
   });
 
   it("reviews only through the encoded expense approval action path", async () => {
