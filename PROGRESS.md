@@ -46,6 +46,8 @@ POL114 合同版式浏览器夹具 `231144a10` 改用现行预览及下载入口
 
 综合采购在 `b689df80` 的 329 精确应用与诊断叠加层上复现 11 通过、5 失败，业务启动后确认 `ActualPurchaseBatch` 及 `PaymentExecutionRefund` 读取拒绝。独立候选 `2c20c371` 将采购列表及费用实付所需列的只读权限放入原角色事务。精确应用仍为 `b689df80`，仅叠加该候选夹具与有限诊断，原 16 项全部通过，前后 329 及 B7 一致，资源已清理。综合采购及项目采购备料通过。夹具已合入本地 `9955e821`，远端待复验。[权限诊断回执](/private/tmp/jg382-general-procurement-runtime.zoTehRW6/diagnostic.log) · [修复复验](/private/tmp/jg382-general-procurement-runtime.zoTehRW6/atomic-read-fix-probe.log)。
 
+剩余动态分片的三条工资与历史财务入口已改为使用已校验的迁移数量判断 329 模式，历史 295 分支保持原样。精确候选 `0c564414` 在独占 PostgreSQL 16 上依次通过工资单 24 项、历史工资 12 项、历史财务 4 项。三个分片的 329 账本、数据库身份与 B7 一致，独占资源均已清理。已合入本地，当前入口独立复核 9 种宿主路由情形通过。[宿主验证](/private/tmp/jg382-wage-route-proof.ZeMX8997/green.log) · [工资单](/private/tmp/jg382-wage-route-proof.ZeMX8997/wage-run.log) · [历史工资](/private/tmp/jg382-wage-route-proof.ZeMX8997/historical-wage-run.log) · [历史财务](/private/tmp/jg382-wage-route-proof.ZeMX8997/historical-financial-run.log)。
+
 Line A 精确候选 `f5f6430be` 在隔离 PostgreSQL 16 完整安装 329 条迁移，原 HTTP 用例 12 项全通过，零跳过。覆盖补充协议复核、已签结算及付款依据、履约三职责与并发付款唯一占用。前后账本和 B7 一致，临时角色及见证已清理。当前已和 `58a8f801` 的历史接管重放修复一并合入本地，各自执行源码与实跑候选一致。[Line A 精确回执](docs/progress/2026-11-24-line-a-329.md)。
 
 历史接管确认重试在状态推进后误拒，两条定向回归先红后绿。独立候选 `c30f8f1c` 在事务中先校验角色与原幂等记录，再校验新的请求能否推进当前状态；两条重试均原样返回已存结果，未写入状态、确认记录或审计。服务单测 155 项、API 类型检查与定向 lint 通过。后继精确候选 `58a8f801` 在隔离 PostgreSQL 16 完整安装 329 条迁移，按先财务、后合同复核验证并发、旧键重放和新请求推进。原分片 5 项全通过，包含 3 项确认并发和 2 项原余额并发，零跳过。业务前后保留同一迁移账和 B7，独占资源已清理。执行源码和实际挂载用例与本地集成逐字节一致，银行、综合采购、项目采购和入职的当前备料均通过，历史封存材料保持原摘要。完整发布清单通过，877 条路由及 485 项页面动作均无阻塞。[真库回执](/private/tmp/jg382-takeover-stage-runtime.LOkocF1V/jg-remaining-takeover-task1.XroNA8lf/receipt.json)。
