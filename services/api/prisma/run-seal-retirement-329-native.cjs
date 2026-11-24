@@ -123,10 +123,12 @@ async function migrate({ source, database, directory, sql, url, run, stage, runI
   qualified.searchParams.set("options", "-c app.contract_archive_v2_application_role_oid=" + setup.appOid +
     " -c app.contract_archive_v2_file_caller_oids=" + JSON.stringify(setup.fileCallerOids) + " -c app.local_migration_nonce=" + plan.nonce);
   deploy(205, qualified);
+  stage("READBACK_205");
   const completed = controls.parseReadback(sql(controls.readbackSql(plan, setup)));
   verify(completed, 205);
   controls.checkCompletion(completed, plan, setup);
   sql(controls.cleanupSql(plan, setup));
+  stage("CLEAN_READBACK_205");
   const clean = JSON.parse(sql(controls.cleanReadSql(plan, setup)));
   assert.ok(clean.schemaAbsent && clean.eventAbsent && clean.applicationQualified && clean.appOid === setup.appOid);
   const read = async (_phase, text) => JSON.parse(sql(text));
@@ -213,7 +215,7 @@ async function main(args) {
       firstFailure ??= { stage: phase, exit: result.status, signal: result.signal ?? undefined, databaseCode, ...(diagnostic ? { diagnostic: JSON.parse(diagnostic) } : {}) };
       throw new Error("NATIVE_329_COMMAND");
     }
-    return result.stdout.trim();
+    return result.stdout;
   };
   try {
     const port = await localPort();
@@ -270,7 +272,7 @@ async function main(args) {
       ownerUrl.searchParams.set(key, value);
     }
     stage("PG_TLS");
-    assert.equal(sql("SELECT (SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()) AND inet_client_addr() = '127.0.0.1'::inet;"), "t");
+    assert.equal(sql("SELECT (SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()) AND inet_client_addr() = '127.0.0.1'::inet;").trim(), "t");
     for (const mismatch of [{ PGSSLROOTCERT: wrongCa }, { PGSSLMODE: "disable" }]) {
       const negative = spawnSync(bin("psql"), ["-X", "-q", "-d", database, "-c", "SELECT 1"], {
         cwd: api, env: { ...env, HOME: directory, PGHOST: "127.0.0.1", PGPORT: String(port), PGUSER: owner,
