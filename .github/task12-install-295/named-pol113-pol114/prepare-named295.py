@@ -105,6 +105,9 @@ for name, pin in pins['runtime'].items():
         signedChangeFailure:traces.filter(value=>typeof value==="string").map(value=>
           /\bPOL114_SIGNED_CHANGE_(?:BOOT_(?:P[0-9]{4}|EADDRINUSE|EACCES|ECONNREFUSED|UNCLASSIFIED)|HTTP_[1-5][0-9]{2}_(?:OLD_WRITE_ENTRY_RETIRED|OPERATIONAL_WRITE_FREEZE_ROUTE_UNCLASSIFIED|OPERATIONAL_WRITE_FREEZE_ACTIVE|UNCLASSIFIED))\b/u.exec(value)?.[0]
         ).find(Boolean),
+        signedSettlementFailure:traces.filter(value=>typeof value==="string").map(value=>
+          /\bPOL114_SIGNED_SETTLEMENT_(?:PROVISION|SESSION_PRIVILEGES|SESSION|BOOT|CLEANUP)_(?:[0-9A-Z]{5}|EADDRINUSE|EACCES|ECONNREFUSED|UNCLASSIFIED)\b/u.exec(value)?.[0]
+        ).find(Boolean),
         sqlstates:[...new Set(traces.flatMap(value=>typeof value==="string"
           ? [...value.matchAll(/(?:SQLSTATE\s+|Raw query failed\. Code:\s*`|SqlState\(E)([A-Z0-9]{5})\b/gu)].map(match=>match[1])
           : []))].slice(0,4),

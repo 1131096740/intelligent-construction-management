@@ -36,7 +36,7 @@
  hostnossl all all 127.0.0.1/32 reject
  hostssl all ${owner} 127.0.0.1/32 scram-sha-256
  hostssl ${database} jg_task01_runtime,jg_task01_observer 127.0.0.1/32 scram-sha-256
-+${named320 && database==='jiangkong_pol114' ? 'hostssl jiangkong_pol114 pol114_signed_change_qualification 127.0.0.1/32 scram-sha-256' : ''}
++${named320 && database==='jiangkong_pol114' ? 'hostssl jiangkong_pol114 pol114_signed_change_qualification,pol114_signed_settlement_qualification 127.0.0.1/32 scram-sha-256' : ''}
  ${release.procurementScope ? `hostssl ${database} general_procurement_runtime 127.0.0.1/32 scram-sha-256\n` : ''}${release.projectBusinessScope ? `hostssl ${database} project_business_scope_runtime 127.0.0.1/32 scram-sha-256\n` : ''}hostssl all all 127.0.0.1/32 reject
  `;
      fs.writeFileSync(abs('data/pg_hba.conf'), hba);
