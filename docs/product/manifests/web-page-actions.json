@@ -17,7 +17,7 @@
     "totalVueFileCount": 255,
     "parsedVueFileCount": 255,
     "reachableProductionModuleCount": 406,
-    "templateEventDirectiveCount": 1565,
+    "templateEventDirectiveCount": 1564,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 455,
     "candidateProductionMutationConsumerCount": 455,
@@ -29071,7 +29071,7 @@
         "event": "call",
         "handler": "createHistoricalDownloadTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 173,
+        "sourceLine": 152,
         "sourceColumn": 0
       },
       "semantic": "business_write",

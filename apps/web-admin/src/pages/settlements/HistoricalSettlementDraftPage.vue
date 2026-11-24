@@ -25,27 +25,16 @@
         <t-table row-key="key" :columns="lineColumns" :data="lines" size="small" />
         <h2>历史文件</h2>
         <t-alert v-if="fileError" theme="warning" :message="fileError" />
+        <t-alert v-if="downloadError" theme="warning" :message="downloadError" />
         <p v-if="!historyFiles.length && !fileError">暂无历史文件</p>
         <ul v-else-if="historyFiles.length">
           <li v-for="file in historyFiles" :key="file.id">
             <span>{{ file.label }} · {{ file.fileName }}</span>
-            <t-button size="small" variant="text" @click="prepareFileDownload(file)">下载</t-button>
+            <t-button size="small" variant="text" :loading="downloadingFile === file.id" :disabled="downloadingFile !== null" @click="downloadHistoryFile(file)">下载</t-button>
           </li>
         </ul>
       </template>
     </t-loading>
-    <SensitiveActionDialog
-      v-model="downloadVisible"
-      title="下载历史结算文件"
-      description="下载链接短时有效，下载行为将记录审计。"
-      confirm-text="生成下载链接"
-      require-reason
-      require-password
-      reason-label="下载用途"
-      :loading="downloading"
-      :error="downloadError"
-      @confirm="downloadHistoryFile"
-    />
   </section>
 </template>
 
@@ -54,7 +43,6 @@ import { computed, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import BusinessFeedback from "../../components/BusinessFeedback.vue";
 import BusinessPageHeader from "../../components/BusinessPageHeader.vue";
-import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import {
   fetchSettlementDraftRecord,
   listSettlementDraftLineAttachments,
@@ -79,10 +67,8 @@ const projectLabel = ref("");
 const error = ref("");
 const fileError = ref("");
 const loading = ref(false);
-const downloadVisible = ref(false);
-const downloading = ref(false);
+const downloadingFile = ref<string | null>(null);
 const downloadError = ref("");
-const downloadTarget = ref<HistoryFile | null>(null);
 const statusLabels = { draft: "历史草稿", submitted: "已提交", abandoned: "已放弃" };
 const lineColumns = [
   { colKey: "name", title: "明细", minWidth: 180 },
@@ -122,8 +108,7 @@ watch(() => [routeText(route.query.project), routeText(route.query.draftId)], as
   attachments.value = [];
   error.value = "";
   fileError.value = "";
-  downloadVisible.value = false;
-  downloadTarget.value = null;
+  downloadError.value = "";
   if (!id) {
     await router.replace("/结算工作台/已签登记");
     return;
@@ -164,40 +149,34 @@ watch(() => [routeText(route.query.project), routeText(route.query.draftId)], as
   }
 }, { immediate: true });
 
-function prepareFileDownload(file: HistoryFile) {
-  downloadTarget.value = file;
-  downloadError.value = "";
-  downloadVisible.value = true;
-}
-
-async function createHistoricalDownloadTicketWithCapability(
-  fileId: string,
-  body: Parameters<typeof createPrivateFileDownloadTicket>[1]
-) {
+async function createHistoricalDownloadTicketWithCapability(fileId: string) {
   const capability = await getPrivateFileDownloadTicketCapability(fileId);
-  const operationAllowed = capability.availableActions.includes(
-    "create_private_file_download_ticket"
-  );
+  const operationAllowed = capability.availableActions.includes("create_private_file_download_ticket");
   if (!operationAllowed) throw new Error("当前账号无权下载该历史文件。");
-  return createPrivateFileDownloadTicket(fileId, body);
+  return createPrivateFileDownloadTicket(fileId, {});
 }
 
-async function downloadHistoryFile(values: { reason: string; password: string }) {
-  const target = downloadTarget.value;
-  if (!target || downloading.value) return;
-  downloading.value = true;
+async function downloadHistoryFile(file: HistoryFile) {
+  if (downloadingFile.value !== null) return;
+  const requestedDraft = draft.value;
+  downloadingFile.value = file.id;
+  downloadError.value = "";
   try {
-    const { downloadUrl } = await createHistoricalDownloadTicketWithCapability(target.fileId, {
-      confirmationPassword: values.password,
-      downloadReason: values.reason
-    });
-    if (target !== downloadTarget.value) return;
-    window.open(downloadUrl.startsWith("/api") ? downloadUrl : `/api${downloadUrl}`, "_blank", "noopener,noreferrer");
-    downloadVisible.value = false;
+    const ticket = await createHistoricalDownloadTicketWithCapability(file.fileId);
+    if (draft.value !== requestedDraft) return;
+    const downloadUrl = ticket.downloadUrl.replace(/^\/api(?=\/)/u, "");
+    const prefix = `/files/${encodeURIComponent(file.fileId)}/download?`;
+    if (!downloadUrl.startsWith(prefix) || downloadUrl.includes("\\")) {
+      throw new Error("历史结算文件下载地址无效，请重新申请。");
+    }
+    const link = document.createElement("a");
+    link.href = `/api${downloadUrl}`;
+    link.download = ticket.fileName;
+    link.click();
   } catch (cause) {
-    if (target === downloadTarget.value) downloadError.value = formatUnknownApiError(cause, "下载历史结算文件失败。");
+    if (draft.value === requestedDraft) downloadError.value = formatUnknownApiError(cause, "下载历史结算文件失败。");
   } finally {
-    downloading.value = false;
+    downloadingFile.value = null;
   }
 }
 </script>

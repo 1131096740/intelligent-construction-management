@@ -297,7 +297,8 @@ test("captures the settlement P1.1 ledger and detail states", async ({ page }) =
   ledgerMode = "empty";
   await page.goto("/结算工作台");
   await expect(page.getByText("当前条件下暂无结算记录")).toBeVisible();
-  await expect(page.getByRole("button", { name: "新建结算" })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "已签结算登记", exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "新建结算", exact: true })).toHaveCount(0);
   await capture(page, "settlement-ledger-empty-1440x900.png");
   ledgerMode = "normal";
 

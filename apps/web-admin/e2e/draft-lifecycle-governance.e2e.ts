@@ -1259,17 +1259,22 @@ test("合同已放弃记录保持只读且不开放复制", async ({ page }, tes
   });
 });
 
-test("结算已放弃记录可携带保存时间复制为全新草稿", async ({ page }) => {
+test("历史已放弃结算可回读，忽略旧复制能力", async ({ page }) => {
   await installSession(page);
-  let copyBody: Record<string, unknown> | null = null;
-  await page.route("**/api/projects/project-1/settlement-drafts/settlement-draft-abandoned-1/copies", (route) => {
-    copyBody = route.request().postDataJSON() as Record<string, unknown>;
-    return route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ id: "settlement-draft-copy-1" })
-    });
+  const mutations: string[] = [];
+  await page.route("**/api/projects", route => route.fulfill({ json: [{ id: "project-1", code: "GC-1", name: "一号项目" }] }));
+  await page.route("**/api/projects/project-1/settlement-drafts/settlement-draft-abandoned-1**", route => {
+    if (route.request().method() !== "GET") {
+      mutations.push(route.request().method());
+      return route.fulfill({ status: 410 });
+    }
+    if (route.request().url().endsWith("/line-attachments")) return route.fulfill({ json: [] });
+    return route.fulfill({ json: {
+      id: "settlement-draft-abandoned-1", projectId: "project-1", code: "JSC-END-001",
+      periodLabel: "2026-07", status: "abandoned", isFinal: false, abandonReason: "重复结算草稿", lines: []
+    } });
   });
-  await page.route("**/api/settlements/lifecycle-ledger?*", (route) => route.fulfill({
+  await page.route("**/api/settlements/workbench?*", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
       rows: [{
@@ -1303,13 +1308,14 @@ test("结算已放弃记录可携带保存时间复制为全新草稿", async ({
   }));
 
   await login(page);
-  await page.goto("/结算管理?view=ended");
+  await page.goto("/结算工作台");
   await expect(page.getByText("JSC-END-001", { exact: true })).toBeVisible();
   await expect(page.getByText("重复结算草稿", { exact: true })).toBeVisible();
-  await page.getByText("复制为新草稿", { exact: true }).click();
-  await expect.poll(() => copyBody).toEqual({ expectedUpdatedAt: savedAt });
-  await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname + new URL(page.url()).search))
-    .toBe("/结算工作台?project=project-1&draftId=settlement-draft-copy-1");
+  await expect(page.getByText("复制为新草稿", { exact: true })).toHaveCount(0);
+  await page.getByRole("row", { name: /JSC-END-001/u }).locator("a").filter({ hasText: "查看历史" }).click();
+  await expect(page.getByRole("heading", { name: "历史结算草稿" })).toBeVisible();
+  await expect(page.getByText("重复结算草稿", { exact: true })).toBeVisible();
+  expect(mutations).toEqual([]);
 });
 
 test("P0 项目支出实付在 Chromium 桌面与 WebKit 390 只提交一个原子事实", async ({

@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | nestRoutes | ready | `0227dbadedb7c9b2c24d91e769749093ac6afa276034dbccef0b5988dd9ca853` |
 | webApiWrappers | ready | `4e17418413cdb15f9529e0b960bf485de3f82efa441419903b2c10c212725606` |
-| webPageActions | ready | `bb5ed93bf22c66fb20647fe052451560819429f94cae3777ef3cf9eead0fd6e2` |
+| webPageActions | ready | `da7b4c86b9a699431a980779bb53c2376202e4973f00377dab0cc07cdd6e2972` |
 | routeUsage | ready | `b5e2cd8d101b0dbd93c39a0966db72a79b97dc26e6284c82136314f323c58cbc` |
 
 ## 汇总

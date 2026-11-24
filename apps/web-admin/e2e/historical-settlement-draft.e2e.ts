@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("旧结算草稿链接只读保留明细与历史文件", async ({ page }) => {
   const mutations: string[] = [];
+  const downloads: string[] = [];
   await page.route("**/api/auth/login", route => route.fulfill({ json: {
     user: {
       id: "contract-1", name: "合同经办人", phone: "13900000000", mustChangePassword: false,
@@ -34,6 +35,22 @@ test("旧结算草稿链接只读保留明细与历史文件", async ({ page }) 
     } });
   });
 
+  await page.route("**/api/files/file-1/download-ticket-capability", route => route.fulfill({ json: {
+    availableActions: ["create_private_file_download_ticket"]
+  } }));
+  await page.route("**/api/files/file-1/download-ticket", route => {
+    expect(route.request().postDataJSON()).toEqual({});
+    downloads.push("ticket");
+    return route.fulfill({ json: { downloadUrl: "/files/file-1/download?expiresAt=fixture", fileName: "历史结算单.pdf" } });
+  });
+  await page.addInitScript(() => {
+    const activate = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () {
+      if (this.download !== "历史结算单.pdf") return activate.call(this);
+      document.documentElement.dataset.historicalDownload = this.getAttribute("href") ?? "";
+    };
+  });
+
   await page.goto("/login");
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("E2e@2026");
@@ -48,5 +65,8 @@ test("旧结算草稿链接只读保留明细与历史文件", async ({ page }) 
   await expect(page.getByText("计量凭证 · 历史计量资料.pdf")).toBeVisible();
   await expect(page.getByRole("button", { name: /保存草稿|删除草稿|提交审批/u })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "下载", exact: true })).toHaveCount(2);
+  await page.getByRole("button", { name: "下载", exact: true }).first().click();
+  await expect(page.locator("html")).toHaveAttribute("data-historical-download", "/api/files/file-1/download?expiresAt=fixture");
+  expect(downloads).toEqual(["ticket"]);
   expect(mutations).toEqual([]);
 });
