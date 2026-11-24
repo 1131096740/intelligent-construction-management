@@ -60,14 +60,16 @@ for lane in pins['lanes']:
         fixture_file=out/'lanes'/lane/'fixtures'/fixture_name
         fixture=fixture_file.read_text()
         current_fixture=(workspace/'services/api/src/database/project-roster-http-postgres.spec.ts').read_text()
-        start_marker='    const created = await request("/expense-claims", applicant.token, {'
-        end_marker='    const ready = await request("/organization/project-roster/preview", chairman.token, body);'
-        if any(text.count(start_marker)!=1 for text in (fixture,current_fixture)):
-            raise SystemExit('ONBOARDING_329_ROSTER_EXPENSE_INTAKE_ANCHOR')
-        start=fixture.index(start_marker)
-        end=fixture.index(end_marker,start)
-        current_start=current_fixture.index(start_marker)
-        current_end=current_fixture.index(end_marker,current_start)
+        archived_case='  it("普通借款的后续项目经理审批阻止调出，实际退回后可调出且保留单据",'
+        current_case='  it("零星费用的后续项目经理审批阻止调出，退回草稿后可调出且保留单据",'
+        next_case='  it("本项目未交接转审和后续节点委托阻止调出，交接或到期后只移除本项目关系",'
+        if (fixture.count(archived_case)!=1 or current_fixture.count(current_case)!=1
+                or any(text.count(next_case)!=1 for text in (fixture,current_fixture))):
+            raise SystemExit('ONBOARDING_329_ROSTER_EXPENSE_CASE_ANCHOR')
+        start=fixture.index(archived_case)
+        end=fixture.index(next_case,start)
+        current_start=current_fixture.index(current_case)
+        current_end=current_fixture.index(next_case,current_start)
         fixture_file.write_text(fixture[:start]+current_fixture[current_start:current_end]+fixture[end:])
         profiles[lane]['fixturePins'][fixture_name]=hashlib.sha256(fixture_file.read_bytes()).hexdigest()
     lane_root=out/'lanes'/lane

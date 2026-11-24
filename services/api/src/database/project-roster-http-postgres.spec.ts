@@ -262,7 +262,7 @@ describePostgres("项目花名册维护 HTTP / PostgreSQL 16", () => {
     expect(await db.auditLog.count({ where: { actorUserId: chairman.id, action: "project.roster.leave", businessId: projectRow.id } })).toBe(1);
   });
 
-  it("普通借款的后续项目经理审批阻止调出，实际退回后可调出且保留单据", async () => {
+  it("零星费用的后续项目经理审批阻止调出，退回草稿后可调出且保留单据", async () => {
     const db = app.get(PrismaService);
     const chairman = await person("chairman");
     const director = await person("comprehensive_director");
@@ -270,7 +270,7 @@ describePostgres("项目花名册维护 HTTP / PostgreSQL 16", () => {
     const manager = await person();
     const applicant = await person();
     const projectRow = await project();
-    const company = await db.companyEntity.create({ data: { name: "花名册合成借款公司", dataStatus: "complete" } });
+    const company = await db.companyEntity.create({ data: { name: "花名册合成费用公司", dataStatus: "complete" } });
     await assign(manager.id, projectRow.id, "project_manager");
     await db.projectRosterMember.create({ data: { projectId: projectRow.id, userId: applicant.id } });
     const body = { operation: "leave", projectId: projectRow.id, userId: manager.id, reason: "普通费用审批交接" };
@@ -295,12 +295,19 @@ describePostgres("项目花名册维护 HTTP / PostgreSQL 16", () => {
       actionableDuties: expect.arrayContaining([expect.objectContaining({ index: expect.any(Number) })])
     });
     const { approvalInstanceId, actionableDuties } = approvalDetail.body.approval;
-    expect((await request(`/expense-claims/${claimId}/approval`, director.token,
-      { decision: "reject", comment: "隔离交接回归", approvalInstanceId, approvalDutyIndex: actionableDuties[0].index })).status).toBe(201);
+    const returned = await request(`/expense-claims/${claimId}/approval`, director.token,
+      { decision: "reject", comment: "隔离交接回归", approvalInstanceId, approvalDutyIndex: actionableDuties[0].index });
+    expect(returned.status).toBe(201);
+    expect(returned.body).toMatchObject({ id: claimId, status: "draft" });
     const ready = await request("/organization/project-roster/preview", chairman.token, body);
     expect(ready.body.canApply).toBe(true);
     expect((await apply(chairman.token, body, ready.body.snapshotHash)).status).toBe(201);
-    expect(await db.expenseClaim.findUniqueOrThrow({ where: { id: claimId } })).toMatchObject({ status: "rejected", projectId: projectRow.id });
+    expect(await db.expenseClaim.findUniqueOrThrow({ where: { id: claimId } })).toMatchObject({
+      status: "draft", projectId: projectRow.id, approvalInstanceId: null, requestedAmountCents: 1n
+    });
+    expect(await db.approvalInstance.findUniqueOrThrow({ where: { id: approvalInstanceId } })).toMatchObject({
+      status: "returned", businessId: claimId
+    });
   });
 
   it("本项目未交接转审和后续节点委托阻止调出，交接或到期后只移除本项目关系", async () => {
