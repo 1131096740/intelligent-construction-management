@@ -127,8 +127,8 @@ if current320:
         text = text.replace(anchor, observation + anchor)
     if lane == 'general16':
         anchor = '  await ownerSql("ROLE_SETUP",roleSetup("procurement",database,password));'
-        reads = '''
-  await ownerSql("PROCUREMENT_329_BUSINESS_READS",`BEGIN;
+        reads = r'''  const originalSetup=roleSetup("procurement",database,password);
+  const currentSetup=originalSetup.replace(/\nCOMMIT;\s*$/u,`
     GRANT SELECT (id,"procurementId","supplierName","effectiveTotalAmountCents","createdAt")
       ON public."ActualPurchaseBatch" TO general_procurement_runtime;
     GRANT SELECT (id,"executionType","expenseClaimPaymentExecutionId","amountCents","receivedAt",
@@ -142,10 +142,12 @@ if current320:
       ) THEN RAISE EXCEPTION 'PROCUREMENT_329_READ_SCOPE'; END IF;
     END $scope$;
     COMMIT;`);
+  condition(currentSetup!==originalSetup,"PROCUREMENT_329_BUSINESS_READS");
+  await ownerSql("ROLE_SETUP",currentSetup);
 '''
         if text.count(anchor) != 1:
             raise ValueError('PROCUREMENT_329_BUSINESS_READ_ANCHOR')
-        text = text.replace(anchor, anchor + reads)
+        text = text.replace(anchor, reads.rstrip())
     write(consumer,text.encode())
 for name in ['owner-observation.cjs', *(
     ['project-scope-http-report.cjs', 'project-scope-browser-report.cjs', 'project-scope-browser-pins.json']
