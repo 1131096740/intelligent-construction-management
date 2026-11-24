@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  GoneException,
   Optional,
   Param,
   Patch,
@@ -308,6 +309,13 @@ export class SpotProcurementController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: CreateProcurementDiscrepancyDto
   ) {
+    if (body.operation === "initiate") {
+      throw new GoneException({
+        statusCode: 410,
+        code: "OLD_WRITE_ENTRY_RETIRED",
+        message: "该旧办理入口已停止使用，请返回当前业务页面办理"
+      });
+    }
     return this.settlements.createOrConfirmDiscrepancy(
       procurementId,
       user.id,

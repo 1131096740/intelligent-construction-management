@@ -512,6 +512,7 @@ function validExecutionInput(
 function executionHarness(
   options: {
     payment?: ReturnType<typeof approvedExecutionPayment>;
+    requestProtocolVersion?: number;
     receipts?: bigint[];
     activeExecutions?: Array<{ id: string; amountCents: bigint }>;
     projectRoles?: string[];
@@ -523,7 +524,7 @@ function executionHarness(
     options.payment ?? approvedExecutionPayment();
   const activeExecutions = options.activeExecutions ?? [];
   current.tx.$queryRaw
-    .mockResolvedValueOnce([version])
+    .mockResolvedValueOnce([{ ...version, requestProtocolVersion: options.requestProtocolVersion ?? 1 }])
     .mockResolvedValueOnce([payment])
     .mockResolvedValueOnce(activeExecutions);
   current.tx.spotProcurementPayment.findUnique.mockResolvedValue({
@@ -4261,14 +4262,14 @@ name: "签批人甲", id: "project-manager-1", isActive: true }
     );
   });
 
-  it("records one real-form execution against an approved channel with multiple vouchers", async () => {
+  it("records current actual-purchase payment without opening or closing a legacy receipt", async () => {
     const payment = approvedExecutionPayment({
       paymentType: "company_direct",
       payerCompanyEntityId: "company-1",
       payerCompanyNameSnapshot: "云南建工集团",
       payeeNameSnapshot: "昆明建材商行"
     });
-    const current = executionHarness({ payment });
+    const current = executionHarness({ payment, requestProtocolVersion: 2 });
     const input = validExecutionInput({
       voucherFileId: undefined,
       voucherFileIds: ["file-voucher-a", "file-voucher-b"],
@@ -4320,6 +4321,7 @@ name: "签批人甲", id: "project-manager-1", isActive: true }
         }
       ]
     });
+    expect(current.closure.recalculateAndClose).not.toHaveBeenCalled();
     expect(result.execution).toEqual(
       expect.objectContaining({
         paymentChannelId: "channel-bank",

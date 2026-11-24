@@ -17,7 +17,6 @@ describe("spot procurement stage D capability gates", () => {
       "uploadSpotProcurementDraftFile",
       "uploadSpotProcurementPaymentDraftFile",
       "uploadSpotProcurementExecutionVoucherFile",
-      "uploadSpotProcurementReceiptPhotoFile",
       "uploadSpotProcurementRefundVoucherFile",
       "uploadSpotProcurementInvoiceFile"
     ]) {
@@ -62,15 +61,7 @@ describe("spot procurement stage D capability gates", () => {
   });
 
   it.each([
-    ["edit_receipt", "updateSpotProcurementReceiptDraftWithCapability"],
-    ["append_receipt_photo", "attachSpotProcurementReceiptPhotoWithCapability"],
-    ["remove_receipt_photo", "deleteSpotProcurementReceiptPhotoWithCapability"],
-    ["delegate_receipt", "createSpotProcurementReceiptDelegationWithCapability"],
-    ["reset_receipt_draft", "resetSpotProcurementReceiptDraftWithCapability"],
-    ["review_receipt", "reviewSpotProcurementReceiptWithCapability"],
-    ["revoke_receipt_review", "revokeSpotProcurementReceiptReviewWithCapability"],
-    ["submit_receipt", "submitSpotProcurementReceiptWithCapability"],
-    ["initiate_discrepancy", "createSpotProcurementDiscrepancyWithCapability"],
+    ["confirm_discrepancy", "confirmSpotProcurementDiscrepancyWithCapability"],
     ["record_refund", "recordSpotProcurementRefundWithCapability"]
   ])("rechecks the fresh receipt %s action before mutation", (action, helper) => {
     expect(receiptPage).toContain(`async function ${helper}(`);
@@ -83,7 +74,6 @@ describe("spot procurement stage D capability gates", () => {
     [detailPage, "edit_draft", "uploadSpotProcurementDraftFileWithCapability"],
     [paymentPage, "edit_draft", "uploadSpotProcurementPaymentDraftFileWithCapability"],
     [paymentPage, "record_execution", "uploadSpotProcurementExecutionVoucherWithCapability"],
-    [receiptPage, "append_receipt_photo", "uploadSpotProcurementReceiptPhotoWithCapability"],
     [receiptPage, "record_refund", "uploadSpotProcurementRefundVoucherWithCapability"],
     [receiptPage, "append_invoice", "uploadSpotProcurementInvoiceFileWithCapability"]
   ])("authorizes %s before storing its business file", (page, action, helper) => {

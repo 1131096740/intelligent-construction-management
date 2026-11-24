@@ -17371,7 +17371,6 @@ const DUTY_SMS_DOMAINS = [
   ["payments", "pages/payments/PaymentDetailPage.vue", "paymentDetail.id", "/approval"],
   ["settlements", "pages/settlements/SettlementDetailPage.vue", "settlementDetail.settlementId"],
   ["spot-procurement-payments", "pages/spot-procurement/SpotProcurementPaymentDetailPage.vue", "payment.id"],
-  ["spot-procurements", "pages/spot-procurement/SpotProcurementReceiptPage.vue", "procurementId", "/receipt"],
   ["upward-contract-amount-revisions", "components/UpwardContractAmountPanel.vue", "row.id"],
   ["upward-receipt-matches", "components/UpwardReceiptMatchPanel.vue", "row.id"]
 ];
@@ -17940,8 +17939,7 @@ function dutySmsReadAndWriteAuthoritiesMatch({ mutationBindings, webManifest, ne
   const requiredProjectAction = {
     "expense-claims": "expense_claim.payment.execute",
     "settlements": "settlement.archive.confirm",
-    "spot-procurement-payments": "spot_procurement.payment.execute",
-    "spot-procurements": "spot_procurement.receipt.review"
+    "spot-procurement-payments": "spot_procurement.payment.execute"
   };
   return readKeys.every((key, i) => {
     const binding = mutationBindings.find(row => row.normalizedKey === key.replace("GET ", "POST ") + "/retry");

@@ -984,10 +984,6 @@ describe("spot procurement web pages", () => {
     expect(paymentWorkbench).toContain('view: activeView.value');
     expect(paymentWorkbench).toContain('result.viewCounts');
     expect(paymentWorkbench).toContain('result.amountSummary');
-    expect(receipt).toContain("resetSpotProcurementReceiptDraft");
-    expect(receipt).toContain("receiptResetAction");
-    expect(receipt).toContain("expectedRevision");
-    expect(receipt).toContain("不删除收货单、旧修订、锁定照片");
     expect(receipt).not.toContain("删除收货单按钮");
   });
 
@@ -1061,7 +1057,7 @@ describe("spot procurement web pages", () => {
     expect(status).not.toMatch(/<t-tag|<t-button|<button/u);
   });
 
-  it("connects final receipt, shortage handling, invoice append and archive facts without location or batches", () => {
+  it("shows historical receipt, shortage and invoice archive facts without reopening receipt writes", () => {
     const workbench = pageSource("SpotProcurementReceiptWorkbenchPage.vue");
     const receipt = pageSource("SpotProcurementReceiptPage.vue");
     const payment = pageSource("SpotProcurementPaymentDetailPage.vue");
@@ -1093,7 +1089,7 @@ describe("spot procurement web pages", () => {
     });
 
     expect(workbench).toContain("fetchSpotProcurements");
-    expect(workbench).toContain("待实际付款");
+    expect(workbench).toContain("历史收货记录");
     expect(workbench).toContain("materialSummary");
     expect(workbench).toContain("approvedQuantitySummary");
     expect(workbench).toContain("actualPaidAmountCents");
@@ -1101,9 +1097,9 @@ describe("spot procurement web pages", () => {
     expect(workbench).toContain("采购/付款编号");
     expect(workbench).toContain("收货责任人/受托人");
     expect(receipt).toContain("fetchSpotProcurementReceipt");
+    expect(receipt).toContain('<ReceiptLineEditor :lines="receipt.lines" readonly />');
+    expect(receipt).toContain('<ReceiptPhotoUploader :photos="receipt.photos" readonly />');
     expect(receipt).toContain("fetchSpotProcurementPaymentDetail");
-    expect(receipt).toContain("reviewSpotProcurementReceipt");
-    expect(receipt).toContain("revokeSpotProcurementReceiptReview");
     expect(receipt).toContain("createSpotProcurementDiscrepancy");
     expect(receipt).toContain("recordSpotProcurementRefund");
     expect(payment).toContain("prepareSpotRefundWithUpload(");
@@ -1200,17 +1196,11 @@ describe("spot procurement web pages", () => {
       ".then(() => completeReceiptPdfRefresh(context))"
     );
     expect(receipt).toContain("receipt.value?.availableActions?.find");
-    expect(receipt).toContain("actionEnabled('review_receipt')");
     expect(receipt).toContain("actionEnabled('record_refund')");
-    expect(receipt).toContain('actionEnabled("append_receipt_photo")');
     expect(receipt).toContain("requestId !== loadRequestId || !contextIsCurrent(context)");
     expect(receipt).toContain("assertCurrentContext(context)");
     expect(receipt).toContain("ROUTE_CHANGED_MESSAGE");
     expect(receipt).toContain("委托");
-    expect(receipt).toContain("待财务登记首笔实际付款后开放收货");
-    expect(receipt).toContain("商户继续补货");
-    expect(receipt).toContain("商户退回差额");
-    expect(receipt).toContain("发票仍可在付款申请中补充归档");
     expect(uploader).toContain("系统拍照");
     expect(uploader).toContain("相册上传");
     expect(uploader).toContain("送货单可选");

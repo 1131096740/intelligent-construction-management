@@ -311,17 +311,6 @@ export interface SpotProcurementReceiptSummaryReadModel {
   submittedAt: string | null;
   lockedAt: string | null;
   discrepancyStatus?: string | null;
-  workflow?: {
-    stage: string;
-    stageLabel: string;
-    resetAction: {
-      key: "reset_receipt_draft";
-      label: string;
-      enabled: boolean;
-      disabledReason: string | null;
-      expectedRevision: number;
-    };
-  };
 }
 
 export interface SpotProcurementReceiptWorkbenchReadModel {
@@ -1247,27 +1236,6 @@ export interface UpdateSpotProcurementPaymentPayerPayload {
   paymentMethods?: SpotProcurementPaymentMethod[];
 }
 
-export interface UpdateSpotProcurementReceiptDraftPayload {
-  note?: string | null;
-  lines: Array<{
-    procurementLineId: string;
-    qualifiedQuantity: string;
-    unqualifiedQuantity: string;
-    unqualifiedReason?: string;
-    freeGiftQuantity: string;
-    replenishmentPending: boolean;
-    discrepancyNote?: string;
-  }>;
-}
-
-export interface AttachSpotProcurementReceiptPhotoPayload {
-  originalFileId: string;
-  source: "camera" | "album";
-  category: "material_scene" | "delivery_note";
-  note?: string;
-  appendReason?: string;
-}
-
 export interface SpotProcurementWriteReadModel {
   draftRevision?: number;
   requestProtocolVersion?: number;
@@ -1406,20 +1374,6 @@ export function uploadSpotProcurementExecutionVoucherFile(
   );
 }
 
-export function uploadSpotProcurementReceiptPhotoFile(
-  procurementId: string,
-  file: Blob,
-  fileName: string,
-  idempotencyKey?: string
-) {
-  return uploadSpotProcurementPrivateFile(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt-photo-file-uploads`,
-    file,
-    fileName,
-    idempotencyKey
-  );
-}
-
 export function uploadSpotProcurementRefundVoucherFile(
   procurementId: string,
   file: Blob,
@@ -1546,69 +1500,10 @@ export function fetchSpotProcurementReceipt(procurementId: string) {
   );
 }
 
-export function updateSpotProcurementReceiptDraft(
-  procurementId: string,
-  body: UpdateSpotProcurementReceiptDraftPayload
-) {
-  return patchJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/draft`,
-    body
-  );
-}
-
-export function attachSpotProcurementReceiptPhoto(
-  procurementId: string,
-  body: AttachSpotProcurementReceiptPhotoPayload
-) {
-  return postJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/photos`,
-    body
-  );
-}
-
-export function deleteSpotProcurementReceiptPhoto(procurementId: string, photoId: string) {
-  return deleteJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/photos/${encodeURIComponent(photoId)}`
-  );
-}
-
-export function submitSpotProcurementReceipt(procurementId: string) {
-  return postJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/submission`
-  );
-}
-
-export function createSpotProcurementReceiptDelegation(procurementId: string, delegateUserId: string) {
-  return postJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/delegations`,
-    { delegateUserId }
-  );
-}
-
-export function reviewSpotProcurementReceipt(
-  procurementId: string,
-  body: { decision: "approved" | "returned"; comment?: string }
-) {
-  return postJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/review`,
-    body
-  );
-}
-
-export function revokeSpotProcurementReceiptReview(
-  procurementId: string,
-  body: { targetReviewId: string; reason: string; confirmReviewRevocation: true }
-) {
-  return postJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/review-revocation`,
-    body
-  );
-}
-
 export function createSpotProcurementDiscrepancy(
   procurementId: string,
   body: {
-    operation: "initiate" | "confirm";
+    operation: "confirm";
     resolutionType?: "replenishment" | "full_refund";
     note?: string;
   }
@@ -2416,16 +2311,6 @@ export function abandonSpotProcurementPaymentDraft(
   );
 }
 
-export function resetSpotProcurementReceiptDraft(
-  procurementId: string,
-  expectedRevision: number
-) {
-  return postJson<unknown>(
-    `/spot-procurements/${encodeURIComponent(procurementId)}/receipt/draft-reset`,
-    { expectedRevision }
-  );
-}
-
 export function recordSpotProcurementPaymentExecution(
   paymentId: string,
   body: RecordSpotProcurementPaymentExecutionPayload
@@ -2448,12 +2333,6 @@ async function postJson<T>(path: string, body?: unknown): Promise<T> {
 
 async function patchJson<T>(path: string, body: unknown): Promise<T> {
   return writeJson<T>(path, "PATCH", body);
-}
-
-async function deleteJson<T>(path: string): Promise<T> {
-  const response = await apiFetch(path, { method: "DELETE" });
-  await ensureOk(response, "提交零星采购操作失败");
-  return response.json() as Promise<T>;
 }
 
 async function writeJson<T>(

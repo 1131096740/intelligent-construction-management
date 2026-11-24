@@ -13,29 +13,29 @@
     "routeCount": 879,
     "exactRouteCount": 879,
     "normalizedRouteCount": 879,
-    "classificationOverrideCount": 243,
-    "consumerSurfaceOverrideCount": 56,
-    "classificationOverrideSha256": "1a8f4e95960ce2969ccadb4c1f87574f83111274e129f0147d4adef8d261430d",
-    "consumerSurfaceOverrideSha256": "471cf81ec4388fff5a8e53e5afd175b7f6410e53cfdbbd4fc686fdd4a208144e",
-    "derivedProductionPageCount": 636,
-    "pageRouteCount": 655,
+    "classificationOverrideCount": 254,
+    "consumerSurfaceOverrideCount": 57,
+    "classificationOverrideSha256": "664a5215f04d3e44b490e2e3760fde4ba0cf7d03d52eb9dea0ee6dc0ddfe0adc",
+    "consumerSurfaceOverrideSha256": "babfba79d5a19194cbea430bb6e03c6cd7adf4508a4a44121c8a4f651ab5d19f",
+    "derivedProductionPageCount": 625,
+    "pageRouteCount": 644,
     "externalTakeoverCount": 70,
-    "exitCandidateCount": 100,
-    "internalTaskCount": 54,
+    "exitCandidateCount": 110,
+    "internalTaskCount": 55,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 707,
+      "web_api_wrapper": 696,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 2,
-      "operator_endpoint": 52,
-      "none": 111
+      "operator_endpoint": 53,
+      "none": 121
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 707,
+    "productionWrapperRouteCount": 696,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -322,29 +322,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_retired_spot_procurement_receipt_write",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-            "wrapper": "deleteSpotProcurementReceiptPhoto",
-            "method": "DELETE",
-            "normalizedPath": "/spot-procurements/:param/receipt/photos/:param",
-            "normalizedKey": "DELETE /spot-procurements/:param/receipt/photos/:param",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "GET",
@@ -13228,26 +13217,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_historical_receipt_notification_audit_read",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
-            "wrapper": "fetchDutySms",
-            "method": "GET",
-            "normalizedPath": "/spot-procurements/:param/receipt/duty-sms",
-            "normalizedKey": "GET /spot-procurements/:param/receipt/duty-sms",
-            "productionConsumers": [
-              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_425_historical_receipt_notification_audit_read"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -15266,29 +15244,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_retired_spot_procurement_receipt_write",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-            "wrapper": "updateSpotProcurementReceiptDraft",
-            "method": "PATCH",
-            "normalizedPath": "/spot-procurements/:param/receipt/draft",
-            "normalizedKey": "PATCH /spot-procurements/:param/receipt/draft",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "PATCH",
@@ -34623,29 +34590,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_retired_spot_procurement_receipt_write",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-            "wrapper": "uploadSpotProcurementReceiptPhotoFile",
-            "method": "POST",
-            "normalizedPath": "/spot-procurements/:param/receipt-photo-file-uploads",
-            "normalizedKey": "POST /spot-procurements/:param/receipt-photo-file-uploads",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -34664,29 +34620,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_retired_spot_procurement_receipt_write",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-            "wrapper": "createSpotProcurementReceiptDelegation",
-            "method": "POST",
-            "normalizedPath": "/spot-procurements/:param/receipt/delegations",
-            "normalizedKey": "POST /spot-procurements/:param/receipt/delegations",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -34705,29 +34650,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_retired_spot_procurement_receipt_write",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-            "wrapper": "resetSpotProcurementReceiptDraft",
-            "method": "POST",
-            "normalizedPath": "/spot-procurements/:param/receipt/draft-reset",
-            "normalizedKey": "POST /spot-procurements/:param/receipt/draft-reset",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -34746,29 +34680,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_retired_spot_procurement_receipt_write",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
-            "wrapper": "retryDutySms",
-            "method": "POST",
-            "normalizedPath": "/spot-procurements/:param/receipt/duty-sms/retry",
-            "normalizedKey": "POST /spot-procurements/:param/receipt/duty-sms/retry",
-            "productionConsumers": [
-              "apps/web-admin/src/components/DutySmsStatusPanel.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -34828,29 +34751,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_retired_spot_procurement_receipt_write",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-            "wrapper": "attachSpotProcurementReceiptPhoto",
-            "method": "POST",
-            "normalizedPath": "/spot-procurements/:param/receipt/photos",
-            "normalizedKey": "POST /spot-procurements/:param/receipt/photos",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -34869,29 +34781,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_retired_spot_procurement_receipt_write",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-            "wrapper": "reviewSpotProcurementReceipt",
-            "method": "POST",
-            "normalizedPath": "/spot-procurements/:param/receipt/review",
-            "normalizedKey": "POST /spot-procurements/:param/receipt/review",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -34910,29 +34811,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_retired_spot_procurement_receipt_write",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-            "wrapper": "revokeSpotProcurementReceiptReview",
-            "method": "POST",
-            "normalizedPath": "/spot-procurements/:param/receipt/review-revocation",
-            "normalizedKey": "POST /spot-procurements/:param/receipt/review-revocation",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -34951,29 +34841,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_retired_spot_procurement_receipt_write",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-            "wrapper": "submitSpotProcurementReceipt",
-            "method": "POST",
-            "normalizedPath": "/spot-procurements/:param/receipt/submission",
-            "normalizedKey": "POST /spot-procurements/:param/receipt/submission",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",

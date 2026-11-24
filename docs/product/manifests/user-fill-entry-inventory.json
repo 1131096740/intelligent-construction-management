@@ -8,10 +8,10 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 466,
+    "activeBusinessActionCount": 456,
     "technicalActionCount": 10,
-    "activeBindingCount": 563,
-    "retiredWriteEntryCount": 87,
+    "activeBindingCount": 552,
+    "retiredWriteEntryCount": 97,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
@@ -2436,8 +2436,7 @@
         "/费用与报销/:claimId",
         "/资金余额复核/:registrationId",
         "/资金账户",
-        "/零星材料付款/:paymentId",
-        "/零星采购收货/:procurementId"
+        "/零星材料付款/:paymentId"
       ],
       "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
       "capabilityKind": "server_boolean",
@@ -2453,11 +2452,10 @@
         "POST /payments/:param/approval/duty-sms/retry",
         "POST /settlements/:param/duty-sms/retry",
         "POST /spot-procurement-payments/:param/duty-sms/retry",
-        "POST /spot-procurements/:param/receipt/duty-sms/retry",
         "POST /upward-contract-amount-revisions/:param/duty-sms/retry",
         "POST /upward-receipt-matches/:param/duty-sms/retry"
       ],
-      "bindingCount": 14,
+      "bindingCount": 13,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -6767,22 +6765,6 @@
       "causalVerified": true
     },
     {
-      "id": "spot-procurement-receipt.delegate",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "capabilityKind": "detail_action",
-      "bindingKeys": [
-        "POST /spot-procurements/:param/receipt/delegations"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
       "id": "spot-procurement-receipt.discrepancy.confirm",
       "status": "unified_candidate",
       "usage": "background",
@@ -6799,54 +6781,6 @@
       "causalVerified": true
     },
     {
-      "id": "spot-procurement-receipt.discrepancy.initiate",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "capabilityKind": "detail_action",
-      "bindingKeys": [
-        "POST /spot-procurements/:param/discrepancy"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "spot-procurement-receipt.draft.reset",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "capabilityKind": "detail_action",
-      "bindingKeys": [
-        "POST /spot-procurements/:param/receipt/draft-reset"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "spot-procurement-receipt.draft.update",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "capabilityKind": "detail_action",
-      "bindingKeys": [
-        "PATCH /spot-procurements/:param/receipt/draft"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
       "id": "spot-procurement-receipt.invoice-file.upload",
       "status": "unified_candidate",
       "usage": "background",
@@ -6857,54 +6791,6 @@
       "capabilityKind": "detail_action",
       "bindingKeys": [
         "POST /spot-procurements/:param/invoice-file-uploads"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "spot-procurement-receipt.photo-file.upload",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "capabilityKind": "detail_action",
-      "bindingKeys": [
-        "POST /spot-procurements/:param/receipt-photo-file-uploads"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "spot-procurement-receipt.photo.attach",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "capabilityKind": "detail_action",
-      "bindingKeys": [
-        "POST /spot-procurements/:param/receipt/photos"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "spot-procurement-receipt.photo.remove",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "capabilityKind": "detail_action",
-      "bindingKeys": [
-        "DELETE /spot-procurements/:param/receipt/photos/:param"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
@@ -6937,54 +6823,6 @@
       "capabilityKind": "detail_action",
       "bindingKeys": [
         "POST /spot-procurements/:param/refunds"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "spot-procurement-receipt.review",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "capabilityKind": "detail_action",
-      "bindingKeys": [
-        "POST /spot-procurements/:param/receipt/review"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "spot-procurement-receipt.review.revoke",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "capabilityKind": "detail_action",
-      "bindingKeys": [
-        "POST /spot-procurements/:param/receipt/review-revocation"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "spot-procurement-receipt.submit",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "capabilityKind": "detail_action",
-      "bindingKeys": [
-        "POST /spot-procurements/:param/receipt/submission"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
@@ -7833,6 +7671,13 @@
       "status": "gone"
     },
     {
+      "method": "DELETE",
+      "path": "/spot-procurements/:procurementId/receipt/photos/:photoId",
+      "controller": "SpotProcurementReceiptController",
+      "handler": "deleteDraftPhoto",
+      "status": "gone"
+    },
+    {
       "method": "PATCH",
       "path": "/contract-bills/:billId/rows/:rowKey",
       "controller": "ContractBillController",
@@ -7886,6 +7731,13 @@
       "path": "/settlement-template-versions/:versionId",
       "controller": "SettlementTemplateGovernanceController",
       "handler": "update",
+      "status": "gone"
+    },
+    {
+      "method": "PATCH",
+      "path": "/spot-procurements/:procurementId/receipt/draft",
+      "controller": "SpotProcurementReceiptController",
+      "handler": "updateDraft",
       "status": "gone"
     },
     {
@@ -8327,6 +8179,62 @@
       "path": "/spot-procurements/:procurementId/no-invoice-confirmations/:confirmationId/review",
       "controller": "InvoiceLedgerController",
       "handler": "reviewNoInvoiceConfirmation",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt-photo-file-uploads",
+      "controller": "SpotProcurementReceiptController",
+      "handler": "uploadReceiptPhotoFile",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/delegations",
+      "controller": "SpotProcurementReceiptController",
+      "handler": "createDelegation",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/draft-reset",
+      "controller": "SpotProcurementReceiptController",
+      "handler": "resetDraft",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/duty-sms/retry",
+      "controller": "SpotProcurementReceiptController",
+      "handler": "retryDutySms",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/photos",
+      "controller": "SpotProcurementReceiptController",
+      "handler": "attachPhoto",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/review",
+      "controller": "SpotProcurementReceiptController",
+      "handler": "review",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/review-revocation",
+      "controller": "SpotProcurementReceiptController",
+      "handler": "revokeReview",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/submission",
+      "controller": "SpotProcurementReceiptController",
+      "handler": "submit",
       "status": "gone"
     },
     {

@@ -116,6 +116,7 @@ const PAYMENT_METHODS = new Set<string>(
 );
 const VAT_RATE_PERCENT = /^(?:(?:0|[1-9]\d?)(?:\.\d{1,2})?|100(?:\.0{1,2})?)$/u;
 type VersionLockRow = {
+  requestProtocolVersion: number;
   id: string;
   procurementId: string;
   projectId: string;
@@ -790,12 +791,15 @@ export class SpotProcurementPaymentService {
             } : null
           }
         });
-        await this.closure.recalculateAndClose(
-          tx,
-          version.procurementId,
-          "payment.execution.record",
-          actorUserId
-        );
+        // Later actual purchase batches may still be entered for this request.
+        if (version.requestProtocolVersion !== 2) {
+          await this.closure.recalculateAndClose(
+            tx,
+            version.procurementId,
+            "payment.execution.record",
+            actorUserId
+          );
+        }
         return this.executionReadModel(
           execution,
           paymentAfter,
@@ -2607,7 +2611,7 @@ export class SpotProcurementPaymentService {
         p."currentVersionId",
         p."status" AS "rootStatus",
         v."status" AS "versionStatus",
-        v."versionNo",
+        v."versionNo", v."requestProtocolVersion",
         v."supplierPartyId",
         v."supplierKey",
         v."supplierNameSnapshot",
@@ -2637,7 +2641,7 @@ export class SpotProcurementPaymentService {
         p."currentVersionId",
         p."status" AS "rootStatus",
         v."status" AS "versionStatus",
-        v."versionNo",
+        v."versionNo", v."requestProtocolVersion",
         v."supplierPartyId",
         v."supplierKey",
         v."supplierNameSnapshot",

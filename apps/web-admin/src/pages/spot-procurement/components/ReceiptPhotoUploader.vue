@@ -24,6 +24,7 @@ function submit() {
 <template>
   <section class="photo-panel">
     <t-alert
+      v-if="!readonly"
       theme="info"
       title="照片来源与水印"
       message="支持系统拍照和相册上传；图片上传后由服务端自动生成水印，不请求定位权限。送货单可选，不能替代材料现场照片。"

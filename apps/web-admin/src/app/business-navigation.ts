@@ -3,7 +3,7 @@ import type { AdminNavigationGroup } from "../routes/route-records";
 const tasks = [
   { path: "/零星采购工作台", label: "零星材料采购", description: "申请材料、数量和到位日期" },
   { path: "/零星材料付款工作台", label: "零星材料付款", description: "填付款申请、看实付进度" },
-  { path: "/收货确认工作台", label: "材料收货", description: "登记收货、补照片、交复核" },
+  { path: "/收货确认工作台", label: "历史收货", description: "查询已有收货记录和附件" },
   { path: "/费用与报销工作台", label: "费用与报销", description: "报销、借款和员工垫资" },
   { path: "/其他项目付款", label: "其他项目付款", description: "无合同特殊项目支出与分次实付" },
   { path: "/综合采购申请", label: "综合采购", description: "办公、设备等采购申请" },

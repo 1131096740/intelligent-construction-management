@@ -11116,7 +11116,6 @@ test("duty SMS retry needs the actual server attempt capability and the fixed do
   const settlement = "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue";
   const expense = "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue";
   const procurement = "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue";
-  const receipt = "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue";
   const payment = "apps/web-admin/src/pages/payments/RegisteredPaymentExecutionPanel.vue";
   const controller = "services/api/src/payment/registered-payment-execution.controller.ts";
   const service = "services/api/src/payment/registered-payment-notification.service.ts";
@@ -11157,14 +11156,14 @@ test("duty SMS retry needs the actual server attempt capability and the fixed do
   const principalController = "services/api/src/fund-account/fund-principal-return.controller.ts";
   const principalService = "services/api/src/fund-account/fund-principal-return-notification.service.ts";
   const principalSource = await readFile(principalService, "utf8");
-  const domains = ["contract-bank-verifications", "contract-economic-reviews", "contract-proxy-executions", "expense-claims", "fund-account-transfers", "fund-accounts/principal-returns", "fund-accounts/registrations", "payment-executions", "payments", "settlements", "spot-procurement-payments", "spot-procurements", "upward-contract-amount-revisions", "upward-receipt-matches"];
-  const routePaths = ["/结算管理/:settlementId", "/费用与报销/:claimId", "/零星材料付款/:paymentId", "/零星采购收货/:procurementId", "/付款管理", "/资金账户", "/统一资金办理工作台", "/资金余额复核/:registrationId", "/付款管理/:paymentId", "/垫资本金归还/:applicationId", ...reviewConsumers.map(consumer => consumer[5])];
+  const domains = ["contract-bank-verifications", "contract-economic-reviews", "contract-proxy-executions", "expense-claims", "fund-account-transfers", "fund-accounts/principal-returns", "fund-accounts/registrations", "payment-executions", "payments", "settlements", "spot-procurement-payments", "upward-contract-amount-revisions", "upward-receipt-matches"];
+  const routePaths = ["/结算管理/:settlementId", "/费用与报销/:claimId", "/零星材料付款/:paymentId", "/付款管理", "/资金账户", "/统一资金办理工作台", "/资金余额复核/:registrationId", "/付款管理/:paymentId", "/垫资本金归还/:applicationId", ...reviewConsumers.map(consumer => consumer[5])];
   const parent = (domain, id) => `<script setup lang="ts">
     import DutySmsStatusPanel from "../../components/DutySmsStatusPanel.vue";
     </script><template><DutySmsStatusPanel domain="${domain}" :business-id="${id}" /></template>`;
   const names = ["fetchDutySms", "retryDutySms"];
   const routeSets = ["GET", "POST"].map(method => domains.map(domain =>
-    method + (domain === "fund-accounts/principal-returns" ? " /fund-accounts/principal-returns/applications/:param/duty-sms/:param" : ` /${domain}/:param${domain === "spot-procurements" ? "/receipt" : domain === "fund-accounts/registrations" ? "/review" : domain === "payments" ? "/approval" : ""}/duty-sms`) + (method === "POST" ? "/retry" : "")));
+    method + (domain === "fund-accounts/principal-returns" ? " /fund-accounts/principal-returns/applications/:param/duty-sms/:param" : ` /${domain}/:param${domain === "fund-accounts/registrations" ? "/review" : domain === "payments" ? "/approval" : ""}/duty-sms`) + (method === "POST" ? "/retry" : "")));
   const source = await readFile(panel, "utf8");
   const root = await fixture({
     actions: [registryAction({
@@ -11216,21 +11215,19 @@ test("duty SMS retry needs the actual server attempt capability and the fixed do
         sourceFile: bankController, guardAuthorization: "authenticated_only"
       } : {}),
       requiredProjectAction: /\/(?:payment-executions|fund-account-transfers|contract-bank-verifications)\//u.test(key) ? null : key.includes("/expense-claims/") ? "expense_claim.payment.execute" :
-        key.includes("/spot-procurement-payments/") ? "spot_procurement.payment.execute" :
-          key.includes("/spot-procurements/") ? "spot_procurement.receipt.review" : "settlement.archive.confirm"
+        key.includes("/spot-procurement-payments/") ? "spot_procurement.payment.execute" : "settlement.archive.confirm"
       };
     }),
     routeRecords: `export const webAdminRoutes = [
       { path: "${routePaths[0]}", component: () => import("../pages/settlements/SettlementDetailPage.vue") },
       { path: "${routePaths[1]}", component: () => import("../pages/expense-claims/ExpenseClaimDetailPage.vue") },
       { path: "${routePaths[2]}", component: () => import("../pages/spot-procurement/SpotProcurementPaymentDetailPage.vue") },
-      { path: "${routePaths[3]}", component: () => import("../pages/spot-procurement/SpotProcurementReceiptPage.vue") },
-      { path: "${routePaths[4]}", component: () => import("../pages/payments/RegisteredPaymentExecutionPanel.vue") },
-      { path: "${routePaths[5]}", component: () => import("../pages/funds/FundAccountTransfers.vue") },
-      { path: "${routePaths[6]}", component: () => import("../components/ContractBankVerificationPanel.vue") },
-      { path: "${routePaths[7]}", component: () => import("../pages/funds/FundAccountsPage.vue") },
-      { path: "${routePaths[8]}", component: () => import("../pages/payments/PaymentDetailPage.vue") },
-      { path: "${routePaths[9]}", component: () => import("../pages/funds/FundPrincipalReturns.vue") },
+      { path: "${routePaths[3]}", component: () => import("../pages/payments/RegisteredPaymentExecutionPanel.vue") },
+      { path: "${routePaths[4]}", component: () => import("../pages/funds/FundAccountTransfers.vue") },
+      { path: "${routePaths[5]}", component: () => import("../components/ContractBankVerificationPanel.vue") },
+      { path: "${routePaths[6]}", component: () => import("../pages/funds/FundAccountsPage.vue") },
+      { path: "${routePaths[7]}", component: () => import("../pages/payments/PaymentDetailPage.vue") },
+      { path: "${routePaths[8]}", component: () => import("../pages/funds/FundPrincipalReturns.vue") },
       ${reviewConsumers.map(([, component, , , , path]) =>
         `{ path: "${path}", component: () => import("../components/${component}.vue") }`).join(",\n")}
     ];`,
@@ -11240,7 +11237,6 @@ test("duty SMS retry needs the actual server attempt capability and the fixed do
       [settlement]: parent("settlements", "settlementDetail.settlementId"),
       [expense]: parent("expense-claims", "detail.id"),
       [procurement]: parent("spot-procurement-payments", "payment.id"),
-      [receipt]: parent("spot-procurements", "procurementId"),
       [payment]: await readFile(payment, "utf8"),
       [controller]: await readFile(controller, "utf8"),
       [service]: serviceSource,
