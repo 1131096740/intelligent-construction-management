@@ -140,8 +140,6 @@ import {
   confirmMutuallySignedContract,
   remindContractApproval,
   remindPaymentApproval,
-  remindSettlementApproval,
-  reviewSettlementApproval,
   uploadContractArchiveFile,
   uploadCanvasSignature,
   createCanvasSignatureHandoff,
@@ -162,8 +160,6 @@ import {
   type PreparePaymentApprovalReviewActionInput,
   withdrawPaymentApproval,
   abandonPaymentRequest,
-  transferSettlementApproval,
-  delegateSettlementApproval,
   transferContractApproval,
   transferPaymentApproval,
   getContractTakeover,
@@ -2964,7 +2960,7 @@ describe("core flow read API client", () => {
     vi.unstubAllGlobals();
   });
 
-  it("posts contract and settlement approval actions to the backend", async () => {
+  it("posts contract approval actions to the backend", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: async () => ({ id: "ok" })
@@ -2979,39 +2975,16 @@ describe("core flow read API client", () => {
       toUserId: "contract-delegate-user"
     });
     await approveContractSeal("contract-version-1");
-    await reviewSettlementApproval("settlement-1", {
-      decision: "approve",
-      selfReviewReason: "不会在非自审页面生成",
-      confirmationPassword: " settlement-password "
-    });
-    await remindSettlementApproval("settlement-1");
-    await transferSettlementApproval("settlement-1", {
-      toUserId: "delegate-user-1"
-    });
-    await delegateSettlementApproval("settlement-1", {
-      toUserId: "agent-user-1"
-    });
-
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/contract-number-rules",
       "/api/contracts/contract-version-1/approval-reminder",
       "/api/contracts/contract-version-1/approval-transfer",
       "/api/contracts/contract-version-1/approval-delegation",
-      "/api/contracts/contract-version-1/seal-approval",
-      "/api/settlements/settlement-1/approval",
-      "/api/settlements/settlement-1/approval-reminder",
-      "/api/settlements/settlement-1/approval-transfer",
-      "/api/settlements/settlement-1/approval-delegation"
+      "/api/contracts/contract-version-1/seal-approval"
     ]);
     expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
     expect(fetchMock.mock.calls.slice(1).every((call) => call[1]?.method === "POST")).toBe(true);
-    expect(fetchMock.mock.calls[5][1]?.body).toBe(
-      JSON.stringify({
-        decision: "approve",
-        selfReviewReason: "不会在非自审页面生成",
-        confirmationPassword: " settlement-password "
-      })
-    );
+
   });
 
   it.each([

@@ -46,6 +46,7 @@ const contractCases = [
 
 const evidence = new Map();
 const browserContractIds = new Map();
+const signedSettlementReviewFixtures = new Map();
 
 const expectedContractRoutes = {
   material_purchase: [["contract_director"], ["material_director"], ["project_manager"], ["finance_director"], ["chairman", "general_manager"]],
@@ -940,7 +941,17 @@ async function runSettlementScenario(caseId, contractFixture, originalCase, page
   const submitted = await signed.submit(draft, tokens.contractStaff);
   await signed.request("POST", `/${submitted.id}/review`, tokens.contractStaff,
     { revision: submitted.revision, decision: "confirm" }, 403);
-  const confirmed = await signed.confirm(submitted, tokens.contractDirector);
+  const attempts = await Promise.allSettled([
+    signed.confirm(submitted, tokens.contractDirector),
+    signed.confirm(submitted, tokens.contractDirector)
+  ]);
+  const completed = attempts.filter((attempt) => attempt.status === "fulfilled");
+  const rejected = attempts.filter((attempt) => attempt.status === "rejected");
+  assert(completed.length === 1 && rejected.length === 1 &&
+    rejected[0].reason?.code === "ERR_ASSERTION" && rejected[0].reason.actual === 409,
+    `${caseId} 同版本提交两次必须一笔生效且一笔冲突`);
+  const confirmed = completed[0].value;
+  signedSettlementReviewFixtures.set(caseId, { projectId, settlementId: confirmed.id, revision: submitted.revision });
   assert(confirmed.amountYuan === amountYuan && confirmed.reviewedByUserId === users.contractDirector.id &&
     confirmed.confirmedContractSource?.sourceRecordId === contractFixture.version.id, `${caseId} 金额、复核角色或合同版本不匹配`);
   const basis = await signed.request("GET", `/payment-basis?${new URLSearchParams({
@@ -1027,6 +1038,9 @@ function writeEvidence() {
       id,
       passed: true,
       evidenceIds: evidence.get(id).map((value, index) => index === 0 ? `${runId}:${value}` : value),
+      ...(signedSettlementReviewFixtures.has(id)
+        ? { signedSettlementReviewFixture: signedSettlementReviewFixtures.get(id) }
+        : {}),
       ...(browserContractIds.has(id)
         ? {
             browserContractIds: Object.fromEntries(

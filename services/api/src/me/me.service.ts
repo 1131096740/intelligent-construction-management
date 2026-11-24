@@ -1,3 +1,4 @@
+import { isLegacySettlementApproval } from "../settlement/legacy-settlement-approval";
 import { isRetiredProjectEmployeeLoan } from "../project-expense/project-employee-loan-retirement";
 import { currentSpotPaymentDuty, spotPaymentDutyAssignments, spotPaymentDutySelect } from "../spot-procurement/spot-payment-execution-duty";
 import { workItemNoticeKey, workItemNoticeSnapshot } from "./work-item-notice-snapshot";
@@ -579,7 +580,6 @@ export class MeService {
 
     const approvalProjects = this.projectIdsFor(scopes, [
       "contract.approve",
-      "settlement.approve",
       "payment.approve",
       "project_expense.approve",
       "spot_procurement.approve",
@@ -2681,7 +2681,8 @@ export class MeService {
 
     for (const instance of instances) {
       const detail = details.get(`${instance.businessType}:${instance.businessId}`);
-      if (detail?.requestProtocolVersion === 2 || (mode !== "started" && detail?.historicalEmployeeLoan)) continue;
+      if (detail?.requestProtocolVersion === 2) continue;
+      if (mode !== "started" && (detail?.historicalEmployeeLoan || isLegacySettlementApproval(instance))) continue;
       const expenseApproval = detail?.expenseApproval;
       let expenseDuties: number[] | undefined;
       if (detail && expenseApproval) {
@@ -3162,6 +3163,7 @@ export class MeService {
     };
 
     for (const instance of instances) {
+      if (isLegacySettlementApproval(instance)) continue;
       const expense = expenseDetails.get(`${instance.businessType}:${instance.businessId}`);
       if (expense?.expenseApproval) {
         if (this.isCurrentExpenseRound(instance, expense.expenseApproval) &&

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockApprovalProgress } from "./helpers/approval-progress-mocks";
 import {
   expectNoDocumentHorizontalOverflow,
   expectNoNestedHorizontalScrollers
@@ -61,6 +62,9 @@ test("结算详情展示双证据并按后端状态重试与敏感重新生成",
     }
   );
   await login(page);
+  await mockApprovalProgress(page, [{ businessType: "settlement", businessId: "settlement-governed" }]);
+  await page.route("**/api/settlements/settlement-governed/duty-sms", (route) => route.fulfill({ json: { notice: null } }));
+  await page.route("**/api/approval-forms/settlement/settlement-governed/capability", (route) => route.fulfill({ json: { available: false } }));
   await page.goto("/结算管理/settlement-governed");
   await page.getByText("凭证资料", { exact: true }).last().click();
 

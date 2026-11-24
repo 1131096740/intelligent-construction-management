@@ -19,11 +19,6 @@ import {
   type SettlementWorkbenchView,
   type SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
-import {
-  approvalReviewAccessOnFrozenNode,
-  type ApprovalReviewAccess
-} from "../approval/approval-node-access";
-import { activeApprovalDelegatorIds } from "../approval/active-approval-delegations";
 import { AuditService } from "../audit/audit.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import {
@@ -46,10 +41,6 @@ import {
   sumDbMoneyToBigInt
 } from "../money/decimal-money";
 import { loadSettlementDraftLifecycles } from "./settlement-draft-lifecycle";
-
-function emptyApprovalReviewAccess(): ApprovalReviewAccess {
-  return { canAct: false, canReview: false, requiresSelfReviewConfirmation: false };
-}
 
 interface SettlementLineStore {
   settlementLine?: {
@@ -736,7 +727,7 @@ export class SettlementReadService {
         .filter((businessId): businessId is string => Boolean(businessId))
     );
     const selectedSettlements = settlements.filter((settlement) =>
-      this.matchesWorkbenchView(view, settlement, actorUserId, pendingSettlementIds)
+      this.matchesWorkbenchView(view, settlement, pendingSettlementIds)
     );
     const visibleDrafts = drafts.filter((draft) =>
       draftLifecycles.get(draft.id)?.lifecycleKind !== "formal_record"
@@ -790,7 +781,7 @@ export class SettlementReadService {
     );
     const count = (targetView: SettlementWorkbenchView) =>
       settlements.filter((settlement) =>
-        this.matchesWorkbenchView(targetView, settlement, actorUserId, pendingSettlementIds)
+        this.matchesWorkbenchView(targetView, settlement, pendingSettlementIds)
       ).length + visibleDrafts.filter((draft) =>
         (targetView === "my_drafts" && draft.status === "draft") || targetView === "all"
       ).length;
@@ -944,38 +935,12 @@ export class SettlementReadService {
     const generationFailed = this.signedDocumentGenerationNeedsRetry(generationClaim);
     const status = this.statusView(settlement.status, generationFailed);
     const roleKeys = await this.actorRoleKeys(actorUserId, settlement.projectId);
-    const approvalReviewAccess = await this.canReviewCurrentApproval(
-      "settlement",
-      settlement.id,
-      settlement.projectId,
-      roleKeys,
-      actorUserId
-    );
-    const currentApprovalWithdrawal = await this.currentApprovalWithdrawal(
-      "settlement",
-      settlement.id,
-      actorUserId
-    );
-    const withdrawApprovalContext =
-      settlement.status === "approval_pending" &&
-      settlement.updatedAt instanceof Date &&
-      currentApprovalWithdrawal?.updatedAt instanceof Date
-        ? {
-            expectedSettlementUpdatedAt: settlement.updatedAt.toISOString(),
-            expectedApprovalInstanceId: currentApprovalWithdrawal.id,
-            expectedNodeIndex: currentApprovalWithdrawal.currentNodeIndex,
-            expectedApprovalUpdatedAt:
-              currentApprovalWithdrawal.updatedAt.toISOString()
-          }
-        : null;
     const availableActions = this.settlementActions(
       settlement.status,
       roleKeys,
-      approvalReviewAccess,
       archiveFiles,
       settlement.governanceVersion,
-      generationFailed,
-      withdrawApprovalContext
+      generationFailed
     );
     const taxFactSummary = await this.taxFactSummary(
       settlement,
@@ -1075,10 +1040,12 @@ export class SettlementReadService {
       availableActionKeys: availableActions
         .filter((action) => action.enabled)
         .map((action) => action.key),
-      withdrawApprovalContext,
+      withdrawApprovalContext: null,
       lifecycleUpdatedAt: settlement.updatedAt.toISOString(),
       primaryAction: primaryActionKey(availableActions),
-      disabledReasons: disabledActionReasons(availableActions),
+      disabledReasons: ["in_approval", "approval_pending"].includes(settlement.status)
+        ? ["旧结算审批已停止办理，历史记录可查"]
+        : disabledActionReasons(availableActions),
       chainLinks: [
         { label: "关联合同", to: `/contracts/${contract.code}` },
         { label: "付款申请", to: paymentRequest ? `/payments/${paymentRequest.code}` : "/payments" },
@@ -1413,158 +1380,12 @@ export class SettlementReadService {
     return this.projectVisibility.effectiveRoleKeys(actorUserId, projectId);
   }
 
-  private async canReviewCurrentApproval(
-    businessType: string,
-    businessId: string,
-    projectId: string,
-    roleKeys: RoleKey[],
-    actorUserId?: string
-  ): Promise<ApprovalReviewAccess> {
-    if (!actorUserId) {
-      return emptyApprovalReviewAccess();
-    }
-
-    const approvalClient = (this.prisma as unknown as {
-      approvalInstance?: {
-        findFirst(args: {
-          where: { businessType: string; businessId: string; status: string };
-          orderBy: { createdAt: "desc" };
-          select: { applicantUserId: true; frozenNodes: true; currentNodeIndex: true };
-        }): Promise<{
-          applicantUserId: string;
-          frozenNodes: unknown;
-          currentNodeIndex: number;
-        } | null>;
-      };
-    }).approvalInstance;
-    if (!approvalClient) {
-      return emptyApprovalReviewAccess();
-    }
-
-    const instance = await approvalClient.findFirst({
-      where: { businessType, businessId, status: "in_progress" },
-      orderBy: { createdAt: "desc" },
-      select: { applicantUserId: true, frozenNodes: true, currentNodeIndex: true }
-    });
-
-    if (!instance) {
-      return emptyApprovalReviewAccess();
-    }
-
-    const directOrAssignedAccess = approvalReviewAccessOnFrozenNode(
-      instance.frozenNodes,
-      instance.currentNodeIndex,
-      roleKeys,
-      actorUserId,
-      instance.applicantUserId,
-      false
-    );
-    if (directOrAssignedAccess.canAct) {
-      return directOrAssignedAccess;
-    }
-
-    const activeDelegators = await this.activeDelegatedApprovalIdentities(
-      actorUserId,
-      projectId
-    );
-    return approvalReviewAccessOnFrozenNode(
-      instance.frozenNodes,
-      instance.currentNodeIndex,
-      roleKeys,
-      actorUserId,
-      instance.applicantUserId,
-      activeDelegators
-    );
-  }
-
-  private async activeDelegatedApprovalIdentities(
-    actorUserId: string,
-    projectId: string
-  ): Promise<Array<{ userId: string; roleKeys: RoleKey[] }>> {
-    if (!this.projectVisibility) return [];
-
-    const delegatorIds = await activeApprovalDelegatorIds(this.prisma, actorUserId, new Date());
-    const identities: Array<{ userId: string; roleKeys: RoleKey[] }> = [];
-    for (const delegatorId of delegatorIds) {
-      const delegatorRoleKeys = await this.projectVisibility.effectiveRoleKeys(
-        delegatorId,
-        projectId
-      );
-      identities.push({ userId: delegatorId, roleKeys: delegatorRoleKeys });
-    }
-    return identities;
-  }
-
-  private async currentApprovalWithdrawal(
-    businessType: string,
-    businessId: string,
-    actorUserId?: string
-  ): Promise<{
-    id: string;
-    applicantUserId: string;
-    currentNodeIndex: number;
-    updatedAt: Date;
-  } | null> {
-    if (!actorUserId) return null;
-
-    const approvalClient = (this.prisma as unknown as {
-      approvalInstance?: {
-        findMany(args: {
-          where: {
-            businessType: string;
-            businessId: string;
-            flowType: "settlement.approve";
-            status: "in_progress";
-          };
-          orderBy: Array<{ createdAt: "desc" } | { id: "desc" }>;
-          take: 2;
-          select: {
-            id: true;
-            applicantUserId: true;
-            currentNodeIndex: true;
-            updatedAt: true;
-          };
-        }): Promise<Array<{
-          id: string;
-          applicantUserId: string;
-          currentNodeIndex: number;
-          updatedAt: Date;
-        }>>;
-      };
-    }).approvalInstance;
-    if (!approvalClient?.findMany) return null;
-
-    const instances = await approvalClient.findMany({
-      where: {
-        businessType,
-        businessId,
-        flowType: "settlement.approve",
-        status: "in_progress"
-      },
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: 2,
-      select: {
-        id: true,
-        applicantUserId: true,
-        currentNodeIndex: true,
-        updatedAt: true
-      }
-    });
-    if (instances.length !== 1 || instances[0]?.applicantUserId !== actorUserId) {
-      return null;
-    }
-
-    return instances[0];
-  }
-
   private settlementActions(
     status: string,
     roleKeys: RoleKey[],
-    approvalReviewAccess: ApprovalReviewAccess,
     archiveFiles: SettlementDetailReadModel["archiveFiles"],
     governanceVersion?: number | null,
-    generationFailed = false,
-    withdrawApprovalContext?: SettlementDetailReadModel["withdrawApprovalContext"]
+    generationFailed = false
   ): DetailActionReadModel[] {
     const workflowActions = [
       detailAction({
@@ -1575,42 +1396,6 @@ export class SettlementReadService {
         enabled: ["pending_generation", "approved_pending_archive", "archive_pending", "pending_archive_confirm", "effective", "partially_paid", "paid"].includes(status),
         disabledReason: "仅最终审批通过后可下载正式结算单"
       }),
-      ...(withdrawApprovalContext
-        ? [detailAction({
-            key: "withdraw_approval",
-            label: "撤回审批",
-            kind: "normal",
-            roleKeys,
-            skipRoleCheck: true,
-            enabled: true
-          })]
-        : []),
-      detailAction({
-        key: "remind_approval",
-        label: "催办审批",
-        kind: "normal",
-        roleKeys,
-        requiredAction: "settlement.create",
-        enabled: status === "approval_pending"
-      }),
-      detailAction({
-        key: "transfer_approval",
-        label: "转审",
-        kind: "normal",
-        roleKeys,
-        skipRoleCheck: true,
-        enabled: approvalReviewAccess.canAct,
-        disabledReason: "当前用户不是当前审批节点处理人"
-      }),
-      detailAction({
-        key: "delegate_approval",
-        label: "委托",
-        kind: "normal",
-        roleKeys,
-        skipRoleCheck: true,
-        enabled: approvalReviewAccess.canAct,
-        disabledReason: "当前用户不是当前审批节点处理人"
-      }),
       ...(governanceVersion === 1
         ? []
         : [
@@ -1620,7 +1405,7 @@ export class SettlementReadService {
               kind: "normal",
               roleKeys,
               requiredAction: "settlement.archive.upload",
-              enabled: Boolean(status)
+              enabled: ["approved_pending_archive", "pending_archive_confirm", "effective", "partially_paid", "paid"].includes(status)
             })
           ]),
       ...(roleKeys.includes("finance_staff")
@@ -1644,26 +1429,6 @@ export class SettlementReadService {
           ]
         : [])
     ];
-
-    if (status === "approval_pending") {
-      return [
-        detailAction({
-          key: "review_approval",
-          label: "处理结算审批",
-          kind: "primary",
-          roleKeys,
-          requiredAction: "settlement.approve",
-          skipRoleCheck: true,
-          enabled: approvalReviewAccess.canReview,
-          requiresSelfReviewConfirmation:
-            approvalReviewAccess.requiresSelfReviewConfirmation,
-          disabledReason: approvalReviewAccess.canAct
-            ? "申请人不能审批自己发起的业务"
-            : "当前用户不是当前审批节点处理人"
-        }),
-        ...workflowActions
-      ];
-    }
 
     if (status === "pending_generation" && governanceVersion === 1) {
       return [
@@ -1793,8 +1558,9 @@ export class SettlementReadService {
       return "审批结果不受影响，请合同部主管重试生成";
     }
     const labels: Record<string, string> = {
-      approval_pending: "等待结算审批",
-      approval_rejected: "退回修改",
+      in_approval: "查看历史审批",
+      approval_pending: "查看历史审批",
+      approval_rejected: "查看历史退回记录",
       withdrawn: "申请人已撤回",
       approved_pending_archive: "上传签章归档件",
       pending_generation: "系统正在生成最终结算文件",
@@ -1810,8 +1576,9 @@ export class SettlementReadService {
 
   private currentOwnerLabel(status: string): string {
     const labels: Record<string, string> = {
-      approval_pending: "审批节点处理人",
-      approval_rejected: "项目经理",
+      in_approval: "—",
+      approval_pending: "—",
+      approval_rejected: "—",
       withdrawn: "项目经理",
       approved_pending_archive: "合同部成员",
       pending_generation: "系统处理",
@@ -1883,7 +1650,9 @@ export class SettlementReadService {
     }
 
     return [
-      { label: "结算审批", status: "处理中", tone: "primary" },
+      ["in_approval", "approval_pending"].includes(status)
+        ? { label: "历史审批", status: "已停止办理", tone: "default" }
+        : { label: "结算审批", status: "处理中", tone: "primary" },
       { label: "签字盖章归档上传", status: "未开始", tone: "default" },
       { label: "合同部主管确认", status: "未开始", tone: "default" },
       { label: "结算生效", status: "阻塞", tone: "danger" }
@@ -1961,14 +1730,12 @@ export class SettlementReadService {
 
   private matchesWorkbenchView(
     view: SettlementWorkbenchView,
-    settlement: { id: string; status: string; preparedByUserId: string | null },
-    actorUserId: string,
+    settlement: { id: string; status: string },
     pendingSettlementIds: ReadonlySet<string>
   ) {
     if (view === "all") return true;
     if (view === "pending_action") {
-      return pendingSettlementIds.has(settlement.id) ||
-        (settlement.status === "approval_rejected" && settlement.preparedByUserId === actorUserId);
+      return pendingSettlementIds.has(settlement.id);
     }
     if (view === "my_drafts") return false;
     if (view === "in_approval") return ["in_approval", "approval_pending"].includes(settlement.status);

@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { tmpdir } = require("node:os");
 const test = require("node:test");
 
 const runnerPath = path.join(__dirname, "run-contract-settlement-governance-uat.cjs");
@@ -239,4 +240,29 @@ test("real browser acceptance completes the self-archive assertion in both brows
   assert.match(runnerSource, /browserContractIds/u);
   assert.match(browserRunnerSource, /REAL_BROWSER_SELF_ARCHIVE_CONTRACT_IDS/u);
   assert.match(browserTestSource, /REAL_BROWSER_SELF_ARCHIVE_CONTRACT_IDS/u);
+});
+
+
+test("dispatches stale signed review browsers only against the same exact passed governance receipt", (context) => {
+  const { resolveSignedSettlementReviewFixtures } = require("./run-real-role-browser-uat.cjs");
+  const directory = fs.mkdtempSync(path.join(tmpdir(), "jg-signed-review-receipt-"));
+  context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const governanceEvidencePath = path.join(directory, "receipt.json");
+  const runId = "synthetic-run";
+  const candidateSha = "a".repeat(40);
+  const first = { projectId: "seed-project-jgxm-001", settlementId: "00000000-0000-4000-8000-000000000001", revision: 2 };
+  const second = { ...first, settlementId: "00000000-0000-4000-8000-000000000002" };
+  const receipt = {
+    runId, candidateSha, cases: [
+      { id: "signed_settlement_material_confirmation", passed: true, evidenceIds: [`${runId}:${first.settlementId}`], signedSettlementReviewFixture: first },
+      { id: "signed_settlement_labor_confirmation", passed: true, evidenceIds: [`${runId}:${second.settlementId}`], signedSettlementReviewFixture: second }
+    ]
+  };
+  fs.writeFileSync(governanceEvidencePath, JSON.stringify(receipt));
+  assert.deepEqual(resolveSignedSettlementReviewFixtures({ governanceEvidencePath, runId, candidateSha }), { chromium: first, webkit: second });
+  assert.throws(() => resolveSignedSettlementReviewFixtures({ governanceEvidencePath, runId, candidateSha: "b".repeat(40) }), /证据身份不一致/u);
+
+  receipt.cases[0].evidenceIds = [`${runId}:${second.settlementId}`];
+  fs.writeFileSync(governanceEvidencePath, JSON.stringify(receipt));
+  assert.throws(() => resolveSignedSettlementReviewFixtures({ governanceEvidencePath, runId, candidateSha }), /chromium 缺少已签结算复核证据/u);
 });

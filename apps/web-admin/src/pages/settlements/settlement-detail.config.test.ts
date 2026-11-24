@@ -40,10 +40,7 @@ describe("settlement detail page configuration", () => {
     expect(source).toContain(":readonly=\"true\"");
   });
 
-  it("shows frozen unlimited-framework overage reasons to the current approver", () => {
-    const source = readFileSync(new URL("./SettlementDetailPage.vue", import.meta.url), "utf8");
-    expect(source).toContain("框架合同超量复核");
-    expect(source).toContain("settlementOverageReviewMessage");
+  it("keeps frozen framework overage reasons in the historical lines", () => {
     expect(settlementLineColumns.some((column) => column.colKey === "overageReason")).toBe(true);
   });
 

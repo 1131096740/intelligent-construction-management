@@ -2238,31 +2238,6 @@
       ]
     },
     {
-      "id": "settlement-approval.withdraw",
-      "usage": "page_action",
-      "routePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-      "trigger": {
-        "element": "sensitive-action-dialog",
-        "event": "confirm",
-        "handler": "confirmSettlementWithdrawal"
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "settlementApprovalCapability.availableActions",
-        "key": "withdraw_approval"
-      },
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "executeSettlementApprovalWithdrawalAction"
-        }
-      ]
-    },
-    {
       "id": "contract-workbench.submit",
       "usage": "background",
       "routePaths": [
@@ -5125,81 +5100,6 @@
         {
           "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
           "name": "uploadSpotProcurementInvoiceFile"
-        }
-      ]
-    },
-    {
-      "id": "settlement-detail.review",
-      "usage": "background",
-      "routePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "reviewSettlementApprovalWithCapability"
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "review_approval"
-      },
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "reviewSettlementApproval"
-        }
-      ]
-    },
-    {
-      "id": "settlement-detail.transfer",
-      "usage": "background",
-      "routePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "transferSettlementApprovalWithCapability"
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "transfer_approval"
-      },
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "transferSettlementApproval"
-        }
-      ]
-    },
-    {
-      "id": "settlement-detail.delegate",
-      "usage": "background",
-      "routePaths": [
-        "/结算管理/:settlementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "delegateSettlementApprovalWithCapability"
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "delegate_approval"
-      },
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "delegateSettlementApproval"
         }
       ]
     },

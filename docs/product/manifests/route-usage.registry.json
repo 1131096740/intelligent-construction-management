@@ -4,24 +4,24 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 879,
-    "classificationOverrideCount": 284,
-    "derivedProductionPageCount": 595,
-    "classificationOverrideSha256": "73311f685f6200285cb6bd1a5fe2b488095667d2b2ba00be06795ffacd4e2a4d",
+    "classificationOverrideCount": 288,
+    "derivedProductionPageCount": 591,
+    "classificationOverrideSha256": "7a71d84ed8ac9e067eb8438ec4d12ce932deb425775d75860d89c6d7ee57ebdb",
     "consumerSurfaceOverrideSha256": "aecd8b55f30ad018e11d328e7529b559a22fb60ff1bfdbbd52538c2044a6466a",
     "usageCounts": {
-      "page": 614,
+      "page": 610,
       "external_takeover": 70,
-      "exit_candidate": 129,
+      "exit_candidate": 133,
       "internal_task": 66,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 666,
+      "web_api_wrapper": 662,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 2,
       "operator_endpoint": 64,
-      "none": 140
+      "none": 144
     }
   },
   "overrides": [
@@ -1347,9 +1347,33 @@
     },
     {
       "method": "POST",
+      "path": "/settlements/:settlementId/approval-withdrawal",
+      "usage": "exit_candidate",
+      "reason": "issue_425_old_serial_settlement_approval_retired_preserve_history"
+    },
+    {
+      "method": "POST",
+      "path": "/settlements/:settlementId/approval-transfer",
+      "usage": "exit_candidate",
+      "reason": "issue_425_old_serial_settlement_approval_retired_preserve_history"
+    },
+    {
+      "method": "POST",
+      "path": "/settlements/:settlementId/approval-delegation",
+      "usage": "exit_candidate",
+      "reason": "issue_425_old_serial_settlement_approval_retired_preserve_history"
+    },
+    {
+      "method": "POST",
+      "path": "/settlements/:settlementId/approval",
+      "usage": "exit_candidate",
+      "reason": "issue_425_old_serial_settlement_approval_retired_preserve_history"
+    },
+    {
+      "method": "POST",
       "path": "/settlements/:settlementId/approval-reminder",
       "usage": "exit_candidate",
-      "reason": "unified_approval_progress_sms_ui_replaces_legacy_reminder_http_410_retired_no_deletion_authorization"
+      "reason": "issue_425_old_serial_settlement_approval_retired_preserve_history"
     },
     {
       "method": "GET",

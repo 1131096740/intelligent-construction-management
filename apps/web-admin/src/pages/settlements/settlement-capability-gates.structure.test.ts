@@ -30,9 +30,6 @@ describe("settlement capability gates", () => {
   });
 
   it.each([
-    ["review_approval", "reviewSettlementApprovalWithCapability"],
-    ["transfer_approval", "transferSettlementApprovalWithCapability"],
-    ["delegate_approval", "delegateSettlementApprovalWithCapability"],
     ["download_approval_form", "downloadSettlementApprovalPdfWithCapability"],
     ["upload_archive", "uploadSettlementArchiveWithCapability"],
     ["confirm_archive", "confirmSettlementArchiveWithCapability"],

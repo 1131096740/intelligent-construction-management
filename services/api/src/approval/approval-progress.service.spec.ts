@@ -211,6 +211,20 @@ it.each(["expense_claim", "project_expense_request"])(
   expect(sms.sendDutyIntent).not.toHaveBeenCalled();
 });
 
+it("retains historical settlement progress but retires live serial approval reminders", async () => {
+  const { service, db, sms, instance } = fixture();
+  Object.assign(instance, { businessType: "settlement", flowType: "settlement.approve", status: "in_progress" });
+  Object.assign(db, { settlement: { findUnique: jest.fn().mockResolvedValue({ projectId: "project", code: "JS-001" }) } });
+
+  const detail = await service.detail("flow", "owner");
+  expect(detail).toMatchObject({ businessCode: "JS-001", canHandle: false, canRemind: false, pendingRecipients: [] });
+  await expect(service.remind("flow", "owner", requestId, detail.reminderToken)).rejects.toMatchObject({ status: 410 });
+  await expect(service.remind("flow", "stranger", requestId, detail.reminderToken)).rejects.toMatchObject({ status: 404 });
+  expect(db.approvalActionLog.create).not.toHaveBeenCalled();
+  expect(sms.send).not.toHaveBeenCalled();
+  expect(sms.sendDutyIntent).not.toHaveBeenCalled();
+});
+
 it("费用催办富短信只发当前选定岗位，保持原键和登录后直达",async()=>{
   const {service,sms,db,insideTransaction}=fixture();
   const current={id:"claim",projectId:"project",code:"BX-001",applicantUserId:"owner",handledByUserId:"owner",
@@ -265,18 +279,15 @@ it.each([
 });
 
 it.each([
-  {businessType:"settlement",flowType:"settlement.approve",businessId:"settlement",
-    targetPath:"/结算管理/JS-001",amountText:"12.34 元",participants:["合成公司","合同对方"]},
   {businessType:"spot_procurement_version",flowType:"spot_procurement.approve",businessId:"version",
     targetPath:"/零星采购/procurement",amountText:"待确定",participants:["采购人"]},
   {businessType:"spot_procurement_payment",flowType:"spot_procurement.payment.approve",businessId:"payment",
     targetPath:"/零星材料付款/payment",amountText:"25.01 元",participants:["供货商","合成收款方"]},
 ])("$businessType 从当前业务单据构造富催办并保留原键", async ({businessType,flowType,businessId,targetPath,amountText,participants}) => {
   const {service,sms,db,instance,insideTransaction}=fixture();
-  Object.assign(instance,{businessType,flowType,businessId,status:businessType==="settlement"?"in_progress":"approval_pending"});
+  Object.assign(instance,{businessType,flowType,businessId,status:"approval_pending"});
   const status="approval_pending";
   Object.assign(db,{
-    settlement:{findUnique:async()=>({projectId:"project",status,contractId:"contract",code:"JS-001",amountCents:1234n,periodLabel:"11 月"})},
     contract:{findUnique:async()=>({projectId:"project",name:"合成合同",companyEntityName:"合成公司",counterparty:"合同对方"})},
     spotProcurementVersion:{findUnique:async()=>({procurementId:"procurement",status,reason:"补充材料",purchaserNameSnapshot:"采购人",estimatedTotalAmount:null})},
     spotProcurement:{findUnique:async()=>({id:"procurement",projectId:"project",currentVersionId:"version",status,code:"LX-001"})},

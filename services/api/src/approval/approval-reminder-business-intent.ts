@@ -68,24 +68,6 @@ export async function companyTransferReminderIntent(tx: Prisma.TransactionClient
   };
 }
 
-export async function settlementReminderIntent(tx: Prisma.TransactionClient, settlementId: string, scope: Scope): Promise<ApprovalDutySmsIntent | null> {
-  if (!scope.projectId || !scope.projectName || !scope.applicantName) return null;
-  const row = await tx.settlement.findUnique({ where: { id: settlementId }, select: {
-    projectId: true, contractId: true, status: true, code: true, amountCents: true, periodLabel: true
-  } });
-  if (row?.status !== "approval_pending" || row.projectId !== scope.projectId) return null;
-  const contract = await tx.contract.findUnique({ where: { id: row.contractId }, select: {
-    name: true, companyEntityName: true, counterparty: true, projectId: true
-  } });
-  if (!contract || contract.projectId !== row.projectId) return null;
-  return {
-    businessLabel: scope.businessLabel, dutyName: scope.dutyName, businessCode: row.code, scopeName: scope.projectName,
-    initiatorName: scope.applicantName, subject: [contract.name, row.periodLabel].filter(Boolean).join(" · ") || "结算审批",
-    participants: known(contract.companyEntityName, contract.counterparty), amountText: yuan(row.amountCents),
-    targetPath: approvalDutyTarget("settlement", row.code)
-  };
-}
-
 export async function spotApplicationReminderIntent(tx: Prisma.TransactionClient, versionId: string, scope: Scope): Promise<ApprovalDutySmsIntent | null> {
   if (!scope.projectId || !scope.projectName || !scope.applicantName) return null;
   const version = await tx.spotProcurementVersion.findUnique({ where: { id: versionId }, select: {

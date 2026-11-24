@@ -874,7 +874,7 @@ describe("MeService", () => {
     expect(prisma.contractBusinessTemplateVersion.count).toHaveBeenCalled();
   });
 
-  it("returns visible approval work items with business jump targets", async () => {
+  it("keeps historical settlement progress in started items but removes it from live approval duties", async () => {
     const prisma = {
       $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
       $queryRaw:jest.fn().mockResolvedValue([]),
@@ -896,11 +896,12 @@ describe("MeService", () => {
       approvalActionLog: { findMany: jest.fn().mockResolvedValue([]) },
       approvalInstance: {
         findMany: jest.fn().mockImplementation(({ where }: { where: { applicantUserId?: string } }) => {
-          if (where.applicantUserId) return [];
+          if (where.applicantUserId && where.applicantUserId !== "applicant-1") return [];
           return [
             {
               id: "approval-1",
               businessType: "settlement",
+              flowType: "settlement.approve",
               businessId: "settlement-1",
               status: "in_progress",
               currentNodeIndex: 0,
@@ -942,21 +943,14 @@ describe("MeService", () => {
 
     const result = await service.getWorkItems("user-1");
 
-    expect(result.queues.pending).toHaveLength(1);
-    expect(result.queues.pending[0]).toMatchObject({
-      id: "approval:approval-1",
-      type: "approval",
-      projectName: "测试项目",
-      projectId: "project-1",
-      businessCode: "JS-001",
-      businessType: "settlement",
-      businessId: "settlement-1",
-      title: "结算审批：测试合同",
-      amountText: "¥1,000.00",
-      currentNode: "项目经理审批",
-      targetPath: "/结算管理/JS-001"
-    });
-    expect(result.approvalCenter.pendingApproval[0].id).toBe("approval:approval-1");
+    expect(result.queues.pending).toEqual([]);
+    expect(result.approvalCenter.pendingApproval).toEqual([]);
+
+    const applicantHistory = await service.getWorkItems("applicant-1");
+    expect(applicantHistory.queues.started).toEqual([
+      expect.objectContaining({ id: "approval:approval-1", businessId: "settlement-1",
+        targetPath: "/结算管理/JS-001", nextAction: "查看审批进度", canHandle: false })
+    ]);
   });
 
   it.each([
