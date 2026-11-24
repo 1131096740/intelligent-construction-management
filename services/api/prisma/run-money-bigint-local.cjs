@@ -4,6 +4,7 @@ const { mkdtemp, rm } = require("node:fs/promises");
 const net = require("node:net");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
+const { createSignedSettlementQualification } = require("./signed-settlement-qualification.cjs");
 const {
   assertLocalMoneyVerificationRuntime,
   assertSeedOutputHasNoPassword,
@@ -73,13 +74,15 @@ async function waitForApi(apiBaseUrl, apiProcess, apiOutput) {
 }
 
 async function main() {
-  const [databasePort, apiPort] = await Promise.all([freePort(), freePort()]);
+  const [databasePort, apiPort, signedSettlementPort] = await Promise.all([freePort(), freePort(), freePort()]);
   const suffix = `${Date.now()}-${process.pid}`;
   const containerName = `jiangkong-money-bigint-${suffix}`;
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "jiangkong-money-bigint-"));
   const databasePassword = randomUUID();
   const databaseUrl = `postgresql://jiangkong:${databasePassword}@127.0.0.1:${databasePort}/jiangkong_money_verify`;
   const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
+  const signedSettlementBaseUrl = `http://127.0.0.1:${signedSettlementPort}`;
+  const signedSettlement = createSignedSettlementQualification(databaseUrl);
   const runtimeEnv = {
     PATH: process.env.PATH ?? "",
     HOME: process.env.HOME ?? temporaryRoot,
@@ -89,6 +92,8 @@ async function main() {
     PORT: String(apiPort),
     WEB_ORIGIN: "http://127.0.0.1:5173",
     API_BASE_URL: apiBaseUrl,
+    CORE_FLOW_SIGNED_SETTLEMENT_API_BASE_URL: signedSettlementBaseUrl,
+    SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY: signedSettlement.ownedReadKey,
     DATABASE_URL: databaseUrl,
     JWT_ACCESS_SECRET: randomUUID(),
     JWT_REFRESH_SECRET: randomUUID(),
@@ -177,6 +182,10 @@ async function main() {
         ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "status"],
         { env: runtimeEnv, forwardOutput: true }
       );
+      await command(docker, [
+        "exec", "-i", containerName, "psql", "-X", "-q", "-v", "ON_ERROR_STOP=1",
+        "-U", "jiangkong", "-d", "jiangkong_money_verify", "-f", "-"
+      ], { stdinText: ["BEGIN", ...signedSettlement.install, "COMMIT", ""].join(";\n") });
       const seedResult = await command(
         process.execPath,
         [path.join(root, "services/api/prisma/seed.cjs")],
@@ -212,6 +221,26 @@ async function main() {
       }
       await waitForApi(apiBaseUrl, apiProcess, apiOutput);
       console.log(`本地 API 已就绪：${apiBaseUrl}`);
+
+      const signedOutput = [];
+      const signedApi = commandRuntime.track(spawn(process.execPath, [path.join(root, "services/api/dist/main.js")], {
+        cwd: root,
+        env: {
+          ...runtimeEnv,
+          PORT: String(signedSettlementPort),
+          API_BASE_URL: signedSettlementBaseUrl,
+          DATABASE_URL: signedSettlement.databaseUrl,
+          SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY: signedSettlement.writeKey
+        },
+        stdio: ["ignore", "pipe", "pipe"]
+      }));
+      for (const stream of [signedApi.stdout, signedApi.stderr]) {
+        stream.on("data", (chunk) => {
+          signedOutput.push(String(chunk));
+          if (signedOutput.length > 200) signedOutput.shift();
+        });
+      }
+      await waitForApi(signedSettlementBaseUrl, signedApi, signedOutput);
 
       for (const script of [
         "verify-core-flow.cjs",

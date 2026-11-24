@@ -6,7 +6,7 @@ function createSignedSettlementQualification(databaseUrl, { existingReadWitness 
   const url = new URL(databaseUrl);
   if (process.env.NODE_ENV === "production" || url.protocol !== "postgresql:" ||
     !["127.0.0.1", "localhost"].includes(url.hostname) ||
-    !/^\/(?:jiangkong_(?:pol114|governance_uat)|jg_task01_[a-f0-9]{32})$/u.test(url.pathname)) {
+    !/^\/(?:jiangkong_(?:pol114|governance_uat|money_verify)|jg_task01_[a-f0-9]{32})$/u.test(url.pathname)) {
     throw new Error("已签结算验收仅允许使用本机专用 PostgreSQL");
   }
   const runMatch = /^\/jg_task01_([a-f0-9]{32})$/u.exec(url.pathname);

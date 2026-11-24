@@ -14,7 +14,7 @@ describe("coreFlowApiVerificationTargets", () => {
     expect(coreFlowApiVerificationTargets[2].requiredText).toContain("approved_pending_payment");
   });
 
-  it("seeds an archiveable contract and a compatible settlement submission for the writable rehearsal", () => {
+  it("uses the approved contract and signed settlement payment basis in the writable rehearsal", () => {
     const verifier = readFileSync(
       join(process.cwd(), "prisma/verify-core-flow.cjs"),
       "utf8"
@@ -23,18 +23,12 @@ describe("coreFlowApiVerificationTargets", () => {
     expect(verifier).toContain('contractTypeKey: "material_purchase"');
     expect(verifier).toContain('invoiceType: "vat_general"');
     expect(verifier).toContain('defaultTaxRatePercent: new Prisma.Decimal("13")');
-    expect(verifier).toContain('status: "published"');
-    expect(verifier).toContain('originalName: `一期闭环验证结算模板-${codeSuffix}.xlsx`');
-    expect(verifier).toContain('xlsxFileId: settlementTemplateFileId');
-    expect(verifier).toContain('settlementTemplateVersionId,');
-    expect(verifier).toContain('sourceType: "manual_adjustment"');
-    expect(verifier).toContain('reason: "本期现场签认"');
-    expect(verifier).toContain('fieldReviewerUserId: "seed-user-material-staff"');
-    expect(verifier).toContain('frozen-document');
-    expect(verifier).toContain('counterparty-signed-documents');
-    expect(verifier).toContain('approval-submission');
-    expect(verifier).toContain('signed-document-generation-retry');
-    expect(verifier).toContain('pending_archive_confirm');
+    expect(verifier).toContain('signed.upload(tokens.contractStaff');
+    expect(verifier).toContain('signed.submit(draft, tokens.contractStaff)');
+    expect(verifier).toContain('signed.confirm(submitted, tokens.contractDirector)');
+    expect(verifier).toContain('paymentBasis.downstreamCapacity.wholeCentLimit');
+    expect(verifier).toContain('signed.verifyOriginal(tokens.contractStaff');
+    expect(verifier).not.toContain('/settlement-drafts');
     expect(verifier).toContain('/me/signature/canvas');
     expect(verifier).toContain('一期闭环验证手写签名.png');
     expect(verifier).toContain('Object.values(tokens)');
@@ -44,7 +38,7 @@ describe("coreFlowApiVerificationTargets", () => {
     expect(verifier).toContain('responseBody.includes("付款申请金额")');
     expect(verifier).toContain('["comprehensiveDirector", tokens.comprehensiveDirector]');
     expect(verifier).not.toContain('["contractDirector", tokens.contractDirector]');
-    expect(verifier).toContain('"settlement.signed_document.generated"');
+    expect(verifier).toContain('"settlement.signed_confirmed"');
   });
 });
 

@@ -69,7 +69,7 @@ const selfArchiveFinalUploadSource = selfArchiveSource.slice(
   selfArchiveFinalUploadEnd
 );
 const changeStart = runnerSource.indexOf("async function approveSignedSupplement");
-const changeEnd = runnerSource.indexOf("\nasync function createSettlementTemplate", changeStart);
+const changeEnd = runnerSource.indexOf("\nasync function runSettlementScenario", changeStart);
 const changeSource = runnerSource.slice(changeStart, changeEnd);
 
 test("governance UAT prepares each personal signature through the domain route", () => {
