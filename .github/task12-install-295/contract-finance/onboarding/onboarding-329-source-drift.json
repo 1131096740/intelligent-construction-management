@@ -211,7 +211,7 @@
   "services/api/src/database/contract-settlement-governance-uat-runner.spec.ts": "acf52c4f2bd8265fd69f82fe088e7db11bd10e85140a3027b19d9e71a7c16694",
   "services/api/src/database/contract-takeover-confirmation-concurrency.spec.ts": "457588e2260de310af13f40120757ca0715ca72e018397fcc67558616a46dff4",
   "services/api/src/database/general-procurement-http-postgres.spec.ts": "604b76192f84144ea28498090c09891fd36929a08da72e99a181ce5fa1e1e027",
-  "services/api/src/database/project-business-scope-http-postgres.spec.ts": "a9bb63bc6f72f812fc5da6871f442d2abcf9119036f7f2f4479bfdacfe1f2fac",
+  "services/api/src/database/project-business-scope-http-postgres.spec.ts": "1d46057f2422897cc010b12b15900d74c9c5e3582ed25f28b1a88cb927f555cf",
   "services/api/src/database/project-roster-http-postgres.spec.ts": "3a59f80d579752920aa000dc269454fa5e4f7108722f1844095306547df84535",
   "services/api/src/database/registered-payment-catalog.ts": "40d44f5a495a24fc63acc739654b1706a8c2599a64b8a163f56fd30567e50552",
   "services/api/src/database/spot-procurement-core-schema.spec.ts": "ace8b6615c03938efba4cdbf63146c1ff4c3e3b5499ec2ce32a30f8f4b01049f",
