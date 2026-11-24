@@ -616,7 +616,9 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const roles = ["comprehensive_director", "project_manager", "finance_director", "chairman"];
     for (const index of order) {
       const approvalToken = approvalTokens[index]!;
-      expect(await request(capability)).toMatchObject({ status: 200, body: { available: false } });
+      expect(await request(capability)).toMatchObject({ status: 200, body: parallel
+        ? { available: true, incomplete: true }
+        : { available: false } });
       const coordinates = parallel ? await parallelReviewCoordinates(path, approvalToken) : {};
       const input = { decision: "approve", ...coordinates };
       if (parallel && index === 2) {
