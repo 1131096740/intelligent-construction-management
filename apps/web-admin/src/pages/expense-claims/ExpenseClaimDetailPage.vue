@@ -192,11 +192,20 @@ async function reviewExpenseClaimWithCapability(
   target: NonNullable<typeof reviewTarget.value>
 ) {
   const capability = await fetchExpenseClaimActionCapability(claimId);
-  if (capability.claimId !== claimId || !isReviewTargetCurrent(target)) {
-    throw new Error("费用申请或当前用户已变化，请重新打开审批");
-  }
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
   const operationAllowed = capability.availableActions.includes("review_expense_claim");
   if (!operationAllowed) throw new Error("当前用户不能审批该费用申请");
+  const currentActor = auth.user;
+  const currentTarget = reviewTarget.value;
+  const currentClaimId = route.params.claimId;
+  const dialogOpen = reviewVisible.value;
+  if (!dialogOpen || currentTarget !== target || currentClaimId !== claimId || !currentActor) {
+    throw new Error("费用申请或当前用户已变化，请重新打开审批");
+  }
+  const currentActorId = currentActor.id;
+  const expectedActorId = target.actorId;
+  if (currentActorId !== expectedActorId) throw new Error("当前用户已变化，请重新打开审批");
   return reviewExpenseClaim(claimId, body);
 }
 async function attachExpenseClaimAttachmentWithCapability(

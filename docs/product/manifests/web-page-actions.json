@@ -17,7 +17,7 @@
     "totalVueFileCount": 254,
     "parsedVueFileCount": 254,
     "reachableProductionModuleCount": 417,
-    "templateEventDirectiveCount": 1647,
+    "templateEventDirectiveCount": 1648,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 475,
     "candidateProductionMutationConsumerCount": 475,
@@ -12535,7 +12535,7 @@
         "event": "call",
         "handler": "appendExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 199,
+        "sourceLine": 222,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12600,7 +12600,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimAppendAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 323,
+        "sourceLine": 346,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12665,7 +12665,7 @@
         "event": "call",
         "handler": "attachExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 188,
+        "sourceLine": 211,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12730,7 +12730,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimDraftAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 315,
+        "sourceLine": 338,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12795,7 +12795,7 @@
         "event": "call",
         "handler": "removeExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 210,
+        "sourceLine": 233,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12925,7 +12925,7 @@
         "event": "call",
         "handler": "deleteExpenseClaimDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 355,
+        "sourceLine": 378,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13026,7 +13026,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalPaymentPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 247,
+        "sourceLine": 270,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13091,7 +13091,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanDisbursementVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 339,
+        "sourceLine": 362,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13156,7 +13156,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanDisbursementWithCapability",
         "kind": "background_call",
-        "sourceLine": 255,
+        "sourceLine": 278,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13221,7 +13221,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalDisbursementPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 266,
+        "sourceLine": 289,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13286,7 +13286,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanRepaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 347,
+        "sourceLine": 370,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13351,7 +13351,7 @@
         "event": "call",
         "handler": "confirmExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 285,
+        "sourceLine": 308,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13416,7 +13416,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 274,
+        "sourceLine": 297,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13481,7 +13481,7 @@
         "event": "call",
         "handler": "reverseExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 300,
+        "sourceLine": 323,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13546,7 +13546,7 @@
         "event": "call",
         "handler": "adjustExpenseClaimPaymentSubjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 225,
+        "sourceLine": 248,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13615,7 +13615,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 331,
+        "sourceLine": 354,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13680,7 +13680,7 @@
         "event": "call",
         "handler": "recordExpenseClaimPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 236,
+        "sourceLine": 259,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13745,7 +13745,7 @@
         "event": "call",
         "handler": "reviewExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 177,
+        "sourceLine": 189,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13810,7 +13810,7 @@
         "event": "call",
         "handler": "submitExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 169,
+        "sourceLine": 181,
         "sourceColumn": 0
       },
       "semantic": "business_write",
