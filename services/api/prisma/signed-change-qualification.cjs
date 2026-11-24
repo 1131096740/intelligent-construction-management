@@ -9,7 +9,8 @@ function createSignedChangeQualification(databaseUrl) {
     throw new Error("补充协议验收只允许使用本机专用 PostgreSQL");
   }
 
-  const role = `signed_change_qualification_${randomBytes(8).toString("hex")}`;
+  const role = url.pathname === "/jiangkong_pol114" ? "pol114_signed_change_qualification"
+    : `signed_change_qualification_${randomBytes(8).toString("hex")}`;
   const password = randomBytes(32).toString("hex");
   const witnessKey = randomBytes(32).toString("hex");
   url.username = role;

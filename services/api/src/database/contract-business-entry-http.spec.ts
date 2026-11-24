@@ -1242,7 +1242,14 @@ if (enabled) {
           signedApp = signedModule.createNestApplication();
           signedApp.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
           signedApp.useGlobalPipes(createApiValidationPipe());
-          await signedApp.listen(0, "127.0.0.1");
+          try {
+            await signedApp.listen(0, "127.0.0.1");
+          } catch (error) {
+            const failure = error as { errorCode?: string; code?: string };
+            const code = failure.errorCode ?? failure.code ?? "";
+            const safeCode = /^(?:P[0-9]{4}|EADDRINUSE|EACCES|ECONNREFUSED)$/u.test(code) ? code : "UNCLASSIFIED";
+            throw new Error(`POL114_SIGNED_CHANGE_BOOT_${safeCode}`);
+          }
           const signedApiUrl = await signedApp.getUrl();
           const submitSignedRequest = async (path: string, body: Record<string, string>) => {
             const response = await fetch(`${signedApiUrl}${path}`, {
@@ -1250,8 +1257,15 @@ if (enabled) {
               headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
               body: JSON.stringify(body)
             });
-            expect(response.status).toBe(201);
-            return await response.json() as Identified & { status: string };
+            const result = await response.json().catch(() => null) as (Identified & { status: string; code?: string }) | null;
+            if (response.status !== 201 || !result) {
+              const code = result?.code;
+              const safeCode = code && [
+                "OLD_WRITE_ENTRY_RETIRED", "OPERATIONAL_WRITE_FREEZE_ROUTE_UNCLASSIFIED", "OPERATIONAL_WRITE_FREEZE_ACTIVE"
+              ].includes(code) ? code : "UNCLASSIFIED";
+              throw new Error(`POL114_SIGNED_CHANGE_HTTP_${response.status}_${safeCode}`);
+            }
+            return result;
           };
 
           await loginAs(actorUserId);

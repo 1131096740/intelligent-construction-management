@@ -912,7 +912,7 @@
   {
     "path": "services/api/src/database/contract-business-entry-http.spec.ts",
     "expected": "e4475a9bfb2a08fecaca0ca6f89d2e631b0355e6c58a4f2418dc612651ef73d9",
-    "candidate": "e6fa59ed9cd5fe992f3d380017f6ae90b92cdb82b487ee065aa35030e73f24af"
+    "candidate": "a3fd1dbbc3b94047f6b532718c9d6f9473eb1c1aa4b75df4455d68f8646a50b2"
   },
   {
     "path": "services/api/src/database/contract-lifecycle-route.spec.ts",
