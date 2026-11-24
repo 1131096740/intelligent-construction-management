@@ -27,13 +27,6 @@
         >
           刷新
         </t-button>
-        <t-button
-          v-if="canManageSettlements"
-          theme="primary"
-          @click="openCreateWorkbench"
-        >
-          新建结算
-        </t-button>
       </template>
     </BusinessPageHeader>
     <ContractRelationshipLedger initial-section="settlements" />
@@ -225,24 +218,12 @@
         </template>
         <template #operation="{ row }">
           <t-link
-            v-if="activeView === 'all' && row.copyAvailable"
-            theme="primary"
-            :disabled="copyingId === row.id"
-            @click="copyEndedSettlement(row)"
-          >
-            {{ copyingId === row.id ? '复制中' : '复制为新草稿' }}
-          </t-link>
-          <span v-else-if="activeView === 'all' && row.abandonReason">历史已保留</span>
-          <t-link
-            v-else
             theme="primary"
             @click="openLifecycleRow(row)"
           >
-            {{ activeView === 'my_drafts'
-              ? '继续填写'
-              : activeView === 'pending_action'
-                ? '查看并处理'
-                : '查看详情' }}
+            {{ row.lifecycleKind !== 'formal_record'
+              ? '查看历史'
+              : activeView === 'pending_action' ? '查看并处理' : '查看详情' }}
           </t-link>
         </template>
       </t-table>
@@ -284,7 +265,6 @@ import { useRoute, useRouter } from "vue-router";
 import { formatUnknownApiError } from "../../api/error-message";
 import type { SettlementWorkbenchView } from "@jiangkong/shared-domain";
 import {
-  copyAbandonedSettlementDraft,
   fetchSettlementWorkbenchLedger,
   type SettlementLifecycleLedgerRow,
   downloadSettlementLedgerExport,
@@ -292,7 +272,6 @@ import {
   downloadSignedSettlementLedgerExport,
   type SignedSettlementLedgerPage
 } from "../../api/core-flow-read.api";
-import { fetchSettlementProjectCapability } from "../../api/settlement-drafts.api";
 import {
   normalizeVisibleColumnKeys,
   readPersonalTablePreferences,
@@ -361,7 +340,6 @@ const exportLoading = ref(false);
 const signedLedgerExporting = ref(false);
 const signedLedgerSummary = ref<SignedSettlementLedgerPage["summary"] | null>(null);
 const signedLedgerError = ref("");
-const copyingId = ref("");
 const showColumnSettings = ref(false);
 const showSettlementRules = ref(false);
 const configurableSettlementColumnKeys = settlementLedgerColumns
@@ -430,10 +408,6 @@ function optionsForFilter(key: SettlementFilterKey) {
   return filterOptions.value[key];
 }
 
-function openCreateWorkbench() {
-  void router.push("/结算工作台/新建");
-}
-
 function openLifecycleRow(row: SettlementLedgerRow & SettlementLifecycleLedgerRow) {
   if (row.lifecycleKind !== "formal_record") {
     void router.push({
@@ -445,38 +419,6 @@ function openLifecycleRow(row: SettlementLedgerRow & SettlementLifecycleLedgerRo
   void router.push(`/settlements/${row.settlementId ?? row.id}`);
 }
 
-async function copyEndedSettlement(row: SettlementLedgerRow & SettlementLifecycleLedgerRow) {
-  if (!row.copyAvailable || !row.lifecycleUpdatedAt) return;
-  copyingId.value = row.id;
-  try {
-    const created = await copySettlementDraftWithCapability(row);
-    await MessagePlugin.success("已复制为新的结算草稿，旧记录保持只读历史。");
-    await router.push({ path: "/结算工作台/新建", query: { project: row.projectId, draftId: created.id } });
-  } catch (error) {
-    await MessagePlugin.error(formatUnknownApiError(error, "结算草稿复制失败，请刷新后重试。"));
-  } finally {
-    copyingId.value = "";
-  }
-}
-
-async function copySettlementDraftWithCapability(
-  row: SettlementLedgerRow & SettlementLifecycleLedgerRow
-) {
-  const capability = await fetchSettlementProjectCapability(row.projectId);
-  const matchesRequestedProject = capability.projectId === row.projectId;
-  if (!matchesRequestedProject) throw new Error("结算项目已变化，请刷新台账后重试");
-  const operationAllowed = capability.availableActions.includes(
-    "copy_abandoned_draft"
-  );
-  if (!operationAllowed) throw new Error("当前用户不能复制该结算草稿");
-  const lifecycleUpdatedAt = row.lifecycleUpdatedAt;
-  if (!lifecycleUpdatedAt) throw new Error("结算草稿状态信息不完整，请刷新台账后重试");
-  return copyAbandonedSettlementDraft(
-    row.projectId,
-    row.id,
-    lifecycleUpdatedAt
-  );
-}
 
 function resetSettlementFilters() {
   Object.assign(settlementFilters, emptySettlementLedgerFilters());

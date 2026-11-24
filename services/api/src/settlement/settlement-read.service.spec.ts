@@ -1282,7 +1282,7 @@ describe("SettlementReadService", () => {
         projectId: "p1",
         lifecycleKind: "approval_draft",
         abandonReason: "不再继续",
-        copyAvailable: true
+        copyAvailable: false
       })
     ]));
     const formal = await service.lifecycleLedger("formal_ledger", 1, 20, ["p1"], "u1");
@@ -1416,7 +1416,7 @@ describe("SettlementReadService", () => {
 
     const all = await service.workbenchLedger("all", 1, 20, ["p1"], "u1");
     expect(all.rows).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "draft-2", abandonReason: "不再继续", copyAvailable: true }),
+      expect.objectContaining({ id: "draft-2", abandonReason: "不再继续", copyAvailable: false }),
       expect.objectContaining({ settlementId: "voided", status: "voided" })
     ]));
     expect(me.getSettlementPendingWorkItems).toHaveBeenCalledWith("u1");

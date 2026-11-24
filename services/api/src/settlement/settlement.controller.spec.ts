@@ -780,7 +780,7 @@ describe("SettlementController authorization wiring", () => {
     }
   );
 
-  it("returns settlement project actions and uploads draft evidence through the scoped controller", async () => {
+  it("retains the historical capability shape and the internal archive fixture upload delegate", async () => {
     const files = { uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-2" }) };
     const controller = new SettlementDraftController(
       {} as never,
@@ -797,16 +797,10 @@ describe("SettlementController authorization wiring", () => {
       buffer: Buffer.from("draft-evidence")
     };
 
-    expect(controller.capability("project-1")).toEqual(
-      expect.objectContaining({
-        projectId: "project-1",
-        availableActions: expect.arrayContaining([
-          "save_draft",
-          "preview_import",
-          "attach_line_file"
-        ])
-      })
-    );
+    expect(controller.capability("project-1")).toEqual({
+      projectId: "project-1",
+      availableActions: []
+    });
     await expect(
       controller.uploadPrivateFile(file, { id: "contract-1" } as never, { idempotencyKey: "draft-upload-1" })
     ).resolves.toEqual({ id: "file-2" });

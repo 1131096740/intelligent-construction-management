@@ -664,7 +664,7 @@ export class SettlementReadService {
       pendingOwner: "本人",
       stalledFor: this.stalledFor(draft.updatedAt),
       returnReason: draft.abandonReason ?? "-",
-      nextAction: draft.status === "abandoned" ? "查看历史" : "继续填写",
+      nextAction: "查看历史",
       updatedAt: this.date(draft.updatedAt),
       lifecycleKind:
         draftLifecycles.get(draft.id)?.lifecycleKind ?? "pristine_draft",
@@ -672,7 +672,7 @@ export class SettlementReadService {
       lifecycleUpdatedAt: draft.updatedAt.toISOString(),
       abandonedAt: draft.abandonedAt?.toISOString() ?? null,
       abandonReason: draft.abandonReason ?? null,
-      copyAvailable: draft.status === "abandoned" && draft.ownerUserId === actorUserId
+      copyAvailable: false
     }));
     const rows = [...formalRows, ...draftRows].sort((a, b) => {
       const aTime = "lifecycleUpdatedAt" in a ? a.lifecycleUpdatedAt : "";
@@ -774,7 +774,7 @@ export class SettlementReadService {
       pendingOwner: "本人",
       stalledFor: this.stalledFor(draft.updatedAt),
       returnReason: draft.abandonReason ?? "-",
-      nextAction: draft.status === "abandoned" ? "查看历史" : "继续填写",
+      nextAction: "查看历史",
       updatedAt: this.date(draft.updatedAt),
       lifecycleKind:
         draftLifecycles.get(draft.id)?.lifecycleKind ?? "pristine_draft",
@@ -782,7 +782,7 @@ export class SettlementReadService {
       lifecycleUpdatedAt: draft.updatedAt.toISOString(),
       abandonedAt: draft.abandonedAt?.toISOString() ?? null,
       abandonReason: draft.abandonReason ?? null,
-      copyAvailable: draft.status === "abandoned"
+      copyAvailable: false
     }));
     const rows = [...formalRows, ...draftRows].sort((a, b) =>
       String("lifecycleUpdatedAt" in b ? b.lifecycleUpdatedAt : "")
