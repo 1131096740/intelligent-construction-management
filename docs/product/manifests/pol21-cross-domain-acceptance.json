@@ -93,7 +93,7 @@
     "payable_cross_company": {
       "groupId": "remaining_dynamic_postgresql16",
       "testFile": "services/api/src/database/payable-settlement-concurrency.spec.ts",
-      "testName": "confirms a cross-company service path while reusing voucher and authorization evidence"
+      "testName": "retains historical cross-company evidence and rejects fresh settlement commands"
     }
   },
   "aspectEvidenceByMainline": {
