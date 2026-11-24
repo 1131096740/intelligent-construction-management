@@ -7,6 +7,7 @@ const fs = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
 const os = require("node:os");
+const { captureArchive, installArchive } = require("./seal-retirement-329-archive.cjs");
 const controls = require("./local-staged-migration-controls.cjs");
 const { createLocalTailQualification, localTailFailureDiagnostic } = require("./local-staged-tail-qualification.cjs");
 
@@ -69,7 +70,7 @@ function localPort() {
 }
 
 function migrationPrefixes(directory, ledger) {
-  const sizes = [203, 205, 213, 215, 218, 221, ledger.length];
+  const sizes = [203, 205, 213, 215, 218, 221, 263, 271, 289, 295, ledger.length];
   return new Map(sizes.map(size => {
     const prefix = path.join(directory, "prefix-" + size);
     fs.mkdirSync(path.join(prefix, "migrations"), { recursive: true, mode: 0o700 });
@@ -85,7 +86,7 @@ function migrationPrefixes(directory, ledger) {
   }));
 }
 
-async function migrate({ source, database, directory, sql, url, run, stage, runId }) {
+async function migrate({ source, archive, database, directory, sql, url, run, stage, runId, port }) {
   const prefixes = migrationPrefixes(directory, source.ledger);
   const deploy = (size, target = url) => {
     stage("MIGRATE_" + size);
@@ -143,9 +144,14 @@ async function migrate({ source, database, directory, sql, url, run, stage, runI
     verify(inspect(), size);
     await tail.qualify(size);
   }
-  deploy(source.ledger.length);
-  verify(inspect(), source.ledger.length);
-  return { appOid: setup.appOid, app: plan.appName, tailMaterials };
+  deploy(263);
+  verify(inspect(), 263);
+  const archiveMaterial = installArchive(archive, sql, runId, port, { name: plan.appName, oid: setup.appOid, nonce: plan.nonce }, stage);
+  for (const size of [271, 289, 295, source.ledger.length]) {
+    deploy(size);
+    verify(inspect(), size);
+  }
+  return { appOid: setup.appOid, app: plan.appName, tailMaterials, archiveMaterial };
 }
 
 function grantApplication(sql, database, app, appPassword) {
@@ -187,13 +193,15 @@ function grantApplication(sql, database, app, appPassword) {
 async function main(args) {
   assert.equal(process.platform, "darwin");
   assert.equal(process.arch, "arm64");
-  assert.equal(args.length, 8);
-  const [mode, sha, pgManifest, pgSha, docManifest, docSha, office, officeSha] = args;
+  assert.equal(args.length, 10);
+  const [mode, sha, pgManifest, pgSha, docManifest, docSha, office, officeSha, archiveAdmission, archiveSha] = args;
   assert.ok(["verify", "run"].includes(mode));
   const source = captureSource(sha);
+  assert.match(archiveSha, shaPattern);
+  const archive = captureArchive(archiveAdmission, archiveSha, source, { file, hash });
   const runtime = captureRuntime(pgManifest, pgSha, docManifest, docSha, office, officeSha);
   const receipt = { candidate: sha, sourceTree: source.sourceTree, migrations: source.ledger.length, ledgerSha256: source.ledgerDigest,
-    postgresMaterialSha256: pgSha, documentManifestSha256: docSha, libreOfficeExecutableSha256: officeSha,
+    postgresMaterialSha256: pgSha, historicalSourceAdmissionSha256: archiveSha, documentManifestSha256: docSha, libreOfficeExecutableSha256: officeSha,
     status: "HOST_MATERIAL_VERIFIED", stages: [], cleanup: "NOT_NEEDED" };
   if (mode === "verify") return receipt;
 
@@ -297,8 +305,9 @@ async function main(args) {
       });
       assert.equal(negative.status, 2);
     }
-    const { appOid, app, tailMaterials } = await migrate({ source, database, directory, sql, url: ownerUrl, run, stage, runId });
+    const { appOid, app, tailMaterials, archiveMaterial } = await migrate({ source, archive, database, directory, sql, url: ownerUrl, run, stage, runId, port });
     receipt.tailMaterials = tailMaterials;
+    receipt.archiveInstallation = archiveMaterial;
     stage("ROLE");
     grantApplication(sql, database, app, appPassword);
     const appUrl = new URL(ownerUrl);
