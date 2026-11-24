@@ -8,12 +8,12 @@
   },
   "summary": {
     "apiModuleCount": 56,
-    "exportedFunctionCount": 798,
-    "transportWrapperCount": 777,
+    "exportedFunctionCount": 797,
+    "transportWrapperCount": 776,
     "pureExportCount": 21,
-    "mainRequestBindingCount": 850,
+    "mainRequestBindingCount": 849,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 806,
+    "requestEdgeCount": 805,
     "productionConsumerCount": 686,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
@@ -6803,7 +6803,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5818,
+          "sourceLine": 5801,
           "method": "POST",
           "path": "/files/download-package",
           "normalizedPath": "/files/download-package",
@@ -6852,34 +6852,6 @@
       "productionConsumers": [
         "apps/web-admin/src/components/JgSignatureHandoff.vue"
       ],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "createContractChangeDraft",
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 86,
-          "method": "POST",
-          "path": "/contracts/:param/change-drafts",
-          "normalizedPath": "/contracts/:param/change-drafts",
-          "normalizedKey": "POST /contracts/:param/change-drafts",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "createContractChangeDraft",
-              "postJson"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/core-flow-read.api.test.ts"
-      ],
-      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -7250,7 +7222,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7577,
+          "sourceLine": 7560,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -7282,7 +7254,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7561,
+          "sourceLine": 7544,
           "method": "GET",
           "path": "/contracts/ledger-export?:param",
           "normalizedPath": "/contracts/ledger-export",
@@ -7312,7 +7284,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7561,
+          "sourceLine": 7544,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -7342,7 +7314,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5930,
+          "sourceLine": 5913,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -7371,7 +7343,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7561,
+          "sourceLine": 7544,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -7401,7 +7373,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2998,
+          "sourceLine": 2981,
           "method": "POST",
           "path": "/operating-projections/export",
           "normalizedPath": "/operating-projections/export",
@@ -7431,7 +7403,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7561,
+          "sourceLine": 7544,
           "method": "GET",
           "path": "/payments/ledger-export?:param",
           "normalizedPath": "/payments/ledger-export",
@@ -7491,7 +7463,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5789,
+          "sourceLine": 5772,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -7525,7 +7497,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 4073,
+          "sourceLine": 4056,
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
@@ -7584,7 +7556,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7604,
+          "sourceLine": 7587,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -7613,7 +7585,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7591,
+          "sourceLine": 7574,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -7642,7 +7614,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7619,
+          "sourceLine": 7602,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -7671,7 +7643,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7561,
+          "sourceLine": 7544,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -7701,7 +7673,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7561,
+          "sourceLine": 7544,
           "method": "GET",
           "path": "/settlements/signed-ledger-export?:param",
           "normalizedPath": "/settlements/signed-ledger-export",
@@ -24929,15 +24901,9 @@
     },
     {
       "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-      "wrapper": "createContractChangeDraft",
-      "classification": "test_only",
-      "reason": "The signed-supplement workflow (SignedContractChanges, #395) replaces the legacy contract-change-draft entry on contract detail; these wrappers have no production consumer and are retained for API unit tests pending backend route retirement."
-    },
-    {
-      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
       "wrapper": "fetchContractChangeEligibility",
       "classification": "test_only",
-      "reason": "The signed-supplement workflow (SignedContractChanges, #395) replaces the legacy contract-change-draft entry on contract detail; these wrappers have no production consumer and are retained for API unit tests pending backend route retirement."
+      "reason": "The signed-supplement workflow (SignedContractChanges, #395) replaces legacy contract change drafts; the remaining eligibility wrapper covers only the historical read."
     },
     {
       "apiFile": "apps/web-admin/src/api/actual-purchase-batch.api.ts",

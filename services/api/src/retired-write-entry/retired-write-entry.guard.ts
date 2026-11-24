@@ -23,6 +23,7 @@ export const RETIRED_WRITE_ENTRIES: readonly RetiredWriteEntry[] = [
   { controller: "ContractBillExcelController", handler: "applyImport" },
   { controller: "ContractBillExcelController", handler: "previewImport" },
   { controller: "ContractController", handler: "copyAbandonedDraft" },
+  { controller: "ContractController", handler: "createChangeDraft" },
   { controller: "ContractController", handler: "remindApproval" },
   { controller: "ContractController", handler: "submitApproval" },
   { controller: "ContractController", handler: "uploadFormalApprovalFile" },

@@ -10,6 +10,7 @@ import { join } from "node:path";
 import PizZip from "pizzip";
 import { PDFDocument } from "pdf-lib";
 import * as ExcelJS from "exceljs";
+import { createRequire } from "node:module";
 import type { BusinessEntryFrozenSnapshot, BusinessEntrySceneDefinition, ContractDetailReadModel, ContractPaymentApplicationPreviewReadModel, PaymentDetailReadModel } from "@jiangkong/shared-domain";
 import { AppModule } from "../app.module";
 import { SEED_LAYOUT_FONT } from "../contract-document/seed-layout-docx-source";
@@ -18,6 +19,11 @@ import { apiJsonReplacer } from "../api-json-replacer";
 import { createApiValidationPipe } from "../validation/api-validation";
 
 const enabled = process.env.RUN_POL114_HTTP_PG16 === "1";
+const { createSignedChangeQualification } = createRequire(__filename)("../../prisma/signed-change-qualification.cjs") as {
+  createSignedChangeQualification(databaseUrl: string): {
+    databaseUrl: string; witnessKey: string; install: string[]; uninstall: string[];
+  };
+};
 type Identified = { id: string };
 type CreatedDraft = { version: Identified; contract: Identified };
 type Workbench = {
@@ -1224,59 +1230,80 @@ if (enabled) {
       })).rejects.toThrow("403");
       expect((await request<{ financeEntry: { history: BusinessEntryFrozenSnapshot[] } }>("GET", `/payments/${payment.id}`)).financeEntry.history).toEqual([]);
       if (paymentMode === "direct") {
-        await loginAs(actorUserId);
-        const change = await request<Identified>("POST", `/contracts/${draft.version.id}/change-drafts`, {
-          changeType: "change", changeReason: "合成合同条款调整，金额不变", changeDirection: "unchanged", changeAmountCents: "0"
-        });
-        const changeLease = await request<{ token: string }>("POST", `/contract-drafts/${change.id}/edit-lease`);
-        let changeWorkbench = await request<Workbench>("GET", `/contract-drafts/${change.id}/workbench`);
-        await request("PUT", `/contract-drafts/${change.id}`, {
-          ...completeDraftInput, idempotencyKey: randomUUID(), expectedRevision: changeWorkbench.version.draftRevision,
-          bills: changeWorkbench.bills.map(bill => ({
-            billKey: bill.billKey, expectedRevision: bill.revision,
-            rows: bill.rows.map((row, index) => {
-              if (typeof row.rowKey !== "string") throw new Error("变更清单缺少继承行标识");
-              const original = completeDraftInput.bills.find(item => item.billKey === bill.billKey)?.rows[index];
-              if (!original) throw new Error("变更清单缺少原有行内容");
-              return { ...original, rowKey: row.rowKey };
-            })
-          }))
-        }, changeLease.token);
-        for (const side of ["first_party", "counterparty"]) {
-          changeWorkbench = await request<Workbench>("GET", `/contract-drafts/${change.id}/workbench`);
-          await request("POST", `/contracts/${change.id}/authorizations`, { side, expectedRevision: changeWorkbench.version.draftRevision, required: false });
-        }
-        const changeFile = await upload("合成变更互签文件.pdf", "application/pdf", await pdf.save());
-        changeWorkbench = await request<Workbench>("GET", `/contract-drafts/${change.id}/workbench`);
-        const changeSigned = await request<{ previewFormalFileId: string }>("POST", `/contracts/${change.id}/formal-files/counterparty`, {
-          fileIds: [changeFile.id], sourceRevision: changeWorkbench.version.draftRevision
-        });
-        await request("POST", `/contracts/${change.id}/formal-files/counterparty/confirmation`, {
-          formalFileId: changeSigned.previewFormalFileId, expectedDraftRevision: changeWorkbench.version.draftRevision
-        });
-        changeWorkbench = await request<Workbench>("GET", `/contract-drafts/${change.id}/workbench`);
-        await request("POST", `/contract-drafts/${change.id}/submission`, {
-          idempotencyKey: randomUUID(), expectedRevision: changeWorkbench.version.draftRevision
-        }, changeLease.token);
-        for (const role of ["contract_director", "project_manager", "finance_director", "chairman"]) {
-          const identity = await loginAs(roleUsers.get(role)!);
-          const changeSignature = new FormData();
-          changeSignature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "synthetic-change-signature.png");
-          expect((await fetch(`${baseUrl}/me/signature/canvas`, {
-            method: "POST", headers: { authorization: `Bearer ${token}` }, body: changeSignature
-          })).status).toBe(201);
-          const changeDetail = await request<ContractDetailReadModel>("GET", `/contracts/${draft.contract.id}?versionId=${change.id}`);
-          if (!changeDetail.reviewApprovalContext) throw new Error("合同变更缺少实际审核坐标");
-          await request("POST", `/contracts/${change.id}/approval`, {
-            ...changeDetail.reviewApprovalContext, decision: "approve", confirmationPassword: identity.password,
-            selfReviewReason: "合成合同变更逐节点本人签字", ownerContractRiskConfirmed: true,
-            expectedOwnerContractRisk: changeDetail.ownerContractRisk
+        const signedChange = createSignedChangeQualification(process.env.DATABASE_URL!);
+        const previousWitnessKey = process.env.CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY;
+        await prisma.$transaction(signedChange.install.map(sql => prisma.$executeRawUnsafe(sql)));
+        process.env.CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY = signedChange.witnessKey;
+        const signedPrisma = new PrismaService({ datasourceUrl: signedChange.databaseUrl });
+        let signedApp: INestApplication | undefined;
+        try {
+          const signedModule = await Test.createTestingModule({ imports: [AppModule] })
+            .overrideProvider(PrismaService).useValue(signedPrisma).compile();
+          signedApp = signedModule.createNestApplication();
+          signedApp.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
+          signedApp.useGlobalPipes(createApiValidationPipe());
+          try {
+            await signedApp.listen(0, "127.0.0.1");
+          } catch (error) {
+            const failure = error as { errorCode?: string; code?: string };
+            const code = failure.errorCode ?? failure.code ?? "";
+            const safeCode = /^(?:P[0-9]{4}|EADDRINUSE|EACCES|ECONNREFUSED)$/u.test(code) ? code : "UNCLASSIFIED";
+            throw new Error(`POL114_SIGNED_CHANGE_BOOT_${safeCode}`);
+          }
+          const signedApiUrl = await signedApp.getUrl();
+          const submitSignedRequest = async (path: string, body: Record<string, string>) => {
+            const response = await fetch(`${signedApiUrl}${path}`, {
+              method: "POST",
+              headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+              body: JSON.stringify(body)
+            });
+            const result = await response.json().catch(() => null) as (Identified & { status: string; code?: string }) | null;
+            if (response.status !== 201 || !result) {
+              const code = result?.code;
+              const safeCode = code && [
+                "OLD_WRITE_ENTRY_RETIRED", "OPERATIONAL_WRITE_FREEZE_ROUTE_UNCLASSIFIED", "OPERATIONAL_WRITE_FREEZE_ACTIVE"
+              ].includes(code) ? code : "UNCLASSIFIED";
+              throw new Error(`POL114_SIGNED_CHANGE_HTTP_${response.status}_${safeCode}`);
+            }
+            return result;
+          };
+
+          await loginAs(actorUserId);
+          const changeFile = await upload("合成双方签章补充协议.pdf", "application/pdf", await pdf.save());
+          const paymentAgreementText = "补充协议约定验收后三十日付款";
+          const change = await submitSignedRequest(`/contracts/${draft.version.id}/signed-changes`, {
+            fileId: changeFile.id, summary: "合成合同付款约定调整，金额不变", amountDeltaYuan: "0", paymentAgreementText
           });
+          expect(change.status).toBe("pending_review");
+          await loginAs(roleUsers.get("finance_staff")!);
+          const originalPayment = await request<PaymentDetailReadModel>("GET", `/payments/${payment.id}`);
+          expect(originalPayment.baseInfo).toContainEqual({ label: "付款约定原文", value: "验收后付款" });
+          expect(originalPayment.financeEntry?.history).toEqual(recorded.financeEntry.history);
+
+          await loginAs(roleUsers.get("contract_director")!);
+          const reviewed = await submitSignedRequest(`/contracts/${draft.version.id}/signed-changes/${change.id}/review`, {
+            decision: "approve"
+          });
+          expect(reviewed.status).toBe("approved");
+
+          await loginAs(roleUsers.get("finance_staff")!);
+          const updatedPayment = await request<PaymentDetailReadModel>("GET", `/payments/${payment.id}`);
+          expect(updatedPayment.meta).toContainEqual({ label: "付款约定", value: "约定已更新，请核对提交时和最新约定" });
+          expect(updatedPayment.baseInfo).toEqual(expect.arrayContaining([
+            { label: "提交时付款约定", value: "验收后付款" },
+            { label: "最新付款约定", value: paymentAgreementText }
+          ]));
+          expect(updatedPayment.baseInfo.find(item => item.label === "付款阶段"))
+            .toEqual(originalPayment.baseInfo.find(item => item.label === "付款阶段"));
+          expect(updatedPayment.financeEntry?.history).toEqual(recorded.financeEntry.history);
+          expect(await prisma.paymentExecution.count({ where: { paymentRequestId: payment.id } })).toBe(2);
+        } finally {
+          if (previousWitnessKey === undefined) delete process.env.CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY;
+          else process.env.CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY = previousWitnessKey;
+          if (signedApp) await signedApp.close();
+          else await signedPrisma.$disconnect();
+          await prisma.$transaction(signedChange.uninstall.map(sql => prisma.$executeRawUnsafe(sql)));
         }
-        await loginAs(actorUserId);
-        await verifyApprovedPdf({ db: prisma, baseUrl, token, password: actorPassword,
-          businessType: "contract_version", businessId: change.id,
-          roles: ["contract_director", "project_manager", "finance_director", "chairman"], label: "合同变更-四级实际审批" });
       }
       if(process.env.COMPANY_TRANSFER_CORE_RECEIPT)await writeFile(process.env.COMPANY_TRANSFER_CORE_RECEIPT,JSON.stringify({projectId:project.id,companyId:company.id,contractId:draft.contract.id,contractVersionId:draft.version.id,paymentId:payment.id}),{mode:0o600});
     }

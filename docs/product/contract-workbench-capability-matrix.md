@@ -7,10 +7,10 @@
 | 证据 | 状态 |
 | --- | --- |
 | Controller 源码路由 | 已扫描 270 条 |
-| Web API 请求 | 已扫描 181 条 |
+| Web API 请求 | 已扫描 180 条 |
 | 实际 Nest route manifest | 已通过 `app.init()` 读取，共 879 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
-| route-usage 候选退出 | 已读取 53 条合同专项候选；物理删除授权固定为否 |
+| route-usage 候选退出 | 已读取 54 条合同专项候选；物理删除授权固定为否 |
 
 ## 分类汇总
 
@@ -18,10 +18,10 @@
 | --- | ---: |
 | matched | 133 |
 | frontend_without_backend | 0 |
-| backend_without_frontend | 84 |
+| backend_without_frontend | 83 |
 | backend_internal_only | 0 |
 | legacy_candidate | 0 |
-| exit_candidate | 53 |
+| exit_candidate | 54 |
 
 ## 不存在的页面 API wrapper
 
@@ -181,7 +181,7 @@
 | GET | `/contracts/:param/archive-requests/:param` | fetchSignedContractArchiveV2Result | apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts<br>apps/web-admin/src/pages/contracts/workbench/use-direct-contract-registration.ts | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/authorizations` | setContractAuthorization | apps/web-admin/src/pages/contracts/workbench/ContractAuthorizationSection.vue | matched | 保留 | 否 | — |
 | GET | `/contracts/:param/authorizations/readiness` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
-| POST | `/contracts/:param/change-drafts` | createContractChangeDraft |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/contracts/:param/change-drafts` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | GET | `/contracts/:param/change-eligibility` | fetchContractChangeEligibility |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contracts/:param/copies` | copyAbandonedContractDraft |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | GET | `/contracts/:param/duty-sms` | — |  | backend_without_frontend | 补入口 | 否 | — |

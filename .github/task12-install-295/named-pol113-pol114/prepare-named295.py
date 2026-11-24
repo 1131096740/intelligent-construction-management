@@ -102,6 +102,9 @@ for name, pin in pins['runtime'].items():
           const match=/Expected:\s*([1-5][0-9]{2})[\s\S]{0,125}Received:\s*([1-5][0-9]{2})/u.exec(value);
           return match?[{expected:Number(match[1]),actual:Number(match[2])}]:[];
         }).slice(0,3),
+        signedChangeFailure:traces.filter(value=>typeof value==="string").map(value=>
+          /\bPOL114_SIGNED_CHANGE_(?:BOOT_(?:P[0-9]{4}|EADDRINUSE|EACCES|ECONNREFUSED|UNCLASSIFIED)|HTTP_[1-5][0-9]{2}_(?:OLD_WRITE_ENTRY_RETIRED|OPERATIONAL_WRITE_FREEZE_ROUTE_UNCLASSIFIED|OPERATIONAL_WRITE_FREEZE_ACTIVE|UNCLASSIFIED))\b/u.exec(value)?.[0]
+        ).find(Boolean),
         sqlstates:[...new Set(traces.flatMap(value=>typeof value==="string"
           ? [...value.matchAll(/(?:SQLSTATE\s+|Raw query failed\. Code:\s*`|SqlState\(E)([A-Z0-9]{5})\b/gu)].map(match=>match[1])
           : []))].slice(0,4),
@@ -155,6 +158,11 @@ for name,pin in pins['workspace'].items():
             before['migrationBaseline'][key] = original['migrationBaseline'][key]
         write(path,(json.dumps(before,ensure_ascii=False,indent=2)+'\n').encode())
     else:
+        if current320 and name == 'services/api/src/database/contract-business-entry-http.spec.ts':
+            # Keep the original 295 input signed off while admitting the current signed-supplement HTTP fixture.
+            pin = {**pin,
+                   'base': 'a3fd1dbbc3b94047f6b532718c9d6f9473eb1c1aa4b75df4455d68f8646a50b2',
+                   'result': '0c2eeca354f68331cf1c10ac06904b9c9dcb722c90788b2f166971c1cc8c2f2c'}
         write(path,overlay(material,pin))
 
 files=sorted(p for p in workspace.rglob('*') if p.is_file())

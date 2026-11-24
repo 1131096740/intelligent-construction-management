@@ -11,7 +11,7 @@
     "activeBusinessActionCount": 466,
     "technicalActionCount": 10,
     "activeBindingCount": 563,
-    "retiredWriteEntryCount": 86,
+    "retiredWriteEntryCount": 87,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
@@ -8110,6 +8110,13 @@
       "path": "/contracts/:contractVersionId/approval-submission",
       "controller": "ContractController",
       "handler": "submitApproval",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/change-drafts",
+      "controller": "ContractController",
+      "handler": "createChangeDraft",
       "status": "gone"
     },
     {

@@ -22,16 +22,16 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "25419b1bd6b4ce7a5ab6d7e5a88c912ccc147a1fc85a498afcfdc131867ce818",
+      "sha256": "8f05d4e9c118bb9eacf3b9fcc6a720b13ecd0f2a093a13a9ebd8fae3e657a0b9",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
-        "exportedFunctionCount": 798,
-        "transportWrapperCount": 777,
+        "exportedFunctionCount": 797,
+        "transportWrapperCount": 776,
         "pureExportCount": 21,
-        "mainRequestBindingCount": 850,
+        "mainRequestBindingCount": 849,
         "ticketFollowupCount": 6,
-        "requestEdgeCount": 806,
+        "requestEdgeCount": 805,
         "productionConsumerCount": 686,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "a1941b6beab92c93c52933cd8bcd268e79ae4b91bfdd9c6f32d21aee1d8eef18",
+      "sha256": "7bc9e1fbb2b818322f405cb473c0baf689d7706413001c57d52aedc623765c87",
       "status": "ready",
       "summary": {
         "registeredActionCount": 480,
@@ -64,29 +64,29 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "4f6097f97581bbf77f7482849edb1c3e74e779f32088008bbd74b1f4deec5805",
+      "sha256": "4604ad79665c486ce6f4703b6c1f5dfae94da06be1f54161f1ef053e8164f357",
       "status": "ready",
       "summary": {
         "routeCount": 879,
         "exactRouteCount": 879,
         "normalizedRouteCount": 879,
         "classificationOverrideCount": 243,
-        "consumerSurfaceOverrideCount": 57,
-        "classificationOverrideSha256": "eed3388acb3e1be1487a9e4ed75f6216ab24cf81336f1b65c954a026188ce29e",
-        "consumerSurfaceOverrideSha256": "f31670e01b7a05530e0d1d07c76e24a313da562abce4eb3270bad51de73c66a8",
+        "consumerSurfaceOverrideCount": 56,
+        "classificationOverrideSha256": "1a8f4e95960ce2969ccadb4c1f87574f83111274e129f0147d4adef8d261430d",
+        "consumerSurfaceOverrideSha256": "471cf81ec4388fff5a8e53e5afd175b7f6410e53cfdbbd4fc686fdd4a208144e",
         "derivedProductionPageCount": 636,
         "pageRouteCount": 655,
         "externalTakeoverCount": 70,
-        "exitCandidateCount": 99,
-        "internalTaskCount": 55,
+        "exitCandidateCount": 100,
+        "internalTaskCount": 54,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
           "web_api_wrapper": 707,
           "auth_store": 5,
           "signed_ticket_delivery": 2,
-          "machine_probe": 3,
+          "machine_probe": 2,
           "operator_endpoint": 52,
-          "none": 110
+          "none": 111
         },
         "blockerCount": 0
       }
@@ -96,10 +96,10 @@
     "routeCount": 879,
     "pageRouteCount": 655,
     "externalTakeoverRouteCount": 70,
-    "exitCandidateRouteCount": 99,
-    "internalTaskRouteCount": 55,
+    "exitCandidateRouteCount": 100,
+    "internalTaskRouteCount": 54,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 850,
+    "mainRequestBindingCount": 849,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
@@ -25670,22 +25670,9 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "internal_task",
-      "consumerSurface": "machine_probe",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "createContractChangeDraft",
-          "method": "POST",
-          "path": "/contracts/:param/change-drafts",
-          "normalizedKey": "POST /contracts/:param/change-drafts",
-          "bodyKind": "json",
-          "productionConsumers": [],
-          "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",

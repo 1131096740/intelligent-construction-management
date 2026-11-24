@@ -5,6 +5,7 @@ import { Test } from "@nestjs/testing";
 import { AuthController } from "../auth/auth.controller";
 import { AuthService } from "../auth/auth.service";
 import { ContractController } from "../contract/contract.controller";
+import { ContractService } from "../contract/contract.service";
 import { PaymentController } from "../payment/payment.controller";
 import { SettlementController } from "../settlement/settlement.controller";
 import { ApprovalProgressController } from "../approval/approval-progress.controller";
@@ -67,8 +68,9 @@ describe("POL-19E old write entry public HTTP tombstone", () => {
 });
 
 
-describe("retired approval reminders public HTTP tombstones", () => {
+describe("retired contract changes and approval reminders", () => {
   let app: INestApplication | undefined;
+  const contract = { createChangeDraft: jest.fn().mockResolvedValue({ legacy: true }) };
   const progress = {
     remindBusiness: jest.fn().mockResolvedValue({ legacy: true }),
     remind: jest.fn().mockResolvedValue({ accepted: true })
@@ -77,7 +79,11 @@ describe("retired approval reminders public HTTP tombstones", () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [ContractController, PaymentController, SettlementController, ApprovalProgressController]
-    }).useMocker(token => token === ApprovalProgressService ? progress : {}).compile();
+    }).useMocker(token => {
+      if (token === ContractService) return contract;
+      if (token === ApprovalProgressService) return progress;
+      return {};
+    }).compile();
     app = moduleRef.createNestApplication();
     app.use((request: { user?: { id: string } }, _response: unknown, next: () => void) => {
       request.user = { id: "local-reviewer" };
@@ -88,6 +94,17 @@ describe("retired approval reminders public HTTP tombstones", () => {
   });
   afterAll(async () => { if (app) await app.close(); });
   beforeEach(() => { jest.clearAllMocks(); });
+
+  it("returns 410 for the old contract change draft endpoint", async () => {
+    const response = await fetch(`${await app!.getUrl()}/contracts/local-version/change-drafts`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ changeReason: "旧版草稿请求", changeDirection: "unchanged", changeAmountCents: "0" })
+    });
+    expect(response.status).toBe(410);
+    expect(await response.json()).toMatchObject({ code: "OLD_WRITE_ENTRY_RETIRED", statusCode: 410 });
+    expect(contract.createChangeDraft).not.toHaveBeenCalled();
+  });
 
   it.each(["contracts", "payments", "settlements"])("rejects the old %s reminder before any reminder service executes", async domain => {
     const response = await fetch(`${await app!.getUrl()}/${domain}/local-item/approval-reminder`, { method: "POST" });

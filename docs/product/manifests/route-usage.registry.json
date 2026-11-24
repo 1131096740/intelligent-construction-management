@@ -6,22 +6,22 @@
     "routeCount": 879,
     "classificationOverrideCount": 243,
     "derivedProductionPageCount": 636,
-    "classificationOverrideSha256": "eed3388acb3e1be1487a9e4ed75f6216ab24cf81336f1b65c954a026188ce29e",
-    "consumerSurfaceOverrideSha256": "f31670e01b7a05530e0d1d07c76e24a313da562abce4eb3270bad51de73c66a8",
+    "classificationOverrideSha256": "1a8f4e95960ce2969ccadb4c1f87574f83111274e129f0147d4adef8d261430d",
+    "consumerSurfaceOverrideSha256": "471cf81ec4388fff5a8e53e5afd175b7f6410e53cfdbbd4fc686fdd4a208144e",
     "usageCounts": {
       "page": 655,
       "external_takeover": 70,
-      "exit_candidate": 99,
-      "internal_task": 55,
+      "exit_candidate": 100,
+      "internal_task": 54,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
       "web_api_wrapper": 707,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
-      "machine_probe": 3,
+      "machine_probe": 2,
       "operator_endpoint": 52,
-      "none": 110
+      "none": 111
     }
   },
   "overrides": [
@@ -1390,8 +1390,8 @@
     {
       "method": "POST",
       "path": "/contracts/:contractVersionId/change-drafts",
-      "usage": "internal_task",
-      "reason": "retained_pending_issue_425_old_change_draft_write_superseded_by_signed_supplement_web_entry_zero_production_web_callers_still_consumed_by_enterprise_http_acceptance_and_e2e_harness_retire_with_call_site_migration_no_410_now"
+      "usage": "exit_candidate",
+      "reason": "issue_425_old_change_draft_write_returns_410_current_acceptance_uses_signed_supplement"
     },
     {
       "method": "GET",
@@ -1752,12 +1752,6 @@
           "ticketField": "downloadUrl"
         }
       ]
-    },
-    {
-      "method": "POST",
-      "path": "/contracts/:contractVersionId/change-drafts",
-      "consumerSurface": "machine_probe",
-      "reason": "retained_pending_issue_425_enterprise_http_acceptance_and_playwright_harness_machine_consumer_not_production_web_not_operator_endpoint"
     },
     {
       "method": "GET",
