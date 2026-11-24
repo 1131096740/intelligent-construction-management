@@ -4,7 +4,7 @@ COPY workspace/package.json workspace/pnpm-lock.yaml workspace/pnpm-workspace.ya
 COPY workspace/packages/shared-domain/package.json packages/shared-domain/
 COPY workspace/services/api/package.json services/api/
 COPY workspace/apps/web-admin/package.json apps/web-admin/
-RUN pnpm --filter @jiangkong/api... --filter @jiangkong/web-admin... install --frozen-lockfile
+RUN --mount=type=cache,id=jg-qualification-pnpm-v9-amd64,target=/var/cache/jg-pnpm,sharing=locked pnpm --filter @jiangkong/api... --filter @jiangkong/web-admin... install --frozen-lockfile --store-dir=/var/cache/jg-pnpm
 
 FROM contract-finance-deps AS contract-finance-browser-tools
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/jg-playwright

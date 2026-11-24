@@ -16,7 +16,7 @@ qualification_image_cleanup() {
   fi
   while IFS= read -r image; do
     [[ -n $image ]] || continue
-    docker image rm "$image" >/dev/null || cleanup_failed=1
+    docker image rm --no-prune "$image" >/dev/null || cleanup_failed=1
   done <<< "$images"
   return "$cleanup_failed"
 }

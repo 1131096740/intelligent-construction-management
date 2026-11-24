@@ -8,13 +8,13 @@ COPY workspace/package.json workspace/pnpm-lock.yaml workspace/pnpm-workspace.ya
 COPY workspace/packages/shared-domain/package.json packages/shared-domain/
 COPY workspace/services/api/package.json services/api/
 COPY workspace/apps/web-admin/package.json apps/web-admin/
+RUN --mount=type=cache,id=jg-qualification-pnpm-v9-amd64,target=/var/cache/jg-pnpm,sharing=locked pnpm --filter @jiangkong/api... --filter @jiangkong/web-admin... install --frozen-lockfile --store-dir=/var/cache/jg-pnpm
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/jg-playwright
 RUN apt-get update && apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc fonts-noto-cjk \
- && pnpm --filter @jiangkong/api... --filter @jiangkong/web-admin... install --frozen-lockfile \
  && pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit
 WORKDIR /qualification/source
 COPY source/ ./
-RUN pnpm --filter @jiangkong/api... install --frozen-lockfile
+RUN --mount=type=cache,id=jg-qualification-pnpm-v9-amd64,target=/var/cache/jg-pnpm,sharing=locked pnpm --filter @jiangkong/api... install --frozen-lockfile --store-dir=/var/cache/jg-pnpm
 COPY --chmod=0644 checkout.cjs installer.cjs exact-source.json install-only.cjs source-seal.txt source-admission.json /qualification/
 WORKDIR /qualification/workspace
 @RUNTIME_COPY@
