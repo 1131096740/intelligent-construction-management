@@ -180,6 +180,28 @@ describe('短信催办', () => {
   });
 });
 
+it("keeps the historic loan round available to its participants and closes live reminder sends", async () => {
+  const { service, db, sms, logs } = fixture();
+  const claim = { projectId: "project", code: "JK-001", applicantUserId: "owner", handledByUserId: "owner", claimType: "loan" };
+  db.expenseClaim.findUnique.mockResolvedValue(claim);
+  const previousRequest = "22222222-2222-4222-8222-222222222222";
+  logs.push({
+    id: previousRequest, approvalInstanceId: "flow", actorUserId: "owner", action: "remind", createdAt: new Date(),
+    metadata: { kind: "sms_request", currentNodeIndex: 0, recipientIds: ["first"] },
+    comment: null, approvedRoleKey: null, representedUserId: null, signatureFileIdSnapshot: null,
+    signatureSha256Snapshot: null, signatureVersionIdSnapshot: null
+  });
+  const detail = await service.detail("flow", "first");
+  expect(detail).toMatchObject({ businessCode: "JK-001", canHandle: false, canRemind: false, pendingRecipients: [] });
+  await expect(service.remind("flow", "owner", requestId, detail.reminderToken)).rejects.toMatchObject({ status: 410 });
+  await expect(service.remind("flow", "stranger", requestId, detail.reminderToken)).rejects.toMatchObject({ status: 404 });
+  await expect(service.remind("flow", "owner", previousRequest, detail.reminderToken)).resolves
+    .toMatchObject({ businessCode: "JK-001", reminders: [{ id: previousRequest }] });
+  expect(db.approvalActionLog.create).not.toHaveBeenCalled();
+  expect(sms.send).not.toHaveBeenCalled();
+  expect(sms.sendDutyIntent).not.toHaveBeenCalled();
+});
+
 it("费用催办富短信只发当前选定岗位，保持原键和登录后直达",async()=>{
   const {service,sms,db,insideTransaction}=fixture();
   const current={id:"claim",projectId:"project",code:"BX-001",applicantUserId:"owner",handledByUserId:"owner",

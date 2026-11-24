@@ -12,6 +12,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  GoneException,
   Injectable,
   NotFoundException,
   Optional
@@ -45,6 +46,7 @@ import {
 } from "../spot-procurement/spot-procurement-form-renderer";
 
 const APPROVAL_FORM_TEMPLATE_KEY = "approval_form";
+const RETIRED_EMPLOYEE_LOAN_ARCHIVE = "历史员工借款缺少归档审批单，已停止补生成";
 const SPOT_PROCUREMENT_APPROVAL_TYPES = new Set([
   "spot_procurement_version",
   "spot_procurement_payment"
@@ -613,6 +615,7 @@ export class ApprovalFormService {
       }
       if (!pendingContract && !pendingParallelRound && instance.status !== "approved" &&
           !(businessType === "spot_procurement_version" && isParallelApprovalRound(instance.frozenNodes) && instance.status === "approval_pending")) return { available: false };
+      if (instance.status === "approved" && await this.missingRetiredLoanArchive(this.prisma, instance)) return { available: false };
       if (isParallelApprovalRound(instance.frozenNodes)) await this.currentParallelApplication(businessType, businessId);
       const logs = await this.prisma.approvalActionLog.findMany({ where: { approvalInstanceId: instance.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
       const incomplete = pendingContract || pendingParallelRound ||
@@ -662,11 +665,28 @@ export class ApprovalFormService {
         if (!(error instanceof BadRequestException)) throw error;
         available = false;
       }
+      const missingRetiredArchive = available && await this.missingRetiredLoanArchive(this.prisma, instance);
       items.push({ id: instance.id, businessType: instance.businessType, businessId: instance.businessId,
         title: BUSINESS_TYPE_LABELS[instance.businessType], code, approvedAt: logs.at(-1)?.createdAt ?? instance.updatedAt,
-        available, unavailableReason: available ? null : "历史审批或签名证据不完整，请核查原审批记录" });
+        available: available && !missingRetiredArchive, unavailableReason: missingRetiredArchive ? RETIRED_EMPLOYEE_LOAN_ARCHIVE
+          : available ? null : "历史审批或签名证据不完整，请核查原审批记录" });
     }
     return { items, nextCursor: candidates.length === 50 ? candidates.at(-1)!.id : null };
+  }
+
+  private async isEmployeeLoanApproval(
+    client: ApprovalFormClient,
+    instance: Pick<ApprovalInstance, "businessType" | "businessId">
+  ) {
+    if (instance.businessType !== "expense_claim") return false;
+    const claim = await client.expenseClaim.findUnique({ where: { id: instance.businessId }, select: { claimType: true } });
+    return claim?.claimType === "loan";
+  }
+
+  private async missingRetiredLoanArchive(client: ApprovalFormClient, instance: ApprovalInstance) {
+    return await this.isEmployeeLoanApproval(client, instance) && !await client.pdfDocument.findFirst({
+      where: { approvalInstanceId: instance.id }, select: { id: true }
+    });
   }
 
   private async loadContractApprovalFormRenderToken(
@@ -754,6 +774,8 @@ export class ApprovalFormService {
         where: { approvalInstanceId: instance.id }
       });
       if (existing) return { kind: "existing" as const, document: existing };
+
+      if (await this.isEmployeeLoanApproval(tx, instance)) throw new GoneException(RETIRED_EMPLOYEE_LOAN_ARCHIVE);
 
       await tx.$queryRaw(Prisma.sql`
         SELECT "approvalInstanceId" FROM "ApprovalFormGenerationClaim"

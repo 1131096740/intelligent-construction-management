@@ -282,12 +282,46 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     expect(await historicalFixtureOwner.expenseClaim.findUniqueOrThrow({ where: { id: historical.id } })).toEqual(historical);
     expect(await historicalFixtureOwner.approvalInstance.count({ where: { businessId: historical.id } })).toBe(0);
 
+    const frozenNodes = [{ name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"],
+      candidateUserIds: [director.id], candidateUserIdsByRole: { comprehensive_director: [director.id] } }];
+    const round = await historicalFixtureOwner.approvalInstance.create({ data: {
+      businessType: "expense_claim", businessId: historical.id, flowType: "expense_claim.approve", status: "in_progress",
+      applicantUserId: materialDirector.id, currentNodeIndex: 0, frozenNodes
+    } });
+    const pending = await historicalFixtureOwner.expenseClaim.update({ where: { id: historical.id }, data: {
+      status: "approval_pending", approvalInstanceId: round.id
+    } });
+    expect(await request(path, director)).toMatchObject({ status: 200, body: { approval: { canReview: false } } });
+    expectStatus(await request(path + "/approval", director, { decision: "approve" }), 410);
+    expectStatus(await request(path + "/approval", director, { decision: "reject", comment: "保留历史" }), 410);
+    expectStatus(await request(`/other-project-payments/${historical.id}/approval`, director, { decision: "approve" }), 404);
+    const progressPath = "/approval-progress/" + round.id;
+    const progress = await request(progressPath, director);
+    expect(progress).toMatchObject({ status: 200, body: { canHandle: false, canRemind: false, pendingRecipients: [] } });
+    expectStatus(await request(progressPath + "/remind", materialDirector, {
+      requestId: randomUUID(), reminderToken: progress.body.reminderToken
+    }), 410);
+    expect(await historicalFixtureOwner.expenseClaim.findUnique({ where: { id: historical.id } })).toEqual(pending);
+    expect(await historicalFixtureOwner.approvalInstance.findUnique({ where: { id: round.id } })).toEqual(round);
+    expect(await historicalFixtureOwner.approvalActionLog.count({ where: { approvalInstanceId: round.id } })).toBe(0);
+
     const fundedLoan = await historicalFixtureOwner.expenseClaim.create({ data: {
       code: `HISTORICAL-CASH-${randomUUID()}`, claimType: "loan", status: "disbursed", companyEntityId: company,
       companyEntityNameSnapshot: "合成我方公司", projectId: second, applicantUserId: materialDirector.id,
       applicantNameSnapshot: "合成物资主管", handledByUserId: materialDirector.id, handledByNameSnapshot: "合成物资主管",
       reason: "保留历史资金", requestedAmountCents: 12500n, fundedAmountCents: 12500n, approvedAt: historical.submittedAt
     } });
+    const approvedRound = await historicalFixtureOwner.approvalInstance.create({ data: {
+      businessType: "expense_claim", businessId: fundedLoan.id, flowType: "expense_claim.approve", status: "approved",
+      applicantUserId: materialDirector.id, currentNodeIndex: 1, frozenNodes
+    } });
+    const archivePath = "/approval-forms/expense_claim/" + fundedLoan.id;
+    expect(await request(archivePath + "/capability", materialDirector)).toMatchObject({ status: 200, body: { available: false } });
+    expectStatus(await request(archivePath + "/download", materialDirector, {
+      confirmationPassword: password, downloadReason: "核验历史缺档借款"
+    }), 410);
+    expect(await historicalFixtureOwner.approvalFormGenerationClaim.count({ where: { approvalInstanceId: approvedRound.id } })).toBe(0);
+    expect(await historicalFixtureOwner.pdfDocument.count({ where: { approvalInstanceId: approvedRound.id } })).toBe(0);
     const cashAt = new Date("2026-11-01T00:00:00Z");
     const account = await historicalFixtureOwner.employeeProjectLoanAccount.create({ data: {
       userId: materialDirector.id, projectId: second, companyEntityId: company, scopeKey: `project:${second}`,
