@@ -25,12 +25,12 @@ describe("WageStatementController aggregate reads", () => {
 
 describe("WageStatementController wage workbench governance", () => {
   it("exposes a separately readable capability snapshot and applies the frozen position boundary to every route", async () => {
-    const wages = { capabilities: jest.fn().mockResolvedValue({ canPrepare: true, canSubmit: true, canReturn: false, canConfirm: false }) };
+    const wages = { capabilities: jest.fn().mockResolvedValue({ canPrepare: false, canSubmit: false, canReturn: false, canConfirm: false }) };
     const controller = new WageStatementController(wages as never, {} as never);
 
     await expect(controller.capabilities({ id: "finance-user" } as never)).resolves.toEqual({
-      canPrepare: true,
-      canSubmit: true,
+      canPrepare: false,
+      canSubmit: false,
       canReturn: false,
       canConfirm: false
     });
