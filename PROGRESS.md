@@ -4,7 +4,7 @@
 
 GitHub 的 45 项中 41 项已关闭，开放项为 #424 至 #427，按依赖继续。#424 的 #393、#407、#418、#423 四个前置均已关闭。草稿 PR #428 的远端头 `377d9718` 已触发 [CI 45299410978](https://github.com/1131096740/intelligent-construction-management/actions/runs/45299410978)。上一候选 `b689df80` 的 [CI 45294751072](https://github.com/1131096740/intelligent-construction-management/actions/runs/45294751072) 终态 52 项通过、4 项失败。Line A、费用收货、#398 两条浏览器分片通过；失败为综合采购、#410、剩余动态分片和发布汇总。剩余动态分片已通过留存、项目资金和历史接管等前置子段，首次停止在工资单的 329 宿主模式判定。
 
-#424 所需的脱敏 PostgreSQL 备份与同一业务时间点的 COS 附件版本样本均尚未生成。正式样本恢复和在途数据核验仍待完成。[演练手册](docs/runbooks/real-copy-migration-restore-cutover-rehearsal.md)。
+#424 所需的脱敏 PostgreSQL 备份与同一业务时间点的 COS 附件版本样本均尚未生成。正式样本恢复和在途数据核验仍待完成。精确 `7b69da5d` 已用封存安装器在隔离 PostgreSQL 16 上验证 329 条迁移与普通付款备份、恢复、冻写、在途映射、解冻后签批。恢复前后迁移账、原签字和资金状态一致。样本为虚构业务数据及本地私有文件。[演练手册](docs/runbooks/real-copy-migration-restore-cutover-rehearsal.md) · [隔离回执](docs/progress/2026-11-24-issue-424.md)。
 
 费用收货分片的 329 备料摘要与已固定原用例的实际补丁结果不符。隔离候选 `d29e8e96` 仅同步该摘要，三项费用备料逐字节核对通过，原收货用例内容不变。正式隔离入口的应用用例 1/1、历史有效数据迁移和七项历史拒绝检查均通过。前两段核对前后 329 条迁移与 B7，三段资源已清理。修订已合入本地 `b0e52ff9`，随历史接管和 Line A 提交复验。[精确费用收货回执](/private/tmp/jg382-expense-receipt-runtime.HwpKozi0/exact.log)。
 
