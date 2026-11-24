@@ -110,6 +110,16 @@
     "candidate": "497d08af6d9115fc187113d04bd443dee84dd70570ea21d8a846209a24506465"
   },
   {
+    "path": "apps/web-admin/src/api/wage-statement.api.test.ts",
+    "expected": "a9f5830d439ad779dbe5fdb69c5a7f9aecd0fea7c8032a4bb8d0c715544fe0a2",
+    "candidate": "8ad770d08729e3f09eeefd8cac77b050e5cb0cda21ff4c857c515eb9d4aca154"
+  },
+  {
+    "path": "apps/web-admin/src/api/wage-statement.api.ts",
+    "expected": "46bc90f9e753f7ad7549fc6e6f0e497eac8ab36124a128832f3f8fc3ed3aebac",
+    "candidate": "dcb914ab22fdc14c67dc82c2c1f57113c5438ea3552f022fde57f6672bada499"
+  },
+  {
     "path": "apps/web-admin/src/app/AdminLayout.vue",
     "expected": "ac4a6d0b6705499167c0d67d388f5606aadcbe19322406c51273406c3a2ab9cd",
     "candidate": "e9d215f9de6a9e10cb4bffdd67e56c5a12285fdb5f8972b8f3ad06ebda5076d0"
@@ -355,6 +365,11 @@
     "candidate": "c047b18c10d2464ec0e28a3e669050b6e3a29c9f719854bbb6474728dc20ce28"
   },
   {
+    "path": "apps/web-admin/src/pages/projects/pol116-entry-migration.structure.test.ts",
+    "expected": "e208de704abaf1624ee7b6981eb46a3f1aa32a1e79b3d069d28ed12fdc1abac7",
+    "candidate": "414fc75e1813b6c061f199a58fbeea30c513fd898eccfe122e3bc8a9f5d84b51"
+  },
+  {
     "path": "apps/web-admin/src/pages/projects/project-expense-receipt-action.test.ts",
     "expected": "a10b3a80bd136ed9fb94fabdb436dcef11e9b0438f92083e6acc978ea073f432",
     "candidate": null
@@ -413,6 +428,16 @@
     "path": "apps/web-admin/src/pages/spot-procurement/spot-procurement-pages.test.ts",
     "expected": "94b564bfb20af9d2cb2248a31902392679b63e435627499c6b9cc34b064ea392",
     "candidate": "1e0522a2606863650628740a8b7cee25d14964490eb92224731ff462cc797970"
+  },
+  {
+    "path": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
+    "expected": "cd2b4536aa5e5c49b409d8fd2c30ccaf3c5f1107ae014fe1267b6ba5cf76af85",
+    "candidate": "7ae7e461733f8306af3c6e3797a19083c2b23351e190e8d11a99c170209889ea"
+  },
+  {
+    "path": "apps/web-admin/src/pages/wage/wage-statement-workbench.structure.test.ts",
+    "expected": "287321149630d3f368dc181ba31ca796c4813b7625d29e9d0f4e5d3ae0652ced",
+    "candidate": "0660eda76346afba71b18cbb1fff1b65d0e6432b095d4b1836b35026a11402ce"
   },
   {
     "path": "apps/web-admin/src/routes/index.test.ts",
@@ -1400,7 +1425,7 @@
   {
     "path": "services/api/src/retired-write-entry/retired-write-entry.guard.ts",
     "expected": "958e7639f5740b4e08af17be0a7040d69863f29d37c2ed185839dacd20c3c329",
-    "candidate": "a3c7db47c017d0be10488f126d00c116a20f76c449b43737bcd7223c135a63aa"
+    "candidate": "5f7831f9584e50e3249e56ebb60f4d33b7c28ffef75bac0c45b05c81d87efb78"
   },
   {
     "path": "services/api/src/settlement/settlement-operating-source.adapter.ts",
@@ -1491,5 +1516,25 @@
     "path": "services/api/src/validation/task3-static-field-validation.spec.ts",
     "expected": "2d8af87f4c48854a4537be2277a8d3ca04c0bd11629621a45c7d26484fa1f593",
     "candidate": "1544213d3d734679e21b342201100e7b496c1ac43442794a68f13536bf0a3c32"
+  },
+  {
+    "path": "services/api/src/wage-statement/wage-statement.controller.spec.ts",
+    "expected": "2ec1893da13ab1b0aa160845ed7c7fd2594523e0a3a163c10793aa19a025834e",
+    "candidate": "e48e2631ab82986bd5565110d5568ed4116d39a8d3b2e5488917bea0b19f1211"
+  },
+  {
+    "path": "services/api/src/wage-statement/wage-statement.read.service.spec.ts",
+    "expected": "3db680abd01756c2b6a3d31b00cd112a1631bbccfc8a1d347562351b21102316",
+    "candidate": "b8e722d14441f4e7ebbcb303668d2baa9e57aa0fffc21234b05167592bce2a27"
+  },
+  {
+    "path": "services/api/src/wage-statement/wage-statement.service.spec.ts",
+    "expected": "1fdc4d1bd247c71785f08712fa79df5e13c1f8d4b428e92f5529020f5ae1d03f",
+    "candidate": "5ab2694237c70118aa97c6a4a060901f34a1b771a97d936a5167b34ea253c8e4"
+  },
+  {
+    "path": "services/api/src/wage-statement/wage-statement.service.ts",
+    "expected": "f239168905935f41b248677b0aaface1a369748d6016dee7ea0a1bf75c3c3c03",
+    "candidate": "9c31a591f720e0f273babf41c21f85513c167ad406930070cee833fc57a5c0ba"
   }
 ]

@@ -104,6 +104,8 @@ for row in json.loads(manifest)['files']:
         continue
     if relative in delta:
         proof = delta[relative]
+        if proof['candidate'] is None and (current.exists() or current.is_symlink()):
+            raise ValueError(f'PROCUREMENT_329_CANDIDATE_EXPECTED_ABSENT {relative}')
         archived = proof['expected']
         if isinstance(archived, dict):
             archived = archived[lane]
