@@ -12,27 +12,42 @@ const count=current320?329:295;
 const purpose='TASK410_COMPANY_PROXY_EXACT_'+count;
 const receipt = {schemaVersion:1,sourceSha:source.sourceSha,lane,purpose,business:'NOT_ENTERED',stages:[]};
 async function withGuardedReplay(context, consume) {
+  const run = context.runId.replaceAll('-', '');
+  assert.match(run,/^[0-9a-f]{32}$/u);
+  assert.equal(context.database,`jg_task01_${run}`);
+  const role = `finance_runtime_${run}`;
+  const password = randomBytes(24).toString('hex');
+  const replayDatabaseUrl = new URL(context.runtimeUrl);
+  replayDatabaseUrl.username = role;
+  replayDatabaseUrl.password = password;
+  replayDatabaseUrl.searchParams.set('connection_limit','1');
   const witness = 'public.jg_contract_work_completion_witness';
   const readers = [
     'public.jg_contract_work_completion_cost_sources_v1(text,text,text)',
     'public.jg_company_transfer_canonical_correction_plan(text)',
   ];
   const noFixtureAccess = `SELECT NOT EXISTS(SELECT FROM ${witness})
-    AND ${readers.map(reader=>`NOT has_function_privilege('jg_task01_runtime','${reader}','EXECUTE')`).join(' AND ')};`;
+    AND NOT EXISTS(SELECT FROM pg_catalog.pg_roles WHERE rolname='${role}');`;
   const initial = await context.sql(noFixtureAccess);
   assert.equal(initial.stdout.trim(),'t');
   await context.sql(`BEGIN;
+    CREATE ROLE ${role} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT
+      CONNECTION LIMIT 1 PASSWORD '${password}';
+    GRANT CONNECT ON DATABASE ${context.database} TO ${role};
+    GRANT USAGE ON SCHEMA public TO ${role};
     INSERT INTO ${witness}(singleton,"key","databaseOid","runtimeRoleOid")
-    SELECT true,decode('${randomBytes(32).toString('hex')}','hex'),oid,'jg_task01_runtime'::regrole::oid
+    SELECT true,decode('${randomBytes(32).toString('hex')}','hex'),oid,'${role}'::regrole::oid
     FROM pg_database WHERE datname=current_database();
-    GRANT EXECUTE ON FUNCTION ${readers.join(', ')} TO jg_task01_runtime;
+    GRANT EXECUTE ON FUNCTION ${readers.join(', ')} TO ${role};
+    GRANT SELECT ON public."ProjectOwnerSettlementEntry" TO ${role};
     COMMIT;`);
   try {
-    await consume(context);
+    await consume({...context,replayDatabaseUrl:replayDatabaseUrl.href});
   } finally {
     await context.sql(`BEGIN;
-      REVOKE EXECUTE ON FUNCTION ${readers.join(', ')} FROM jg_task01_runtime;
-      DELETE FROM ${witness} WHERE singleton AND "runtimeRoleOid"='jg_task01_runtime'::regrole::oid;
+      DELETE FROM ${witness} WHERE singleton AND "runtimeRoleOid"='${role}'::regrole::oid;
+      DROP OWNED BY ${role};
+      DROP ROLE ${role};
       COMMIT;`);
     const restored = await context.sql(noFixtureAccess);
     assert.equal(restored.stdout.trim(),'t');

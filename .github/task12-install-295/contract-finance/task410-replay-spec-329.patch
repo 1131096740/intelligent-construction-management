@@ -20,7 +20,7 @@
 +          const [identity] = await reader.$queryRaw<Array<{ role: string; tls: boolean }>>`
 +            SELECT session_user AS role, ssl AS tls FROM pg_stat_ssl WHERE pid=pg_backend_pid()
 +          `;
-+          expect(identity).toEqual({ role: "jg_task01_runtime", tls: true });
++          expect(identity).toEqual({ role: `finance_runtime_${process.env.TASK410_ISOLATED_RUN_ID}`, tls: true });
 +          replay = new OperatingSourceReplayService(
 +            reader, app.get(OperatingLedgerService), app.get(OperatingSourceAdapterRegistry)
 +          );
