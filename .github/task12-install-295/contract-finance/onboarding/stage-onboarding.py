@@ -82,7 +82,14 @@ for lane in pins['lanes']:
     text=runner.read_text()
     if text.count('a1be083076018686dd8afba68c44ff9c75502014')!=1:
         raise SystemExit('ONBOARDING_295_RUNTIME_ANCHOR')
-    runner.write_text(text.replace('a1be083076018686dd8afba68c44ff9c75502014',application_tree))
+    text=text.replace('a1be083076018686dd8afba68c44ff9c75502014',application_tree)
+    if current320 and lane=='roster':
+        anchor="          return {caseSha256:createHash('sha256').update(test.fullName).digest('hex'),"
+        frame=r"          const frame=/\bproject-roster-http-postgres(?:\.owned282)?\.spec\.ts:(\d{1,5}):(\d{1,4})\b/u.exec(failure);"
+        if text.count(anchor)!=1:
+            raise SystemExit('ONBOARDING_329_ROSTER_FAILURE_FRAME_ANCHOR')
+        text=text.replace(anchor, frame+'\n'+anchor+'\n            ...(frame&&{frame:[Number(frame[1]),Number(frame[2])]}),',1)
+    runner.write_text(text)
     if lane=='roster':
         seed=lane_root/'onboarding-roster-seed.cjs'
         material=seed.read_bytes()

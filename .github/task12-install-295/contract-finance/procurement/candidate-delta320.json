@@ -65,6 +65,11 @@
     "candidate": "01414d50b98ed824be1bf4a7f55bbab0b7823fb43c23b39f9ecc5ee1236eae53"
   },
   {
+    "path": "apps/web-admin/e2e/upload-draft-feedback.e2e.ts",
+    "expected": "1490d9b9990fb1bcfab8948a26e5c689768fc50255c8e6f605bbca4a399b536b",
+    "candidate": "1637356d101538e73af4ce31c09016e7af17cc33f2550ced71410ccb58c50777"
+  },
+  {
     "path": "apps/web-admin/e2e/v61-business-recovery.e2e.ts",
     "expected": "11637381f5e71c07ecb7aca3354af84fef600e3c37777a4bf308f151ddba2e8a",
     "candidate": "3be54c61f488b66ebb7461066c012b4912c8d3af3b4050650eaf8a23c3ffcbbe"
@@ -1060,7 +1065,7 @@
   {
     "path": "services/api/src/database/project-roster-http-postgres.spec.ts",
     "expected": "adaea3ed572979d3496bcdd56d2d0fd552d83ffefe9caaf375dd2f5c975eaa2c",
-    "candidate": "3a59f80d579752920aa000dc269454fa5e4f7108722f1844095306547df84535"
+    "candidate": "66d2022a7ebbf12ef4b9caf42c8523d2fd0d06c3b693e1e84c89a90b144681c7"
   },
   {
     "path": "services/api/src/database/registered-payment-catalog.ts",

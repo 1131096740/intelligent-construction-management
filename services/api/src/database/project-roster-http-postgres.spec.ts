@@ -288,8 +288,13 @@ describePostgres("项目花名册维护 HTTP / PostgreSQL 16", () => {
     expect(blocked.body).toMatchObject({ canApply: false, affectedApprovals: 1 });
     expect((await apply(chairman.token, body, oldPreview.body.snapshotHash)).status).toBe(409);
     expect((await apply(chairman.token, body, blocked.body.snapshotHash)).status).toBe(409);
-    const { body: approvalDetail } = await request("/expense-claims/" + claimId, director.token);
-    const { approvalInstanceId, actionableDuties } = approvalDetail.approval;
+    const approvalDetail = await request("/expense-claims/" + claimId, director.token);
+    expect(approvalDetail.status).toBe(200);
+    expect(approvalDetail.body.approval).toMatchObject({
+      approvalInstanceId: expect.any(String),
+      actionableDuties: expect.arrayContaining([expect.objectContaining({ index: expect.any(Number) })])
+    });
+    const { approvalInstanceId, actionableDuties } = approvalDetail.body.approval;
     expect((await request(`/expense-claims/${claimId}/approval`, director.token,
       { decision: "reject", comment: "隔离交接回归", approvalInstanceId, approvalDutyIndex: actionableDuties[0].index })).status).toBe(201);
     const ready = await request("/organization/project-roster/preview", chairman.token, body);
