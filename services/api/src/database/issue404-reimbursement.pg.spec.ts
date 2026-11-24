@@ -184,13 +184,25 @@ describe("issue 404 multi-category reimbursement and purchase advance PostgreSQL
         category: "receipt_or_other"
       });
 
-      // 2) 提交并逐节点审批：普通项目报销通过后才确认成本，实付只清偿。
-      await claims.submit(direct.id, fixture.employeeUserId);
-      await claims.review(direct.id, fixture.comprehensiveDirectorUserId, { decision: "approve" });
-      await claims.review(direct.id, fixture.managerUserId, { decision: "approve" });
-      await claims.review(direct.id, fixture.financeDirectorUserId, { decision: "approve" });
-      const completed = await claims.review(direct.id, fixture.chairmanUserId, { decision: "approve" });
-      expect(completed.completed).toBe(true);
+      // 2) 从详情读取各岗位可办职责，财务可先签，末岗签完才确认成本。
+      const { approvalInstanceId } = await claims.submit(direct.id, fixture.employeeUserId);
+      const reviewers = [
+        { userId: fixture.financeDirectorUserId, index: 2 },
+        { userId: fixture.chairmanUserId, index: 3 },
+        { userId: fixture.managerUserId, index: 1 },
+        { userId: fixture.comprehensiveDirectorUserId, index: 0 }
+      ];
+      for (const [position, { userId, index }] of reviewers.entries()) {
+        const { approval } = await claims.getMine(direct.id, userId);
+        expect(approval).toMatchObject({ canReview: true, approvalInstanceId, actionableDuties: [{ index }] });
+        expect(appendCalls).toHaveLength(0);
+        const reviewed = await claims.review(direct.id, userId, {
+          decision: "approve",
+          approvalInstanceId: approval!.approvalInstanceId!,
+          approvalDutyIndex: approval!.actionableDuties![0]!.index
+        });
+        expect(reviewed.completed).toBe(position === reviewers.length - 1);
+      }
       const approved = await prisma.expenseClaim.findUniqueOrThrow({ where: { id: direct.id } });
       expect(approved.status).toBe("approved_pending_payment");
       expect(approved.approvedAt).not.toBeNull();
@@ -366,6 +378,7 @@ describe("issue 404 multi-category reimbursement and purchase advance PostgreSQL
         expect.objectContaining({ batchId: batch.id, supplierName: "合成五金供应商", availableAmountCents: "40000", costConfirmed: true })
       ]);
 
+      // 采购批次垫付仍按原串联审批，每次办理当前节点。
       await claims.submit(advance.id, fixture.employeeUserId);
       await claims.review(advance.id, fixture.comprehensiveDirectorUserId, { decision: "approve" });
       await claims.review(advance.id, fixture.managerUserId, { decision: "approve" });
