@@ -13,29 +13,29 @@
     "routeCount": 879,
     "exactRouteCount": 879,
     "normalizedRouteCount": 879,
-    "classificationOverrideCount": 234,
-    "consumerSurfaceOverrideCount": 56,
-    "classificationOverrideSha256": "e5bca7e12b8f29322664da1c2721176179ec533a09edf2dd5f9bfdc4c2624b5d",
-    "consumerSurfaceOverrideSha256": "9a7fe70cf05a352bafa35410ffc5de999596c0ba4f0d5d5cb44ede45a5623836",
-    "derivedProductionPageCount": 645,
-    "pageRouteCount": 664,
+    "classificationOverrideCount": 242,
+    "consumerSurfaceOverrideCount": 57,
+    "classificationOverrideSha256": "53d0963dc9783464e174117ca78de506a75f77fd26791d197f32c204aaba6016",
+    "consumerSurfaceOverrideSha256": "f31670e01b7a05530e0d1d07c76e24a313da562abce4eb3270bad51de73c66a8",
+    "derivedProductionPageCount": 637,
+    "pageRouteCount": 656,
     "externalTakeoverCount": 70,
-    "exitCandidateCount": 91,
-    "internalTaskCount": 54,
+    "exitCandidateCount": 98,
+    "internalTaskCount": 55,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 716,
+      "web_api_wrapper": 708,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 3,
-      "operator_endpoint": 51,
-      "none": 102
+      "operator_endpoint": 52,
+      "none": 109
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 716,
+    "productionWrapperRouteCount": 708,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -13875,26 +13875,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_historical_wage_access_capabilities_legacy_clients",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-            "wrapper": "fetchWageStatementCapabilities",
-            "method": "GET",
-            "normalizedPath": "/wage-statements/capabilities",
-            "normalizedKey": "GET /wage-statements/capabilities",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_425_historical_wage_access_capabilities_legacy_clients"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -35728,29 +35717,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-            "wrapper": "confirmWageStatement",
-            "method": "POST",
-            "normalizedPath": "/wage-statements/:param/confirm",
-            "normalizedKey": "POST /wage-statements/:param/confirm",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -35772,29 +35750,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-            "wrapper": "updateWageStatementDraft",
-            "method": "POST",
-            "normalizedPath": "/wage-statements/:param/draft",
-            "normalizedKey": "POST /wage-statements/:param/draft",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -35815,29 +35782,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-            "wrapper": "returnWageStatement",
-            "method": "POST",
-            "normalizedPath": "/wage-statements/:param/return",
-            "normalizedKey": "POST /wage-statements/:param/return",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -35859,29 +35815,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-            "wrapper": "createWageStatementRevision",
-            "method": "POST",
-            "normalizedPath": "/wage-statements/:param/revisions",
-            "normalizedKey": "POST /wage-statements/:param/revisions",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -35933,29 +35878,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-            "wrapper": "submitWageStatement",
-            "method": "POST",
-            "normalizedPath": "/wage-statements/:param/submit",
-            "normalizedKey": "POST /wage-statements/:param/submit",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -35977,29 +35911,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-            "wrapper": "createApprovedWageSource",
-            "method": "POST",
-            "normalizedPath": "/wage-statements/approved-sources",
-            "normalizedKey": "POST /wage-statements/approved-sources",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -36021,29 +35944,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-            "wrapper": "createWageStatementDraft",
-            "method": "POST",
-            "normalizedPath": "/wage-statements/drafts",
-            "normalizedKey": "POST /wage-statements/drafts",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "PUT",

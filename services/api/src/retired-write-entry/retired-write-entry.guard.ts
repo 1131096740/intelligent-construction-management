@@ -115,7 +115,14 @@ export const RETIRED_WRITE_ENTRIES: readonly RetiredWriteEntry[] = [
     handler: "executeSupplierBalance"
   },
   { controller: "VatRateOptionController", handler: "create" },
-  { controller: "VatRateOptionController", handler: "update" }
+  { controller: "VatRateOptionController", handler: "update" },
+  { controller: "WageStatementController", handler: "confirm" },
+  { controller: "WageStatementController", handler: "createApprovedSource" },
+  { controller: "WageStatementController", handler: "createDraft" },
+  { controller: "WageStatementController", handler: "createRevision" },
+  { controller: "WageStatementController", handler: "returnForReview" },
+  { controller: "WageStatementController", handler: "submit" },
+  { controller: "WageStatementController", handler: "updateDraft" }
 ] as const;
 
 const RETIRED_WRITE_ENTRY_KEYS = new Set(

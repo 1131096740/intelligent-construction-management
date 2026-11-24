@@ -8,10 +8,10 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 473,
+    "activeBusinessActionCount": 467,
     "technicalActionCount": 10,
-    "activeBindingCount": 572,
-    "retiredWriteEntryCount": 78,
+    "activeBindingCount": 565,
+    "retiredWriteEntryCount": 85,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
@@ -7663,103 +7663,6 @@
       "bindingCount": 1,
       "productionConsumerCount": 1,
       "causalVerified": true
-    },
-    {
-      "id": "wage-statement.approved-source.import-and-draft",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/工资承担工作台"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
-      "capabilityKind": "server_boolean",
-      "bindingKeys": [
-        "POST /wage-statements/approved-sources",
-        "POST /wage-statements/drafts"
-      ],
-      "bindingCount": 2,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "wage-statement.approved-source.import-and-reversal",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/工资承担工作台"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
-      "capabilityKind": "server_boolean",
-      "bindingKeys": [
-        "POST /wage-statements/:param/revisions"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "wage-statement.confirm",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/工资承担工作台"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
-      "capabilityKind": "server_boolean",
-      "bindingKeys": [
-        "POST /wage-statements/:param/confirm"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "wage-statement.draft.update",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/工资承担工作台"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
-      "capabilityKind": "server_boolean",
-      "bindingKeys": [
-        "POST /wage-statements/:param/draft"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "wage-statement.return",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/工资承担工作台"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
-      "capabilityKind": "server_boolean",
-      "bindingKeys": [
-        "POST /wage-statements/:param/return"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "wage-statement.submit",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/工资承担工作台"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
-      "capabilityKind": "server_boolean",
-      "bindingKeys": [
-        "POST /wage-statements/:param/submit"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
     }
   ],
   "technicalEntries": [
@@ -8469,6 +8372,55 @@
       "path": "/vat-rate-options",
       "controller": "VatRateOptionController",
       "handler": "create",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/confirm",
+      "controller": "WageStatementController",
+      "handler": "confirm",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/draft",
+      "controller": "WageStatementController",
+      "handler": "updateDraft",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/return",
+      "controller": "WageStatementController",
+      "handler": "returnForReview",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/revisions",
+      "controller": "WageStatementController",
+      "handler": "createRevision",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/submit",
+      "controller": "WageStatementController",
+      "handler": "submit",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/approved-sources",
+      "controller": "WageStatementController",
+      "handler": "createApprovedSource",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/drafts",
+      "controller": "WageStatementController",
+      "handler": "createDraft",
       "status": "gone"
     },
     {

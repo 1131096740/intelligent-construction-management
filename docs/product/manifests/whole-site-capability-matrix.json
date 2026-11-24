@@ -22,17 +22,17 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "fcd0a4c32219ee727a9ae55df61ba95cc99ad4e5fbf2f4bba309b9214a025dbd",
+      "sha256": "b0c044bfdc344a3d8521e2a65a701764d287d5bdc8c3a30223879b0d4e8892bc",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
-        "exportedFunctionCount": 810,
-        "transportWrapperCount": 786,
+        "exportedFunctionCount": 802,
+        "transportWrapperCount": 778,
         "pureExportCount": 24,
-        "mainRequestBindingCount": 860,
+        "mainRequestBindingCount": 852,
         "ticketFollowupCount": 6,
-        "requestEdgeCount": 816,
-        "productionConsumerCount": 695,
+        "requestEdgeCount": 808,
+        "productionConsumerCount": 687,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,51 +42,51 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "18e4f9e839b05ec18843c8c0dfa6a3f484eae1ff0e48320a4b93cfb108f892d1",
+      "sha256": "cdbab300b740c02ab437524908e413f6f499067d5212dea584220b61315061f9",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 487,
+        "registeredActionCount": 481,
         "pageActionCount": 112,
-        "backgroundActionCount": 375,
+        "backgroundActionCount": 369,
         "reachableVueFileCount": 241,
         "routeRootCount": 80,
         "totalVueFileCount": 254,
         "parsedVueFileCount": 254,
         "reachableProductionModuleCount": 417,
-        "templateEventDirectiveCount": 1652,
+        "templateEventDirectiveCount": 1647,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 477,
-        "candidateProductionMutationConsumerCount": 477,
-        "acceptedProductionMutationConsumerCount": 477,
-        "productionMutationConsumerPairCount": 477,
+        "coveredProductionMutationConsumerCount": 470,
+        "candidateProductionMutationConsumerCount": 470,
+        "acceptedProductionMutationConsumerCount": 470,
+        "productionMutationConsumerPairCount": 470,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "3f2635c3c645132ec449fbb0bf712eac4d70a1767bbaafd3ae5612b62faf1540",
+      "sha256": "e5c7f96d213f0190e607dd3ff5a488824615e2f996932251f7ed86ed34731f5e",
       "status": "ready",
       "summary": {
         "routeCount": 879,
         "exactRouteCount": 879,
         "normalizedRouteCount": 879,
-        "classificationOverrideCount": 234,
-        "consumerSurfaceOverrideCount": 56,
-        "classificationOverrideSha256": "e5bca7e12b8f29322664da1c2721176179ec533a09edf2dd5f9bfdc4c2624b5d",
-        "consumerSurfaceOverrideSha256": "9a7fe70cf05a352bafa35410ffc5de999596c0ba4f0d5d5cb44ede45a5623836",
-        "derivedProductionPageCount": 645,
-        "pageRouteCount": 664,
+        "classificationOverrideCount": 242,
+        "consumerSurfaceOverrideCount": 57,
+        "classificationOverrideSha256": "53d0963dc9783464e174117ca78de506a75f77fd26791d197f32c204aaba6016",
+        "consumerSurfaceOverrideSha256": "f31670e01b7a05530e0d1d07c76e24a313da562abce4eb3270bad51de73c66a8",
+        "derivedProductionPageCount": 637,
+        "pageRouteCount": 656,
         "externalTakeoverCount": 70,
-        "exitCandidateCount": 91,
-        "internalTaskCount": 54,
+        "exitCandidateCount": 98,
+        "internalTaskCount": 55,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 716,
+          "web_api_wrapper": 708,
           "auth_store": 5,
           "signed_ticket_delivery": 2,
           "machine_probe": 3,
-          "operator_endpoint": 51,
-          "none": 102
+          "operator_endpoint": 52,
+          "none": 109
         },
         "blockerCount": 0
       }
@@ -94,22 +94,22 @@
   },
   "summary": {
     "routeCount": 879,
-    "pageRouteCount": 664,
+    "pageRouteCount": 656,
     "externalTakeoverRouteCount": 70,
-    "exitCandidateRouteCount": 91,
-    "internalTaskRouteCount": 54,
+    "exitCandidateRouteCount": 98,
+    "internalTaskRouteCount": 55,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 860,
+    "mainRequestBindingCount": 852,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 487,
-    "actionBindingCount": 588,
-    "acceptedActionBindingCount": 540,
+    "registeredActionCount": 481,
+    "actionBindingCount": 581,
+    "acceptedActionBindingCount": 533,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 477,
-    "coveredProductionMutationConsumerPairCount": 477,
+    "productionMutationConsumerPairCount": 470,
+    "coveredProductionMutationConsumerPairCount": 470,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -15662,24 +15662,9 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-          "wrapper": "fetchWageStatementCapabilities",
-          "method": "GET",
-          "path": "/wage-statements/capabilities",
-          "normalizedKey": "GET /wage-statements/capabilities",
-          "bodyKind": "none",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/wage-statement.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
@@ -52156,53 +52141,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-          "wrapper": "confirmWageStatement",
-          "method": "POST",
-          "path": "/wage-statements/:param/confirm",
-          "normalizedKey": "POST /wage-statements/:param/confirm",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/wage-statement.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "wage-statement.confirm",
-          "bindingIndex": 0,
-          "identity": "wage-statement.confirm\u0000apps/web-admin/src/api/wage-statement.api.ts\u0000confirmWageStatement\u0000POST\u0000POST /wage-statements/:param/confirm\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
-          "capability": {
-            "kind": "server_boolean",
-            "source": "capability.canConfirm",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-          "wrapper": "confirmWageStatement",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -52227,53 +52171,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-          "wrapper": "updateWageStatementDraft",
-          "method": "POST",
-          "path": "/wage-statements/:param/draft",
-          "normalizedKey": "POST /wage-statements/:param/draft",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/wage-statement.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "wage-statement.draft.update",
-          "bindingIndex": 0,
-          "identity": "wage-statement.draft.update\u0000apps/web-admin/src/api/wage-statement.api.ts\u0000updateWageStatementDraft\u0000POST\u0000POST /wage-statements/:param/draft\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
-          "capability": {
-            "kind": "server_boolean",
-            "source": "capability.canPrepare",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-          "wrapper": "updateWageStatementDraft",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -52297,53 +52200,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-          "wrapper": "returnWageStatement",
-          "method": "POST",
-          "path": "/wage-statements/:param/return",
-          "normalizedKey": "POST /wage-statements/:param/return",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/wage-statement.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "wage-statement.return",
-          "bindingIndex": 0,
-          "identity": "wage-statement.return\u0000apps/web-admin/src/api/wage-statement.api.ts\u0000returnWageStatement\u0000POST\u0000POST /wage-statements/:param/return\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
-          "capability": {
-            "kind": "server_boolean",
-            "source": "capability.canReturn",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-          "wrapper": "returnWageStatement",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -52368,53 +52230,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-          "wrapper": "createWageStatementRevision",
-          "method": "POST",
-          "path": "/wage-statements/:param/revisions",
-          "normalizedKey": "POST /wage-statements/:param/revisions",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/wage-statement.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "wage-statement.approved-source.import-and-reversal",
-          "bindingIndex": 0,
-          "identity": "wage-statement.approved-source.import-and-reversal\u0000apps/web-admin/src/api/wage-statement.api.ts\u0000createWageStatementRevision\u0000POST\u0000POST /wage-statements/:param/revisions\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
-          "capability": {
-            "kind": "server_boolean",
-            "source": "capability.canPrepare",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-          "wrapper": "createWageStatementRevision",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -52466,53 +52287,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-          "wrapper": "submitWageStatement",
-          "method": "POST",
-          "path": "/wage-statements/:param/submit",
-          "normalizedKey": "POST /wage-statements/:param/submit",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/wage-statement.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "wage-statement.submit",
-          "bindingIndex": 0,
-          "identity": "wage-statement.submit\u0000apps/web-admin/src/api/wage-statement.api.ts\u0000submitWageStatement\u0000POST\u0000POST /wage-statements/:param/submit\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
-          "capability": {
-            "kind": "server_boolean",
-            "source": "capability.canSubmit",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-          "wrapper": "submitWageStatement",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -52537,53 +52317,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-          "wrapper": "createApprovedWageSource",
-          "method": "POST",
-          "path": "/wage-statements/approved-sources",
-          "normalizedKey": "POST /wage-statements/approved-sources",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/wage-statement.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "wage-statement.approved-source.import-and-draft",
-          "bindingIndex": 0,
-          "identity": "wage-statement.approved-source.import-and-draft\u0000apps/web-admin/src/api/wage-statement.api.ts\u0000createApprovedWageSource\u0000POST\u0000POST /wage-statements/approved-sources\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
-          "capability": {
-            "kind": "server_boolean",
-            "source": "capability.canPrepare",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-          "wrapper": "createApprovedWageSource",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -52608,53 +52347,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-          "wrapper": "createWageStatementDraft",
-          "method": "POST",
-          "path": "/wage-statements/drafts",
-          "normalizedKey": "POST /wage-statements/drafts",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/wage-statement.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "wage-statement.approved-source.import-and-draft",
-          "bindingIndex": 1,
-          "identity": "wage-statement.approved-source.import-and-draft\u0000apps/web-admin/src/api/wage-statement.api.ts\u0000createWageStatementDraft\u0000POST\u0000POST /wage-statements/drafts\u00001",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue",
-          "capability": {
-            "kind": "server_boolean",
-            "source": "capability.canPrepare",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/wage-statement.api.ts",
-          "wrapper": "createWageStatementDraft",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/wage/WageStatementWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {

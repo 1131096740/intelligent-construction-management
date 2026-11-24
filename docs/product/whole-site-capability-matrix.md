@@ -7,31 +7,31 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `0227dbadedb7c9b2c24d91e769749093ac6afa276034dbccef0b5988dd9ca853` |
-| webApiWrappers | ready | `fcd0a4c32219ee727a9ae55df61ba95cc99ad4e5fbf2f4bba309b9214a025dbd` |
-| webPageActions | ready | `18e4f9e839b05ec18843c8c0dfa6a3f484eae1ff0e48320a4b93cfb108f892d1` |
-| routeUsage | ready | `3f2635c3c645132ec449fbb0bf712eac4d70a1767bbaafd3ae5612b62faf1540` |
+| webApiWrappers | ready | `b0c044bfdc344a3d8521e2a65a701764d287d5bdc8c3a30223879b0d4e8892bc` |
+| webPageActions | ready | `cdbab300b740c02ab437524908e413f6f499067d5212dea584220b61315061f9` |
+| routeUsage | ready | `e5c7f96d213f0190e607dd3ff5a488824615e2f996932251f7ed86ed34731f5e` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 879 |
-| pageRouteCount | 664 |
+| pageRouteCount | 656 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 91 |
-| internalTaskRouteCount | 54 |
+| exitCandidateRouteCount | 98 |
+| internalTaskRouteCount | 55 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 860 |
+| mainRequestBindingCount | 852 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 487 |
-| actionBindingCount | 588 |
-| acceptedActionBindingCount | 540 |
+| registeredActionCount | 481 |
+| actionBindingCount | 581 |
+| acceptedActionBindingCount | 533 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 477 |
-| coveredProductionMutationConsumerPairCount | 477 |
+| productionMutationConsumerPairCount | 470 |
+| coveredProductionMutationConsumerPairCount | 470 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -353,7 +353,7 @@
 | GET | /wage-statements/:statementId/import-preview | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementImportPreview | — | not_applicable | — |
 | GET | /wage-statements/:statementId/non-sensitive-summary | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /wage-statements/:statementId/summary | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementSummary | — | not_applicable | — |
-| GET | /wage-statements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementCapabilities | — | not_applicable | — |
+| GET | /wage-statements/capabilities | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /wage-statements/workbench | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#fetchWageStatementWorkbench | — | not_applicable | — |
 | PATCH | /actual-purchase-batches/:batchId | internal_task | operator_endpoint | apps/web-admin/src/api/actual-purchase-batch.api.ts#updateActualPurchaseBatch | — | not_applicable | — |
 | PATCH | /auth/profile | page | auth_store | — | user-self-profile.update.commit | covered | — |
@@ -904,14 +904,14 @@
 | POST | /upward-receipt-matches/:id/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /upward-receipt-matches | page | web_api_wrapper | apps/web-admin/src/api/upward-receipt-match.api.ts#prepareReceiptMatch | upward-receipt-match.prepareReceiptMatch | covered | — |
 | POST | /vat-rate-options | exit_candidate | none | — | — | not_applicable | — |
-| POST | /wage-statements/:statementId/confirm | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#confirmWageStatement | wage-statement.confirm | covered | — |
-| POST | /wage-statements/:statementId/draft | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#updateWageStatementDraft | wage-statement.draft.update | covered | — |
-| POST | /wage-statements/:statementId/return | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#returnWageStatement | wage-statement.return | covered | — |
-| POST | /wage-statements/:statementId/revisions | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#createWageStatementRevision | wage-statement.approved-source.import-and-reversal | covered | — |
+| POST | /wage-statements/:statementId/confirm | exit_candidate | none | — | — | not_applicable | — |
+| POST | /wage-statements/:statementId/draft | exit_candidate | none | — | — | not_applicable | — |
+| POST | /wage-statements/:statementId/return | exit_candidate | none | — | — | not_applicable | — |
+| POST | /wage-statements/:statementId/revisions | exit_candidate | none | — | — | not_applicable | — |
 | POST | /wage-statements/:statementId/sensitive-export-ticket | internal_task | operator_endpoint | — | — | not_applicable | — |
-| POST | /wage-statements/:statementId/submit | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#submitWageStatement | wage-statement.submit | covered | — |
-| POST | /wage-statements/approved-sources | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#createApprovedWageSource | wage-statement.approved-source.import-and-draft | covered | — |
-| POST | /wage-statements/drafts | page | web_api_wrapper | apps/web-admin/src/api/wage-statement.api.ts#createWageStatementDraft | wage-statement.approved-source.import-and-draft | covered | — |
+| POST | /wage-statements/:statementId/submit | exit_candidate | none | — | — | not_applicable | — |
+| POST | /wage-statements/approved-sources | exit_candidate | none | — | — | not_applicable | — |
+| POST | /wage-statements/drafts | exit_candidate | none | — | — | not_applicable | — |
 | PUT | /contract-bills/:billId/rows | exit_candidate | none | — | — | not_applicable | — |
 | PUT | /contract-drafts/:contractVersionId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#saveContractDraftAggregate | contract-draft.aggregate-autosave<br>contract-draft.manual-save | covered | — |
 | PUT | /contract-versions/:toContractVersionId/bill-transitions | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#saveContractBillTransitions | contract-bill-transition.save | covered | — |
