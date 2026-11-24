@@ -155,6 +155,56 @@ if current320:
             raise ValueError('PROCUREMENT_320_CONSUMER_ANCHOR')
         text = text.replace(old,new)
     if lane == 'project11':
+        failure_anchor = r'''function firstFailure(report){
+  const evidence=fs.existsSync(report)?JSON.parse(fs.readFileSync(report,"utf8")):null;
+  const failed=evidence?.testResults.flatMap(suite=>suite.assertionResults).find(test=>test.status==="failed");
+  const assertion=failed?.failureMessages.join("\n")??"";'''
+        failure_probe = r'''function firstFailure(report, stderrKinds, signal){
+  let reportState="missing", evidence=null;
+  try {
+    const stat=fs.lstatSync(report,{throwIfNoEntry:false});
+    if(stat&&!stat.isFile())reportState="non_file";
+    else if(stat&&stat.size>1024*1024)reportState="over_limit";
+    else if(stat){
+      const result=JSON.parse(fs.readFileSync(report,"utf8"));
+      reportState=Array.isArray(result?.testResults)?"present":"invalid";
+      if(reportState==="present")evidence=result;
+    }
+  }catch{reportState="invalid";}
+  const suites=evidence?.testResults??[];
+  const failed=suites.flatMap(suite=>suite.assertionResults??[]).find(test=>test.status==="failed");
+  const assertion=failed?.failureMessages?.join("\n")??suites.find(suite=>suite.status==="failed")?.message??"";
+  const counts=Object.fromEntries(["numTotalTests","numFailedTests","numFailedTestSuites"].flatMap(key=>
+    Number.isSafeInteger(evidence?.[key])&&evidence[key]>=0?[[key,evidence[key]]]:[]));
+'''
+        stderr_anchor = '    child.stdout.resume();child.stderr.resume();'
+        stderr_probe = '''    child.stdout.resume();
+    const stderrKinds=new Set();
+    let stderrBoundary="";
+    child.stderr.on("data",chunk=>{
+      const text=stderrBoundary+chunk.toString("utf8");
+      const hints={
+        disk_full:/\\bENOSPC\\b|No space left on device/i,
+        out_of_memory:/\\bENOMEM\\b|JavaScript heap out of memory/i,
+        killed:/\\bSIGKILL\\b|\\bSIGABRT\\b/,
+        browser_launch:/browserType\\.launch|Failed to launch browser/i,
+        browser_server:/config\\.webServer|web server failed to start/i,
+        module_resolution:/ERR_MODULE_NOT_FOUND|Cannot find module/i
+      };
+      for(const [kind,pattern] of Object.entries(hints))if(pattern.test(text))stderrKinds.add(kind);
+      stderrBoundary=text.slice(-160);
+    });'''
+        failure_fields = '''    reportState,
+    counts,
+    stderrKinds:[...stderrKinds].sort(),
+    signal:/^SIG(?:ABRT|KILL|TERM)$/u.test(signal??"")?signal:undefined,
+    frames,'''
+        if (text.count(failure_anchor)!=1 or text.count(stderr_anchor)!=1
+            or text.count('    frames,')!=1 or text.count('firstFailure(report)')!=6):
+            raise ValueError('PROCUREMENT_320_PROJECT_FAILURE_OBSERVATION_ANCHOR')
+        text = text.replace(failure_anchor,failure_probe).replace(stderr_anchor,stderr_probe)
+        text = text.replace('    frames,',failure_fields)
+        text = text.replace('firstFailure(report)','firstFailure(report,stderrKinds,child.signalCode)')
         anchor = '    const ownerTarget=new URL(context.ownerUrl);'
         observation = '''    const detailAcl=await context.sql(`SELECT jsonb_build_object(
       'activity',has_function_privilege('project_business_scope_runtime','public.jg_read_payment_detail_activity_v1(text,text,text)','EXECUTE'),
