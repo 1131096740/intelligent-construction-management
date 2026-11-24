@@ -163,10 +163,10 @@ for name,pin in pins['workspace'].items():
         write(path,(json.dumps(before,ensure_ascii=False,indent=2)+'\n').encode())
     else:
         if current320 and name == 'services/api/src/database/contract-business-entry-http.spec.ts':
-            # Archived 295 retains the serial seal fixture; current 329 qualifies the V2 handoff.
+            # Archived 295 retains serial seal. Current 329 uses an explicit historical V2 input for live finance.
             pin = {**pin,
-                   'base': '27dddeb4e26865df918288ae726072c1dd634075d54b8237dd16714ce50e20d5',
-                   'result': 'd9e9be766b4b354e080073049222395169dd48ee780c9ca8356f7da5693ce717',
+                   'base': '2be8047ad16e7927b28c9c127c7aaf3cd2dbc989cadbc40f588b19ada6da6288',
+                   'result': 'ccd267d89f02532456971e67dae034c4283b752de634790862c2a4b567914318',
                    'file': 'patches/contract-business-entry-signed-settlement-current329.spec.ts.gz'}
         if current320 and name == 'services/api/src/database/base-entry-http-postgres.spec.ts':
             pin = {**pin,

@@ -1582,10 +1582,12 @@ watch(() => [auth.user?.id, route.params.contractId, route.query.versionId], () 
 watch(() => contractDetail.value?.contractVersionId, versionId => {
   if (versionId && v2ConfirmedReceipt.value && versionId !== v2ConfirmedReceipt.value.versionId) v2ConfirmedReceipt.value = null;
 });
-const legacySigningActions = new Set(["approve_seal", "complete_seal", "upload_archive", "upload_final_contract", "confirm_archive", "confirm_final_contract", "return_final_contract", "report_signing_material_change", "generate_pdf_archive"]);
+const retiredContractSealActions = new Set(["approve_seal", "complete_seal"]);
+const legacySigningActions = new Set(["upload_archive", "upload_final_contract", "confirm_archive", "confirm_final_contract", "return_final_contract", "report_signing_material_change", "generate_pdf_archive"]);
 const v2SigningActions = new Set(["confirm_seal_v2", "archive_signed_v2"]);
 const contractTaskCardActions = computed(() => (contractDetail.value?.availableActions ?? []).filter(action =>
-  !contractDetail.value?.v2Lifecycle || !legacySigningActions.has(action.key) && !v2SigningActions.has(action.key)
+  !retiredContractSealActions.has(action.key) &&
+  (!contractDetail.value?.v2Lifecycle || !legacySigningActions.has(action.key) && !v2SigningActions.has(action.key))
 ).map(action => v2LifecycleLocked.value && !action.key.startsWith("download_") ? { ...action, enabled: false, disabledReason: "本次办理结果待核对，请先查询原结果" } : action));
 const signingMaterialChangeDialogVisible = ref(false);
 const signingMaterialChangeDialogError = ref("");
@@ -1805,7 +1807,8 @@ const contractActionByKey = computed(() =>
 );
 const contractHeaderPrimaryAction = computed(() => {
   const primaryAction = contractDetail.value?.primaryAction;
-  if (!primaryAction || contractDetail.value?.v2Lifecycle && (legacySigningActions.has(primaryAction) || v2SigningActions.has(primaryAction))) return null;
+  if (!primaryAction || retiredContractSealActions.has(primaryAction) ||
+    contractDetail.value?.v2Lifecycle && (legacySigningActions.has(primaryAction) || v2SigningActions.has(primaryAction))) return null;
   const action = contractActionByKey.value.get(primaryAction);
   return action?.enabled ? action : null;
 });
@@ -1964,6 +1967,7 @@ const actionFeedbackState = computed<"success" | "error">(() =>
 );
 
 function isContractActionEnabled(key: string) {
+  if (retiredContractSealActions.has(key)) return false;
   if (v2LifecycleLocked.value && !key.startsWith("download_")) return false;
   if (contractDetail.value?.v2Lifecycle && legacySigningActions.has(key)) return false;
   return Boolean(
