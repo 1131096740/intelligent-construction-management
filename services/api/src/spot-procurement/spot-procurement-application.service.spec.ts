@@ -646,7 +646,7 @@ describe("SpotProcurementApplicationService real-form application", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it("creates the only payment draft and a receipt kept closed until actual payment", async () => {
+  it("completes compatible final approval with a payment draft and without receipt writes", async () => {
     const { service, tx } = context("project_manager");
     tx.$queryRaw
       .mockResolvedValueOnce([procurement("approval_pending")])
@@ -682,25 +682,8 @@ describe("SpotProcurementApplicationService real-form application", () => {
         draftOrigin: "auto_after_procurement_approval"
       })
     });
-    expect(tx.spotProcurementReceipt.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        projectId: "project-1",
-        procurementId: "procurement-1",
-        procurementVersionId: "version-1",
-        handlerUserId: "material-1",
-        status: "draft",
-        currentRevisionNo: 1
-      })
-    });
-    expect(tx.spotProcurementReceiptRevision.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        receiptId: "receipt-1",
-        procurementId: "procurement-1",
-        procurementVersionId: "version-1",
-        revisionNo: 1,
-        handlerUserId: "material-1"
-      })
-    });
+    expect(tx.spotProcurementReceipt.create).not.toHaveBeenCalled();
+    expect(tx.spotProcurementReceiptRevision.create).not.toHaveBeenCalled();
     expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         approvalInstanceId: "approval-1",
@@ -2471,6 +2454,7 @@ it("PUR-01 v2末岗仅进入项目采购待办，不创建收货或付款草稿"
   })).resolves.toMatchObject({ status: "approved_in_progress", versionStatus: "approved" });
   expect(tx.spotProcurementPayment.create).not.toHaveBeenCalled();
   expect(tx.spotProcurementReceipt.create).not.toHaveBeenCalled();
+  expect(tx.spotProcurementReceiptRevision.create).not.toHaveBeenCalled();
 });
 
 it.each(["reject", "return_to_applicant"] as const)("v2 %s 与新草稿在同事务记入退回通知，完成后才尝试发送", async (decision) => {

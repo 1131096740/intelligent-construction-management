@@ -20,6 +20,11 @@
     "candidate": "eeca6404316cb5a86ba058edbdf2aae4aace2d0b308a0dc1a6018debb5fc5374"
   },
   {
+    "path": "apps/web-admin/e2e/draft-lifecycle-governance.e2e.ts",
+    "expected": "6841c564fde5421c5029e8a53892a4b3520cf0d439020df627120150e1b9ab80",
+    "candidate": "87a0a68cfc89dc35f5b613af0095cf8eb4a7e6e95e47c7d53bfed46a03fe34c8"
+  },
+  {
     "path": "apps/web-admin/e2e/expense-claim-workbench.e2e.ts",
     "expected": "8c0e7d588456b25fe7e78b35255377292ac2ff7505d21cb28aff9a63571f22f3",
     "candidate": "651ec490262eefa380265e938cdf1f604f2cd6db8cbc3891eb0752801b92dbdc"
@@ -42,7 +47,7 @@
   {
     "path": "apps/web-admin/e2e/spot-procurement-workbenches.e2e.ts",
     "expected": "6309ac5b274915f79c0f6e29d62b2a0d9214cdc74cf8496a9858d4737fdbc9cb",
-    "candidate": "696d615c4d53116533c0db25a469ec09eb9195f489ddc3ddc55d2cc5503e7a3e"
+    "candidate": "7503dee666bb6197d0af00c28ee6b18c580b0ff2c3b89098e94551d875ddf34b"
   },
   {
     "path": "apps/web-admin/e2e/v61-business-recovery.e2e.ts",
@@ -87,7 +92,7 @@
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.ts",
     "expected": "c83128b15dbd395bae3875c5994c11e54b13ec426b6959b3e677371bb49a303f",
-    "candidate": "1065eb43979e30333591288fca00280a787dba09cfd89c46143fdd9bc52a00a5"
+    "candidate": "6ea14dcaed1925599bc72af917ac66e0095c31235d4fd20b31d75ab9f554c15a"
   },
   {
     "path": "apps/web-admin/src/api/duty-sms.api.test.ts",
@@ -358,6 +363,11 @@
     "path": "apps/web-admin/src/pages/payments/payment-workbench.structure.test.ts",
     "expected": "c5a1d2e250f572698ca24b7fb7821770156d2ac55e129878d46c5507e8aed0e7",
     "candidate": "0afdfd3fcb3eeecce0d4e4cd6f8a49d11db7dca45e370594d903c87d7738a7c3"
+  },
+  {
+    "path": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
+    "expected": "a14c57098081263a17e5751d222f796c5f16a048bba7dd314a0a6de8bfe97c51",
+    "candidate": "e82fc0e2ea5d6063696723f13ac1f06f2a5e09103714fca096e8ca247368020e"
   },
   {
     "path": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
@@ -1370,7 +1380,17 @@
   {
     "path": "services/api/src/project-expense/project-expense.controller.spec.ts",
     "expected": "5c69eff0cfe90abf5152821717e491f86c943ae9d7f7e30e0ae116fa212a8f64",
-    "candidate": "ddbe870614d892953077c4ef2dfa24cd29bfafe0b96527d609f97850f1623765"
+    "candidate": "be0388b20207260eb176e64d4e88678978d667f84d564f5bfbf5d1352d86d841"
+  },
+  {
+    "path": "services/api/src/project-expense/project-expense.service.spec.ts",
+    "expected": "3b90bcc7889c695d1c32c684d16882076fbbc8ac13838d0fe6bb2dcb95f6df53",
+    "candidate": "c3d995363716ef81e51bc23bd4736116316d742712e7dc6bd4395c05c9fc4348"
+  },
+  {
+    "path": "services/api/src/project-expense/project-expense.service.ts",
+    "expected": "4cdf97e895f13bd7b32d48ac786a7d7e13f65d4023f673e134604165602174fa",
+    "candidate": "d1a30cb18c4f6409cad2f4de8f6f1afc216f0bd97c0199a56a0432602f2b79ae"
   },
   {
     "path": "services/api/src/project-fund-dispute/project-fund-dispute-file-access.spec.ts",
@@ -1461,6 +1481,16 @@
     "path": "services/api/src/settlement/settlement.service.ts",
     "expected": "01e86e6d03672aedc0ce9cf57090efc3cc93b540ca2f4cb3651990687b65dac3",
     "candidate": "9bc59cdbe0d4ef66626f0737be21f85a51daef1e8dd5222d27e686bb0827d7f3"
+  },
+  {
+    "path": "services/api/src/spot-procurement/spot-procurement-application.service.spec.ts",
+    "expected": "40b1d87971155919b00af654e1f54b757f741bae0f47ae46f4297b54f0f240f6",
+    "candidate": "476478adf301de75da6741b46ca21331f82fa7d572e5a725657418e8ced92dd0"
+  },
+  {
+    "path": "services/api/src/spot-procurement/spot-procurement-application.service.ts",
+    "expected": "5cdabb0bce14ff46f39adb973861562dca45743bd7aecaa2e64b719c55879748",
+    "candidate": "2c5548c92ca1ca45aea223565c97122845aa39a762c2a0404d769fefbf9f9d80"
   },
   {
     "path": "services/api/src/spot-procurement/spot-procurement-approval-nodes.spec.ts",
