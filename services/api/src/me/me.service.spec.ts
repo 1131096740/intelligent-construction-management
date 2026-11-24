@@ -2120,13 +2120,10 @@ describe("MeService", () => {
     const scopes = [{ projectId: "project-1", roleKeys: ["finance_staff"] }];
     const names = new Map([["project-1", "合成项目"]]);
     await expect(service.expenseFundingWorkItems(scopes, names)).resolves.toEqual([
-      expect.objectContaining({ id: "expense-funding:disbursement:loan/1", targetPath: "/费用与报销/loan%2F1",
-        type: "payment_execution", currentNode: "登记借款放款", amountText: "¥9.00" }),
       expect.objectContaining({ id: "expense-funding:payment:expense-1", targetPath: "/费用与报销/expense-1",
         type: "payment_execution", currentNode: "登记实际付款", amountText: "¥2.00" })
     ]);
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { voidedAt: null, OR: [
-      { projectId: { in: ["project-1"] }, claimType: { in: ["loan"] }, status: { in: ["approved_pending_disbursement", "partially_disbursed"] } },
       { projectId: { in: ["project-1"] }, claimType: { in: ["reimbursement", "incidental_expense"] }, status: { in: ["approved_pending_payment", "partially_paid"] } }
     ] } }));
     await expect(service.expenseFundingWorkItems([{ projectId: "project-1", roleKeys: ["finance_director"] }], names)).resolves.toEqual([]);

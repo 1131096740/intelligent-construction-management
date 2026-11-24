@@ -14,17 +14,11 @@ import {
   adjustExpenseClaimPaymentSubject,
   appendExpenseClaimAttachment,
   attachExpenseClaimAttachment,
-  confirmExpenseClaimLoanRepayment,
   fetchExpenseClaimActionCapability,
   fetchExpenseClaimDetail,
-  fetchExpenseClaimRepaymentActionCapability,
-  generateExpenseClaimFinalDisbursementPdf,
   generateExpenseClaimFinalPaymentPdf,
-  recordExpenseClaimLoanDisbursement,
-  recordExpenseClaimLoanRepayment,
   recordExpenseClaimPayment,
   removeExpenseClaimAttachment,
-  reverseExpenseClaimLoanRepayment,
   reviewExpenseClaim,
   submitExpenseClaim,
   deleteExpenseClaimDraft,
@@ -32,8 +26,6 @@ import {
   withdrawExpenseClaim,
   uploadExpenseClaimAppendAttachmentFile,
   uploadExpenseClaimDraftAttachmentFile,
-  uploadExpenseClaimLoanDisbursementVoucherFile,
-  uploadExpenseClaimLoanRepaymentVoucherFile,
   uploadExpenseClaimPaymentVoucherFile,
   type EditReturnedExpenseClaimDraftInput,
   type ExpenseClaimDetailReadModel,
@@ -78,16 +70,6 @@ const paymentSubjectConfirmVisible = ref(false);
 const paymentVisible = ref(false);
 const paymentSubmitting = ref(false);
 const paymentConfirmVisible = ref(false);
-const loanActionVisible = ref(false);
-const loanActionConfirmVisible = ref(false);
-const loanActionSubmitting = ref(false);
-const loanAction = ref<"disbursement" | "repayment">("disbursement");
-const loanActionFiles = ref<UploadFile[]>([]);
-const loanActionForm = ref({ amountCents: "", occurredAt: new Date().toISOString().slice(0, 10), paymentMethod: "银行转账", confirmationPassword: "" });
-const repaymentActionVisible = ref(false);
-const repaymentActionSubmitting = ref(false);
-const repaymentAction = ref<{ id: string; mode: "confirm" | "reverse" } | null>(null);
-const repaymentActionForm = ref({ confirmationPassword: "", reason: "", confirmationNote: "" });
 const finalPdfGenerating = ref(false);
 const paymentVoucherFiles = ref<UploadFile[]>([]);
 const paymentForm = ref({ amountCents: "", paidAt: new Date().toISOString().slice(0, 10), paymentMethod: "银行转账", confirmationPassword: "", note: "" });
@@ -350,66 +332,6 @@ async function generateExpenseClaimFinalPaymentPdfWithCapability(claimId: string
   if (!operationAllowed) throw new Error("当前费用申请不能生成付讫归档 PDF");
   return generateExpenseClaimFinalPaymentPdf(claimId);
 }
-async function recordExpenseClaimLoanDisbursementWithCapability(
-  claimId: string,
-  body: Parameters<typeof recordExpenseClaimLoanDisbursement>[1]
-) {
-  const capability = await fetchExpenseClaimActionCapability(claimId);
-  const matchesRequestedClaim = capability.claimId === claimId;
-  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
-  const operationAllowed = capability.availableActions.includes("record_expense_claim_loan_disbursement");
-  if (!operationAllowed) throw new Error("当前借款申请不能登记实际放款");
-  return recordExpenseClaimLoanDisbursement(claimId, body);
-}
-async function generateExpenseClaimFinalDisbursementPdfWithCapability(claimId: string) {
-  const capability = await fetchExpenseClaimActionCapability(claimId);
-  const matchesRequestedClaim = capability.claimId === claimId;
-  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
-  const operationAllowed = capability.availableActions.includes("generate_expense_claim_final_disbursement_pdf");
-  if (!operationAllowed) throw new Error("当前借款申请不能生成放款归档 PDF");
-  return generateExpenseClaimFinalDisbursementPdf(claimId);
-}
-async function recordExpenseClaimLoanRepaymentWithCapability(
-  claimId: string,
-  body: Parameters<typeof recordExpenseClaimLoanRepayment>[1]
-) {
-  const capability = await fetchExpenseClaimActionCapability(claimId);
-  const matchesRequestedClaim = capability.claimId === claimId;
-  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
-  const operationAllowed = capability.availableActions.includes("record_expense_claim_loan_repayment");
-  if (!operationAllowed) throw new Error("当前借款申请不能登记员工还款");
-  return recordExpenseClaimLoanRepayment(claimId, body);
-}
-async function confirmExpenseClaimLoanRepaymentWithCapability(
-  claimId: string,
-  repaymentId: string,
-  body: Parameters<typeof confirmExpenseClaimLoanRepayment>[2]
-) {
-  const capability = await fetchExpenseClaimRepaymentActionCapability(claimId, repaymentId);
-  const matchesRequestedClaim = capability.claimId === claimId;
-  const matchesRequestedRepayment = capability.repaymentId === repaymentId;
-  if (!matchesRequestedClaim || !matchesRequestedRepayment) {
-    throw new Error("员工还款记录已变化，请刷新后重试");
-  }
-  const operationAllowed = capability.availableActions.includes("confirm_expense_claim_loan_repayment");
-  if (!operationAllowed) throw new Error("当前员工还款不可确认");
-  return confirmExpenseClaimLoanRepayment(claimId, repaymentId, body);
-}
-async function reverseExpenseClaimLoanRepaymentWithCapability(
-  claimId: string,
-  repaymentId: string,
-  body: Parameters<typeof reverseExpenseClaimLoanRepayment>[2]
-) {
-  const capability = await fetchExpenseClaimRepaymentActionCapability(claimId, repaymentId);
-  const matchesRequestedClaim = capability.claimId === claimId;
-  const matchesRequestedRepayment = capability.repaymentId === repaymentId;
-  if (!matchesRequestedClaim || !matchesRequestedRepayment) {
-    throw new Error("员工还款记录已变化，请刷新后重试");
-  }
-  const operationAllowed = capability.availableActions.includes("reverse_expense_claim_loan_repayment");
-  if (!operationAllowed) throw new Error("当前员工还款不可更正");
-  return reverseExpenseClaimLoanRepayment(claimId, repaymentId, body);
-}
 async function uploadExpenseClaimDraftAttachmentWithCapability(claimId: string, file: File) {
   const capability = await fetchExpenseClaimActionCapability(claimId);
   const matchesRequestedClaim = capability.claimId === claimId;
@@ -433,22 +355,6 @@ async function uploadExpenseClaimPaymentVoucherWithCapability(claimId: string, f
   const operationAllowed = capability.availableActions.includes("record_expense_claim_payment");
   if (!operationAllowed) throw new Error("当前费用申请不能上传付款凭证");
   return uploadExpenseClaimPaymentVoucherFile(claimId, file, file.name);
-}
-async function uploadExpenseClaimLoanDisbursementVoucherWithCapability(claimId: string, file: File) {
-  const capability = await fetchExpenseClaimActionCapability(claimId);
-  const matchesRequestedClaim = capability.claimId === claimId;
-  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
-  const operationAllowed = capability.availableActions.includes("record_expense_claim_loan_disbursement");
-  if (!operationAllowed) throw new Error("当前借款申请不能上传放款凭证");
-  return uploadExpenseClaimLoanDisbursementVoucherFile(claimId, file, file.name);
-}
-async function uploadExpenseClaimLoanRepaymentVoucherWithCapability(claimId: string, file: File) {
-  const capability = await fetchExpenseClaimActionCapability(claimId);
-  const matchesRequestedClaim = capability.claimId === claimId;
-  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
-  const operationAllowed = capability.availableActions.includes("record_expense_claim_loan_repayment");
-  if (!operationAllowed) throw new Error("当前借款申请不能上传还款凭证");
-  return uploadExpenseClaimLoanRepaymentVoucherFile(claimId, file, file.name);
 }
 async function deleteExpenseClaimDraftWithCapability(claimId: string, updatedAt: string) {
   const capability = await fetchExpenseClaimActionCapability(claimId);
@@ -723,62 +629,12 @@ function requestPaymentRecord() {
     actionError.value = formatUnknownApiError(failure, "请核对实际付款后继续");
   }
 }
-function openLoanAction(action: "disbursement" | "repayment") {
-  if (!detail.value) return;
-  loanAction.value = action;
-  loanActionForm.value = { amountCents: action === "disbursement" ? String(BigInt(detail.value.requestedAmountCents) - BigInt(detail.value.fundedAmountCents)) : "", occurredAt: new Date().toISOString().slice(0, 10), paymentMethod: action === "repayment" ? "现金" : "银行转账", confirmationPassword: "" };
-  loanActionFiles.value = [];
-  actionError.value = "";
-  loanActionVisible.value = true;
-}
-function requestLoanAction() {
-  if (!loanActionForm.value.amountCents.trim() || !loanActionForm.value.occurredAt || !loanActionForm.value.paymentMethod.trim() || !loanActionForm.value.confirmationPassword) { actionError.value = "请完整填写金额、日期、方式和当前密码"; return; }
-  const voucher = loanActionFiles.value.map((file) => file.raw).find((file): file is File => file instanceof File);
-  if (!voucher) { actionError.value = "请上传本次资金事实凭证"; return; }
-  loanActionConfirmVisible.value = true;
-}
-async function recordLoanAction() {
-  if (!detail.value || loanActionSubmitting.value) return;
-  const voucher = loanActionFiles.value.map((file) => file.raw).find((file): file is File => file instanceof File);
-  if (!voucher) return;
-  loanActionSubmitting.value = true;
-  try {
-    const uploaded = loanAction.value === "disbursement"
-      ? await uploadExpenseClaimLoanDisbursementVoucherWithCapability(detail.value.id, voucher)
-      : await uploadExpenseClaimLoanRepaymentVoucherWithCapability(detail.value.id, voucher);
-    if (loanAction.value === "disbursement") await recordExpenseClaimLoanDisbursementWithCapability(detail.value.id, { amountCents: loanActionForm.value.amountCents, paidAt: loanActionForm.value.occurredAt, paymentMethod: loanActionForm.value.paymentMethod, voucherFileId: uploaded.id, confirmationPassword: loanActionForm.value.confirmationPassword });
-    else await recordExpenseClaimLoanRepaymentWithCapability(detail.value.id, { amountCents: loanActionForm.value.amountCents, repaidAt: loanActionForm.value.occurredAt, paymentMethod: loanActionForm.value.paymentMethod, voucherFileId: uploaded.id, confirmationPassword: loanActionForm.value.confirmationPassword });
-    loanActionConfirmVisible.value = false;
-    loanActionVisible.value = false;
-    await loadDetail();
-  } catch (error) { actionError.value = formatUnknownApiError(error, "登记借款资金事实失败"); }
-  finally { loanActionSubmitting.value = false; }
-}
-function openRepaymentAction(id: string, mode: "confirm" | "reverse") {
-  repaymentAction.value = { id, mode };
-  repaymentActionForm.value = { confirmationPassword: "", reason: "", confirmationNote: "" };
-  actionError.value = "";
-  repaymentActionVisible.value = true;
-}
-async function submitRepaymentAction() {
-  if (!detail.value || !repaymentAction.value || repaymentActionSubmitting.value) return;
-  if (!repaymentActionForm.value.confirmationPassword || (repaymentAction.value.mode === "reverse" && !repaymentActionForm.value.reason.trim())) { actionError.value = repaymentAction.value.mode === "reverse" ? "请填写更正原因和当前密码" : "请填写当前密码"; return; }
-  repaymentActionSubmitting.value = true;
-  try {
-    if (repaymentAction.value.mode === "confirm") await confirmExpenseClaimLoanRepaymentWithCapability(detail.value.id, repaymentAction.value.id, { confirmationPassword: repaymentActionForm.value.confirmationPassword, ...(repaymentActionForm.value.confirmationNote.trim() ? { confirmationNote: repaymentActionForm.value.confirmationNote.trim() } : {}) });
-    else await reverseExpenseClaimLoanRepaymentWithCapability(detail.value.id, repaymentAction.value.id, { reason: repaymentActionForm.value.reason.trim(), confirmationPassword: repaymentActionForm.value.confirmationPassword });
-    repaymentActionVisible.value = false;
-    await loadDetail();
-  } catch (error) { actionError.value = formatUnknownApiError(error, "办理员工还款失败"); }
-  finally { repaymentActionSubmitting.value = false; }
-}
 async function generateFinalPdf() {
-  if (!detail.value || finalPdfGenerating.value) return;
+  if (detail.value?.claimType !== "reimbursement" || finalPdfGenerating.value) return;
   finalPdfGenerating.value = true;
   actionError.value = "";
   try {
-    if (detail.value.claimType === "loan") await generateExpenseClaimFinalDisbursementPdfWithCapability(detail.value.id);
-    else await generateExpenseClaimFinalPaymentPdfWithCapability(detail.value.id);
+    await generateExpenseClaimFinalPaymentPdfWithCapability(detail.value.id);
     await loadDetail();
   }
   catch (error) { actionError.value = formatUnknownApiError(error, "生成付讫归档 PDF 失败"); }
@@ -857,7 +713,7 @@ function selectedAttachmentFiles() {
 }
 const isRetiredLoanDraft = computed(() => detail.value?.claimType === "loan" && detail.value.status === "draft");
 async function uploadAttachments() {
-  if (!detail.value || isRetiredLoanDraft.value || attachmentUploading.value) return;
+  if (!detail.value || detail.value.claimType === "loan" || attachmentUploading.value) return;
   if (detail.value.status !== "draft" && !detail.value.attachmentPermissions?.canAppendEvidence) {
     actionError.value = "当前岗位不能在此阶段追加费用资料";
     return;
@@ -992,29 +848,13 @@ onMounted(() => void loadDetail());
               {{ frozenPayment ? '核对原实际付款' : detail.claimType === 'incidental_expense' ? '登记实际付款' : '登记公司补付' }}
             </t-button>
             <t-button
-              v-if="detail.fundsPermissions?.canRecordLoanDisbursement"
-              theme="primary"
-              variant="outline"
-              @click="openLoanAction('disbursement')"
-            >
-              登记实际放款
-            </t-button>
-            <t-button
-              v-if="detail.fundsPermissions?.canRecordLoanRepayment"
-              theme="primary"
-              variant="outline"
-              @click="openLoanAction('repayment')"
-            >
-              登记员工还款
-            </t-button>
-            <t-button
-              v-if="(detail.fundsPermissions?.canGenerateFinalPaymentPdf || detail.fundsPermissions?.canGenerateLoanFinalDisbursementPdf) && !detail.finalPaymentPdf"
+              v-if="detail.claimType === 'reimbursement' && detail.fundsPermissions?.canGenerateFinalPaymentPdf && !detail.finalPaymentPdf"
               theme="primary"
               variant="outline"
               :loading="finalPdfGenerating"
               @click="generateFinalPdf"
             >
-              生成{{ detail.claimType === 'loan' ? '放款' : '付讫' }}归档 PDF
+              生成付讫归档 PDF
             </t-button>
           </template>
         </JgPageHeader>
@@ -1353,93 +1193,6 @@ onMounted(() => void loadDetail());
         >
           登记将写入实际付款金额、日期、方式和凭证审计事实；请确认已核对付款主体与凭证。
         </t-dialog>
-        <t-drawer
-          v-model:visible="loanActionVisible"
-          :header="loanAction === 'disbursement' ? '登记借款实际放款' : '登记员工还款'"
-          size="min(560px, 100vw)"
-          :close-on-overlay-click="false"
-        >
-          <div class="expense-claim-detail__review-form">
-            <YuanMoneyInput
-              v-model="loanActionForm.amountCents"
-              label="本次金额（元）"
-              placeholder="例如 1250"
-            />
-            <t-input
-              v-model="loanActionForm.occurredAt"
-              :label="loanAction === 'disbursement' ? '放款日期' : '还款日期'"
-              placeholder="YYYY-MM-DD"
-            />
-            <t-input
-              v-model="loanActionForm.paymentMethod"
-              label="方式"
-              placeholder="例如：银行转账"
-            />
-            <t-upload
-              v-model="loanActionFiles"
-              theme="file"
-              :auto-upload="false"
-              :max="1"
-              :accept="SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.acceptAttribute"
-              :tips="`凭证：${SPOT_PROCUREMENT_QUOTATION_UPLOAD_POLICY.acceptText}`"
-            />
-            <t-input
-              v-model="loanActionForm.confirmationPassword"
-              type="password"
-              label="当前登录密码"
-              placeholder="用于确认本次资金事实"
-            />
-          </div>
-          <template #footer>
-            <t-button
-              variant="outline"
-              @click="loanActionVisible = false"
-            >
-              取消
-            </t-button><t-button
-              theme="primary"
-              :loading="loanActionSubmitting"
-              @click="requestLoanAction"
-            >
-              确认登记
-            </t-button>
-          </template>
-        </t-drawer>
-        <t-dialog
-          v-model:visible="loanActionConfirmVisible"
-          header="确认登记借款资金事实"
-          :close-on-overlay-click="false"
-          :confirm-btn="{ content: '确认写入', loading: loanActionSubmitting }"
-          @confirm="recordLoanAction"
-        >
-          登记将写入不可变借款账本和凭证审计事实；请确认已核对金额与凭证。
-        </t-dialog>
-        <t-dialog
-          v-model:visible="repaymentActionVisible"
-          :header="repaymentAction?.mode === 'reverse' ? '更正员工还款' : '确认员工还款'"
-          :close-on-overlay-click="false"
-          :confirm-btn="{ content: repaymentAction?.mode === 'reverse' ? '确认更正' : '确认入账', loading: repaymentActionSubmitting }"
-          @confirm="submitRepaymentAction"
-        >
-          <div class="expense-claim-detail__review-form">
-            <t-textarea
-              v-if="repaymentAction?.mode === 'reverse'"
-              v-model="repaymentActionForm.reason"
-              label="更正原因"
-            />
-            <t-textarea
-              v-else
-              v-model="repaymentActionForm.confirmationNote"
-              label="确认说明（可选）"
-            />
-            <t-input
-              v-model="repaymentActionForm.confirmationPassword"
-              type="password"
-              label="当前登录密码"
-              placeholder="用于确认本次受控动作"
-            />
-          </div>
-        </t-dialog>
         <JgDetailTabs
           v-model="tab"
           :tabs="tabs"
@@ -1557,9 +1310,9 @@ onMounted(() => void loadDetail());
           <div class="expense-claim-detail__attachments">
             <t-alert
               theme="info"
-              :message="isRetiredLoanDraft ? '保留旧借款草稿及附件供查阅。' : '附件属于整张费用申请。草稿阶段可移除；提交后审批快照冻结，后续追加将以新版本留痕。'"
+              :message="detail.claimType === 'loan' ? '保留旧借款及附件供查阅。' : '附件属于整张费用申请。草稿阶段可移除；提交后审批快照冻结，后续追加将以新版本留痕。'"
             />
-            <template v-if="!isRetiredLoanDraft && (detail.status === 'draft' || detail.attachmentPermissions?.canAppendEvidence)">
+            <template v-if="detail.claimType !== 'loan' && (detail.status === 'draft' || detail.attachmentPermissions?.canAppendEvidence)">
               <t-select
                 v-model="attachmentCategory"
                 label="资料类别"
@@ -1725,22 +1478,6 @@ onMounted(() => void loadDetail());
                     class="expense-claim-detail__repayment-row"
                   >
                     <span>{{ date(repayment.repaidAt) }} · {{ repayment.paymentMethod }} · {{ amount(repayment.amountCents) }} · {{ repayment.status === 'confirmed' ? '已确认' : repayment.status === 'reversed' ? '已更正' : '待确认' }}</span>
-                    <t-button
-                      v-if="repayment.status === 'recorded' && detail.fundsPermissions.canConfirmLoanRepayment"
-                      theme="primary"
-                      variant="text"
-                      @click="openRepaymentAction(repayment.id, 'confirm')"
-                    >
-                      确认入账
-                    </t-button>
-                    <t-button
-                      v-if="repayment.status === 'confirmed' && detail.fundsPermissions.canReverseLoanRepayment"
-                      theme="danger"
-                      variant="text"
-                      @click="openRepaymentAction(repayment.id, 'reverse')"
-                    >
-                      更正
-                    </t-button>
                   </div>
                 </div>
                 <span v-else>尚无员工还款</span>
@@ -1781,7 +1518,7 @@ onMounted(() => void loadDetail());
                 已归档（{{ date(detail.finalPaymentPdf.createdAt) }}）
               </span>
               <span v-else>
-                {{ detail.claimType === 'loan' ? '待全部实际放款完成后生成' : '待公司补付全部完成后生成' }}
+                {{ detail.claimType === 'loan' ? '无历史放款归档 PDF' : '待公司补付全部完成后生成' }}
               </span>
             </t-descriptions-item>
             <t-descriptions-item label="付款方式">
@@ -1792,7 +1529,7 @@ onMounted(() => void loadDetail());
       </template>
     </JgResultState>
     <DutySmsStatusPanel
-      v-if="detail?.id && (detail.fundsPermissions?.canRecordPayment || detail.fundsPermissions?.canRecordLoanDisbursement)"
+      v-if="detail?.id && detail.claimType !== 'loan' && detail.fundsPermissions?.canRecordPayment"
       domain="expense-claims"
       :business-id="detail.id"
     />

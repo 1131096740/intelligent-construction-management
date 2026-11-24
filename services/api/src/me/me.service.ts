@@ -2080,7 +2080,7 @@ export class MeService {
         id: `expense-funding:${duty.duty}:${claim.id}`,
         type: "payment_execution" as const,
         businessType: "expense_claim", businessId: claim.id, businessCode: claim.code, projectId,
-        title: duty.duty === "disbursement" ? "待登记借款放款" : claim.claimType === "reimbursement" ? "待登记报销实付" : "待登记费用实付",
+        title: claim.claimType === "reimbursement" ? "待登记报销实付" : "待登记费用实付",
         projectName: names.get(projectId) ?? "所属项目",
         amountText: this.amountText(duty.remaining), currentNode: duty.label,
         stayedText: this.stayedText(started), nextAction: duty.label,

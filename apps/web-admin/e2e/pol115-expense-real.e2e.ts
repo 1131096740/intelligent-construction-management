@@ -15,65 +15,32 @@ async function useSession(page: import("@playwright/test").Page, session: Browse
   await page.reload();
 }
 
-test("财务员登记还款后由财务主管确认并更正，桌面和手机回读余额序列", async ({ page }, testInfo) => {
+test("桌面和手机读取历史借款资金，财务岗位不再办理放款和还款", async ({ page }, testInfo) => {
   const financeSession = JSON.parse(process.env.POL115_FINANCE_SESSION!) as BrowserSession;
   const financeDirectorSession = JSON.parse(process.env.POL115_FINANCE_DIRECTOR_SESSION!) as BrowserSession;
   const claimIds = JSON.parse(process.env.POL115_REPAYMENT_CLAIM_IDS!) as Record<string, string>;
   const claimId = claimIds[testInfo.project.name]!;
-  const paymentMethod = `浏览器${testInfo.project.name}现金`;
-  const password = process.env.POL115_ACCOUNT_PASSWORD!;
   await page.goto("/login");
-  await page.evaluate((value) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
+  await page.evaluate((session) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(session)), {
     user: financeSession.user, accessToken: financeSession.tokens.accessToken, refreshToken: financeSession.tokens.refreshToken
   });
   await page.goto(`/费用与报销/${claimId}`);
-  await page.getByText("资金结果", { exact: true }).click();
-  await expect(page.getByText("当前借款余额").locator("..")).toContainText("¥0.01");
-
-  await page.getByRole("button", { name: "登记员工还款", exact: true }).click();
-  const repaymentDrawer = page.locator(".t-drawer").filter({ hasText: "登记员工还款" });
-  await repaymentDrawer.getByPlaceholder("例如 1250").fill("0.01");
-  await repaymentDrawer.getByPlaceholder("例如：银行转账").fill(paymentMethod);
-  await repaymentDrawer.locator('input[type="file"]').setInputFiles({
-    name: "浏览器还款凭证.png", mimeType: "image/png",
-    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")
-  });
-  await repaymentDrawer.getByPlaceholder("用于确认本次资金事实").fill(password);
-  await repaymentDrawer.getByRole("button", { name: "确认登记", exact: true }).click();
-  const recordedResponse = page.waitForResponse((response) => response.url().endsWith(`/expense-claims/${claimId}/repayments`) && response.request().method() === "POST");
-  await page.locator(".t-dialog").filter({ hasText: "确认登记借款资金事实" }).getByRole("button", { name: "确认写入", exact: true }).click();
-  const recorded = await recordedResponse;
-  expect(recorded.status(), await recorded.text()).toBe(201);
-  expect(recorded.request().postDataJSON().amountCents).toBe("1");
-  const repaymentId = ((await recorded.json()) as { id: string }).id;
-  const browserRow = page.locator(".expense-claim-detail__repayment-row").filter({ hasText: paymentMethod });
-  await expect(browserRow).toContainText("待确认");
-  await expect(page.getByText("当前借款余额").locator("..")).toContainText("¥0.01");
-
+  const readHistory = async () => {
+    await page.getByText("资金结果", { exact: true }).click();
+    await expect(page.getByText("当前借款余额").locator("..")).toContainText("¥0.01");
+    await expect(page.getByText(/合成历史银行转账/)).toBeVisible();
+    await expect(page.locator(".expense-claim-detail__repayment-row")).toContainText("合成历史现金");
+    await expect(page.locator(".expense-claim-detail__repayment-row")).toContainText("待确认");
+    await expect(page.getByText(/已归档/)).toBeVisible();
+    for (const name of ["登记实际放款", "登记员工还款", "确认入账", "更正", "生成放款归档 PDF"]) {
+      await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);
+    }
+    await expect(page.locator("body")).not.toContainText(claimId);
+    expect(await page.locator(".expense-claim-detail").evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  };
+  await readHistory();
   await useSession(page, financeDirectorSession);
-  await page.getByText("资金结果", { exact: true }).click();
-  const directorRow = page.locator(".expense-claim-detail__repayment-row").filter({ hasText: paymentMethod });
-  await directorRow.getByRole("button", { name: "确认入账", exact: true }).click();
-  const confirmDialog = page.locator(".t-dialog").filter({ hasText: "确认员工还款" });
-  await confirmDialog.getByPlaceholder("用于确认本次受控动作").fill(password);
-  const confirmedResponse = page.waitForResponse((response) => response.url().endsWith(`/expense-claims/${claimId}/repayments/${repaymentId}/confirmation`) && response.request().method() === "POST");
-  await confirmDialog.getByRole("button", { name: "确认入账", exact: true }).click();
-  expect((await confirmedResponse).status()).toBe(201);
-  await expect(directorRow).toContainText("已确认");
-  await expect(page.getByText("当前借款余额").locator("..")).toContainText("¥0.00");
-
-  await directorRow.getByRole("button", { name: "更正", exact: true }).click();
-  const reversalDialog = page.locator(".t-dialog").filter({ hasText: "更正员工还款" });
-  await reversalDialog.locator("textarea").fill("浏览器凭证金额录入错误");
-  await reversalDialog.getByPlaceholder("用于确认本次受控动作").fill(password);
-  const reversedResponse = page.waitForResponse((response) => response.url().endsWith(`/expense-claims/${claimId}/repayments/${repaymentId}/reversal`) && response.request().method() === "POST");
-  await reversalDialog.getByRole("button", { name: "确认更正", exact: true }).click();
-  expect((await reversedResponse).status()).toBe(201);
-  await expect(directorRow).toContainText("已更正");
-  await expect(page.getByText("当前借款余额").locator("..")).toContainText("¥0.01");
-  await expect(page.locator("body")).not.toContainText(claimId);
-  await expect(page.locator("body")).not.toContainText(repaymentId);
-  expect(await page.locator(".expense-claim-detail").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await readHistory();
 });
 
 test("桌面费用明细从粘贴事件批量录入两行并准确保存", async ({ page, request }, testInfo) => {
@@ -85,7 +52,6 @@ test("桌面费用明细从粘贴事件批量录入两行并准确保存", async
   await page.goto("/费用与报销工作台");
   await page.getByRole("button", { name: "新建费用申请", exact: true }).click();
   const drawer = page.locator(".t-drawer");
-  await drawer.getByText("借款申请", { exact: true }).click();
   await drawer.getByText("费用报销", { exact: true }).click();
   await selectBusinessProject(page);
   await page.getByRole("button", { name: "下一步", exact: true }).click();
@@ -124,7 +90,6 @@ test("报销表格或移动卡片保存一分钱明细并经真实接口回读",
   await page.goto("/费用与报销工作台");
   await page.getByRole("button", { name: "新建费用申请", exact: true }).click();
   const drawer = page.locator(".t-drawer");
-  await drawer.getByText("借款申请", { exact: true }).click();
   await drawer.getByText("费用报销", { exact: true }).click();
   await selectBusinessProject(page);
   await page.getByRole("button", { name: "下一步", exact: true }).click();

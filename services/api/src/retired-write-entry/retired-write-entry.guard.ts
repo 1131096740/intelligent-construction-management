@@ -69,6 +69,13 @@ export const RETIRED_WRITE_ENTRIES: readonly RetiredWriteEntry[] = [
   { controller: "ContractWorkbenchController", handler: "restoreCheckpoint" },
   { controller: "ContractWorkbenchController", handler: "save" },
   { controller: "ContractWorkbenchController", handler: "void" },
+  { controller: "ExpenseClaimController", handler: "confirmRepayment" },
+  { controller: "ExpenseClaimController", handler: "generateLoanFinalDisbursementPdf" },
+  { controller: "ExpenseClaimController", handler: "recordLoanDisbursement" },
+  { controller: "ExpenseClaimController", handler: "recordRepayment" },
+  { controller: "ExpenseClaimController", handler: "reverseRepayment" },
+  { controller: "ExpenseClaimController", handler: "uploadDisbursementVoucherFile" },
+  { controller: "ExpenseClaimController", handler: "uploadRepaymentVoucherFile" },
   { controller: "InvoiceLedgerController", handler: "createInvoiceException" },
   {
     controller: "InvoiceLedgerController",

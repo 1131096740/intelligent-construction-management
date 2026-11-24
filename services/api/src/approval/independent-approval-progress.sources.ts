@@ -288,7 +288,7 @@ const repayment = source("loan_repayment", "员工还款确认", "employeeLoanRe
   if (!scope.startsWith("project:"))
     return null;
   return one(row, identity, {
-    projectId: scope.slice(8), applicant: str(row, "recordedByUserId"), code: "员工还款", roles: ["finance_director"], pending: str(row, "status") === "recorded", approved: str(row, "status") === "confirmed", cancelled: str(row, "status") === "reversed", participants: people(str(account, "userId"), str(row, "confirmedByUserId"), str(row, "reversedByUserId")), history: [
+    projectId: scope.slice(8), applicant: str(row, "recordedByUserId"), code: "员工还款", roles: ["finance_director"], pending: false, approved: str(row, "status") === "confirmed", cancelled: str(row, "status") === "reversed", participants: people(str(account, "userId"), str(row, "confirmedByUserId"), str(row, "reversedByUserId")), history: [
       ...event(row, "recordedByUserId", "createdAt", "登记还款"), ...event(row, "confirmedByUserId", "confirmedAt", "确认还款", "confirmationNote"), ...event(row, "reversedByUserId", "reversedAt", "冲销还款", "reversalReason")
     ]
   });
