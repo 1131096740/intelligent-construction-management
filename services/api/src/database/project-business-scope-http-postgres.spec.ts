@@ -258,10 +258,13 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     const loanInput = { claimType: "loan", companyEntityId: company, projectId: second, applicantUserId: materialDirector.id,
       reason: "历史借款受理验收", requestedAmountCents: "12500", loanExpectedClearanceOn: "2026-12-01" };
     expectStatus(await request("/expense-claims", materialDirector, loanInput), 410);
-    expectStatus(await request(`/projects/${second}/expense-requests`, materialDirector, {
+    const projectExpensePath = `/projects/${second}/expense-requests`;
+    const projectLoanInput = {
       code: `RETIRED-${randomUUID()}`, expenseType: "loan_reserve", expenseSubtype: "employee_loan",
       paymentSubject: "项目使用", reason: loanInput.reason, requestedAmountCents: loanInput.requestedAmountCents, paymentMethod: "cash"
-    }), 410);
+    };
+    expectStatus(await request(projectExpensePath, materialDirector, projectLoanInput), 403);
+    expectStatus(await request(projectExpensePath, secondManager, projectLoanInput), 410);
     expect(await historicalFixtureOwner.expenseClaim.count({ where: { projectId: second, reason: loanInput.reason } })).toBe(0);
 
     const historical = await historicalFixtureOwner.expenseClaim.create({ data: {
