@@ -218,13 +218,27 @@ async function main(args) {
   try {
     const port = await localPort();
     const certificate = path.join(directory, "server.crt");
+    const ca = path.join(directory, "ca.crt");
+    const caKey = path.join(directory, "ca.key");
+    const wrongCa = path.join(directory, "wrong-ca.crt");
+    const request = path.join(directory, "server.csr");
+    const extensions = path.join(directory, "server.ext");
     const key = path.join(directory, "server.key");
     const passwordFile = path.join(directory, "owner-password");
     fs.writeFileSync(passwordFile, ownerPassword + "\n", { mode: 0o600, flag: "wx" });
     fs.mkdirSync(socket, { mode: 0o700 });
-    run("/usr/bin/openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=127.0.0.1",
-      "-addext", "subjectAltName=IP:127.0.0.1", "-keyout", key, "-out", certificate]);
+    const openssl = args => run("/usr/bin/openssl", args);
+    for (const [name, target, privateKey] of [["primary", ca, caKey], ["wrong", wrongCa, path.join(directory, "wrong-ca.key")]]) {
+      openssl(["req", "-new", "-newkey", "rsa:2048", "-nodes", "-x509", "-sha256", "-days", "1",
+        "-subj", "/CN=native-" + name + "-" + runId, "-keyout", privateKey, "-out", target]);
+      fs.chmodSync(privateKey, 0o600);
+    }
+    fs.writeFileSync(extensions, "subjectAltName=IP:127.0.0.1\nextendedKeyUsage=serverAuth\n", { mode: 0o600, flag: "wx" });
+    openssl(["req", "-new", "-newkey", "rsa:2048", "-nodes", "-subj", "/CN=native-" + runId,
+      "-keyout", key, "-out", request]);
     fs.chmodSync(key, 0o600);
+    openssl(["x509", "-req", "-sha256", "-days", "1", "-in", request, "-CA", ca, "-CAkey", caKey,
+      "-set_serial", "1", "-extfile", extensions, "-out", certificate]);
     run(bin("initdb"), ["-D", data, "--username", owner, "--pwfile", passwordFile, "--auth-local=peer", "--auth-host=scram-sha-256", "--encoding=UTF8", "--locale=C"]);
     const osUser = os.userInfo().username;
     assert.match(osUser, /^[A-Za-z0-9_]+$/u);
@@ -242,17 +256,28 @@ async function main(args) {
     const observed = fs.readFileSync(path.join(data, "postmaster.pid"), "utf8").split("\n");
     assert.equal(observed[1], data);
     assert.equal(observed[3], String(port));
+    assert.match(observed[0], /^[1-9][0-9]*$/u);
+    receipt.postgres = { pid: Number(observed[0]), host: "127.0.0.1", port, version: "16.15" };
+    process.stderr.write("NATIVE_329_POSTGRES_READY " + JSON.stringify(receipt.postgres) + "\n");
     const sql = (text, name = database) => run(bin("psql"), ["-X", "-q", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=verbose", "-d", name, "-f", "-"], {
       PGHOST: "127.0.0.1", PGPORT: String(port), PGUSER: owner, PGPASSWORD: ownerPassword,
-      PGSSLMODE: "verify-full", PGSSLROOTCERT: certificate, PGCONNECT_TIMEOUT: "5"
+      PGSSLMODE: "verify-full", PGSSLROOTCERT: ca, PGCONNECT_TIMEOUT: "5"
     }, text);
     sql("CREATE DATABASE " + database + " TEMPLATE template0 ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C';", "postgres");
     const ownerUrl = new URL("postgresql://" + owner + "@127.0.0.1:" + port + "/" + database);
     ownerUrl.password = ownerPassword;
-    for (const [key, value] of Object.entries({ sslmode: "require", sslaccept: "strict", sslcert: certificate, schema: "public", connection_limit: "1", connect_timeout: "5" })) {
+    for (const [key, value] of Object.entries({ sslmode: "require", sslaccept: "strict", sslcert: ca, schema: "public", connection_limit: "1", connect_timeout: "5" })) {
       ownerUrl.searchParams.set(key, value);
     }
+    stage("PG_TLS");
     assert.equal(sql("SELECT (SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()) AND inet_client_addr() = '127.0.0.1'::inet;"), "t");
+    for (const mismatch of [{ PGSSLROOTCERT: wrongCa }, { PGSSLMODE: "disable" }]) {
+      const negative = spawnSync(bin("psql"), ["-X", "-q", "-d", database, "-c", "SELECT 1"], {
+        cwd: api, env: { ...env, HOME: directory, PGHOST: "127.0.0.1", PGPORT: String(port), PGUSER: owner,
+          PGPASSWORD: ownerPassword, PGSSLMODE: "verify-full", PGSSLROOTCERT: ca, PGCONNECT_TIMEOUT: "5", ...mismatch }, timeout: 7_000
+      });
+      assert.equal(negative.status, 2);
+    }
     const { appOid, app } = await migrate({ source, database, directory, sql, url: ownerUrl, run, stage, runId });
     stage("ROLE");
     grantApplication(sql, database, app, appPassword);
