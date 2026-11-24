@@ -57,6 +57,12 @@ role_material = {
     'services/api/prisma/local-staged-migration-qualification.json',
     'services/api/prisma/task398-owned-280-business-read-baseline.json',
 }
+# 329 uses the current approval protocol in both HTTP regression suites.
+# Historical modes still stage their original pinned overlays.
+current_test_fixtures = {
+    'services/api/src/database/general-procurement-http-postgres.spec.ts',
+    'services/api/src/database/project-business-scope-http-postgres.spec.ts',
+} if current320 else set()
 staged_role = set()
 for row in json.loads(manifest)['files']:
     relative, expected = row['file'], row['sha256']
@@ -69,13 +75,17 @@ for row in json.loads(manifest)['files']:
         continue
     if relative in delta:
         proof = delta[relative]
-        if proof['expected'] != expected or proof['candidate'] != tested:
+        archived = proof['expected']
+        if isinstance(archived, dict):
+            archived = archived[lane]
+        if archived != expected or proof['candidate'] != tested:
             raise ValueError(f'PROCUREMENT_295_CANDIDATE_PIN {relative}')
         seen.add(relative)
         # 角色材料同时是候选增量时，仍须把候选字节送进容器；否则容器会用旧镜像副本，
         # 既丢失新授权又让 staged_role 闭合失败。
-        if relative in role_material:
+        if relative in role_material or relative in current_test_fixtures:
             write(out / 'workspace' / relative, read(current))
+        if relative in role_material:
             staged_role.add(relative)
         continue
     if original['overlays'].get(relative) != {'candidate': tested, 'after': expected}:

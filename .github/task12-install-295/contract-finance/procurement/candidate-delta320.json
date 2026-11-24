@@ -20,6 +20,11 @@
     "candidate": "eeca6404316cb5a86ba058edbdf2aae4aace2d0b308a0dc1a6018debb5fc5374"
   },
   {
+    "path": "apps/web-admin/e2e/expense-claim-workbench.e2e.ts",
+    "expected": "8c0e7d588456b25fe7e78b35255377292ac2ff7505d21cb28aff9a63571f22f3",
+    "candidate": "013f5d7c37abb6f5f3fb31924ea5712b341bb02287bfdd4ee0ee20874fd1ad77"
+  },
+  {
     "path": "apps/web-admin/e2e/helpers/approval-progress-mocks.ts",
     "expected": "25aaafe0f1445a86370c2d8c54caa4d5b133230af0cc22b8daa56257fbfa7d85",
     "candidate": "19ec360d66a4206b4286f3a6c112e94cfc1f65f7da8cbf3c00eb417c331446e7"
@@ -82,12 +87,12 @@
   {
     "path": "apps/web-admin/src/api/expense-claim.api.test.ts",
     "expected": "d3c78098151ae16e134c78be27d2ccc0157d97ec36e3ddfab181eae68a45b6b6",
-    "candidate": "bbeb086cf2ee60e1597c725dd72db7e1b0e3808228e2948e68b37dc2b6c7039b"
+    "candidate": "fe6d6ebce53ef9867da37735027b4986d09afc8f99b129ad809eaa83b4f3e5cd"
   },
   {
     "path": "apps/web-admin/src/api/expense-claim.api.ts",
     "expected": "7ab9fecf6a4955e32de1d973b9c7879a2162a245302a944e4177faf6556bfc3d",
-    "candidate": "123a9df6715c1271bbb8f61f169956e22905adf13272dd292835c6493e0326b1"
+    "candidate": "3a590cd70ddee57fecd60904bde0a00722331601d37ab1a5d2df31d084bc0177"
   },
   {
     "path": "apps/web-admin/src/api/general-procurement.api.ts",
@@ -247,7 +252,7 @@
   {
     "path": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
     "expected": "8121eb6c0b06db777520b299b101bb4daa71902ad48a397c911a9d8bb50912db",
-    "candidate": "fc04d0e5e9725eccf5dbd304e6648848f7d5c35e10b5ccad378b35696c251fe5"
+    "candidate": "3584c4ea2b6f3355ad918109d8f8cbf698b871a6b285d062c992497341267449"
   },
   {
     "path": "apps/web-admin/src/pages/expense-claims/ExpenseClaimWorkbenchPage.vue",
@@ -257,7 +262,7 @@
   {
     "path": "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimCreateDrawer.vue",
     "expected": "3526e820e239496d4e80d0cc1f8ba24e539c29983f9ef543b6590aa8a1bc2189",
-    "candidate": "4a964359fa55e5d0e4fc7b05040ce79015ed0a7dcad52c7fcfe6d335782e7753"
+    "candidate": "6f61f6de603df21f01cc171d3364b48289526786e97bb35a569351514e79a8ce"
   },
   {
     "path": "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimLineEditor.vue",
@@ -452,7 +457,7 @@
   {
     "path": "services/api/prisma/database-dynamic-gate-manifest.json",
     "expected": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
-    "candidate": "334ddcb52ce06797db8f4ede01e6e301a96165e92a291a80d2c829bec88f7007"
+    "candidate": "c9ee297bb5dd4eb8c64da67242b5404167220c3b12c7963351184bfeada6d2a6"
   },
   {
     "path": "services/api/prisma/fixtures/project-approval-configuration.ts",
@@ -477,7 +482,7 @@
   {
     "path": "services/api/prisma/run-database-dynamic-gate-local.test.cjs",
     "expected": "78a8d474a9bef166001372b1e096b4f9b190d1d6fce3988bee01ad7f9b6eb09d",
-    "candidate": "95571035583cdb7babbabe2c9def3d9120c17891f995c5b558ed7c6a8418ba26"
+    "candidate": "1d35b506212de911e4430db4168c24554f3910fe82b8c049199aeda72653461f"
   },
   {
     "path": "services/api/prisma/run-database-dynamic-remaining-local.cjs",
@@ -537,12 +542,12 @@
   {
     "path": "services/api/src/approval/approval-form.service.spec.ts",
     "expected": "5f42c450c0515fb809ea0fcfbf259c27281edc30da0c2e645a8e5c825e650c6a",
-    "candidate": "beb70c1756e644ba43862df296aa4dc58d6bf20e3b1f4edb3d977577e48a6e7d"
+    "candidate": "c4f2fc10aaf24c0fd486247c9ffe20fca78ac5ee24daed1283c3a1ed68b9b529"
   },
   {
     "path": "services/api/src/approval/approval-form.service.ts",
     "expected": "031b17311e634ad97b838f71dd155734def4b2a2f3c307bf347e644427a6dedd",
-    "candidate": "9f6cabcdbaeaa5fb6b6616850a6b8fcbe38bb68121b5cc7cb934668438949e51"
+    "candidate": "df17d665b39bab377138cd6ce394a52e300c99c24e35c28944f7f2b13f0598ba"
   },
   {
     "path": "services/api/src/approval/approval-progress.controller.ts",
@@ -552,12 +557,12 @@
   {
     "path": "services/api/src/approval/approval-progress.service.spec.ts",
     "expected": "f7a810593df5fa3cae91c8233d34840cc757bbac405586353394f3aaa19b32fe",
-    "candidate": "ead07f66bd46b97808d55e07092d4d20dadc0fa0ef39b32cbf026d7275010db2"
+    "candidate": "95478a394dc6b5fc29f5ed4da1dcfa4021622cddefd305009b8796b2c2e7e66e"
   },
   {
     "path": "services/api/src/approval/approval-progress.service.ts",
     "expected": "7db2f18e02d05e265173db1a012e2055d82f5db1a8a8543b45d7a95e2a5e6ff0",
-    "candidate": "e7a531f8bc2fd75bff13502288055cb492c56c163af962cd87dc3e59b46d7e55"
+    "candidate": "0417d6c1538ad42806dc6dce2d84d17ac734d03ad79ca8f1152e585421c08cb0"
   },
   {
     "path": "services/api/src/approval/approval-review-identity.spec.ts",
@@ -617,12 +622,12 @@
   {
     "path": "services/api/src/auth/guards/permission.guard.spec.ts",
     "expected": "55a3f0503efcc1ad1282636fccbea839c3ba2e952e3cea59c3313f36414c6eaa",
-    "candidate": "ecf0d5cc733834ab40d6b503ce35b73d178f9f92f7ba8c8b8e4b193cf0e411be"
+    "candidate": "7fc2d67c0a2bc1dd9242307d26a0d433727d32e69c18187d8f9fe11145574959"
   },
   {
     "path": "services/api/src/auth/guards/permission.guard.ts",
     "expected": "8ccc2c3808ddd45837ed115202395a4f87dcc51aa4e015f4590b4f97e40021f1",
-    "candidate": "4e241a7e678c0b33de52c938319e6d4772a7cef587f5a95d65eb775e48ee7c7c"
+    "candidate": "acbc101521ba91d1c967c73caa053d4daa51d362f47641811d1f6d19bb63ed87"
   },
   {
     "path": "services/api/src/auth/ledger-read-positions.ts",
@@ -885,6 +890,19 @@
     "candidate": "457588e2260de310af13f40120757ca0715ca72e018397fcc67558616a46dff4"
   },
   {
+    "path": "services/api/src/database/general-procurement-http-postgres.spec.ts",
+    "expected": "3ce1fa518856776aff97bc860c542a21e74732fbead2139cdd577013f1d29b52",
+    "candidate": "604b76192f84144ea28498090c09891fd36929a08da72e99a181ce5fa1e1e027"
+  },
+  {
+    "path": "services/api/src/database/project-business-scope-http-postgres.spec.ts",
+    "expected": {
+      "general16": "58901077599d29a5db83e55e0619048ec044317abf7519c3292639b0ab4add36",
+      "project11": "0692b080530be247e2b06be7ab599eedd5fa99f49ae1eec7fd87f9a2c4b84128"
+    },
+    "candidate": "aa52d011544897b1960a1cb8b2c226cbffc751f4afd39b739efce81c7a8218dd"
+  },
+  {
     "path": "services/api/src/database/registered-payment-catalog.ts",
     "expected": "a68f8f1eccbedaf444770aed90923194b37ee542499f1589fc140fb3bfd67335",
     "candidate": "40d44f5a495a24fc63acc739654b1706a8c2599a64b8a163f56fd30567e50552"
@@ -915,9 +933,14 @@
     "candidate": "e848d5089226adb58ac08cef56ffcdbae72ab72abf9df337f4b399eb6b19e196"
   },
   {
+    "path": "services/api/src/expense-claim/dto/review-expense-claim.dto.ts",
+    "expected": "58c5f3295fb803794179ab6e2dbb07fa6bb29b0a36ca42e72a8f663b0b67029c",
+    "candidate": "d23724ee4061748c45ced7278e0c1433a22c7e624e5442bac577207d1c28ac75"
+  },
+  {
     "path": "services/api/src/expense-claim/expense-claim-approval-form-renderer.ts",
     "expected": "46c9f831be9dbacb75574291a3349695221881b503b6005773d531fbbad4d133",
-    "candidate": "1bf5a37c8e8fff188fbdf7e661463a61a5768dc1d370bd320f2ae237fa63605b"
+    "candidate": "0065dd19a293b89b43cd9ee55fedba22ef352b68df6109245d100200bc0b7d7f"
   },
   {
     "path": "services/api/src/expense-claim/expense-claim-entry.adapter.ts",
@@ -930,6 +953,21 @@
     "candidate": "61487dadef4dd11979836aec33f8fa98f5b01e45ebc7e991ac6600072c9046b5"
   },
   {
+    "path": "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts",
+    "expected": "e99beb176be2538e9424ef558241f0720e59f812c6723f2006a8e08d71046de2",
+    "candidate": "484b65d692af64629ec546fe03e41ae861c586feb13ee18714ee9467b08f6151"
+  },
+  {
+    "path": "services/api/src/expense-claim/expense-claim-funding-notification.service.spec.ts",
+    "expected": "07f5fa86327bef4401d96dbcd32985bb0f8f808ab3a429b5525a3c17e7cb5186",
+    "candidate": "9aea3ef71a023e15023bf35d21ea8a41fb001a58f0c404978e69e1da830bf7bd"
+  },
+  {
+    "path": "services/api/src/expense-claim/expense-claim-funding-notification.service.ts",
+    "expected": "d7dad44d9fdc7fd87c4fbfd37fa3bebdb44e27af5417e6cb0fa4b81992b81fb6",
+    "candidate": "a3d1a0e069f0412580086093e26479b1bad696a82f630e90641915a357752d0d"
+  },
+  {
     "path": "services/api/src/expense-claim/expense-claim-operating-source.adapter.spec.ts",
     "expected": "5ed26dbce05714626912516b5cc0956693dd459bf3d74113b746d721b5ace9ec",
     "candidate": "8c98cec3afb7df52bf9a178ea0a3393de0d403e4c3743a732b8e56bfe8a11347"
@@ -938,6 +976,11 @@
     "path": "services/api/src/expense-claim/expense-claim-operating-source.adapter.ts",
     "expected": "8941b1f86578f32fbcdd67ab74aa2347a9a911be5c1ba29e694cccf7e982ea0c",
     "candidate": "281721c68343b3f97070717159366c1b8b7c013fbacfd6d67f6651697ddc3186"
+  },
+  {
+    "path": "services/api/src/expense-claim/expense-claim-registered-payment.http.pg.spec.ts",
+    "expected": "daf437eb1848c6aa082478dae534d631fb3e52e2c614e7157be734d9813465aa",
+    "candidate": "c66c7725bc05c63a01d0ccf1e1a21f44bab0068f5dd9d9d68698e7f8f18fa53d"
   },
   {
     "path": "services/api/src/expense-claim/expense-claim.controller.ts",
@@ -952,12 +995,12 @@
   {
     "path": "services/api/src/expense-claim/expense-claim.service.spec.ts",
     "expected": "509550e06797e74897e0c471211f3b046c7af5e6a9dda1677d691518ee1fb3a1",
-    "candidate": "541cbe88482268678c0c5721780280de63e8ad406eb7015de729acdc0fcf0ea9"
+    "candidate": "ac1d16cda51a91b3be9afd831ab9290e6f1f9c12f96f0791f0639813f1b05f2d"
   },
   {
     "path": "services/api/src/expense-claim/expense-claim.service.ts",
     "expected": "6d254a9271a611bfaa8fefbf9ff2d1933c67e0a1224d2f35a4bb09aace487584",
-    "candidate": "b4c3537ca095606227cf01b590407b0052285032a0aa0abb85fb8471d23344a6"
+    "candidate": "363ada6646235277f10eae9d4adfa5ef5348e24221ee7d06b3165068a0eed2b5"
   },
   {
     "path": "services/api/src/file/dto/create-download-ticket.dto.ts",
@@ -1082,12 +1125,12 @@
   {
     "path": "services/api/src/me/me.service.spec.ts",
     "expected": "682eeebac883267ff89882c2b63b8853bdb88d4163dd8527da496f8c85e6d755",
-    "candidate": "b049e9826989fe59d005ddf40bfcc51f1b4e92542e7657afae8db2f85c25389e"
+    "candidate": "e73a91beb90f4dce893b86f61f6173e8f1a69bfc5e7072b070a78cc0c7bb37dd"
   },
   {
     "path": "services/api/src/me/me.service.ts",
     "expected": "439db3745de0160d9db7dc5819bdf2f73c2ac0c595d8f8b5250e83d54aba5b25",
-    "candidate": "30c33a5d95d067c3edaf89388479a4498a6eb928994090503524e46d8a5c35be"
+    "candidate": "8e0122dfea1d845bd99e9a0c2dd253f6109e063a68177aac5e12621cdbed3404"
   },
   {
     "path": "services/api/src/necessary-expense-reserve/necessary-expense-reserve-file-access.spec.ts",
