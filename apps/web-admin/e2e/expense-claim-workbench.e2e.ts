@@ -98,6 +98,31 @@ test("费用工作台仅保留报销和零星费用，并办理零星费用草�
   await expect(page.getByRole("cell", { name: "后续追加资料", exact: true })).toBeVisible();
 });
 
+test("旧借款草稿显示历史附件且不再显示草稿操作", async ({ page }) => {
+  await mockExpenseClaimSession(page, []);
+  await page.route("**/api/expense-claims/historical-loan-draft", route => route.fulfill({
+    json: {
+      ...expenseClaim({ id: "historical-loan-draft", code: "JK-HISTORY-001", claimType: "loan", status: "draft", reason: "旧借款草稿" }),
+      canDeleteDraft: true, canEditReturnedDraft: true,
+      submittedAt: null, approvedAt: null, lines: [], loanDisbursements: [], loanRepayments: [],
+      attachments: [{
+        id: "historical-attachment", fileId: "historical-file", fileName: "旧借款资料.pdf", mimeType: "application/pdf",
+        category: "receipt_or_other", stage: "draft", fileStatus: "active", removedAt: null
+      }]
+    }
+  }));
+  await login(page);
+  await page.goto("/费用与报销/historical-loan-draft");
+  await expect(page.getByRole("heading", { name: "借款申请" })).toBeVisible();
+  for (const name of ["修改草稿", "删除草稿", "提交审批", "重新提交审批"]) {
+    await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);
+  }
+  await page.getByText("附件与证据", { exact: true }).click();
+  await expect(page.locator(".expense-claim-detail__attachment-table").getByText("旧借款资料.pdf", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "上传并绑定附件", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "移除", exact: true })).toHaveCount(0);
+});
+
 test("公司日常报销不选择事实证明人也可填写明细", async ({ page }) => {
   await mockExpenseClaimSession(page, []);
   await page.route("**/api/expense-claims/create-options", route => route.fulfill({

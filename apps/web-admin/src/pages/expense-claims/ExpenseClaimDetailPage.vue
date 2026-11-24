@@ -459,7 +459,7 @@ async function deleteExpenseClaimDraftWithCapability(claimId: string, updatedAt:
   return deleteExpenseClaimDraft(claimId, updatedAt);
 }
 async function deleteDraft() {
-  if (!detail.value || submitting.value) return;
+  if (!detail.value || detail.value.claimType === "loan" || submitting.value) return;
   const row = detail.value;
   submitting.value = true; actionError.value = "";
   try {
@@ -855,8 +855,9 @@ async function review() {
 function selectedAttachmentFiles() {
   return attachmentFiles.value.map((file) => file.raw).filter((file): file is File => file instanceof File);
 }
+const isRetiredLoanDraft = computed(() => detail.value?.claimType === "loan" && detail.value.status === "draft");
 async function uploadAttachments() {
-  if (!detail.value || attachmentUploading.value) return;
+  if (!detail.value || isRetiredLoanDraft.value || attachmentUploading.value) return;
   if (detail.value.status !== "draft" && !detail.value.attachmentPermissions?.canAppendEvidence) {
     actionError.value = "当前岗位不能在此阶段追加费用资料";
     return;
@@ -884,7 +885,7 @@ async function uploadAttachments() {
   finally { attachmentUploading.value = false; }
 }
 async function removeAttachment(attachmentId: string) {
-  if (!detail.value || attachmentUploading.value) return;
+  if (!detail.value || isRetiredLoanDraft.value || attachmentUploading.value) return;
   attachmentUploading.value = true;
   actionError.value = "";
   try { await removeExpenseClaimAttachmentWithCapability(detail.value.id, attachmentId); await loadDetail(); }
@@ -916,8 +917,8 @@ onMounted(() => void loadDetail());
           :status="statusLabel(detail.status)"
           :status-tone="tone(detail.status)"
           :owner="detail.handledByNameSnapshot"
-          :current-node="detail.approval?.currentNodeName ?? (detail.status === 'draft' ? '待提交' : '流程已结束')"
-          :next-step="detail.status === 'draft' ? '经办人提交' : '查看资金或审批进度'"
+          :current-node="detail.approval?.currentNodeName ?? (isRetiredLoanDraft ? '历史草稿' : detail.status === 'draft' ? '待提交' : '流程已结束')"
+          :next-step="!isRetiredLoanDraft && detail.status === 'draft' ? '经办人提交' : '查看资金或审批进度'"
           :requested-amount="amount(detail.requestedAmountCents)"
         >
           <template #actions>
@@ -944,7 +945,7 @@ onMounted(() => void loadDetail());
               修改草稿
             </t-button>
             <t-popconfirm
-              v-if="detail.canDeleteDraft"
+              v-if="!isRetiredLoanDraft && detail.canDeleteDraft"
               content="彻底删除此未提交草稿及其明细、附件关联？删除后无法恢复。"
               confirm-btn="确认删除"
               cancel-btn="保留草稿"
@@ -1556,9 +1557,9 @@ onMounted(() => void loadDetail());
           <div class="expense-claim-detail__attachments">
             <t-alert
               theme="info"
-              message="附件属于整张费用申请。草稿阶段可移除；提交后审批快照冻结，后续追加将以新版本留痕。"
+              :message="isRetiredLoanDraft ? '保留旧借款草稿及附件供查阅。' : '附件属于整张费用申请。草稿阶段可移除；提交后审批快照冻结，后续追加将以新版本留痕。'"
             />
-            <template v-if="detail.status === 'draft' || detail.attachmentPermissions?.canAppendEvidence">
+            <template v-if="!isRetiredLoanDraft && (detail.status === 'draft' || detail.attachmentPermissions?.canAppendEvidence)">
               <t-select
                 v-model="attachmentCategory"
                 label="资料类别"
@@ -1616,7 +1617,7 @@ onMounted(() => void loadDetail());
               </template>
               <template #operation="{ row }">
                 <t-popconfirm
-                  v-if="detail.status === 'draft' && !row.removedAt"
+                  v-if="!isRetiredLoanDraft && detail.status === 'draft' && !row.removedAt"
                   content="仅移除本次草稿中的附件绑定，原文件和审计记录仍会保留。"
                   confirm-btn="确认移除"
                   @confirm="removeAttachment(row.id)"
@@ -1659,7 +1660,7 @@ onMounted(() => void loadDetail());
                   <dd>{{ date(attachment.createdAt) }}</dd>
                 </dl>
                 <t-popconfirm
-                  v-if="detail.status === 'draft' && !attachment.removedAt"
+                  v-if="!isRetiredLoanDraft && detail.status === 'draft' && !attachment.removedAt"
                   content="仅移除本次草稿中的附件绑定，原文件和审计记录仍会保留。"
                   confirm-btn="确认移除"
                   @confirm="removeAttachment(attachment.id)"

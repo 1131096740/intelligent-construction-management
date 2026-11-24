@@ -193,20 +193,26 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     } });
   }
 
-  (enabled ? it.each(["loan", "reimbursement", "incidental_expense"] as const) : it.skip.each(["loan", "reimbursement", "incidental_expense"] as const))("删除未提交草稿：%s 实体和明细彻底删除，审计保留", async claimType => {
+  (enabled ? it.each(["loan", "reimbursement", "incidental_expense"] as const) : it.skip.each(["loan", "reimbursement", "incidental_expense"] as const))("草稿删除边界：%s 新费用可删除且保留审计，旧借款保留", async claimType => {
     const prisma = app.get(PrismaService);
     const historical = claimType === "loan" ? await seedHistoricalLoan("draft", "删除旧借款草稿测试") : null;
     const created = claimType === "loan" ? null : await request("/expense-claims", selfInput(applicantUserId, claimType));
     if (created) expect(created.status).toBe(201);
     const row = await prisma.expenseClaim.findUniqueOrThrow({ where: { id: historical?.id ?? created!.body.id } });
     const result = await request(`/expense-claims/${row.id}/draft-deletion`, { expectedUpdatedAt: row.updatedAt.toISOString() });
+    if (historical) {
+      expect(result.status).toBe(410);
+      expect(await prisma.expenseClaim.findUnique({ where: { id: row.id } })).toEqual(row);
+      expect(await prisma.auditLog.count({ where: { businessId: row.id, action: "expense_claim.draft.delete" } })).toBe(0);
+      return;
+    }
     expect(result).toMatchObject({ status: 201, body: { id: row.id } });
     expect(await prisma.expenseClaim.findUnique({ where: { id: row.id } })).toBeNull();
     expect(await prisma.expenseClaimLine.count({ where: { expenseClaimId: row.id } })).toBe(0);
     const audit = await prisma.auditLog.findFirstOrThrow({ where: { businessId: row.id, action: "expense_claim.draft.delete" } });
     expect(audit).toMatchObject({ actorUserId: applicantUserId, businessType: "expense_claim" });
     expect(audit.metadata).toMatchObject({ code: row.code, claimType, projectId, companyEntityId, requestedAmountCents: "1", previousStatus: "draft", applicantUserId, handledByUserId: applicantUserId });
-    expect(await prisma.auditLog.count({ where: { businessId: row.id, action: claimType === "incidental_expense" ? "incidental_expense.draft.create" : "expense_claim.draft.create" } })).toBe(claimType === "loan" ? 0 : 1);
+    expect(await prisma.auditLog.count({ where: { businessId: row.id, action: claimType === "incidental_expense" ? "incidental_expense.draft.create" : "expense_claim.draft.create" } })).toBe(1);
     expect(await prisma.auditLog.count({ where: { businessId: row.id, action: "expense_claim.draft.delete" } })).toBe(1);
     expect((await request(`/expense-claims/${row.id}`)).status).toBe(404);
   });
@@ -906,10 +912,21 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     } });
     await db.expenseClaim.update({ where: { id: historical.id }, data: { submittedAt: new Date() } });
     expect(await request(path)).toMatchObject({ status: 200, body: {
-      claimType: "loan", canEditReturnedDraft: false, entrySnapshots: [expect.objectContaining({ valuesSnapshot: snapshot, definitionSnapshot: definition })]
+      claimType: "loan", canEditReturnedDraft: false, canDeleteDraft: false, entrySnapshots: [expect.objectContaining({ valuesSnapshot: snapshot, definitionSnapshot: definition })]
     } });
     expect((await request(path, undefined, strangerToken)).status).toBe(404);
-    expect(await request(path + "/capability")).toMatchObject({ status: 200, body: { availableActions: expect.not.arrayContaining(["submit_expense_claim"]) } });
+    const capability = await request(path + "/capability");
+    expect(capability.status).toBe(200);
+    const { availableActions } = capability.body as unknown as { availableActions: string[] };
+    for (const action of ["submit_expense_claim", "attach_expense_claim_attachment", "remove_expense_claim_attachment", "delete_expense_claim_draft"]) {
+      expect(availableActions).not.toContain(action);
+    }
+    const form = new FormData();
+    form.append("file", new Blob(["synthetic PDF"], { type: "application/pdf" }), "合成旧附件.pdf");
+    const upload = await fetch(baseUrl + path + "/draft-attachment-file-uploads", {
+      method: "POST", headers: { authorization: "Bearer " + token }, body: form
+    });
+    expect(upload.status).toBe(403);
     expect((await request(path + "/submission", {})).status).toBe(410);
     expect((await request(path + "/draft", { reason: "旧借款修订", expectedUpdatedAt: historical.updatedAt.toISOString() }, token, "PATCH")).status).toBe(410);
     expect(await db.expenseClaimEntrySnapshot.count({ where: { expenseClaimId: historical.id } })).toBe(1);

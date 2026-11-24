@@ -89,7 +89,9 @@ const actor = { id: "user-a", name: "经办人", phone: "13800000000", isActive:
 
 describe("employee loan application through HTTP", () => {
   it("retires valid loan requests while allowing incidental expense drafts", async () => {
-    const { service, tx } = createHarness();
+    const files = { assertFileHasNoBusinessBinding: jest.fn().mockResolvedValue({ uploadedByUserId: actor.id }) };
+    const { service, tx } = createHarness({ files });
+    tx.expenseClaimAttachment.create.mockResolvedValue({ id: "attachment-1" });
     tx.user.findUnique.mockResolvedValue(actor);
     tx.companyEntity.findFirst.mockResolvedValue({ id: "company-1", name: "建工公司" });
     tx.expenseClaim.create.mockResolvedValue({ id: "claim-1", status: "draft" });
@@ -155,6 +157,18 @@ describe("employee loan application through HTTP", () => {
       });
       expect(edit.status).toBe(410);
       expect(tx.expenseClaim.update).not.toHaveBeenCalled();
+
+      const write = (suffix: string, body: object) => fetch(url + "/old-loan/" + suffix, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
+      });
+      tx.$queryRaw.mockResolvedValueOnce([historicalLoan]);
+      expect((await write("attachments", { fileId: "existing-file", category: "receipt_or_other" })).status).toBe(410);
+      expect(files.assertFileHasNoBusinessBinding).not.toHaveBeenCalled();
+      tx.$queryRaw.mockResolvedValueOnce([historicalLoan]);
+      expect((await write("attachments/old-attachment/removal", { reason: "尝试修改历史资料" })).status).toBe(410);
+      expect(tx.expenseClaimAttachment.update).not.toHaveBeenCalled();
+      tx.expenseClaim.findUnique.mockResolvedValue(historicalLoan);
+      expect((await write("draft-deletion", { expectedUpdatedAt: updatedAt.toISOString() })).status).toBe(410);
     } finally {
       await app.close();
     }
