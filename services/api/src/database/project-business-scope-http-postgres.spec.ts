@@ -255,6 +255,30 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     expect(options.body.selfProjectIds).toEqual(expect.arrayContaining([first, second]));
     const input = { claimType: "incidental_expense", incidentalExpenseCategory: "temporary_service", payeeName: "合成收款方", companyEntityId: company, projectId: second,
       reason: "合成乙项目费用", requestedAmountCents: "12300" };
+    const loanInput = { claimType: "loan", companyEntityId: company, projectId: second, applicantUserId: materialDirector.id,
+      reason: "历史借款受理验收", requestedAmountCents: "12500", loanExpectedClearanceOn: "2026-12-01" };
+    expectStatus(await request("/expense-claims", materialDirector, loanInput), 410);
+    expectStatus(await request(`/projects/${second}/expense-requests`, materialDirector, {
+      code: `RETIRED-${randomUUID()}`, expenseType: "loan_reserve", expenseSubtype: "employee_loan",
+      paymentSubject: "项目使用", reason: loanInput.reason, requestedAmountCents: loanInput.requestedAmountCents, paymentMethod: "cash"
+    }), 410);
+    expect(await historicalFixtureOwner.expenseClaim.count({ where: { projectId: second, reason: loanInput.reason } })).toBe(0);
+
+    const historical = await historicalFixtureOwner.expenseClaim.create({ data: {
+      code: `HISTORICAL-LOAN-${randomUUID()}`, claimType: "loan", status: "draft", companyEntityId: company,
+      companyEntityNameSnapshot: "合成我方公司", projectId: second, applicantUserId: materialDirector.id,
+      applicantNameSnapshot: "合成物资主管", handledByUserId: materialDirector.id, handledByNameSnapshot: "合成物资主管",
+      reason: loanInput.reason, requestedAmountCents: 12500n, submittedAt: new Date("2026-11-01T00:00:00Z"),
+      loanExpectedClearanceAt: new Date("2026-12-01T00:00:00Z")
+    } });
+    const path = `/expense-claims/${historical.id}`;
+    expect(await request(path, materialDirector)).toMatchObject({ status: 200, body: {
+      id: historical.id, claimType: "loan", status: "draft", canDeleteDraft: false
+    } });
+    expectStatus(await request(path + "/submission", materialDirector, {}), 410);
+    expect(await historicalFixtureOwner.expenseClaim.findUniqueOrThrow({ where: { id: historical.id } })).toEqual(historical);
+    expect(await historicalFixtureOwner.approvalInstance.count({ where: { businessId: historical.id } })).toBe(0);
+
     expect((await request("/expense-claims", materialDirector, { ...input, applicantUserId: materialDirector.id })).status).toBe(201);
     expect((await request("/expense-claims", employee, { ...input, applicantUserId: employee.id })).status).toBe(403);
     expect((await request("/expense-claims", materialDirector, { ...input, applicantUserId: employee.id })).status).toBe(403);
