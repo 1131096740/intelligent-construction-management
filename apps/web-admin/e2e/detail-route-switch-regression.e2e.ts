@@ -371,6 +371,7 @@ test("结算详情 A 的慢响应不会覆盖同路由切换后的 B", async ({ 
   await page.locator(".detail-navigation").getByText("流程办理", { exact: true }).click();
   await page.getByRole("region", { name: "结算流程办理" }).getByRole("button", { name: "下载结算单", exact: true }).click();
   await submitDownloadConfirmation(page, "**/api/settlements/settlement-B/approval-pdf/latest");
+  await expect(page.getByText("操作已提交，结算详情已刷新。", { exact: true })).toBeVisible();
   expect(settlementDownloadPaths).toEqual([
     "/api/settlements/settlement-B/approval-pdf/latest"
   ]);
