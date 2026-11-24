@@ -26,8 +26,13 @@ old=json.loads(gzip.decompress((archive/'workspace-inputs.json.gz').read_bytes()
 expected_drift=json.loads((plan/f'onboarding-{count}-source-drift.json').read_text())
 actual={}
 changes={}
+absent=[]
 for name, previous in old['files'].items():
     file=workspace/name
+    if current320 and name in expected_drift and expected_drift[name] is None and not file.exists() and not file.is_symlink():
+        changes[name]=None
+        absent.append(name)
+        continue
     digest=hashlib.sha256(file.read_bytes()).hexdigest()
     actual[name]=digest
     if digest!=previous:
@@ -80,11 +85,22 @@ for lane in pins['lanes']:
         staged_scripts.append(admission)
     for file in staged_scripts:
         subprocess.run(['node','--check',str(file)],check=True)
-(out/'workspace-inputs.json').write_text(json.dumps({'tree':application_tree,
-    'sourceSha':source_record['sourceSha'],'files':actual},ensure_ascii=False)+'\n')
+manifest={'tree':application_tree,'sourceSha':source_record['sourceSha'],'files':actual}
+if current320:
+    manifest['absent']=sorted(absent)
+(out/'workspace-inputs.json').write_text(json.dumps(manifest,ensure_ascii=False)+'\n')
 verifier=(archive/'verify-application-source.cjs').read_text()
-(out/'verify-application-source.cjs').write_text(verifier.replace(old['tree'],application_tree)
-    .replace('return {tree:manifest.tree,',"assert.equal(manifest.sourceSha,require('./contract-finance-source.json').sourceSha);\n  return {sourceSha:manifest.sourceSha,tree:manifest.tree,"))
+verifier=verifier.replace(old['tree'],application_tree).replace('return {tree:manifest.tree,',"assert.equal(manifest.sourceSha,require('./contract-finance-source.json').sourceSha);\n  return {sourceSha:manifest.sourceSha,tree:manifest.tree,")
+if current320:
+    anchor='  for(const [file,want] of Object.entries(rows)){'
+    if verifier.count(anchor)!=1:
+        raise SystemExit('ONBOARDING_329_ABSENCE_CHECK_ANCHOR')
+    verifier=verifier.replace(anchor, '''  for(const file of manifest.absent){
+    assert.ok(!Object.hasOwn(rows,file),'ONBOARDING_329_ABSENCE_FIXTURE_CONFLICT');
+    assert.throws(()=>fs.lstatSync(path.join(base,file)),{code:'ENOENT'},'ONBOARDING_329_WORKSPACE_EXPECTED_ABSENT');
+  }
+'''+anchor)
+(out/'verify-application-source.cjs').write_text(verifier)
 (out/'lanes.json').write_bytes((archive/'lanes.json').read_bytes())
 installer=out/'installer.cjs'
 installer.write_bytes((common/'installer.cjs').read_bytes())
