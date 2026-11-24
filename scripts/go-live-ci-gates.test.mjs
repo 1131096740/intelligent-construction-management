@@ -312,7 +312,7 @@ test("CI fans out independent static and database gates behind one stable summar
   const ciGroups = manifest.coveredGroups.filter(group => group.ciExecution !== "manual-only");
   assert.equal(ciGroups.length, 44);
   assert.equal(ciGroups.reduce((n, group) => n + group.testFiles.length, 0), 102);
-  assert.equal(ciGroups.reduce((n, group) => n + group.pendingTests, 0), 609);
+  assert.equal(ciGroups.reduce((n, group) => n + group.pendingTests, 0), 615);
   assert.doesNotMatch(workflow, /enterprise_task01_entry|run-enterprise-task01-local|--task01-(?:packet|inputs|confirm)/u);
   assert.deepEqual(
     configuredGroups,

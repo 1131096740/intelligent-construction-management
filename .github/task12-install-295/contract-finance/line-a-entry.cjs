@@ -1,0 +1,279 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { randomBytes } = require('node:crypto');
+const { spawnSync } = require('node:child_process');
+const { admitSource } = require('./install-only292.cjs');
+const { withCombined320ContractPayment } = require('./installer.cjs');
+const { final } = require('./multi-witness.cjs');
+const source = require('./contract-finance-source.json');
+
+const root = '/qualification';
+const api = path.join(root, 'workspace/services/api');
+const spec = 'src/database/line-a-real-db.http.pg.spec.ts';
+const tests = 12;
+const receipt = {
+  schemaVersion: 1, purpose: 'LINE_A_EXACT_329', sourceSha: source.sourceSha,
+  stages: ['INPUTS'], status: 'STOPPED'
+};
+
+// The existing synthetic Line A application grant, narrowed to the tables
+// and public function entry points used by its contract, settlement and payment cases.
+const readTables = [
+  'User', 'Position', 'UserPosition', 'Project', 'ProjectMember', 'ProjectRosterMember',
+  'CompanyEntity', 'CompanyEntityVersion', 'BusinessParty', 'BusinessPartyVersion',
+  'ProjectParticipatingCompany', 'ProjectAffiliateAssignment', 'ProjectAffiliateCompanyContract',
+  'AuthRateLimit', 'RefreshToken', 'AuditLog', 'Contract', 'ContractVersion', 'ContractPartySnapshot',
+  'ContractTaxFactRevision', 'ContractSignedChange', 'ContractFormalFile', 'ContractArchiveFile',
+  'ContractSealTask', 'ContractTakeover',
+  'ContractArchiveEvidenceFile', 'ContractDraftAttachment', 'ContractAuthorization', 'ContractVersionAuthorizationLink',
+  'ContractWorkCompletion', 'ContractWorkCompletionFact', 'PaymentTermsVersion', 'PaymentTermsStage',
+  'SignedContractSettlement', 'SignedContractSettlementAttachment', 'Settlement', 'SettlementDraft',
+  'PaymentRequest', 'PaymentRequestAgreementSnapshot', 'PaymentExecution', 'PaymentExecutionRefund',
+  'ApprovalInstance', 'ApprovalActionLog', 'ApprovalDelegation', 'BusinessEntrySubmissionSnapshot',
+  'FileObject', 'ArchiveRecord', 'OperatingFact', 'OperatingImpactEntry', 'ProjectCloseAggregate',
+  'SettlementArchiveFile'
+];
+const insertTables = [
+  'AuthRateLimit', 'RefreshToken', 'AuditLog', 'FileObject',
+  'PaymentRequest', 'PaymentRequestAgreementSnapshot', 'ApprovalInstance', 'ApprovalActionLog',
+  'BusinessEntrySubmissionSnapshot'
+];
+const functions = [
+  'jg_read_effective_contract_change_amount_v1', 'jg_read_payment_contract_agreement_detail_v1',
+  'jg_read_ordinary_contract_tax_fact_v1', 'jg_list_ordinary_contract_tax_facts_v1',
+  'jg_write_ordinary_contract_tax_fact_v1', 'jg_list_contract_signed_changes_v1',
+  'jg_submit_contract_signed_change_v1', 'jg_read_contract_signed_change_review_v1', 'jg_review_contract_signed_change_v1',
+  'jg_read_signed_settlement_attachment_metadata_v1', 'jg_save_signed_settlement_draft_v1',
+  'jg_submit_signed_settlement_draft_v1', 'jg_review_signed_settlement_draft_v1',
+  'jg_list_signed_settlements_v1', 'jg_signed_settlement_contract_read_v1', 'jg_signed_settlement_confirmed_projection_v1',
+  'jg_create_contract_work_completion_draft_v1', 'jg_contract_work_completion_approval_v1',
+  'jg_contract_work_completion_view_v1', 'jg_revise_contract_work_completion_draft_v1',
+  'jg_contract_work_completion_cost_sources_v1', 'jg_post_contract_work_completion_cost_v1',
+  'jg_project_owner_settlement_voucher_bound(text)',
+  '"appendOperatingFactThroughService"(public."OperatingLedgerFactWritePayload",text,text)',
+  '"appendOperatingImpactThroughService"(public."OperatingLedgerImpactWritePayload",text,text)'
+];
+const tables = names => names.map(name => 'public."' + name + '"').join(', ');
+
+async function consume(context) {
+  const { ownerUrl, workDir, runId, database } = context;
+  const runtime = new URL(context.runtimeUrl);
+  const owner = new URL(ownerUrl);
+  const run = runId.replaceAll('-', '');
+  assert.match(run, /^[a-f0-9]{32}$/u);
+  assert.equal(database, 'jg_task01_' + run);
+  for (const endpoint of [runtime, owner]) {
+    assert.equal(endpoint.protocol, 'postgresql:');
+    assert.equal(endpoint.hostname, '127.0.0.1');
+    assert.equal(endpoint.pathname, '/' + database);
+    assert.equal(endpoint.searchParams.get('sslmode'), 'require');
+    assert.equal(endpoint.searchParams.get('sslaccept'), 'strict');
+    assert.equal(endpoint.searchParams.get('sslcert'), path.join(workDir, 'ca.crt'));
+  }
+  assert.equal(runtime.port, owner.port);
+  assert.equal(runtime.username, 'jg_task01_runtime');
+  assert.equal(owner.username, 'jg_task01_owner');
+  const role = 'finance_runtime_' + run;
+  const password = randomBytes(32).toString('hex');
+  runtime.username = role;
+  runtime.password = password;
+  runtime.searchParams.set('connection_limit', '4');
+
+  const witnesses = [
+    ['CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY', 'jg_contract_signed_change_submit_witness', true],
+    ['CONTRACT_WORK_COMPLETION_WITNESS_KEY', 'jg_contract_work_completion_witness', true],
+    ['SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY', 'jg_signed_settlement_attachment_witness_key', false],
+    ['SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY', 'jg_signed_settlement_draft_witness_key', false]
+  ].map(([env, table, bound]) => ({ env, table, bound, key: randomBytes(32).toString('hex') }));
+  receipt.stages.push('LINE_A_PROVISION_WITNESSES');
+  const insertions = witnesses.map(({ table, bound, key }) => {
+    const value = "decode('" + key + "','hex')";
+    if (bound) return 'INSERT INTO public.' + table + '(singleton,"key","databaseOid","runtimeRoleOid") SELECT true,'
+      + value + ",oid,'" + role + "'::regrole::oid FROM pg_database WHERE datname=current_database();";
+    return 'INSERT INTO public.' + table + '("key") VALUES(' + value + ');';
+  });
+  const toRole = ' TO ' + role + ';';
+  const { NON_RECEIPT_FILE_BINDINGS } = require(path.join(api, 'dist/file/file-business-binding.js'));
+  const pointerGrants = NON_RECEIPT_FILE_BINDINGS.flatMap(({ table, columns }) => {
+    // Owner settlement pointers use the existing named definer above.
+    if (table === 'ProjectOwnerSettlementEntry' || readTables.includes(table)) return [];
+    assert.ok([table, ...columns].every(name => /^[A-Za-z][A-Za-z0-9_]*$/u.test(name)));
+    return ['GRANT SELECT (' + columns.map(column => '"' + column + '"').join(',') + ') ON ' + tables([table]) + toRole];
+  });
+  await context.sql([
+    'BEGIN;',
+    'CREATE ROLE ' + role + ' LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT'
+      + " CONNECTION LIMIT 4 PASSWORD '" + password + "';",
+    'GRANT CONNECT ON DATABASE ' + database + ' TO ' + role + ';',
+    'GRANT USAGE ON SCHEMA public' + toRole,
+    'GRANT SELECT ON ' + tables(readTables) + toRole,
+    ...pointerGrants,
+    'GRANT SELECT ("id","projectId","status","voidedAt","amountCents") ON public."ProjectOwnerContract"' + toRole,
+    'GRANT SELECT ("id","contractId","projectId","settlementId","voidedAt","amountCents") ON public."ProjectProxyPayment"' + toRole,
+    'GRANT SELECT ("idempotencyKey","contractVersionId","createdAt","approvalInstanceId","responseSnapshot")'
+      + ' ON public."ContractDraftSubmissionRequest"' + toRole,
+    'GRANT SELECT ("id","settlementId","fileId","purpose","status","generationStatus","confirmedAt")'
+      + ' ON public."SettlementSignedDocument"' + toRole,
+    // The ApprovalActionLog invoker trigger checks only the bound round and terminal action.
+    'GRANT SELECT ("approvalInstanceId","auditAction") ON public."FundExecutionCase"' + toRole,
+    // The settlement confirmation invalidates existing project close projections.
+    'GRANT SELECT ("id","projectId","sourceType","sourceId","sourceFingerprint") ON public."ProjectCloseImpact"' + toRole,
+    'GRANT SELECT ("id","projectId","stageKey","revision","status","projectionReadAt","projectionCutoffAt",'
+      + '"projectionFingerprint","amountSnapshot","stateSnapshot") ON public."ProjectCloseStageVersion"' + toRole,
+    'GRANT INSERT ("projectId","revision","createdAt","updatedAt") ON public."ProjectCloseAggregate"' + toRole,
+    // FileService first checks the exact retained review references before falling back to ordinary file policy.
+    'GRANT SELECT ("reviewId","sourceRef","displayOrder","sourceContractVersionId","directInputProtocolVersion",'
+      + '"sourceRevision","inputSha256","fileId","mimeType","sizeBytes","contentSha256","bucket","objectKey")'
+      + ' ON public."ContractEconomicReviewFileReference"' + toRole,
+    'GRANT SELECT ("id","projectId","status","confirmedAt","frozenSources") ON public."ContractEconomicReview"' + toRole,
+    'GRANT INSERT ON ' + tables(insertTables) + toRole,
+    'GRANT UPDATE, DELETE ON public."AuthRateLimit"' + toRole,
+    'GRANT UPDATE ("lastLoginAt", "updatedAt") ON public."User"' + toRole,
+    'GRANT UPDATE ("currentNodeIndex", "frozenNodes", "status", "updatedAt") ON public."ApprovalInstance"' + toRole,
+    'GRANT UPDATE ("updatedAt") ON public."PaymentRequest"' + toRole,
+    'GRANT UPDATE ("updatedAt") ON public."Contract"' + toRole,
+    'GRANT UPDATE ("updatedAt") ON public."Settlement", public."ProjectCloseAggregate"' + toRole,
+    'GRANT UPDATE ("createdAt") ON public."ProjectMember"' + toRole,
+    'GRANT UPDATE ("createdAt") ON public."UserPosition"' + toRole,
+    'GRANT UPDATE ("updatedAt") ON public."Position"' + toRole,
+    // FOR UPDATE needs a column grant. The origin guard keeps createdAt immutable.
+    'GRANT UPDATE ("createdAt") ON public."ContractWorkCompletion"' + toRole,
+    'GRANT EXECUTE ON FUNCTION ' + functions.map(name => 'public.' + name).join(', ') + toRole,
+    ...insertions, 'COMMIT;'
+  ].join('\n'));
+  try {
+    const acl = await context.sql(`SELECT (
+      (SELECT rolconnlimit=1 FROM pg_roles WHERE rolname='jg_task01_runtime')
+      AND EXISTS (
+        SELECT FROM pg_roles WHERE rolname='${role}' AND rolconnlimit=4 AND rolcanlogin
+        AND NOT (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls OR rolinherit)
+      )
+      AND NOT has_schema_privilege('${role}','public','CREATE')
+      AND NOT EXISTS (
+        SELECT FROM pg_catalog.pg_class c
+        WHERE c.relnamespace=to_regnamespace('public') AND c.relkind IN ('r','p')
+        AND (
+          (c.relname ~ '^jg_(contract_direct_(archive|upward)|contract_generated_archive)'
+            OR c.relname IN ('_prisma_migrations','ContractEconomicReview','ContractEconomicReviewFileReference','FundExecutionCase'))
+          AND (has_table_privilege('${role}',c.oid,'INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER')
+            OR has_any_column_privilege('${role}',c.oid,'INSERT,UPDATE'))
+          OR (c.relname ~ '^jg_.*witness' OR c.relname IN ('OperatingLedgerWriteSecret','OperatingLedgerWriteContext'))
+          AND (has_table_privilege('${role}',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER')
+            OR has_any_column_privilege('${role}',c.oid,'SELECT,INSERT,UPDATE'))
+        )
+      )
+    )::text;`);
+    assert.equal(acl.stdout.trim(), 'true', 'LINE_A_RESTRICTED_ROLE_ACL');
+    receipt.secretAndArchiveWritesDenied = true;
+    const login = spawnSync('psql', ['-XqAt', '-v', 'ON_ERROR_STOP=1', '-c',
+      "SELECT (current_user=session_user AND current_user='" + role
+      + "' AND current_database()='" + database
+      + "' AND (SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()))::text;"], {
+      encoding: 'utf8', timeout: 15_000, env: {
+        PATH: '/usr/local/bin:/usr/bin:/bin:/usr/lib/postgresql/16/bin',
+        PGHOST: '127.0.0.1', PGPORT: runtime.port, PGDATABASE: database, PGUSER: role, PGPASSWORD: password,
+        PGSSLMODE: 'verify-full', PGSSLROOTCERT: path.join(workDir, 'ca.crt')
+      }
+    });
+    assert.ok(login.status === 0 && login.stdout.trim() === 'true', 'LINE_A_TLS_FIXTURE_LOGIN');
+    receipt.runtime = { originalConnectionLimit: 1, fixtureConnectionLimit: 4, tls: true };
+    receipt.stages.push('LINE_A_ORIGINAL_HTTP_SUITE');
+    const directory = fs.mkdtempSync(path.join(workDir, 'line-a-'));
+    const file = path.join(directory, 'jest.json');
+    const result = spawnSync(process.execPath, [path.join(api, 'node_modules/jest/bin/jest.js'),
+      '--runInBand', '--runTestsByPath', spec, '--json', '--outputFile=' + file], {
+      cwd: api, encoding: 'utf8', timeout: 600_000, maxBuffer: 16 * 1024 * 1024,
+      env: {
+        PATH: '/usr/local/bin:/usr/bin:/bin', HOME: workDir, TMPDIR: workDir, NODE_ENV: 'test', CI: 'true',
+        RUN_LINE_A_REAL_DB: '1', JG_LINE_A_SEALED_RUN_ID: run, DATABASE_URL: runtime.href, OWNER_DATABASE_URL: owner.href,
+        FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: path.join(directory, 'files'),
+        APPROVAL_SMS_ENABLED: 'false', SMS_ENABLED: 'false',
+        JWT_ACCESS_SECRET: randomBytes(32).toString('hex'), JWT_REFRESH_SECRET: randomBytes(32).toString('hex'),
+        OPERATING_LEDGER_DB_WRITE_SECRET: randomBytes(32).toString('hex'),
+        ...Object.fromEntries(witnesses.map(({ env, key }) => [env, key]))
+      }
+    });
+    const report = fs.existsSync(file) && fs.statSync(file).size <= 16 * 1024 * 1024
+      ? JSON.parse(fs.readFileSync(file, 'utf8')) : null;
+    const cases = report?.testResults?.[0]?.assertionResults ?? [];
+    const messages = [
+      ...(result.stderr ? [result.stderr] : []),
+      ...cases.flatMap(test => test.failureMessages ?? [])
+    ].join('\n').slice(0, 65_536);
+    receipt.lineA = {
+      passed: report?.numPassedTests ?? 0, skipped: report?.numPendingTests ?? 0,
+      registered: report?.numTotalTests ?? 0,
+      failedCases: cases.flatMap((test, index) => {
+        if (test.status !== 'failed') return [];
+        const failure = (test.failureMessages ?? []).join('\n').replace(/\u001b\[[0-9;]*m/gu, '').slice(0, 32768);
+        const positions = [...new Set([...failure.matchAll(/line-a-real-db\.http\.pg\.spec\.ts:(\d{1,5}):\d{1,5}/gu)]
+          .map(match => Number(match[1])))].slice(0, 4);
+        const http = [...new Set([...failure.matchAll(/LINE_A_(?:HTTP [^\n]{1,180}|LOGIN [a-z]+) -> ([1-5]\d{2})/gu)]
+          .map(match => Number(match[1])))].slice(0, 4);
+        const status = /Expected:\s*([1-5]\d{2})[\s\S]{0,96}?Received:\s*([1-5]\d{2})/u.exec(failure);
+        return [{ index: index + 1, positions, http, ...(status ? { expectedActual: [Number(status[1]), Number(status[2])] } : {}) }];
+      }),
+      permissionObjects: [...new Set([...messages.matchAll(/permission denied for (?:table|relation|function|sequence) ([a-z_][a-z_0-9]{0,79})/giu)]
+        .map(match => match[1]))].slice(0, 12),
+      http: [...new Set([...messages.matchAll(/LINE_A_(?:HTTP [^\n]{1,180}|LOGIN [a-z]+) -> ([1-5]\d{2})/gu)]
+        .map(match => Number(match[1])))].slice(0, 8),
+      sqlstates: [...new Set([...messages.matchAll(/SQLSTATE\s+([0-9A-Z]{5})|Code: `([0-9A-Z]{5})`/gu)]
+        .map(match => match[1] ?? match[2]))].slice(0, 8)
+    };
+    assert.ok(result.status === 0 && report?.success && report.testResults.length === 1 &&
+      report.testResults[0].name === path.join(api, spec) && report.numTotalTests === tests &&
+      report.numPassedTests === tests && report.numPendingTests === 0 && cases.length === tests &&
+      cases.every(test => test.status === 'passed'), 'LINE_A_ORIGINAL_HTTP_COVERAGE');
+  } finally {
+    const deletions = witnesses.map(({ table, key }) => 'DELETE FROM public.' + table
+      + ' WHERE "key"=decode(\'' + key + '\',\'hex\');');
+    const closed = await context.sql('BEGIN; ' + deletions.join(' ') + ' DROP OWNED BY ' + role + '; DROP ROLE '
+      + role + "; COMMIT; SELECT (to_regrole('" + role + "') IS NULL"
+      + " AND (SELECT rolconnlimit=1 FROM pg_roles WHERE rolname='jg_task01_runtime'))::text;");
+    assert.equal(closed.stdout.trim(), 'true', 'LINE_A_FIXTURE_ROLE_CLEARED');
+    receipt.testWitnessesCleared = true;
+    receipt.fixtureRoleCleared = true;
+  }
+}
+
+async function main() {
+  assert.equal(process.argv.length, 2);
+  assert.notEqual(process.getuid(), 0);
+  assert.equal(process.env.DATABASE_URL, undefined);
+  assert.match(source.sourceSha, /^[a-f0-9]{40}$/u);
+  assert.equal(source.mode, 'current-320');
+  assert.equal(source.migrationCount, 329);
+  assert.equal(source.predecessor.ledgerSha256, final);
+  const baseline = require(path.join(api, 'prisma/migration-baseline.cjs')).loadCanonicalMigrationBaseline();
+  assert.equal(baseline.expectedDirectoryCount, source.migrationCount);
+  assert.equal(baseline.terminalMigration, source.tails.at(-1).name);
+  assert.equal(baseline.terminalMigrationChecksum, source.tails.at(-1).sha256);
+  receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
+  await withCombined320ContractPayment(receipt, consume, {
+    sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails
+  });
+  assert.equal(receipt.forward320.sourceTree, source.sourceTree);
+  assert.equal(receipt.forward320.ledgerSha256, source.ledgerSha256);
+  assert.equal(receipt.forward320.sameIdentity, true);
+  assert.equal(receipt.forward320.sameBaseB7, true);
+  assert.equal(receipt.combinedAfterBusiness.ledgerSha256, source.ledgerSha256);
+  assert.equal(receipt.combinedAfterBusiness.sameIdentity, true);
+  assert.equal(receipt.combinedAfterBusiness.exactB7, true);
+  assert.equal(receipt.multiWitnessCatalogAfterBusiness, true);
+  assert.equal(receipt.testWitnessesCleared, true);
+  assert.equal(receipt.cleanup, 'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
+  receipt.status = 'LINE_A_EXACT_329_PASSED';
+}
+
+main().catch(error => {
+  receipt.status = 'STOPPED';
+  const code = error.code ?? error.message;
+  receipt.failure = {
+    stage: receipt.stages.at(-1), code: /^[A-Z0-9_]+$/u.test(code) ? code : 'LINE_A_EXACT_329_FAILED',
+    sqlstate: error.sqlstate, prismaCode: error.prismaCode
+  };
+  process.exitCode = 1;
+}).finally(() => process.stdout.write(JSON.stringify(receipt) + '\n'));

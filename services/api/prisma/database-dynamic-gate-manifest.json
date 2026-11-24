@@ -29,9 +29,9 @@
     "pendingFiles": 103,
     "fullyPendingSuites": 82,
     "partiallyPendingSuites": 21,
-    "pendingTests": 610,
+    "pendingTests": 616,
     "coveredFiles": 103,
-    "coveredTests": 610,
+    "coveredTests": 616,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -828,11 +828,11 @@
     },
     {
       "id": "line_a_real_db",
-      "pendingTests": 6,
+      "pendingTests": 12,
       "testFiles": [
         {
           "path": "services/api/src/database/line-a-real-db.http.pg.spec.ts",
-          "pendingTests": 6,
+          "pendingTests": 12,
           "suiteStatus": "fully_pending"
         }
       ],
@@ -1104,7 +1104,7 @@
     "ciEligible": {
       "groups": 44,
       "files": 102,
-      "tests": 609
+      "tests": 615
     },
     "manualOnly": {
       "groups": 1,

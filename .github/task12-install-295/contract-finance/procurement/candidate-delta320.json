@@ -452,7 +452,7 @@
   {
     "path": "services/api/prisma/database-dynamic-gate-manifest.json",
     "expected": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
-    "candidate": "76baeaa40a91eab2ecf0c632b171773864e4cb25a2ebf49049a5c689b6393d42"
+    "candidate": "334ddcb52ce06797db8f4ede01e6e301a96165e92a291a80d2c829bec88f7007"
   },
   {
     "path": "services/api/prisma/fixtures/project-approval-configuration.ts",
@@ -477,7 +477,7 @@
   {
     "path": "services/api/prisma/run-database-dynamic-gate-local.test.cjs",
     "expected": "78a8d474a9bef166001372b1e096b4f9b190d1d6fce3988bee01ad7f9b6eb09d",
-    "candidate": "cef910184398ffee25c65ceb9eb04c1ffef96f751e0be749c769dcf18a38727f"
+    "candidate": "95571035583cdb7babbabe2c9def3d9120c17891f995c5b558ed7c6a8418ba26"
   },
   {
     "path": "services/api/prisma/run-database-dynamic-remaining-local.cjs",

@@ -82,8 +82,16 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
   beforeAll(async () => {
     const target = new URL(process.env.DATABASE_URL ?? "");
     const ownerTarget = new URL(process.env.OWNER_DATABASE_URL ?? "");
-    if (process.env.NODE_ENV !== "test" || target.hostname !== "127.0.0.1" ||
-        target.pathname !== ownerTarget.pathname || !target.pathname.endsWith("_line_a_real_db")) {
+    const sealedRun = process.env.JG_LINE_A_SEALED_RUN_ID;
+    const sealedDatabase = sealedRun && /^[0-9a-f]{32}$/u.test(sealedRun) &&
+      target.pathname === `/jg_task01_${sealedRun}` && target.username === `finance_runtime_${sealedRun}` &&
+      ownerTarget.username === "jg_task01_owner" && [target, ownerTarget].every(url =>
+        url.searchParams.get("sslmode") === "require" && url.searchParams.get("sslaccept") === "strict" &&
+        url.searchParams.get("sslcert") === join(process.env.TMPDIR ?? "", "ca.crt"));
+    if (process.env.NODE_ENV !== "test" || [target, ownerTarget].some(url =>
+      url.protocol !== "postgresql:" || url.hostname !== "127.0.0.1") ||
+        target.port !== ownerTarget.port || target.pathname !== ownerTarget.pathname ||
+        !(sealedRun ? sealedDatabase : target.pathname.endsWith("_line_a_real_db"))) {
       throw new Error("LINE_A_ISOLATED_DATABASE_REQUIRED");
     }
     app = (await Test.createTestingModule({ imports: [AppModule] }).compile()).createNestApplication({ logger: ["error"] });
