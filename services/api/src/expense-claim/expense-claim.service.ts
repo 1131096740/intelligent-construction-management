@@ -59,6 +59,7 @@ import { projectClaimPaymentCapacity } from "./other-project-payment";
 import { EXPENSE_CLAIM_ENTRY_DEFINITION } from "./expense-claim-entry.definition";
 import type { CreateExpenseClaimDto, ExpenseClaimLineDto } from "./dto/create-expense-claim.dto";
 import type { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
+import type { EditReturnedExpenseClaimDto } from "./dto/returned-expense-claim.dto";
 import type { RecordLoanDisbursementDto } from "./dto/record-loan-disbursement.dto";
 import type { ConfirmEmployeeLoanRepaymentDto, RecordEmployeeLoanRepaymentDto } from "./dto/record-employee-loan-repayment.dto";
 import type { AttachExpenseClaimAttachmentDto, RemoveExpenseClaimAttachmentDto } from "./dto/manage-expense-claim-attachment.dto";
@@ -569,29 +570,8 @@ export class ExpenseClaimService {
         }
       });
       if (lines.length) {
-        const knownCategories = await this.companyExpenseCategories(tx, company.id);
-        const preparedLines = lines.map((line) => {
-          const expenseCategory = resolveExpenseCategoryName(requiredText(line.expenseCategory, "费用类别不能为空"), knownCategories);
-          if (!expenseCategory) throw new BadRequestException("费用类别不能为空且最多 40 个字符");
-          if (advance && expenseCategoryKey(expenseCategory) !== expenseCategoryKey(advance.sourceCategory)) {
-            throw new BadRequestException(`关联原采购报销沿用原采购类别：${advance.sourceCategory}`);
-          }
-          return { ...line, expenseCategory, quantity: parseExpenseQuantity(line.quantity) };
-        });
         await tx.expenseClaimLine.createMany({
-          data: preparedLines.map((line, index) => ({
-            expenseClaimId: claim.id,
-            sortOrder: index + 1,
-            expenseCategory: line.expenseCategory,
-            occurredOn: dateOnly(line.occurredOn, "发生日期"),
-            quantity: line.quantity,
-            purpose: requiredText(line.purpose, "用途说明不能为空"),
-            receiptCount: receiptCount(line.receiptCount),
-            amountCents: positiveCents(line.amountCents, "费用明细金额必须大于零"),
-            evidenceType: line.evidenceType,
-            noEvidenceReason: line.evidenceType === "none" ? requiredText(line.noEvidenceReason, "无凭证原因必填") : null,
-            remark: optionalText(line.remark)
-          }))
+          data: await this.prepareExpenseLines(tx, claim.id, company.id, lines, advance?.sourceCategory)
         });
       }
       await this.audit.record(tx, {
@@ -628,7 +608,7 @@ export class ExpenseClaimService {
         factWitnessNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true,
         companyPayableAmountCents: true, fundedAmountCents: true, paymentMethod: true, payeeNameSnapshot: true,
         payeeAccountNameSnapshot: true, payeeBankNameSnapshot: true, payeeBankAccountSnapshot: true,
-        loanExpectedClearanceAt: true, submittedAt: true, approvedAt: true, updatedAt: true
+        loanExpectedClearanceAt: true, submittedAt: true, approvedAt: true, voidedAt: true, updatedAt: true
       }
     });
     if (!claim) throw new NotFoundException("费用申请不存在或当前账号无权读取");
@@ -788,9 +768,14 @@ export class ExpenseClaimService {
     const sourcePurchase = claim.actualPurchaseBatchId
       ? await this.readSourcePurchase(claim.actualPurchaseBatchId)
       : null;
-    const { companyEntityId, ...displayClaim } = claim;
+    const canEditReturnedDraft = claim.handledByUserId === actorUserId && isReturnedExpenseDraft(claim);
+    const { companyEntityId, voidedAt, ...displayClaim } = claim;
     return {
       ...displayClaim,
+      canEditReturnedDraft,
+      canWithdrawApproval: parallel && canConsiderIdentity && !voidedAt && !claim.approvedAt &&
+        claim.fundedAmountCents === 0n && claim.handledByUserId === actorUserId && instance?.applicantUserId === actorUserId,
+      returnedDraftEntryDefinition: canEditReturnedDraft && claim.claimType === "reimbursement" ? EXPENSE_CLAIM_ENTRY_DEFINITION : null,
       sourcePurchase,
       ...((claim.claimType === "reimbursement" || claim.claimType === "incidental_expense") ? {
         originalDebtorCompanyId: claim.companyEntityNameSnapshot?.trim() ? companyEntityId : null
@@ -888,6 +873,8 @@ export class ExpenseClaimService {
     const availableActions: string[] = [];
     const isHandler = detail.handledByUserId === actorUserId;
     if (detail.canDeleteDraft) availableActions.push("delete_expense_claim_draft");
+    if (detail.canEditReturnedDraft) availableActions.push("edit_returned_expense_claim");
+    if (detail.canWithdrawApproval) availableActions.push("withdraw_expense_claim");
 
     if (detail.status === "draft" && isHandler) {
       availableActions.push(
@@ -1201,6 +1188,130 @@ export class ExpenseClaimService {
     });
   }
 
+  async withdrawApproval(claimId: string, actorUserId: string, expectedRoundId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "ExpenseClaim" WHERE id = ${claimId} FOR UPDATE`);
+      const claim = await tx.expenseClaim.findUnique({ where: { id: claimId } });
+      if (!claim) throw new NotFoundException("费用申请不存在");
+      if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有原经办人可以撤回费用审批");
+      await this.assertActiveExpenseActor(tx, actorUserId);
+      if (claim.status !== "approval_pending" || claim.approvedAt || claim.voidedAt || claim.fundedAmountCents !== 0n ||
+          !supportsExpenseParallelApproval(claim) || claim.approvalInstanceId !== expectedRoundId) {
+        throw new ConflictException("费用审批已结束或轮次已变化，不能撤回");
+      }
+      const [round, extra] = await this.lockActiveExpenseRounds(tx, claimId);
+      if (!round || extra || round.id !== expectedRoundId || !isParallelApprovalRound(round.frozenNodes)) {
+        throw new ConflictException("费用审批已结束或轮次已变化，不能撤回");
+      }
+      if (round.applicantUserId !== actorUserId) throw new ForbiddenException("只有原提交人可以撤回费用审批");
+      const releasedAmountCents = await this.reopenExpenseDraft(tx, claimId, round.id, actorUserId, "withdrawn", "撤回费用审批");
+      await tx.approvalActionLog.create({
+        data: { approvalInstanceId: round.id, action: "withdraw", actorUserId }
+      });
+      await this.audit.record(tx, {
+        actorUserId, action: "expense_claim.approval.withdraw", businessType: "expense_claim", businessId: claimId,
+        metadata: { approvalInstanceId: round.id, releasedAmountCents: releasedAmountCents.toString() }
+      });
+      return { id: claimId, status: "draft" };
+    });
+  }
+
+  async editReturnedDraft(claimId: string, actorUserId: string, input: EditReturnedExpenseClaimDto) {
+    const reason = requiredText(input.reason, "事由不能为空");
+    return this.prisma.$transaction(async (tx) => {
+      const source = await tx.expenseClaim.findUnique({
+        where: { id: claimId }, select: { generalProcurementId: true, actualPurchaseBatchId: true }
+      });
+      if (source?.generalProcurementId && !source.actualPurchaseBatchId) {
+        await tx.$queryRaw(Prisma.sql`SELECT id FROM "GeneralProcurement" WHERE id = ${source.generalProcurementId} FOR UPDATE`);
+      }
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM "ExpenseClaim" WHERE id = ${claimId} FOR UPDATE`);
+      const claim = await tx.expenseClaim.findUnique({ where: { id: claimId } });
+      if (!claim) throw new NotFoundException("费用申请不存在");
+      if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有原经办人可以修改退回的费用申请");
+      await this.assertActiveExpenseActor(tx, actorUserId);
+      if (!isReturnedExpenseDraft(claim) || claim.updatedAt.getTime() !== new Date(input.expectedUpdatedAt).getTime()) {
+        throw new ConflictException("费用草稿状态或版本已变化，请刷新后重试");
+      }
+
+      let requestedAmountCents = claim.requestedAmountCents;
+      if (claim.claimType === "reimbursement") {
+        if (input.requestedAmountCents !== undefined) throw new BadRequestException("报销申请金额须由费用明细合计");
+        if (input.lines !== undefined) {
+          const lines = await this.prepareExpenseLines(tx, claimId, claim.companyEntityId, this.lines(input.lines));
+          requestedAmountCents = positiveCents(lines.reduce((amount, line) => amount + line.amountCents, 0n).toString(), "费用明细合计超出申请金额范围");
+          await tx.expenseClaimLine.deleteMany({ where: { expenseClaimId: claimId } });
+          await tx.expenseClaimLine.createMany({ data: lines });
+        }
+      } else {
+        if (input.lines !== undefined) throw new BadRequestException("只有费用报销可以填写费用明细");
+        if (input.requestedAmountCents !== undefined) {
+          requestedAmountCents = positiveCents(input.requestedAmountCents, "申请金额必须大于零");
+        }
+      }
+      if (requestedAmountCents !== claim.requestedAmountCents && claim.generalProcurementId) {
+        if (claim.actualPurchaseBatchId) {
+          if (!this.actualBatches) throw new ConflictException("实际采购批次容量校验未启用，请联系管理员核对");
+          await this.actualBatches.assertClaimCommitInTransaction(tx, {
+            batchId: claim.actualPurchaseBatchId, amountCents: requestedAmountCents, excludeClaimId: claimId
+          });
+        } else {
+          const procurement = await tx.generalProcurement.findUnique({ where: { id: claim.generalProcurementId } });
+          if (!procurement || procurement.status !== "archived" || procurement.requestProtocolVersion !== 1 ||
+              procurement.requestedAmountCents == null || procurement.projectId !== claim.projectId ||
+              procurement.companyEntityId !== claim.companyEntityId || `procurement_${procurement.category}` !== claim.incidentalExpenseCategory) {
+            throw new ConflictException("原综合采购申请已变化，不能修改请款金额");
+          }
+          const otherClaims = await tx.expenseClaim.aggregate({
+            where: { generalProcurementId: claim.generalProcurementId, id: { not: claimId }, status: { not: "rejected" } },
+            _sum: { requestedAmountCents: true }
+          });
+          if ((otherClaims._sum.requestedAmountCents ?? 0n) + requestedAmountCents > procurement.requestedAmountCents) {
+            throw new ConflictException("累计请款金额超过采购批准金额，请刷新后核对剩余额度");
+          }
+        }
+      }
+      const updated = await tx.expenseClaim.update({
+        where: { id: claimId },
+        data: { reason, requestedAmountCents, updatedAt: new Date(Math.max(Date.now(), claim.updatedAt.getTime() + 1)) },
+        select: { id: true, status: true, updatedAt: true, requestedAmountCents: true }
+      });
+      await this.audit.record(tx, {
+        actorUserId, action: "expense_claim.draft.edit_returned", businessType: "expense_claim", businessId: claimId,
+        metadata: { previousAmountCents: claim.requestedAmountCents.toString(), requestedAmountCents: requestedAmountCents.toString() }
+      });
+      return { ...updated, requestedAmountCents: moneyCentsToApi(updated.requestedAmountCents) };
+    });
+  }
+
+  private async assertActiveExpenseActor(tx: Prisma.TransactionClient, actorUserId: string) {
+    const [actor] = await tx.$queryRaw<Array<{ isActive: boolean }>>(Prisma.sql`
+      SELECT "isActive" FROM "User" WHERE id = ${actorUserId} FOR SHARE
+    `);
+    if (!actor?.isActive) throw new ForbiddenException("当前办理人不存在或已停用");
+  }
+
+  private async lockActiveExpenseRounds(tx: Prisma.TransactionClient, claimId: string) {
+    return tx.$queryRaw<Array<{ id: string; currentNodeIndex: number; frozenNodes: unknown; applicantUserId: string }>>(
+      Prisma.sql`SELECT "id", "currentNodeIndex", "frozenNodes", "applicantUserId" FROM "ApprovalInstance"
+        WHERE "businessType" = 'expense_claim' AND "businessId" = ${claimId}
+          AND "flowType" = 'expense_claim.approve' AND status = 'in_progress'
+        ORDER BY "createdAt" DESC LIMIT 2 FOR UPDATE`
+    );
+  }
+
+  private async reopenExpenseDraft(
+    tx: Prisma.TransactionClient, claimId: string, roundId: string, actorUserId: string, roundStatus: "withdrawn" | "returned", reason: string
+  ) {
+    const releasedAmountCents = await this.releaseLoanOffsetReservations(tx, claimId, actorUserId, reason);
+    await tx.approvalInstance.update({ where: { id: roundId }, data: { status: roundStatus } });
+    await tx.expenseClaim.update({
+      where: { id: claimId },
+      data: { status: "draft", approvalInstanceId: null, loanOffsetAmountCents: 0n, companyPayableAmountCents: 0n }
+    });
+    return releasedAmountCents;
+  }
+
   async submit(claimId: string, actorUserId: string) {
     let approvalNoticesQueued = false;
     const result = await this.prisma.$transaction(async (tx) => {
@@ -1323,14 +1434,12 @@ export class ExpenseClaimService {
     const result = await translateProjectOperatingSerializationConflict(
       this.prisma.$transaction(async (tx) => {
       const claims = await tx.$queryRaw<Array<{
-        id: string; claimType: string; status: string; projectId: string | null; actualPurchaseBatchId: string | null; generalProcurementId: string | null; approvalInstanceId: string | null; applicantUserId: string | null; handledByUserId: string; factWitnessUserId: string | null; requestedAmountCents: bigint; loanOffsetAmountCents: bigint; companyPayableAmountCents: bigint;
-      }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "actualPurchaseBatchId", "generalProcurementId", "approvalInstanceId", "applicantUserId", "handledByUserId", "factWitnessUserId", "requestedAmountCents", "loanOffsetAmountCents", "companyPayableAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
+        id: string; claimType: string; status: string; projectId: string | null; actualPurchaseBatchId: string | null; generalProcurementId: string | null; approvalInstanceId: string | null; applicantUserId: string | null; handledByUserId: string; factWitnessUserId: string | null; requestedAmountCents: bigint; loanOffsetAmountCents: bigint; companyPayableAmountCents: bigint; approvedAt: Date | null; voidedAt: Date | null; fundedAmountCents: bigint;
+      }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "actualPurchaseBatchId", "generalProcurementId", "approvalInstanceId", "applicantUserId", "handledByUserId", "factWitnessUserId", "requestedAmountCents", "loanOffsetAmountCents", "companyPayableAmountCents", "approvedAt", "voidedAt", "fundedAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
       const claim = claims[0];
       if (!claim) throw new NotFoundException("费用申请不存在");
       if (claim.status !== "approval_pending") throw new BadRequestException("当前费用申请不可审批");
-      const instances = await tx.$queryRaw<Array<{
-        id: string; currentNodeIndex: number; frozenNodes: unknown; applicantUserId: string;
-      }>>(Prisma.sql`SELECT "id", "currentNodeIndex", "frozenNodes", "applicantUserId" FROM "ApprovalInstance" WHERE "businessType" = 'expense_claim' AND "businessId" = ${claim.id} AND "flowType" = 'expense_claim.approve' AND "status" = 'in_progress' ORDER BY "createdAt" DESC LIMIT 2 FOR UPDATE`);
+      const instances = await this.lockActiveExpenseRounds(tx, claim.id);
       const instance = instances[0];
       if (!instance) throw new BadRequestException("费用申请审批实例不存在");
       const parallel = isParallelApprovalRound(instance.frozenNodes);
@@ -1349,12 +1458,7 @@ export class ExpenseClaimService {
       if (!identity) {
         throw new ForbiddenException("当前用户不是费用申请的冻结审批人");
       }
-      if (parallel && input.decision === "reject") {
-        const [actor] = await tx.$queryRaw<Array<{ isActive: boolean }>>(Prisma.sql`
-          SELECT "isActive" FROM "User" WHERE "id" = ${actorUserId} FOR SHARE
-        `);
-        if (!actor?.isActive) throw new ForbiddenException("当前办理人不存在或已停用");
-      }
+      if (parallel && input.decision === "reject") await this.assertActiveExpenseActor(tx, actorUserId);
       const selfReview = this.selfReviewMetadata(instance.applicantUserId, actorUserId, identity, input);
       if (selfReview.isSelfReview) {
         const [current] = await tx.$queryRaw<Array<{ isActive: boolean; passwordHash: string | null }>>(Prisma.sql`
@@ -1367,15 +1471,24 @@ export class ExpenseClaimService {
       }
 
       if (input.decision === "reject") {
-        const releasedAmountCents = await this.releaseLoanOffsetReservations(tx, claim.id, actorUserId, "审批驳回");
-        const rejected = await tx.expenseClaim.update({ where: { id: claim.id }, data: { status: "rejected" } });
-        await tx.approvalInstance.update({ where: { id: instance.id }, data: { status: "rejected" } });
+        const comment = parallel ? requiredText(input.comment, "驳回费用申请必须填写原因") : optionalText(input.comment);
+        let releasedAmountCents: bigint;
+        if (parallel) {
+          if (claim.approvedAt || claim.voidedAt || claim.fundedAmountCents !== 0n) {
+            throw new ConflictException("费用审批已结束，不能退回");
+          }
+          releasedAmountCents = await this.reopenExpenseDraft(tx, claim.id, instance.id, actorUserId, "returned", "费用审批退回");
+        } else {
+          releasedAmountCents = await this.releaseLoanOffsetReservations(tx, claim.id, actorUserId, "审批驳回");
+          await tx.expenseClaim.update({ where: { id: claim.id }, data: { status: "rejected" } });
+          await tx.approvalInstance.update({ where: { id: instance.id }, data: { status: "rejected" } });
+        }
         await tx.approvalActionLog.create({
           data: {
             approvalInstanceId: instance.id,
-            action: "reject",
+            action: parallel ? "return_to_applicant" : "reject",
             actorUserId,
-            comment: optionalText(input.comment),
+            comment,
             approvedRoleKey: identity.approvedRoleKey,
             representedUserId: identity.representedUserId,
             ...(parallel || selfReview.isSelfReview ? { metadata: { ...selfReview.metadata, ...(parallel ? { nodeIndex } : {}) } } : {})
@@ -1388,7 +1501,7 @@ export class ExpenseClaimService {
           businessId: claim.id,
           metadata: { nodeName: node.name, approvedRoleKey: identity.approvedRoleKey, releasedAmountCents: releasedAmountCents.toString(), ...selfReview.metadata }
         });
-        return { id: rejected.id, status: rejected.status };
+        return { id: claim.id, status: parallel ? "draft" : "rejected" };
       }
 
       const signature = await snapshotApprovalSignature(tx, actorUserId, { required: true });
@@ -2033,6 +2146,30 @@ export class ExpenseClaimService {
     });
   }
 
+  private async prepareExpenseLines(
+    tx: Prisma.TransactionClient, expenseClaimId: string, companyId: string, lines: ExpenseClaimLineDto[], advanceCategory?: string
+  ) {
+    const knownCategories = await this.companyExpenseCategories(tx, companyId);
+    return lines.map((line, index) => {
+      const expenseCategory = resolveExpenseCategoryName(requiredText(line.expenseCategory, "费用类别不能为空"), knownCategories);
+      if (!expenseCategory) throw new BadRequestException("费用类别不能为空且最多 40 个字符");
+      if (advanceCategory && expenseCategoryKey(expenseCategory) !== expenseCategoryKey(advanceCategory)) {
+        throw new BadRequestException(`关联原采购报销沿用原采购类别：${advanceCategory}`);
+      }
+      return {
+        expenseClaimId, sortOrder: index + 1, expenseCategory,
+        occurredOn: dateOnly(line.occurredOn, "发生日期"),
+        quantity: parseExpenseQuantity(line.quantity),
+        purpose: requiredText(line.purpose, "用途说明不能为空"),
+        receiptCount: receiptCount(line.receiptCount),
+        amountCents: positiveCents(line.amountCents, "费用明细金额必须大于零"),
+        evidenceType: line.evidenceType,
+        noEvidenceReason: line.evidenceType === "none" ? requiredText(line.noEvidenceReason, "无凭证原因必填") : null,
+        remark: optionalText(line.remark)
+      };
+    });
+  }
+
   private lines(lines: ExpenseClaimLineDto[] | undefined) {
     if (!lines?.length) throw new BadRequestException("报销至少需要一条费用明细");
     return lines;
@@ -2400,7 +2537,13 @@ export class ExpenseClaimService {
     }
     const amountCents = claim.requestedAmountCents - remaining;
     if (!reservations.length) return { amountCents: 0n };
-    await tx.expenseLoanOffsetReservation.createMany({ data: reservations });
+    const historic = await tx.expenseLoanOffsetReservation.aggregate({
+      where: { expenseClaimId: claim.id }, _max: { sequenceNo: true }
+    });
+    const previousSequence = historic._max.sequenceNo ?? 0;
+    await tx.expenseLoanOffsetReservation.createMany({
+      data: reservations.map(reservation => ({ ...reservation, sequenceNo: previousSequence + reservation.sequenceNo }))
+    });
     await tx.employeeProjectLoanAccount.update({ where: { id: account.id }, data: { reservedOffsetAmountCents: account.reservedOffsetAmountCents + amountCents } });
     await this.audit.record(tx, { actorUserId, action: "expense_claim.loan_offset.reserve", businessType: "expense_claim", businessId: claim.id, metadata: { loanAccountId: account.id, amountCents: amountCents.toString(), allocationCount: reservations.length } });
     return { amountCents };
@@ -2606,6 +2749,14 @@ function groupReservationAmounts(reservations: Array<{ loanAccountId: string; am
     grouped.set(reservation.loanAccountId, (grouped.get(reservation.loanAccountId) ?? 0n) + reservation.amountCents);
   }
   return grouped;
+}
+
+function isReturnedExpenseDraft(claim: {
+  claimType: string; projectId: string | null; actualPurchaseBatchId: string | null; generalProcurementId: string | null;
+  status: string; submittedAt: Date | null; approvalInstanceId: string | null; approvedAt: Date | null; voidedAt: Date | null; fundedAmountCents: bigint;
+}): boolean {
+  return supportsExpenseParallelApproval(claim) && claim.status === "draft" && Boolean(claim.submittedAt) &&
+    !claim.approvalInstanceId && !claim.approvedAt && !claim.voidedAt && claim.fundedAmountCents === 0n;
 }
 
 function positiveCents(value: unknown, message: string) {

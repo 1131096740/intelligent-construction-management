@@ -1,7 +1,7 @@
 import { ExpenseClaimFundingNotificationService } from "./expense-claim-funding-notification.service";
 import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
 import { DeleteExpenseClaimDraftDto } from "./dto/delete-expense-claim-draft.dto";
-import { BadRequestException, Body, Controller, Get, Optional, Param, Post, Query, Res, StreamableFile, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Optional, Param, Patch, Post, Query, Res, StreamableFile, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
@@ -10,6 +10,7 @@ import { FileService } from "../file/file.service";
 import { FileInterceptor, type MemoryUploadedFile, normalizeUploadedOriginalName } from "../file/uploaded-file";
 import { CreateExpenseClaimDto } from "./dto/create-expense-claim.dto";
 import { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
+import { EditReturnedExpenseClaimDto, WithdrawExpenseClaimDto } from "./dto/returned-expense-claim.dto";
 import { RecordLoanDisbursementDto } from "./dto/record-loan-disbursement.dto";
 import { ConfirmEmployeeLoanRepaymentDto, RecordEmployeeLoanRepaymentDto } from "./dto/record-employee-loan-repayment.dto";
 import { AttachExpenseClaimAttachmentDto, RemoveExpenseClaimAttachmentDto } from "./dto/manage-expense-claim-attachment.dto";
@@ -239,6 +240,24 @@ export class ExpenseClaimController {
   @Post(":claimId/submission")
   submit(@Param("claimId") claimId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.claims.submit(claimId, user.id);
+  }
+
+  @Post(":claimId/withdrawal")
+  withdraw(
+    @Param("claimId") claimId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: WithdrawExpenseClaimDto
+  ) {
+    return this.claims.withdrawApproval(claimId, user.id, body.approvalInstanceId);
+  }
+
+  @Patch(":claimId/draft")
+  editReturnedDraft(
+    @Param("claimId") claimId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: EditReturnedExpenseClaimDto
+  ) {
+    return this.claims.editReturnedDraft(claimId, user.id, body);
   }
 
   @Post(":claimId/approval")

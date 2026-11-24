@@ -125,11 +125,13 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
 
   afterAll(async () => { if (app) await app.close(); });
 
-  async function request(path: string, body?: unknown, accessToken = token) {
-    const response = await fetch(`${baseUrl}${path}`, { method: body === undefined ? "GET" : "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  async function request(path: string, body?: unknown, accessToken = token, method = body === undefined ? "GET" : "POST") {
+    const response = await fetch(`${baseUrl}${path}`, { method, headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     return { status: response.status, body: await response.json() as {
       id: string;
       status: string;
+      updatedAt: string;
+      approvalInstanceId: string | null;
       entryDefinition: BusinessEntrySceneDefinition;
       entrySnapshots: Array<{ definitionSnapshot: BusinessEntrySceneDefinition; valuesSnapshot: Record<string, unknown> }>;
       approval?: { approvalInstanceId?: string; actionableDuties?: Array<{ index: number; name: string }> } | null;
@@ -603,6 +605,80 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       browserRepaymentClaimIds[viewport] = (await createDisbursedLoan(browserRepaymentProjectIds[viewport], viewport)).id;
     }
   }, 60_000);
+
+  (enabled ? it.each(["reimbursement", "incidental_expense"] as const) : it.skip.each(["reimbursement", "incidental_expense"] as const))(
+    "并联费用 %s 部分签批后被退回，原经办人修订重提，旧轮不可继续办理",
+    async claimType => {
+      const db = app.get(PrismaService);
+      const payload = selfInput(applicantUserId, claimType);
+      const originalInput = {
+        ...payload, requestedAmountCents: "10",
+        ...(payload.lines ? { lines: payload.lines.map(line => ({ ...line, amountCents: "10" })) } : {})
+      };
+      const created = await request("/expense-claims", originalInput);
+      expect(created.status).toBe(201);
+      const path = `/expense-claims/${created.body.id}`;
+      const capability = (id: string) => `/approval-forms/expense_claim/${created.body.id}/capability?expectedApprovalInstanceId=${id}`;
+      const submitted = await request(`${path}/submission`, {});
+      expect(submitted.status).toBe(201);
+      const oldId = submitted.body.approvalInstanceId!;
+      const signed = await parallelReviewCoordinates(path, approvalTokens[2]!);
+      const pending = await parallelReviewCoordinates(path, approvalTokens[0]!);
+      expect((await request(`${path}/approval`, { decision: "approve", ...signed }, approvalTokens[2]!)).status).toBe(201);
+      const originalSignature = await db.approvalActionLog.findFirstOrThrow({ where: { approvalInstanceId: oldId, action: "approve" } });
+      const originalSnapshot = await db.expenseClaimEntrySnapshot.findFirstOrThrow({ where: { expenseClaimId: created.body.id, submissionRevision: oldId } });
+      expect((await request(`${path}/approval`, { decision: "reject", ...pending }, approvalTokens[0]!)).status).toBe(400);
+      expect(await request(`${path}/approval`, { decision: "reject", comment: "请修订金额和事由", ...pending }, approvalTokens[0]!))
+        .toMatchObject({ status: 201, body: { status: "draft" } });
+      expect(await request(capability(oldId))).toMatchObject({ status: 200, body: { available: false } });
+      const withdrawnDetail = await request(path);
+      expect(withdrawnDetail).toMatchObject({ status: 200, body: {
+        status: "draft", approval: null, canEditReturnedDraft: true, canDeleteDraft: false, canWithdrawApproval: false,
+        loanOffsetAmountCents: "0", companyPayableAmountCents: "0"
+      } });
+      expect(await request(`${path}/capability`)).toMatchObject({ status: 200, body: {
+        availableActions: expect.arrayContaining(["edit_returned_expense_claim", "submit_expense_claim"])
+      } });
+      const patch = {
+        expectedUpdatedAt: withdrawnDetail.body.updatedAt, reason: "合成事由已修订",
+        ...(claimType === "reimbursement"
+          ? { lines: originalInput.lines!.map(line => ({ ...line, amountCents: "8" })) }
+          : { requestedAmountCents: "8" })
+      };
+      expect((await request(`${path}/draft`, patch, approvalTokens[2]!, "PATCH")).status).toBe(403);
+      expect(await request(`${path}/draft`, patch, token, "PATCH")).toMatchObject({
+        status: 200, body: { status: "draft", requestedAmountCents: "8" }
+      });
+      expect((await request(`${path}/draft`, patch, token, "PATCH")).status).toBe(409);
+
+      const resubmitted = await request(`${path}/submission`, {});
+      expect(resubmitted).toMatchObject({ status: 201, body: { status: "approval_pending", companyPayableAmountCents: "8" } });
+      const newId = resubmitted.body.approvalInstanceId!;
+      expect(newId).not.toBe(oldId);
+      expect(await request(capability(oldId))).toMatchObject({ status: 200, body: { available: false } });
+      expect(await request(capability(newId))).toMatchObject({ status: 200, body: { available: true, incomplete: true } });
+      expect((await request(`${path}/approval`, { decision: "approve", ...pending }, approvalTokens[0]!)).status).toBe(409);
+      expect((await db.approvalInstance.findUniqueOrThrow({ where: { id: oldId } })).status).toBe("returned");
+      expect(await db.approvalActionLog.findUniqueOrThrow({ where: { id: originalSignature.id } })).toEqual(originalSignature);
+      expect(await db.approvalActionLog.findFirstOrThrow({ where: { approvalInstanceId: oldId, action: "return_to_applicant" } }))
+        .toMatchObject({ comment: "请修订金额和事由", signatureFileIdSnapshot: null, signatureVersionIdSnapshot: null });
+      expect(await db.expenseClaimEntrySnapshot.findUniqueOrThrow({ where: { id: originalSnapshot.id } })).toEqual(originalSnapshot);
+      expect(await db.expenseClaimEntrySnapshot.findFirstOrThrow({ where: { expenseClaimId: created.body.id, submissionRevision: newId } }))
+        .toMatchObject({ valuesSnapshot: expect.objectContaining({ requestedAmountCents: "8", reason: "合成事由已修订" }) });
+      const newRound = await db.approvalInstance.findUniqueOrThrow({ where: { id: newId } });
+      expect(newRound.frozenNodes).toHaveLength(4);
+      expect(await db.approvalActionLog.count({ where: { approvalInstanceId: newId, action: "approve" } })).toBe(0);
+      const newSigned = await parallelReviewCoordinates(path, approvalTokens[2]!);
+      expect((await request(`${path}/approval`, { decision: "approve", ...newSigned }, approvalTokens[2]!)).status).toBe(201);
+      expect((await request(`${path}/withdrawal`, { approvalInstanceId: newId }, approvalTokens[2]!)).status).toBe(403);
+      expect((await request(`${path}/withdrawal`, { approvalInstanceId: oldId })).status).toBe(409);
+      expect(await request(`${path}/withdrawal`, { approvalInstanceId: newId })).toMatchObject({ status: 201, body: { status: "draft" } });
+      expect(await request(capability(newId))).toMatchObject({ status: 200, body: { available: false } });
+      expect((await db.approvalInstance.findUniqueOrThrow({ where: { id: newId } })).status).toBe("withdrawn");
+      expect(await db.approvalActionLog.count({ where: { approvalInstanceId: newId, action: "approve" } })).toBe(1);
+      expect(await db.expenseClaimPaymentExecution.count({ where: { expenseClaimId: created.body.id } })).toBe(0);
+    }, 60_000
+  );
 
   (enabled ? it.each(["reimbursement", "loan", "incidental_expense"] as const) : it.skip.each(["reimbursement", "loan", "incidental_expense"] as const))("V6 正式 PDF：%s 逐节点签名及未通过下载边界", async claimType => {
     const created = await request("/expense-claims", selfInput(applicantUserId, claimType));

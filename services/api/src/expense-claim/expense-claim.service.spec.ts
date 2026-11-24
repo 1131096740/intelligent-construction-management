@@ -20,8 +20,9 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
       findUnique: jest.fn().mockResolvedValue({ id: "user-a", name: "经办人", isActive: true }),
       findMany: jest.fn().mockResolvedValue(approvalAssignments.map(({ userId }) => ({ id: userId })))
     },
-    expenseClaim: { create: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn() },
-    expenseClaimLine: { createMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+    expenseClaim: { create: jest.fn(), findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn(), update: jest.fn(), aggregate: jest.fn() },
+    generalProcurement: { findUnique: jest.fn() },
+    expenseClaimLine: { createMany: jest.fn(), deleteMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     expenseClaimEntrySnapshot: { create: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     expenseClaimAttachment: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn().mockResolvedValue([]), update: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     fileObject: { findUnique: jest.fn() },
@@ -30,7 +31,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     employeeLoanRepayment: { create: jest.fn(), update: jest.fn() },
     expenseClaimPaymentExecution: { create: jest.fn(), findUnique: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     paymentExecutionRefund: { aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: 0n } }), findMany: jest.fn().mockResolvedValue([]) },
-    expenseLoanOffsetReservation: { findMany: jest.fn().mockResolvedValue([]), createMany: jest.fn(), updateMany: jest.fn() },
+    expenseLoanOffsetReservation: { findMany: jest.fn().mockResolvedValue([]), aggregate: jest.fn().mockResolvedValue({ _max: { sequenceNo: null } }), createMany: jest.fn(), updateMany: jest.fn() },
     approvalInstance: { create: jest.fn(), update: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) },
     approvalActionLog: { create: jest.fn() },
     auditLog: { create: jest.fn().mockResolvedValue({}) },
@@ -1376,16 +1377,113 @@ describe("ExpenseClaimService", () => {
       : query.sql.includes('"ExpenseClaim"') ? [claim] : []);
     tx.employeeProjectLoanEntry.findMany.mockResolvedValue([{ id: "entry-old", amountCents: 5000n }, { id: "entry-new", amountCents: 6000n }]);
     tx.expenseLoanOffsetReservation.findMany.mockResolvedValue([{ loanEntryId: "entry-old", amountCents: 1000n }]);
+    tx.expenseLoanOffsetReservation.aggregate.mockResolvedValue({ _max: { sequenceNo: 3 } });
     tx.approvalInstance.create.mockResolvedValue({ id: "approval-r" });
     tx.expenseClaim.findUnique.mockResolvedValue({ ...claim, status: "approval_pending", approvalInstanceId: "approval-r", loanOffsetAmountCents: 7000n, companyPayableAmountCents: 0n });
     tx.expenseClaim.update.mockResolvedValue({ id: "claim-r", status: "approval_pending" });
 
     await expect(service.submit("claim-r", "user-a")).resolves.toEqual(expect.objectContaining({ loanOffsetAmountCents: "7000", companyPayableAmountCents: "0" }));
     expect(tx.expenseLoanOffsetReservation.createMany).toHaveBeenCalledWith({ data: [
-      expect.objectContaining({ loanEntryId: "entry-old", amountCents: 4000n, sequenceNo: 1 }),
-      expect.objectContaining({ loanEntryId: "entry-new", amountCents: 3000n, sequenceNo: 2 })
+      expect.objectContaining({ loanEntryId: "entry-old", amountCents: 4000n, sequenceNo: 4 }),
+      expect.objectContaining({ loanEntryId: "entry-new", amountCents: 3000n, sequenceNo: 5 })
     ] });
     expect(tx.employeeProjectLoanAccount.update).toHaveBeenCalledWith({ where: { id: "account-1" }, data: { reservedOffsetAmountCents: 8000n } });
+  });
+
+  it.each([true, false])("keeps the required rejection reason and historical status distinct: parallel=%s", async parallel => {
+    const claim = { id: "claim-r", claimType: "reimbursement", status: "approval_pending", projectId: "project-1",
+      approvalInstanceId: "approval-old", handledByUserId: "user-a", fundedAmountCents: 0n };
+    const round = { id: "approval-old", applicantUserId: "user-a", currentNodeIndex: 0, frozenNodes: [
+      { name: "财务主管", roleKeys: ["finance_director"], mode: "any", candidateUserIds: ["finance-user"],
+        candidateUserIdsByRole: { finance_director: ["finance-user"] },
+        ...(parallel ? { approvedRoleKeys: [], protocolVersion: 1, executionMode: "parallel",
+          candidatePolicy: "current_role_scope", roleScopesByRole: { finance_director: "global" } } : {}) }
+    ] };
+    const { service, tx } = createHarness({ roles: ["finance_director"] });
+    tx.$queryRaw.mockImplementation(async (query: { sql: string }) => query.sql.includes('"ApprovalInstance"') ? [round]
+      : query.sql.includes('"User"') ? [{ isActive: true }] : [claim]);
+    const coordinates = parallel ? { approvalInstanceId: round.id, approvalDutyIndex: 0 } : {};
+
+    if (parallel) {
+      await expect(service.review(claim.id, "finance-user", { decision: "reject", ...coordinates }))
+        .rejects.toThrow("驳回费用申请必须填写原因");
+      expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    }
+    await expect(service.review(claim.id, "finance-user", { decision: "reject", ...(parallel ? { comment: "核对后请修订" } : {}), ...coordinates }))
+      .resolves.toEqual({ id: claim.id, status: parallel ? "draft" : "rejected" });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({ where: { id: round.id }, data: { status: parallel ? "returned" : "rejected" } });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      approvalInstanceId: round.id, action: parallel ? "return_to_applicant" : "reject", comment: parallel ? "核对后请修订" : null
+    }) });
+    expect(tx.approvalActionLog.create.mock.calls[0]?.[0].data).not.toHaveProperty("signatureFileIdSnapshot");
+  });
+
+  it("withdraws a partially signed expense round and releases its reserved loan amount", async () => {
+    const claim = { id: "claim-r", claimType: "reimbursement", status: "approval_pending", projectId: "project-1",
+      approvalInstanceId: "approval-old", handledByUserId: "user-a", fundedAmountCents: 0n };
+    const round = { id: "approval-old", applicantUserId: "user-a", frozenNodes: [
+      { roleKeys: ["project_manager"], mode: "any", approvedRoleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel" },
+      { roleKeys: ["finance_director"], mode: "any", approvedRoleKeys: [], protocolVersion: 1, executionMode: "parallel" }
+    ] };
+    const { service, tx, audit } = createHarness();
+    tx.expenseClaim.findUnique.mockResolvedValue(claim);
+    tx.$queryRaw.mockImplementation(async (query: { sql: string }) => query.sql.includes('"ApprovalInstance"') ? [round]
+      : query.sql.includes('"EmployeeProjectLoanAccount"') ? [{ id: "loan-1", reservedOffsetAmountCents: 900n }]
+      : query.sql.includes('"User"') ? [{ isActive: true }] : [claim]);
+    tx.expenseLoanOffsetReservation.findMany.mockResolvedValue([{ id: "reserved-1", loanAccountId: "loan-1", amountCents: 600n }]);
+
+    await expect(service.withdrawApproval(claim.id, "user-foreign", round.id)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.withdrawApproval(claim.id, "user-a", "stale")).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+    await expect(service.withdrawApproval(claim.id, "user-a", round.id)).resolves.toEqual({ id: claim.id, status: "draft" });
+
+    expect(tx.expenseClaim.update).toHaveBeenCalledWith({ where: { id: claim.id }, data: {
+      status: "draft", approvalInstanceId: null, loanOffsetAmountCents: 0n, companyPayableAmountCents: 0n
+    } });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({ where: { id: round.id }, data: { status: "withdrawn" } });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: { approvalInstanceId: round.id, action: "withdraw", actorUserId: "user-a" }
+    });
+    expect(tx.expenseLoanOffsetReservation.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["reserved-1"] }, status: "reserved" },
+      data: expect.objectContaining({ status: "released" })
+    });
+    expect(tx.employeeProjectLoanAccount.update).toHaveBeenCalledWith({ where: { id: "loan-1" }, data: { reservedOffsetAmountCents: 300n } });
+    expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({
+      action: "expense_claim.approval.withdraw", metadata: { approvalInstanceId: round.id, releasedAmountCents: "600" }
+    }));
+
+    tx.expenseClaim.findUnique.mockResolvedValue({ ...claim, status: "approved_pending_payment" });
+    await expect(service.withdrawApproval(claim.id, "user-a", round.id)).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.approvalInstance.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks a linked returned draft revision against the original procurement's remaining approved amount", async () => {
+    const updatedAt = new Date("2026-11-12T10:00:00Z");
+    const claim = { id: "claim-r", status: "draft", claimType: "incidental_expense", projectId: "project-1",
+      companyEntityId: "company-1", generalProcurementId: "procurement-1", incidentalExpenseCategory: "procurement_construction_tools",
+      generalProcurementRequestKey: "original-request-key", generalProcurementFingerprint: "original-fingerprint",
+      approvalInstanceId: null, handledByUserId: "user-a", fundedAmountCents: 0n, submittedAt: updatedAt, updatedAt, requestedAmountCents: 70n };
+    const { service, tx } = createHarness();
+    tx.expenseClaim.findUnique.mockResolvedValue(claim);
+    tx.$queryRaw.mockImplementation(async (query: { sql: string }) => query.sql.includes('"User"') ? [{ isActive: true }] : [claim]);
+    tx.generalProcurement.findUnique.mockResolvedValue({ status: "archived", category: "construction_tools", requestProtocolVersion: 1,
+      requestedAmountCents: 100n, projectId: claim.projectId, companyEntityId: claim.companyEntityId });
+    tx.expenseClaim.aggregate.mockResolvedValue({ _sum: { requestedAmountCents: 25n } });
+    const input = { reason: "更正请款金额", expectedUpdatedAt: updatedAt.toISOString() };
+    await expect(service.editReturnedDraft(claim.id, "user-a", { ...input, requestedAmountCents: "76" })).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.expenseClaim.update).not.toHaveBeenCalled();
+    tx.expenseClaim.update.mockResolvedValue({ id: claim.id, status: "draft", updatedAt, requestedAmountCents: 65n });
+    await expect(service.editReturnedDraft(claim.id, "user-a", { ...input, requestedAmountCents: "65" }))
+      .resolves.toEqual({ id: claim.id, status: "draft", updatedAt, requestedAmountCents: "65" });
+    expect(tx.expenseClaim.aggregate).toHaveBeenCalledWith({
+      where: { generalProcurementId: claim.generalProcurementId, id: { not: claim.id }, status: { not: "rejected" } },
+      _sum: { requestedAmountCents: true }
+    });
+    expect(tx.expenseClaim.update).toHaveBeenCalledWith({
+      where: { id: claim.id }, data: { reason: input.reason, requestedAmountCents: 65n, updatedAt: expect.any(Date) },
+      select: { id: true, status: true, updatedAt: true, requestedAmountCents: true }
+    });
   });
 
   it("posts frozen reservations as immutable offsets at final reimbursement approval without creating company payment", async () => {
