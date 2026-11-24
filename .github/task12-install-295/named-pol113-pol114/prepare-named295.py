@@ -159,10 +159,11 @@ for name,pin in pins['workspace'].items():
         write(path,(json.dumps(before,ensure_ascii=False,indent=2)+'\n').encode())
     else:
         if current320 and name == 'services/api/src/database/contract-business-entry-http.spec.ts':
-            # Keep the original 295 input signed off while admitting the current signed-supplement HTTP fixture.
+            # Keep the archived 295 fixture and pin the current signed-settlement and supplement HTTP fixture.
             pin = {**pin,
-                   'base': 'a3fd1dbbc3b94047f6b532718c9d6f9473eb1c1aa4b75df4455d68f8646a50b2',
-                   'result': '0c2eeca354f68331cf1c10ac06904b9c9dcb722c90788b2f166971c1cc8c2f2c'}
+                   'base': '3cd46c877d3dc84bd693c6442e2841a91d1263df27bfebd448e10c8fcd174c13',
+                   'result': 'd9298daa94f14e6525d32f8e5389a663f80a6ab1dd1d2a2644a92c7b0897caeb',
+                   'file': 'patches/contract-business-entry-signed-settlement-current329.spec.ts.gz'}
         write(path,overlay(material,pin))
 
 files=sorted(p for p in workspace.rglob('*') if p.is_file())

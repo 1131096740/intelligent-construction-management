@@ -37,9 +37,11 @@ for relative in "${tests[@]}"; do
   mkdir -p "$work/${relative%/*}"
   cp "$workspace/$relative" "$work/$relative"
 done
-gzip -dc "$plan/core-payment-tests.patch.gz" | patch --batch --forward --fuzz=0 --silent -p1 -d "$work"
 if node -e 'process.exit(require(process.argv[1]).mode==="current-320"?0:1)' "$prepared/source.json"; then
+  gzip -dc "$plan/core-payment-tests-current329.patch.gz" | patch --batch --forward --fuzz=0 --silent -p1 -d "$work"
   patch --batch --forward --fuzz=0 --silent -p1 -d "$work" < "$plan/payment-concurrency-320.patch"
+else
+  gzip -dc "$plan/core-payment-tests.patch.gz" | patch --batch --forward --fuzz=0 --silent -p1 -d "$work"
 fi
 for relative in "${tests[@]}"; do chmod 0644 "$work/$relative"; done
 
