@@ -15,6 +15,11 @@
     "candidate": "a6a9270a5240e407f5f60baa96852f0e0040c09b86ce848b08cda0a46d2ff9c8"
   },
   {
+    "path": "apps/web-admin/e2e/contract-change.e2e.ts",
+    "expected": "32fd9145ebe7dbc9b94cadb71fb5fd7b096cf21369d34cb560f060e7dfa0d73f",
+    "candidate": "4ccd36821609902e15d2410679962867ef54138f9f9981a9462c440ff0b42334"
+  },
+  {
     "path": "apps/web-admin/e2e/contract-takeover-responsive.e2e.ts",
     "expected": "a1cfbf7ecfc2a943edab5c1c95fb4e2e55f0de3f595c5f66fb83cbcb3554591f",
     "candidate": "eeca6404316cb5a86ba058edbdf2aae4aace2d0b308a0dc1a6018debb5fc5374"
@@ -82,12 +87,12 @@
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.test.ts",
     "expected": "33395aaa091223d42dd2e7cd1ddcb2a5d80af7277189ec688d8d0e1eabfc5469",
-    "candidate": "ba89af856b926dc1f72a0aaea8da9bfdb5af234f9a5315e282672c64aa79ca51"
+    "candidate": "c0776be83dddf7205f2e1a8a58f8a1f0e71ceabf53d3c9b15322799666d63aa7"
   },
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.ts",
     "expected": "c83128b15dbd395bae3875c5994c11e54b13ec426b6959b3e677371bb49a303f",
-    "candidate": "6ea14dcaed1925599bc72af917ac66e0095c31235d4fd20b31d75ab9f554c15a"
+    "candidate": "fa6ec0901700754a20ee63f0b7f44750114ec045fe0ff18f6b06ed68e28603d3"
   },
   {
     "path": "apps/web-admin/src/api/expense-claim.api.test.ts",
@@ -520,6 +525,21 @@
     "candidate": "431f15e6e5a99aacd19241e6d1e665a2cf15c5a6beeb9b8abe75ad56b804baae"
   },
   {
+    "path": "services/api/prisma/run-contract-settlement-governance-uat-local.cjs",
+    "expected": "932028949ff887d6a492283946d32fcf9f5b01bc2f9644d2bdc3c92cc96a2fca",
+    "candidate": "3cfeda9e0f3a5a6b4ef4ef0979e93b58f3ac4f4667c7f51f7ae67d20a259f5b3"
+  },
+  {
+    "path": "services/api/prisma/run-contract-settlement-governance-uat.cjs",
+    "expected": "a595ea24a3bccd972bbf6aa14a879e0ba54710ef09f37c8615426cd959fcb392",
+    "candidate": "58393f22eefb73833268091f65ef1e6b44f620fafcdc6566162e993a450ee0b3"
+  },
+  {
+    "path": "services/api/prisma/run-contract-settlement-governance-uat.test.cjs",
+    "expected": "850b01fd3ec8f394c9dec15a84756a45cb0c0527ebe7774c2418225ec639faa4",
+    "candidate": "8f3a53c437ba584aaac6d53a3605fd37447e176c0b22c740a7f8d750019d41b4"
+  },
+  {
     "path": "services/api/prisma/run-database-dynamic-gate-local.cjs",
     "expected": "ec39311717c5e8a4bc93910fe5a0443c3fdb45a1b40477ce39222a79effe8a89",
     "candidate": "f970c1c5b6a4f369b8d53dfae80f21751943ef6ff0de142e8bb406190f108374"
@@ -543,6 +563,11 @@
     "path": "services/api/prisma/task16-current259-payment-competition.cjs",
     "expected": "034e447eea55f7d6d443a081ba2e2cbbe96088336b9fc217de273562510b30c7",
     "candidate": "2194879bf1a69f0b48436e30f1b027a2b7559cab15af1277aa0eab47c80e2ecb"
+  },
+  {
+    "path": "services/api/prisma/verify-trial-run.cjs",
+    "expected": "316ccb7035292e63c80de7e8321a5eb0a9b4f5e0b696f66bd351fbd7e706b785",
+    "candidate": "385ea72cdf015bedb61608ff1c9e1b0bca67a946a4a29dfd8afc1780e5543711"
   },
   {
     "path": "services/api/scripts/business-zeroing-policy.cjs",
@@ -820,6 +845,11 @@
     "candidate": "00b656e854280efcae5645d7a3061bf406d008f69d49045233345c871882beef"
   },
   {
+    "path": "services/api/src/contract-workbench/contract-mutation-authority.ts",
+    "expected": "31d7f8f9a8d49bc8e2c3031428e14e8d56d99d3e434d3166bff0b9cadc7225ad",
+    "candidate": "ddf54971132fa8ef8bb1fc919a13854f3b89aef032ad5acf5947de866088d1e5"
+  },
+  {
     "path": "services/api/src/contract-workbench/contract-workbench.service.ts",
     "expected": "747f678a497a1c20c4a5b674b5ffb6a69ec6d8d153ba59c54fe1b5f2d1f4a116",
     "candidate": "a4100247a424bdf57e4f4e8ac10d0749c434b459f5261ec776894738cb916177"
@@ -927,12 +957,17 @@
   {
     "path": "services/api/src/database/contract-business-entry-http.spec.ts",
     "expected": "e4475a9bfb2a08fecaca0ca6f89d2e631b0355e6c58a4f2418dc612651ef73d9",
-    "candidate": "b0d8436f1d65a0585e26a029a1baea1a95dfbc974fa862d221d715353334fff5"
+    "candidate": "a3fd1dbbc3b94047f6b532718c9d6f9473eb1c1aa4b75df4455d68f8646a50b2"
   },
   {
     "path": "services/api/src/database/contract-lifecycle-route.spec.ts",
     "expected": "0b7e34a3a97e2a7ebb2cdb1bdcbefbbd690d5768061ec110dba46236bca4939d",
     "candidate": "abbf21a612ff1e6b12ef63d01736314ca059d03c63b8bf8692e7d91b6855df9c"
+  },
+  {
+    "path": "services/api/src/database/contract-settlement-governance-uat-runner.spec.ts",
+    "expected": "a10f7775001f2ed82cd4412d0816fba8b610644555bce2f51e60c72bddf3ee82",
+    "candidate": "acf52c4f2bd8265fd69f82fe088e7db11bd10e85140a3027b19d9e71a7c16694"
   },
   {
     "path": "services/api/src/database/contract-takeover-confirmation-concurrency.spec.ts",
@@ -1423,9 +1458,14 @@
     "candidate": "e34c2249bfd7ea82468b283952b54a17c2494d94d102f7a9598e307d34d1aa77"
   },
   {
+    "path": "services/api/src/retired-write-entry/retired-write-entry-route.spec.ts",
+    "expected": "3ff2d3c20db799331acfee70ac32cfc18c5c8bb7e73b3218730cc2edac6e6640",
+    "candidate": "8cf2b6bdb3428f54a86b6fd83ac9a8b359137c0dc173c9ee35e00441e0f95af6"
+  },
+  {
     "path": "services/api/src/retired-write-entry/retired-write-entry.guard.ts",
     "expected": "958e7639f5740b4e08af17be0a7040d69863f29d37c2ed185839dacd20c3c329",
-    "candidate": "5f7831f9584e50e3249e56ebb60f4d33b7c28ffef75bac0c45b05c81d87efb78"
+    "candidate": "49a0363cde4f00d48f478a92656698c22c0d9d713790cee034175c3e9b87bebd"
   },
   {
     "path": "services/api/src/settlement/settlement-operating-source.adapter.ts",
