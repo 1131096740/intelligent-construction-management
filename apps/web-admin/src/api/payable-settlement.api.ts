@@ -1,27 +1,13 @@
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
-export interface PayableSettlementCandidate {
-  selectionRef: string;
-  expiresAt: string;
-  displayLabel: string;
-  executedAt: string;
-  payerLabel: string;
-  statusLabel: string;
-  availableAmountCents: string;
-}
-
 export interface PayableSettlementCapabilities {
   read: boolean;
   allocate: boolean;
   submit: boolean;
   confirm: boolean;
   return: boolean;
-}
-
-export interface PayableSettlementCandidateReadModel {
-  caseRevision: number;
-  candidates: PayableSettlementCandidate[];
+  returnRelationship: boolean;
 }
 
 export interface WagePayableCaseOption {
@@ -46,28 +32,6 @@ export interface PayableSettlementWorkbenchItem {
   submittedAt: string | null;
   confirmedAt: string | null;
   updatedAt: string;
-}
-
-export interface AllocatePayableSettlementInput {
-  selectionRef: string;
-  selectionExpiresAt: string;
-  amountCents: string;
-  expectedCaseRevision: number;
-  idempotencyKey: string;
-}
-
-export interface PayableSettlementCommandInput {
-  expectedRevision: number;
-  idempotencyKey: string;
-}
-
-export interface PayableSettlementCommandResult {
-  settlementCaseId: string;
-  status: string;
-  statusLabel?: string;
-  revision: number;
-  payableRef?: string;
-  allocatedAmountCents?: string;
 }
 
 export interface InterEntityRelationshipReadModel {
@@ -111,7 +75,7 @@ export function fetchPayableSettlementCapabilities() {
 export function fetchWagePayableCases() {
   return read<WagePayableCaseOption[]>(
     "/payable-settlements/wage-payable-cases",
-    "加载可核销工资应付案件失败"
+    "加载历史工资应付案件失败"
   );
 }
 
@@ -153,58 +117,6 @@ export function uploadInterEntityRelationshipEvidence(
   return postForm<InterEntityRelationshipEvidenceUploadResult>(
     `/payable-settlements/inter-entity-relationships/${encodeURIComponent(relationshipEntryId)}/evidence`,
     form
-  );
-}
-
-export function fetchPaymentExecutionCandidates(payableRef: string) {
-  return read<PayableSettlementCandidateReadModel>(
-    `/payable-settlements/wage-payable-cases/${encodeURIComponent(payableRef)}/payment-execution-candidates`,
-    "加载可核销付款候选失败"
-  );
-}
-
-export function allocatePayableSettlement(
-  payableRef: string,
-  input: AllocatePayableSettlementInput
-) {
-  return post<PayableSettlementCommandResult>(
-    `/payable-settlements/wage-payable-cases/${encodeURIComponent(payableRef)}/allocations`,
-    input,
-    "保存工资应付核销失败"
-  );
-}
-
-export function submitPayableSettlement(
-  settlementCaseId: string,
-  input: PayableSettlementCommandInput
-) {
-  return lifecycle(settlementCaseId, "submit", input, "提交工资应付核销失败");
-}
-
-export function confirmPayableSettlement(
-  settlementCaseId: string,
-  input: PayableSettlementCommandInput
-) {
-  return lifecycle(settlementCaseId, "confirm", input, "确认工资应付核销失败");
-}
-
-export function returnPayableSettlement(
-  settlementCaseId: string,
-  input: PayableSettlementCommandInput
-) {
-  return lifecycle(settlementCaseId, "return", input, "退回工资应付核销失败");
-}
-
-function lifecycle(
-  settlementCaseId: string,
-  action: "submit" | "confirm" | "return",
-  input: PayableSettlementCommandInput,
-  fallback: string
-) {
-  return post<PayableSettlementCommandResult>(
-    `/payable-settlements/${encodeURIComponent(settlementCaseId)}/${action}`,
-    input,
-    fallback
   );
 }
 

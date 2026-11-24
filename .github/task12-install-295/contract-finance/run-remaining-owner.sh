@@ -35,6 +35,7 @@ work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-remaining-$lane.XXXXXXXX")
 profiles="$prior/remaining-owner-modes.json"
 node "$owner" --mounts "$lane" "$workspace" > "$work/fixture-mounts.tsv"
 spec=
+current_profile=
 if [[ $count == 329 && $lane == generic-batch ]]; then
   spec=src/database/pol05-operating-source-facts.spec.ts
   expected=e22999bfe33cbab9b963e0d61d94ac5bd27762dadda606f7838274de74a8cd04
@@ -46,15 +47,30 @@ elif [[ $count == 329 && $lane == takeover-task1 ]]; then
   fixture="$work/contract-takeover-confirmation-concurrency.spec.ts"
   expected=$(git -C "$root" show "$sha:services/api/$spec" | shasum -a 256 | cut -d' ' -f1)
   cp "$workspace/services/api/$spec" "$fixture"
+elif [[ $count == 329 && $lane == payable-settlement ]]; then
+  spec=src/database/payable-settlement-concurrency.spec.ts
+  fixture="$work/payable-settlement-concurrency.spec.ts"
+  current_profile="$plan/payable-settlement-329-fixture.json"
+  expected=$(node -p "require(process.argv[1]).sha" "$current_profile")
+  cp "$workspace/services/api/$spec" "$fixture"
 fi
 if [[ -n "$spec" ]]; then
-  node - "$profiles" "$work" "$spec" "$fixture" "$lane" "$expected" <<'JS'
+  node - "$profiles" "$work" "$spec" "$fixture" "$lane" "$expected" "$current_profile" <<'JS'
 const fs=require('node:fs'),{createHash}=require('node:crypto'),assert=require('node:assert/strict');
-const [input,work,spec,fixture,lane,expected]=process.argv.slice(2);
+const [input,work,spec,fixture,lane,expected,currentProfile]=process.argv.slice(2);
 const profile=require(input);
 const sha=createHash('sha256').update(fs.readFileSync(fixture)).digest('hex');
 assert.equal(sha,expected);
-profile[lane].files[spec].sha=sha;
+const archived=profile[lane].files[spec];
+if (currentProfile) {
+  const candidate=require(currentProfile);
+  assert.equal(candidate.count,archived.count);
+  assert.equal(candidate.titles.length,archived.count);
+  assert.equal(new Set(candidate.titles).size,archived.count);
+  profile[lane].files[spec]=candidate;
+} else {
+  archived.sha=sha;
+}
 fs.writeFileSync(work+'/remaining-owner-modes.json',JSON.stringify(profile));
 const mounts=work+'/fixture-mounts.tsv';
 const rows=fs.readFileSync(mounts,'utf8').split('\n').map(row=>row.endsWith('\t'+spec)?fixture+'\t'+spec:row);

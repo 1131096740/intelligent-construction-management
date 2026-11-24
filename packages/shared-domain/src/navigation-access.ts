@@ -189,13 +189,8 @@ export const NAVIGATION_ENTRY_ACCESS = {
   fund_movement_workbench: { kind: "actions", actions: ["payment.finance_record"] },
   payable_settlement_workbench: {
     kind: "actions",
-    actions: [
-      "payable_settlement.read",
-      "payable_settlement.allocate",
-      "payable_settlement.submit",
-      "payable_settlement.confirm",
-      "payable_settlement.return"
-    ]
+
+    actions: ["payable_settlement.read"]
   },
 
   ledger_contract: { kind: "positions", roles: CONTRACT_LEDGER_READ_ROLE_KEYS },

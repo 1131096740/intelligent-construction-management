@@ -1752,6 +1752,36 @@
       "path": "/expense-claims/:claimId/repayments/:repaymentId/capability",
       "usage": "internal_task",
       "reason": "issue_425_historical_employee_loan_repayment_capability_read"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/wage-payable-cases/:payableRef/allocations",
+      "usage": "internal_task",
+      "reason": "issue_425_immutable_wage_settlement_receipt_replay_only"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/submit",
+      "usage": "internal_task",
+      "reason": "issue_425_immutable_wage_settlement_receipt_replay_only"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/confirm",
+      "usage": "internal_task",
+      "reason": "issue_425_immutable_wage_settlement_receipt_replay_only"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/return",
+      "usage": "internal_task",
+      "reason": "issue_425_immutable_wage_settlement_receipt_replay_only"
+    },
+    {
+      "method": "GET",
+      "path": "/payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates",
+      "usage": "internal_task",
+      "reason": "issue_425_historical_wage_settlement_revision_read"
     }
   ],
   "consumerSurfaceOverrides": [
@@ -2178,6 +2208,36 @@
       "path": "/expense-claims/:claimId/repayments/:repaymentId/capability",
       "consumerSurface": "operator_endpoint",
       "reason": "issue_425_historical_employee_loan_repayment_capability_read"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/wage-payable-cases/:payableRef/allocations",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_immutable_wage_settlement_receipt_replay_only"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/submit",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_immutable_wage_settlement_receipt_replay_only"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/confirm",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_immutable_wage_settlement_receipt_replay_only"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/:settlementCaseId/return",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_immutable_wage_settlement_receipt_replay_only"
+    },
+    {
+      "method": "GET",
+      "path": "/payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_historical_wage_settlement_revision_read"
     }
   ]
 }

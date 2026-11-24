@@ -1,0 +1,26 @@
+{
+  "sha": "189ced1c5be9d482ff2b4558da5a342bb790b4245bc907f98639f6e6f9e35393",
+  "count": 20,
+  "titles": [
+    "rejects a production or non-local database target",
+    "allows at most one concurrent allocation when both attempts would exceed the payment",
+    "keeps one durable receipt for a contended idempotency key",
+    "blocks allocation mutation and case mutation after confirmation",
+    "rejects direct non-draft inserts even with complete lifecycle audit fields",
+    "requires a confirmed cross-company case to carry its proxy relationship root",
+    "requires an immutable server-issued bank-holder authority and evidence SoD",
+    "locks the authority evidence row before freezing its hash",
+    "binds proxy payer attestations to an approved finance-director action and its evidence",
+    "rejects direct allocations whose typed source coordinates do not match a confirmed wage ref",
+    "keeps project scope while allowing a separately authorized execution payer",
+    "rejects direct allocations when the request contract lineage crosses project boundaries",
+    "rejects a direct allocation whose amount exceeds the existing execution",
+    "enforces the cumulative wage-binding amount for one payment execution",
+    "enforces cumulative wage-binding balance for one source ref across executions",
+    "enforces one execution total across generic allocations and wage bindings in either write order",
+    "replays one historical allocation and immutable receipt under an idempotent race",
+    "retains historical cross-company evidence and rejects fresh settlement commands",
+    "task07 retains frozen cross-company payment evidence after both companies leave new selections",
+    "rejects fresh dedicated allocation without creating any cases, allocations, receipts or audit events"
+  ]
+}

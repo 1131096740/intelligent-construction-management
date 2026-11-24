@@ -1,6 +1,6 @@
 import { CompanyEntityService } from "../company-entity/company-entity.service";
 import { CompanyEntityAccess } from "../company-entity/company-entity-access";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { PayableRegistryService } from "../payable-registry/payable-registry.service";
@@ -30,10 +30,16 @@ export function payableSettlementDatabaseUrl(value: string | undefined) {
     throw new Error("工资应付核销动态测试必须连接非生产专用数据库");
   }
   const url = new URL(value);
+  const ownedRun = process.env.JG_PAYABLE_SETTLEMENT_289_RUN_ID;
+  const owned = process.env.NODE_ENV === "test" && !!ownedRun &&
+    /^[a-f0-9]{32}$/.test(ownedRun) && url.pathname === `/jg_task01_${ownedRun}` &&
+    url.protocol === "postgresql:" && url.hostname === "127.0.0.1" &&
+    url.username === "jg_task01_owner" && url.searchParams.get("sslmode") === "require" &&
+    url.searchParams.get("sslaccept") === "strict";
   if (
     !["postgresql:", "postgres:"].includes(url.protocol) ||
     !["127.0.0.1", "localhost", "::1"].includes(url.hostname) ||
-    url.pathname !== `/${TEST_DATABASE}`
+    (url.pathname !== `/${TEST_DATABASE}` && !owned)
   ) {
     throw new Error("工资应付核销动态测试拒绝非本机专用数据库");
   }
@@ -642,46 +648,46 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
     })).resolves.toBe(0);
   });
 
-  it("runs the real service with one durable allocation and receipt under an idempotent race", async () => {
+  it("replays one historical allocation and immutable receipt under an idempotent race", async () => {
     const fixture = await createEligibleServiceFixture(observer, 1_000n);
+    const settlementCaseId = await seedHistoricalAllocation(observer, fixture);
+    const command = { ...historicalAllocationCommand(fixture), idempotencyKey: randomUUID() };
+    const action = "payable_settlement.allocation.create";
+    const responseSnapshot = { settlementCaseId, status: "draft", revision: 1, allocatedAmountCents: "1000" };
+    const receipt = await observer.payableSettlementCommandReceipt.create({
+      data: {
+        action,
+        idempotencyKey: command.idempotencyKey,
+        payloadFingerprint: createHash("sha256").update(JSON.stringify({
+          action, actorUserId: fixture.actorUserId, amountCents: command.amountCents.toString(),
+          expectedCaseRevision: String(command.expectedCaseRevision), payableRef: command.payableRef,
+          selectionExpiresAt: command.selectionExpiresAt, selectionRef: command.selectionRef
+        })).digest("hex"),
+        settlementCaseId,
+        responseSnapshot
+      }
+    });
     const service = realService(observer);
-    const listed = await service.listPaymentExecutionCandidates(
-      fixture.actorUserId,
-      fixture.payableRef
-    );
-    expect(listed.candidates).toHaveLength(1);
-    expect(JSON.stringify(listed)).not.toContain(fixture.paymentExecutionId);
-    const candidate = listed.candidates[0];
-    const idempotencyKey = randomUUID();
-    const command = {
-      payableRef: fixture.payableRef,
-      selectionRef: candidate.selectionRef,
-      selectionExpiresAt: candidate.expiresAt,
-      amountCents: 1_000n,
-      expectedCaseRevision: fixture.caseRevision,
-      idempotencyKey
-    };
 
-    const [firstResult, secondResult] = await Promise.all([
+    expect(await service.listPaymentExecutionCandidates(fixture.actorUserId, fixture.payableRef))
+      .toEqual({ candidates: [], caseRevision: 1 });
+    const attempts = await Promise.all([
       service.allocatePaymentExecution(fixture.actorUserId, command),
       service.allocatePaymentExecution(fixture.actorUserId, command)
     ]);
-
-    expect(secondResult).toEqual(firstResult);
-    await expect(observer.payableSettlementAllocation.count({
-      where: { payableRef: fixture.payableRef }
-    })).resolves.toBe(1);
-    await expect(observer.payableSettlementCommandReceipt.count({
-      where: { idempotencyKey }
-    })).resolves.toBe(1);
+    expect(attempts).toEqual([responseSnapshot, responseSnapshot]);
+    await expect(service.allocatePaymentExecution(fixture.actorUserId, { ...command, amountCents: 999n }))
+      .rejects.toMatchObject({ status: 409 });
+    await expect(observer.payableSettlementAllocation.count({ where: { payableRef: fixture.payableRef } })).resolves.toBe(1);
+    await expect(observer.payableSettlementCommandReceipt.findMany({ where: { settlementCaseId } }))
+      .resolves.toEqual([receipt]);
   });
 
-  it("confirms a cross-company service path while reusing voucher and authorization evidence", () => confirmCrossCompanyService(true));
+  it("retains historical cross-company evidence and rejects fresh settlement commands", () => readHistoricalCrossCompanyCase(true));
 
-  // Prepared only: the existing explicit RUN_PAYABLE_SETTLEMENT_DATABASE gate remains mandatory.
-  it("task07 continues a frozen cross-company payment after both directory companies stop new selections", () => confirmCrossCompanyService(false));
+  it("task07 retains frozen cross-company payment evidence after both companies leave new selections", () => readHistoricalCrossCompanyCase(false));
 
-  async function confirmCrossCompanyService(directoryActive: boolean) {
+  async function readHistoricalCrossCompanyCase(directoryActive: boolean) {
     const fixture = await createEligibleServiceFixture(observer, 1_000n, true);
     const authority = await createPayerAuthority(observer, fixture, fixture.executionPayerCreditCode);
     const createdAuthority = await issuePayerAuthority(observer, authority);
@@ -735,7 +741,7 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
         }
       }
     });
-    await observer.paymentExecutionPayerAttestation.create({
+    const attestation = await observer.paymentExecutionPayerAttestation.create({
       data: {
         id: randomUUID(),
         paymentExecutionId: fixture.paymentExecutionId,
@@ -761,6 +767,46 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
         reauthorizedAt: new Date("2026-08-27T08:30:00.000Z")
       }
     });
+    const settlementCaseId = await seedHistoricalAllocation(observer, fixture);
+    const confirmedAt = new Date("2026-08-27T08:40:00.000Z");
+    const relationship = await observer.$transaction(async (tx) => {
+      await tx.payableSettlementCase.update({
+        where: { id: settlementCaseId },
+        data: { status: "submitted", revision: 2, submittedByUserId: fixture.actorUserId, submittedAt: confirmedAt }
+      });
+      await tx.payableSettlementCase.update({
+        where: { id: settlementCaseId },
+        data: { status: "confirmed", revision: 3, confirmedByUserId: confirmerUserId, confirmedAt }
+      });
+      const root = await tx.interEntityRelationshipEntry.create({
+        data: {
+          entryKind: "proxy_payment", direction: "increase", status: "draft",
+          paymentExecutionId: fixture.paymentExecutionId, settlementCaseId,
+          originalDebtorCompanyId: fixture.debtorCompanyId,
+          creditorCompanyId: fixture.executionPayerCompanyId,
+          approvedPayerCompanyId: fixture.debtorCompanyId,
+          debtorSnapshot: { name: "动态门付款主体" },
+          creditorSnapshot: { name: attestation.holderNameSnapshot },
+          approvedPayerSnapshot: { name: "动态门付款主体" },
+          amountCents: 1_000n, currencyCode: "CNY", evidenceFileId: fixture.voucherFileId,
+          reason: attestation.proxyAuthorizationReason,
+          authorizationEvidenceFileId: attestation.proxyAuthorizationEvidenceFileId,
+          authorizationEvidenceContentSha256: attestation.proxyAuthorizationEvidenceSha256,
+          reauthorizationReference: attestation.reauthorizationReference,
+          reauthorizedByUserId: attestation.reauthorizedByUserId,
+          reauthorizedAt: attestation.reauthorizedAt,
+          actualPayerVerificationEvidenceFileId: attestation.verificationEvidenceFileId,
+          actualPayerVerificationContentSha256: attestation.verificationEvidenceContentSha256,
+          projectId: fixture.projectId, contractId: fixture.contractId, contractVersionId: fixture.contractVersionId,
+          sourceType: "wage_payable_ref", sourceAggregateId: fixture.confirmedVersionId,
+          sourceAllocationCount: 1, sourceAllocationAmountCents: 1_000n,
+          idempotencyKey: randomUUID(), payloadFingerprint: "historical-proxy-fingerprint", createdByUserId: confirmerUserId
+        }
+      });
+      return tx.interEntityRelationshipEntry.update({
+        where: { id: root.id }, data: { status: "confirmed", confirmedByUserId: confirmerUserId, confirmedAt }
+      });
+    });
     if (!directoryActive) {
       const chairman = await observer.position.upsert({ where: { key: "chairman" }, update: {}, create: { key: "chairman", name: "董事长" } });
       await observer.userPosition.create({ data: { userId: fixture.actorUserId, positionId: chairman.id, projectId: null } });
@@ -781,49 +827,29 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
         ? ["finance_director"]
         : ["finance_staff"]
     );
-    const listed = await service.listPaymentExecutionCandidates(
-      fixture.actorUserId,
-      fixture.payableRef
-    );
-    expect(listed.candidates).toHaveLength(1);
-    const allocated = await service.allocatePaymentExecution(fixture.actorUserId, {
-      payableRef: fixture.payableRef,
-      selectionRef: listed.candidates[0].selectionRef,
-      selectionExpiresAt: listed.candidates[0].expiresAt,
-      amountCents: 1_000n,
-      expectedCaseRevision: fixture.caseRevision,
-      idempotencyKey: randomUUID()
-    }) as unknown as { settlementCaseId: string; revision: number };
-    const submitted = await service.submit(fixture.actorUserId, {
-      settlementCaseId: allocated.settlementCaseId,
-      expectedRevision: allocated.revision,
-      idempotencyKey: randomUUID()
-    }) as unknown as { revision: number };
-    const confirmed = await service.confirm(confirmerUserId, {
-      settlementCaseId: allocated.settlementCaseId,
-      expectedRevision: submitted.revision,
-      idempotencyKey: randomUUID()
-    }) as unknown as { status: string };
+    const historicalCase = await observer.payableSettlementCase.findUniqueOrThrow({ where: { id: settlementCaseId } });
+    expect(await service.listWorkbench(fixture.actorUserId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ settlementCaseId, status: "confirmed", revision: 3, allocatedAmountCents: "1000" })
+    ]));
+    expect(await service.listInterEntityRelationships(fixture.actorUserId)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ relationshipEntryId: relationship.id, status: "open", remainingAmountCents: "1000" })
+    ]));
+    await expect(service.assertInterEntityRelationshipEvidenceUpload(confirmerUserId, relationship.id)).resolves.toBeUndefined();
+    await expect(service.assertInterEntityRelationshipEvidenceUpload(fixture.actorUserId, relationship.id))
+      .rejects.toMatchObject({ status: 403 });
 
-    expect(confirmed.status).toBe("confirmed");
-    await expect(observer.interEntityRelationshipEntry.findFirst({
-      where: {
-        settlementCaseId: allocated.settlementCaseId,
-        entryKind: "proxy_payment",
-        direction: "increase",
-        status: "confirmed"
-      },
-      select: {
-        evidenceFileId: true,
-        authorizationEvidenceFileId: true,
-        originalDebtorCompanyId: true,
-        creditorCompanyId: true,
-        approvedPayerCompanyId: true,
-        sourceAllocationCount: true,
-        sourceAllocationAmountCents: true
-      }
-    })).resolves.toMatchObject({
-      evidenceFileId: expect.not.stringContaining(reauthorizationEvidenceFileId),
+    const attemptedConfirm = { settlementCaseId, expectedRevision: 3, idempotencyKey: randomUUID() };
+    await expect(service.confirm(fixture.actorUserId, attemptedConfirm)).rejects.toMatchObject({ status: 403 });
+    await expect(service.confirm(confirmerUserId, attemptedConfirm)).rejects.toMatchObject({ status: 410 });
+    await expect(service.submit(fixture.actorUserId, { ...attemptedConfirm, idempotencyKey: randomUUID() }))
+      .rejects.toMatchObject({ status: 410 });
+    await expect(service.returnForReview(confirmerUserId, { ...attemptedConfirm, idempotencyKey: randomUUID() }))
+      .rejects.toMatchObject({ status: 410 });
+    await expect(observer.payableSettlementCase.findUnique({ where: { id: settlementCaseId } })).resolves.toEqual(historicalCase);
+    await expect(observer.payableSettlementCommandReceipt.count({ where: { settlementCaseId } })).resolves.toBe(0);
+    await expect(observer.interEntityRelationshipEntry.findUnique({ where: { id: relationship.id } })).resolves.toEqual(relationship);
+    expect(relationship).toMatchObject({
+      evidenceFileId: fixture.voucherFileId,
       authorizationEvidenceFileId: reauthorizationEvidenceFileId,
       originalDebtorCompanyId: fixture.debtorCompanyId,
       creditorCompanyId: fixture.executionPayerCompanyId,
@@ -831,37 +857,16 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
       sourceAllocationCount: 1,
       sourceAllocationAmountCents: 1_000n
     });
-    const execution = await observer.paymentExecution.findUniqueOrThrow({
-      where: { id: fixture.paymentExecutionId },
-      select: { voucherFileId: true }
-    });
-    const relationship = await observer.interEntityRelationshipEntry.findFirstOrThrow({
-      where: { settlementCaseId: allocated.settlementCaseId, entryKind: "proxy_payment" },
-      select: { evidenceFileId: true }
-    });
-    expect(relationship.evidenceFileId).toBe(execution.voucherFileId);
   }
 
-  it("rolls back case, allocation, receipt and audit when the real service audit step fails", async () => {
+  it("rejects fresh dedicated allocation without creating any cases, allocations, receipts or audit events", async () => {
     const fixture = await createEligibleServiceFixture(observer, 1_000n);
-    const service = realService(observer, {
-      record: jest.fn().mockRejectedValue(new Error("fault-injected-audit"))
-    });
-    const listed = await service.listPaymentExecutionCandidates(
-      fixture.actorUserId,
-      fixture.payableRef
-    );
-    const candidate = listed.candidates[0];
+    const audit = { record: jest.fn() };
+    const service = realService(observer, audit);
     const idempotencyKey = randomUUID();
-
     await expect(service.allocatePaymentExecution(fixture.actorUserId, {
-      payableRef: fixture.payableRef,
-      selectionRef: candidate.selectionRef,
-      selectionExpiresAt: candidate.expiresAt,
-      amountCents: 1_000n,
-      expectedCaseRevision: fixture.caseRevision,
-      idempotencyKey
-    })).rejects.toThrow("fault-injected-audit");
+      ...historicalAllocationCommand(fixture), idempotencyKey
+    })).rejects.toMatchObject({ status: 410 });
 
     await expect(observer.payableSettlementAllocation.count({
       where: { payableRef: fixture.payableRef }
@@ -872,7 +877,9 @@ describeDatabase("payable settlement PostgreSQL concurrency and immutability", (
     await expect(observer.payableSettlementCommandReceipt.count({
       where: { idempotencyKey }
     })).resolves.toBe(0);
+    expect(audit.record).not.toHaveBeenCalled();
   });
+
 });
 
 type Fixture = Readonly<{
@@ -1736,8 +1743,41 @@ async function createEligibleServiceFixture(
     contractId,
     contractVersionId,
     projectId,
-    caseRevision: 0
+    voucherFileId,
+    businessPartyVersionId,
+    confirmedVersionId
   };
+}
+
+type HistoricalWageFixture = Awaited<ReturnType<typeof createEligibleServiceFixture>>;
+
+function historicalAllocationCommand(fixture: HistoricalWageFixture) {
+  return {
+    payableRef: fixture.payableRef,
+    selectionRef: "pes1.archived-selection",
+    selectionExpiresAt: "2026-08-28T00:00:00.000Z",
+    amountCents: 1_000n,
+    expectedCaseRevision: 0
+  };
+}
+
+async function seedHistoricalAllocation(client: PrismaClient, fixture: HistoricalWageFixture) {
+  return client.$transaction(async (tx) => {
+    const row = await tx.payableSettlementCase.create({
+      data: { paymentExecutionId: fixture.paymentExecutionId, status: "draft", revision: 1, createdByUserId: fixture.actorUserId }
+    });
+    await tx.payableSettlementAllocation.create({
+      data: {
+        settlementCaseId: row.id, paymentExecutionId: fixture.paymentExecutionId, payableRef: fixture.payableRef,
+        sourceType: "wage_payable_ref", sourceAggregateId: fixture.confirmedVersionId, sourceLineId: fixture.payableRef,
+        confirmedVersionId: fixture.confirmedVersionId, debtorCompanyId: fixture.debtorCompanyId,
+        payeeSubjectType: "business_party", payeeSubjectId: `business_party:${fixture.businessPartyVersionId}`, currencyCode: "CNY",
+        beneficiaryProjectId: fixture.projectId, sourceSnapshot: { payableRef: fixture.payableRef },
+        confirmedAmountCents: 1_000n, amountCents: 1_000n, createdByUserId: fixture.actorUserId
+      }
+    });
+    return row.id;
+  });
 }
 
 function dynamicFile(id: string, prefix: string) {

@@ -7,18 +7,12 @@ import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { formatUnknownApiError } from "../../api/error-message";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
 import {
-  allocatePayableSettlement,
-  confirmPayableSettlement,
   fetchInterEntityRelationships,
-  fetchPaymentExecutionCandidates,
   fetchPayableSettlementCapabilities,
   fetchPayableSettlementWorkbench,
   fetchWagePayableCases,
   uploadInterEntityRelationshipEvidence,
   returnInterEntityRelationship,
-  returnPayableSettlement,
-  submitPayableSettlement,
-  type PayableSettlementCandidate,
   type PayableSettlementCapabilities,
   type PayableSettlementWorkbenchItem,
   type InterEntityRelationshipReadModel,
@@ -30,25 +24,17 @@ const emptyCapabilities: PayableSettlementCapabilities = {
   allocate: false,
   submit: false,
   confirm: false,
-  return: false
+  return: false,
+  returnRelationship: false
 };
 
-const router=useRouter();
+const router = useRouter();
 const loading = ref(false);
-const submitting = ref(false);
 const errorMessage = ref("");
 const capabilities = ref<PayableSettlementCapabilities>({ ...emptyCapabilities });
 const wageCases = ref<WagePayableCaseOption[]>([]);
 const workbench = ref<PayableSettlementWorkbenchItem[]>([]);
 const interEntityRelationships = ref<InterEntityRelationshipReadModel[]>([]);
-const selectedPayableRef = ref("");
-const caseRevision = ref(0);
-const candidates = ref<PayableSettlementCandidate[]>([]);
-const selectedCandidateRef = ref("");
-const amountYuan = ref("");
-const actionVisible = ref(false);
-const pendingAction = ref<"submit" | "confirm" | "return" | null>(null);
-const pendingCase = ref<PayableSettlementWorkbenchItem | null>(null);
 const relationshipDialogVisible = ref(false);
 const selectedRelationship = ref<InterEntityRelationshipReadModel | null>(null);
 const relationshipAmountYuan = ref("");
@@ -56,43 +42,19 @@ const relationshipReason = ref("");
 const relationshipEvidenceFiles = ref<UploadFile[]>([]);
 const relationshipSubmitting = ref(false);
 
-const wageCaseOptions = computed(() => wageCases.value.map((item) => ({
-  value: item.payableRef,
-  label: item.status === "over_settled_reconciliation_required"
-    ? `${item.displayLabel} · 超额核销待核对 ${formatCents(item.overSettledAmountCents ?? "0")} 元`
-    : `${item.displayLabel} · 可核销 ${formatCents(item.remainingAmountCents)} 元`,
-  disabled: item.status === "over_settled_reconciliation_required"
-})));
 const overSettledCases = computed(() => wageCases.value.filter(
   (item) => item.status === "over_settled_reconciliation_required"
 ));
-const candidateOptions = computed(() => candidates.value.map((item) => ({
-  value: item.selectionRef,
-  label: `${item.displayLabel} · 可用 ${formatCents(item.availableAmountCents)} 元`
-})));
-const selectedCandidate = computed(() =>
-  candidates.value.find((item) => item.selectionRef === selectedCandidateRef.value) ?? null
-);
-const actionTitle = computed(() => ({
-  submit: "提交核销案件",
-  confirm: "确认核销案件",
-  return: "退回核销案件"
-}[pendingAction.value ?? "submit"]));
-const actionDescription = computed(() => {
-  if (pendingAction.value === "confirm") {
-    return "确认后将形成不可变核销事实；系统会重新核验付款与应付余额，并执行职责分离检查。";
-  }
-  if (pendingAction.value === "return") {
-    return "退回后当前提交不会进入正式核销事实，后续只能追加新的核销修订。";
-  }
-  return "提交前系统会重新核验核销金额必须完整覆盖所选实际付款。";
-});
-
+const wageHistoryColumns = [
+  { colKey: "displayLabel", title: "工资应付", minWidth: 230 },
+  { colKey: "debtorCompanyLabel", title: "债务主体", minWidth: 150 },
+  { colKey: "statusLabel", title: "状态", width: 140 },
+  { colKey: "remainingAmountCents", title: "剩余金额（元）", width: 150 }
+];
 const workbenchColumns = [
   { colKey: "statusLabel", title: "状态", width: 120 },
   { colKey: "allocatedAmountCents", title: "已分配金额（元）", width: 170 },
-  { colKey: "updatedAt", title: "更新时间", minWidth: 190 },
-  { colKey: "actions", title: "操作", minWidth: 220 }
+  { colKey: "updatedAt", title: "更新时间", minWidth: 190 }
 ];
 const relationshipColumns = [
   { colKey: "debtorLabel", title: "原债务主体", minWidth: 170 },
@@ -120,11 +82,6 @@ async function loadInitial() {
     wageCases.value = cases;
     workbench.value = rows;
     interEntityRelationships.value = relationships;
-    const firstAllocatable = cases.find((item) => item.status === "allocatable");
-    if (!selectedPayableRef.value && firstAllocatable) {
-      selectedPayableRef.value = firstAllocatable.payableRef;
-      await refreshCandidates();
-    }
   } catch (error) {
     errorMessage.value = formatUnknownApiError(error, "加载工资应付核销工作台失败");
   } finally {
@@ -142,7 +99,7 @@ async function uploadInterEntityRelationshipEvidenceWithCapability(
   fileName: string
 ) {
   const capability = await fetchPayableSettlementCapabilities();
-  const operationAllowed = capability.confirm;
+  const operationAllowed = capability.returnRelationship;
   if (!operationAllowed) throw new Error("当前账号没有追加跨主体代付归还的权限");
   return uploadInterEntityRelationshipEvidence(
     relationshipEntryId,
@@ -157,14 +114,14 @@ async function returnInterEntityRelationshipWithCapability(
   input: Parameters<typeof returnInterEntityRelationship>[1]
 ) {
   const capability = await fetchPayableSettlementCapabilities();
-  const operationAllowed = capability.confirm;
+  const operationAllowed = capability.returnRelationship;
   if (!operationAllowed) throw new Error("当前账号没有追加跨主体代付归还的权限");
   return returnInterEntityRelationship(relationshipEntryId, input);
 }
 
 async function executeRelationshipReturn() {
   const relationship = selectedRelationship.value;
-  if (relationshipSubmitting.value || !relationship || !capabilities.value.confirm) return;
+  if (relationshipSubmitting.value || !relationship || !capabilities.value.returnRelationship) return;
   let amountCents: string;
   try {
     amountCents = yuanTextToCentsText(relationshipAmountYuan.value.trim());
@@ -208,155 +165,6 @@ async function executeRelationshipReturn() {
   }
 }
 
-async function refreshCandidates() {
-  candidates.value = [];
-  selectedCandidateRef.value = "";
-  amountYuan.value = "";
-  caseRevision.value = 0;
-  if (!selectedPayableRef.value) return;
-  const selectedCase = wageCases.value.find(
-    (item) => item.payableRef === selectedPayableRef.value
-  );
-  if (selectedCase?.status === "over_settled_reconciliation_required") return;
-  const result = await fetchPaymentExecutionCandidates(selectedPayableRef.value);
-  candidates.value = result.candidates;
-  caseRevision.value = result.caseRevision;
-}
-
-async function changeWageCase() {
-  loading.value = true;
-  errorMessage.value = "";
-  try {
-    await refreshCandidates();
-  } catch (error) {
-    errorMessage.value = formatUnknownApiError(error, "加载可核销付款候选失败");
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function allocatePayableSettlementWithCapability(
-  payableRef: string,
-  input: Parameters<typeof allocatePayableSettlement>[1]
-) {
-  const capability = await fetchPayableSettlementCapabilities();
-  const operationAllowed = capability.allocate;
-  if (!operationAllowed) throw new Error("当前账号没有保存工资应付核销草稿的权限");
-  return allocatePayableSettlement(payableRef, input);
-}
-
-async function submitPayableSettlementWithCapability(
-  settlementCaseId: string,
-  input: Parameters<typeof submitPayableSettlement>[1]
-) {
-  const capability = await fetchPayableSettlementCapabilities();
-  const operationAllowed = capability.submit;
-  if (!operationAllowed) throw new Error("当前账号没有提交工资应付核销案件的权限");
-  return submitPayableSettlement(settlementCaseId, input);
-}
-
-async function confirmPayableSettlementWithCapability(
-  settlementCaseId: string,
-  input: Parameters<typeof confirmPayableSettlement>[1]
-) {
-  const capability = await fetchPayableSettlementCapabilities();
-  const operationAllowed = capability.confirm;
-  if (!operationAllowed) throw new Error("当前账号没有确认工资应付核销案件的权限");
-  return confirmPayableSettlement(settlementCaseId, input);
-}
-
-async function returnPayableSettlementWithCapability(
-  settlementCaseId: string,
-  input: Parameters<typeof returnPayableSettlement>[1]
-) {
-  const capability = await fetchPayableSettlementCapabilities();
-  const operationAllowed = capability.return;
-  if (!operationAllowed) throw new Error("当前账号没有退回工资应付核销案件的权限");
-  return returnPayableSettlement(settlementCaseId, input);
-}
-
-async function allocateSelectedPayment() {
-  if (submitting.value || !capabilities.value.allocate) return;
-  const selected = selectedCandidate.value;
-  if (!selected || !selectedPayableRef.value) {
-    errorMessage.value = "请选择付款候选并填写正数金额";
-    return;
-  }
-  let normalizedAmountCents: string;
-  try {
-    normalizedAmountCents = yuanTextToCentsText(amountYuan.value.trim());
-    if (BigInt(normalizedAmountCents) <= 0n) throw new Error("金额必须大于零");
-  } catch {
-    errorMessage.value = "请选择付款候选并填写正数金额";
-    return;
-  }
-  const frozenAttempt = Object.freeze({
-    payableRef: selectedPayableRef.value,
-    selectionRef: selected.selectionRef,
-    selectionExpiresAt: selected.expiresAt,
-    amountCents: normalizedAmountCents,
-    expectedCaseRevision: caseRevision.value,
-    idempotencyKey: crypto.randomUUID()
-  });
-  submitting.value = true;
-  errorMessage.value = "";
-  try {
-    await allocatePayableSettlementWithCapability(frozenAttempt.payableRef, {
-      selectionRef: frozenAttempt.selectionRef,
-      selectionExpiresAt: frozenAttempt.selectionExpiresAt,
-      amountCents: frozenAttempt.amountCents,
-      expectedCaseRevision: frozenAttempt.expectedCaseRevision,
-      idempotencyKey: frozenAttempt.idempotencyKey
-    });
-    MessagePlugin.success("工资应付核销已保存为草稿");
-    await loadInitial();
-    await refreshCandidates();
-  } catch (error) {
-    errorMessage.value = formatUnknownApiError(error, "保存工资应付核销失败");
-    await refreshCandidates().catch(() => undefined);
-  } finally {
-    submitting.value = false;
-  }
-}
-
-function requestAction(
-  action: "submit" | "confirm" | "return",
-  row: PayableSettlementWorkbenchItem
-) {
-  pendingAction.value = action;
-  pendingCase.value = row;
-  actionVisible.value = true;
-}
-
-async function executeAction() {
-  if (submitting.value || !pendingAction.value || !pendingCase.value) return;
-  const action = pendingAction.value;
-  const row = pendingCase.value;
-  submitting.value = true;
-  errorMessage.value = "";
-  try {
-    const input = { expectedRevision: row.revision, idempotencyKey: crypto.randomUUID() };
-    if (action === "submit") {
-      await submitPayableSettlementWithCapability(row.settlementCaseId, input);
-    }
-    if (action === "confirm") {
-      await confirmPayableSettlementWithCapability(row.settlementCaseId, input);
-    }
-    if (action === "return") {
-      await returnPayableSettlementWithCapability(row.settlementCaseId, input);
-    }
-    actionVisible.value = false;
-    pendingAction.value = null;
-    pendingCase.value = null;
-    MessagePlugin.success("核销案件状态已更新");
-    workbench.value = await fetchPayableSettlementWorkbench();
-  } catch (error) {
-    errorMessage.value = formatUnknownApiError(error, "更新核销案件失败");
-  } finally {
-    submitting.value = false;
-  }
-}
-
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
@@ -382,7 +190,7 @@ function formatCents(value: string) {
       <div>
         <p class="eyebrow">工资应付核销</p>
         <h1>工资应付核销工作台</h1>
-        <p>从服务端筛选的已执行付款中明确选择并核销；页面不会展示或提交付款技术编号。</p>
+        <p>工资应付核销已停止办理，历史案件、核销记录和余额可查询。</p>
       </div>
       <t-button variant="outline" :loading="loading" @click="loadInitial">刷新</t-button>
     </header>
@@ -395,48 +203,19 @@ function formatCents(value: string) {
       :message="`${overSettledCases.length} 条工资应付的有效金额低于已确认核销额，已停止新增核销，请先完成核对。`"
     />
 
-    <t-card class="panel" title="新增核销草稿">
-      <t-form label-align="top">
-        <div class="form-grid">
-          <t-form-item label="工资应付案件">
-            <t-select
-              v-model="selectedPayableRef"
-              :options="wageCaseOptions"
-              :loading="loading"
-              placeholder="选择已确认且仍有余额的工资应付案件"
-              @change="changeWageCase"
-            />
-          </t-form-item>
-          <t-form-item label="已执行付款候选">
-            <t-select
-              v-model="selectedCandidateRef"
-              :options="candidateOptions"
-              :loading="loading"
-              placeholder="选择服务端当前允许核销的付款"
-            />
-          </t-form-item>
-          <t-form-item label="本次核销金额（元）">
-            <t-input v-model="amountYuan" placeholder="例如 4000.00" />
-          </t-form-item>
-        </div>
-        <t-alert
-          v-if="selectedCandidate"
-          theme="info"
-          title="短期选择引用"
-          :message="`该候选有效至 ${formatDate(selectedCandidate.expiresAt)}；付款或应付状态变化后必须重新选择。`"
-        />
-        <t-button
-          theme="primary"
-          :disabled="!capabilities.allocate || !selectedCandidate"
-          :loading="submitting"
-          @click="allocateSelectedPayment"
-        >
-          保存核销草稿
-        </t-button>
-      </t-form>
+    <t-card class="panel" title="历史工资应付">
+      <t-table
+        row-key="payableRef"
+        :columns="wageHistoryColumns"
+        :data="wageCases"
+        :loading="loading"
+        empty="暂无历史工资应付"
+      >
+        <template #remainingAmountCents="{ row }">{{ formatCents(row.remainingAmountCents) }}</template>
+      </t-table>
     </t-card>
 
-    <t-card class="panel" title="核销案件">
+    <t-card class="panel" title="历史核销案件">
       <t-table
         row-key="settlementCaseId"
         :columns="workbenchColumns"
@@ -446,25 +225,6 @@ function formatCents(value: string) {
       >
         <template #updatedAt="{ row }">{{ formatDate(row.updatedAt) }}</template>
         <template #allocatedAmountCents="{ row }">{{ formatCents(row.allocatedAmountCents) }}</template>
-        <template #actions="{ row }">
-          <t-space>
-            <t-link
-              v-if="row.status === 'draft' && capabilities.submit"
-              theme="primary"
-              @click="requestAction('submit', row)"
-            >提交</t-link>
-            <t-link
-              v-if="row.status === 'submitted' && capabilities.confirm"
-              theme="primary"
-              @click="requestAction('confirm', row)"
-            >确认</t-link>
-            <t-link
-              v-if="row.status === 'submitted' && capabilities.return"
-              theme="warning"
-              @click="requestAction('return', row)"
-            >退回</t-link>
-          </t-space>
-        </template>
       </t-table>
     </t-card>
 
@@ -485,7 +245,7 @@ function formatCents(value: string) {
         <template #remainingAmountCents="{ row }">{{ formatCents(row.remainingAmountCents) }}</template>
         <template #actions="{ row }">
           <t-link
-            v-if="row.status === 'open' && capabilities.confirm"
+            v-if="row.status === 'open' && capabilities.returnRelationship"
             theme="primary"
             @click="requestRelationshipReturn(row)"
           >追加归还</t-link>
@@ -520,13 +280,6 @@ function formatCents(value: string) {
       </t-form>
     </t-card>
 
-    <SensitiveActionDialog
-      v-model="actionVisible"
-      :title="actionTitle"
-      :description="actionDescription"
-      :loading="submitting"
-      @confirm="executeAction"
-    />
     <SensitiveActionDialog
       v-model="relationshipDialogVisible"
       title="确认追加往来归还"
