@@ -22,7 +22,7 @@
   {
     "path": "apps/web-admin/e2e/expense-claim-workbench.e2e.ts",
     "expected": "8c0e7d588456b25fe7e78b35255377292ac2ff7505d21cb28aff9a63571f22f3",
-    "candidate": "013f5d7c37abb6f5f3fb31924ea5712b341bb02287bfdd4ee0ee20874fd1ad77"
+    "candidate": "651ec490262eefa380265e938cdf1f604f2cd6db8cbc3891eb0752801b92dbdc"
   },
   {
     "path": "apps/web-admin/e2e/helpers/approval-progress-mocks.ts",
@@ -62,7 +62,7 @@
   {
     "path": "apps/web-admin/src/api/approval-forms.api.ts",
     "expected": "2e8d51c52d14086d902363c9b1d881318462393b4eee4222ee4fee35b6ffc081",
-    "candidate": "b30cb3bd1e4303927c3882ed3e65f0820331cdaefb26fefa78007b5f549c4426"
+    "candidate": "197152e496ffcffab9322497f72eeb890900db230b4eaa3ef359d2541927053c"
   },
   {
     "path": "apps/web-admin/src/api/approval-progress.api.ts",
@@ -82,17 +82,17 @@
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.ts",
     "expected": "c83128b15dbd395bae3875c5994c11e54b13ec426b6959b3e677371bb49a303f",
-    "candidate": "5605a763efe116f06e5c079da30a0ba582eb25cdb2efcf45e659f3902479c70d"
+    "candidate": "1065eb43979e30333591288fca00280a787dba09cfd89c46143fdd9bc52a00a5"
   },
   {
     "path": "apps/web-admin/src/api/expense-claim.api.test.ts",
     "expected": "d3c78098151ae16e134c78be27d2ccc0157d97ec36e3ddfab181eae68a45b6b6",
-    "candidate": "fe6d6ebce53ef9867da37735027b4986d09afc8f99b129ad809eaa83b4f3e5cd"
+    "candidate": "2bb51729b63a73c5fbfda0390a84becb777fd0fee694675225205a89c919feac"
   },
   {
     "path": "apps/web-admin/src/api/expense-claim.api.ts",
     "expected": "7ab9fecf6a4955e32de1d973b9c7879a2162a245302a944e4177faf6556bfc3d",
-    "candidate": "3a590cd70ddee57fecd60904bde0a00722331601d37ab1a5d2df31d084bc0177"
+    "candidate": "c854170f16e0bd0585bda6fc9e1e9d6607fd2636845423cdbf869d98f937a9f3"
   },
   {
     "path": "apps/web-admin/src/api/general-procurement.api.ts",
@@ -132,7 +132,7 @@
   {
     "path": "apps/web-admin/src/components/ApprovalProgressPanel.vue",
     "expected": "b9f5398d01884e43601e6a309952591ddabe7661ca536e353429400e75d1d974",
-    "candidate": "cb0768672eb22826ee7966c521052f0bbdfb2b10043453a7e8adc0fde07f08f1"
+    "candidate": "e5dcdce3dc11d8d2a98759d4611e1a8c05b4d7050fc5b4580621e175d771232a"
   },
   {
     "path": "apps/web-admin/src/components/BusinessLauncher.vue",
@@ -152,7 +152,7 @@
   {
     "path": "apps/web-admin/src/components/approval/ApprovalDocumentDownload.vue",
     "expected": "260d5a2d4d89177d8a1c83aca6e95ddadd5a311b72cff131c08ff71593cb01f3",
-    "candidate": "243c44c5c52ce742889f0cd25e09ffce93b7d2c694aa0f61b7eb9dd797d547c7"
+    "candidate": "b7143e438d05438675fd2ddc5dcc96eaf7270f11de20c7e47644e324c46d2a0f"
   },
   {
     "path": "apps/web-admin/src/components/files/PrivatePdfActions.vue",
@@ -252,7 +252,7 @@
   {
     "path": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
     "expected": "8121eb6c0b06db777520b299b101bb4daa71902ad48a397c911a9d8bb50912db",
-    "candidate": "3584c4ea2b6f3355ad918109d8f8cbf698b871a6b285d062c992497341267449"
+    "candidate": "2c65b789ba0373a13de48d11620677de56e6c8ece0081ca71f4b27a71d3f6ad3"
   },
   {
     "path": "apps/web-admin/src/pages/expense-claims/ExpenseClaimWorkbenchPage.vue",
@@ -267,7 +267,7 @@
   {
     "path": "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimLineEditor.vue",
     "expected": "b33a9da60a83a65a182799eeea6093e5a2625e1153305df74d3b4c315ed13875",
-    "candidate": "9170fd5c44453fc73c46fae9dbfa69018b1faf6d4e806a7ef5c6f642b79f7a99"
+    "candidate": "3adb239f51c5613b5b343449eaf53f2851c3034421e2d7af5a234603d899a16a"
   },
   {
     "path": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
@@ -457,7 +457,7 @@
   {
     "path": "services/api/prisma/database-dynamic-gate-manifest.json",
     "expected": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
-    "candidate": "c9ee297bb5dd4eb8c64da67242b5404167220c3b12c7963351184bfeada6d2a6"
+    "candidate": "a192483c142bb1ca3f5dfe63541fec04807632373f29d68ce9362ac450c56a58"
   },
   {
     "path": "services/api/prisma/fixtures/project-approval-configuration.ts",
@@ -482,7 +482,7 @@
   {
     "path": "services/api/prisma/run-database-dynamic-gate-local.test.cjs",
     "expected": "78a8d474a9bef166001372b1e096b4f9b190d1d6fce3988bee01ad7f9b6eb09d",
-    "candidate": "1d35b506212de911e4430db4168c24554f3910fe82b8c049199aeda72653461f"
+    "candidate": "081b335752dc526da4c093a92c597bdd99b83740796d108222ebece5c6f177c0"
   },
   {
     "path": "services/api/prisma/run-database-dynamic-remaining-local.cjs",
@@ -540,14 +540,19 @@
     "candidate": "99f0b3e077564dd2c2f00d287c73c4266398dd4e45f94ec4eeac06912011aa2c"
   },
   {
+    "path": "services/api/src/approval/approval-form.controller.ts",
+    "expected": "a71c742d23efdc5e0692d4ee2aa5990bb88d9c57f9b3bcd6bb8fdc59aaf6cfec",
+    "candidate": "9941b2a0e4527c65c6f8b60d43400a67a291770f97c67143f16938c67c3ff274"
+  },
+  {
     "path": "services/api/src/approval/approval-form.service.spec.ts",
     "expected": "5f42c450c0515fb809ea0fcfbf259c27281edc30da0c2e645a8e5c825e650c6a",
-    "candidate": "c4f2fc10aaf24c0fd486247c9ffe20fca78ac5ee24daed1283c3a1ed68b9b529"
+    "candidate": "2bf64a59882cc52824705a825bc14cf5d38dc499663d66985d8b589865cfacee"
   },
   {
     "path": "services/api/src/approval/approval-form.service.ts",
     "expected": "031b17311e634ad97b838f71dd155734def4b2a2f3c307bf347e644427a6dedd",
-    "candidate": "df17d665b39bab377138cd6ce394a52e300c99c24e35c28944f7f2b13f0598ba"
+    "candidate": "8db045e7f1b9232f08a1d33c3d624a925a48bafd0b703663b4cf835f3f506637"
   },
   {
     "path": "services/api/src/approval/approval-progress.controller.ts",
@@ -955,7 +960,7 @@
   {
     "path": "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts",
     "expected": "e99beb176be2538e9424ef558241f0720e59f812c6723f2006a8e08d71046de2",
-    "candidate": "484b65d692af64629ec546fe03e41ae861c586feb13ee18714ee9467b08f6151"
+    "candidate": "c127266ecc66d21f9ead650cdfd45af4abfeb32a28681867b518c674f82003c8"
   },
   {
     "path": "services/api/src/expense-claim/expense-claim-funding-notification.service.spec.ts",
@@ -985,7 +990,7 @@
   {
     "path": "services/api/src/expense-claim/expense-claim.controller.ts",
     "expected": "74bbef4679a1302bfe029569eb699f262d0f4e1e478e7a1667ef6eca03021d4c",
-    "candidate": "eb71282a3346baeef9c5c3dee83a80f1ff54ce07eb1f158095f33ab3e4b3bad4"
+    "candidate": "f298258793669be43ac66e904cb48e0f228be04fa4da4cbe6a7ffed20bd11f0e"
   },
   {
     "path": "services/api/src/expense-claim/expense-claim.module.ts",
@@ -995,12 +1000,12 @@
   {
     "path": "services/api/src/expense-claim/expense-claim.service.spec.ts",
     "expected": "509550e06797e74897e0c471211f3b046c7af5e6a9dda1677d691518ee1fb3a1",
-    "candidate": "ac1d16cda51a91b3be9afd831ab9290e6f1f9c12f96f0791f0639813f1b05f2d"
+    "candidate": "9cfe7c5f7d0640e307f534551684917a91b61161b0aeec37a03b857b74958e37"
   },
   {
     "path": "services/api/src/expense-claim/expense-claim.service.ts",
     "expected": "6d254a9271a611bfaa8fefbf9ff2d1933c67e0a1224d2f35a4bb09aace487584",
-    "candidate": "363ada6646235277f10eae9d4adfa5ef5348e24221ee7d06b3165068a0eed2b5"
+    "candidate": "a73bfb950ab25f65e33a341536cfaf7332d8968638553215719665c5f110fe42"
   },
   {
     "path": "services/api/src/file/dto/create-download-ticket.dto.ts",
