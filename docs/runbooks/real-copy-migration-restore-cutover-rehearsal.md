@@ -237,6 +237,11 @@ diff -u "$DRILL_ROOT/metrics-post.txt" "$DRILL_ROOT/metrics-restore-post.txt"
 判据：`diff` 为空。生产恢复还必须核对角色/ACL、扩展、数据库级 GUC、文件存储
 （COS 对象版本）与业务时间点；本演练只覆盖数据库逻辑内容。
 
+完整 329 条迁移的普通付款演练已复用[封存恢复入口的分段方式](../../.github/task12-install-295/contract-finance/restore/restore.cjs)，
+按 `pre-data`、`data`、`post-data` 顺序各自提交，并保留完整迁移账和全部触发器。
+单事务恢复曾在安装 `RegisteredFundTransfer_consistency` 时失败。分段恢复通过后，
+在同一恢复库完成普通付款盘点、冻写、切换与公开签批。[329 隔离回执](../progress/2026-11-24-issue-424.md#普通付款-329-全量安装后的恢复接续)
+
 ## 8. 数据库连接权限与增量恢复预演
 
 1) 检查新连接能否被拒绝。以下命令只用于本演练新建的虚构数据库。正式冻写验收还需停止应用写入、排空连接池并验证已有写事务无法继续提交。
