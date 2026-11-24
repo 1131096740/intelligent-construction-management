@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { GoneException } from "@nestjs/common";
 import { REQUIRED_PROJECT_ACTION_KEY } from "../auth/decorators/require-project-role.decorator";
 import { ExpenseClaimController } from "./expense-claim.controller";
 
@@ -37,9 +38,7 @@ describe("ExpenseClaimController capability and upload wiring", () => {
   it.each([
     ["uploadDraftAttachmentFile", "attach_expense_claim_attachment", undefined],
     ["uploadAppendAttachmentFile", "append_expense_claim_attachment", "expense_claim.attachment.append"],
-    ["uploadPaymentVoucherFile", "record_expense_claim_payment", "expense_claim.payment.execute"],
-    ["uploadDisbursementVoucherFile", "record_expense_claim_loan_disbursement", "expense_claim.disburse"],
-    ["uploadRepaymentVoucherFile", "record_expense_claim_loan_repayment", "expense_claim.repayment.record"]
+    ["uploadPaymentVoucherFile", "record_expense_claim_payment", "expense_claim.payment.execute"]
   ] as const)(
     "%s checks the server action before private-file storage",
     async (method, action, projectAction) => {
@@ -76,4 +75,20 @@ describe("ExpenseClaimController capability and upload wiring", () => {
       ).toBe(projectAction);
     }
   );
+
+  it.each([
+    ["uploadDisbursementVoucherFile", "expense_claim.disburse"],
+    ["uploadRepaymentVoucherFile", "expense_claim.repayment.record"]
+  ] as const)("%s stops before private-file storage", (method, projectAction) => {
+    const claims = { assertActionAvailable: jest.fn() };
+    const files = { uploadPrivateFile: jest.fn() };
+    const controller = new ExpenseClaimController(claims as never, files as never);
+
+    expect(() => controller[method]()).toThrow(GoneException);
+    expect(claims.assertActionAvailable).not.toHaveBeenCalled();
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(
+      Reflect.getMetadata(REQUIRED_PROJECT_ACTION_KEY, ExpenseClaimController.prototype[method])
+    ).toBe(projectAction);
+  });
 });

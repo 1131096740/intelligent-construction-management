@@ -7,31 +7,31 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `0227dbadedb7c9b2c24d91e769749093ac6afa276034dbccef0b5988dd9ca853` |
-| webApiWrappers | ready | `f428d1648a960e96eee5662b97b74b24f0f3db2f3e066cc2b659b9b5e35b9294` |
-| webPageActions | ready | `78981bd427a6899f4d119ca2f97fda9412e418221d3304575d580a69c389b68d` |
-| routeUsage | ready | `1036f66e79e0a49631e2d677dcb3560988c6d51ec14f47d2c667cdc9a117bf53` |
+| webApiWrappers | ready | `4609917dc07c65be0577b16c719f6636b02976a1d11ca692e83372a148610f1a` |
+| webPageActions | ready | `5b4eb1c27a2d467bc3a7bf1443a2b05cef9abb1bfd98f7d62fb5ae6e766fb895` |
+| routeUsage | ready | `be3b0f22f6788fff99dac73898fb812fa6e1fced1aa0194d80b52907915f5744` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 879 |
-| pageRouteCount | 622 |
+| pageRouteCount | 614 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 122 |
-| internalTaskRouteCount | 65 |
+| exitCandidateRouteCount | 129 |
+| internalTaskRouteCount | 66 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 838 |
+| mainRequestBindingCount | 830 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 455 |
-| actionBindingCount | 550 |
-| acceptedActionBindingCount | 505 |
+| registeredActionCount | 448 |
+| actionBindingCount | 543 |
+| acceptedActionBindingCount | 498 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 446 |
-| coveredProductionMutationConsumerPairCount | 446 |
+| productionMutationConsumerPairCount | 439 |
+| coveredProductionMutationConsumerPairCount | 439 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -148,7 +148,7 @@
 | GET | /expense-claims/:claimId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#deleteExpenseClaimDraft<br>apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimActionCapability | expense-claim.delete-draft | not_applicable | — |
 | GET | /expense-claims/:claimId/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /expense-claims/:claimId | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimDetail | — | not_applicable | — |
-| GET | /expense-claims/:claimId/repayments/:repaymentId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimRepaymentActionCapability | — | not_applicable | — |
+| GET | /expense-claims/:claimId/repayments/:repaymentId/capability | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /expense-claims/create-options | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimCreateOptions | — | not_applicable | — |
 | GET | /expense-claims/expense-categories | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimExpenseCategories | — | not_applicable | — |
 | GET | /expense-claims | internal_task | operator_endpoint | — | — | not_applicable | — |
@@ -552,20 +552,20 @@
 | POST | /expense-claims/:claimId/attachments/:attachmentId/removal | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#removeExpenseClaimAttachment | expense-claim.attachment.remove | covered | — |
 | POST | /expense-claims/:claimId/attachments/append | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#appendExpenseClaimAttachment | expense-claim.attachment.append | covered | — |
 | POST | /expense-claims/:claimId/attachments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#attachExpenseClaimAttachment | expense-claim.attachment.attach | covered | — |
-| POST | /expense-claims/:claimId/disbursement-voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#uploadExpenseClaimLoanDisbursementVoucherFile | expense-claim.loan.disbursement-voucher.upload | covered | — |
-| POST | /expense-claims/:claimId/disbursements | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanDisbursement | expense-claim.loan.disbursement.record | covered | — |
+| POST | /expense-claims/:claimId/disbursement-voucher-file-uploads | exit_candidate | none | — | — | not_applicable | — |
+| POST | /expense-claims/:claimId/disbursements | exit_candidate | none | — | — | not_applicable | — |
 | POST | /expense-claims/:claimId/draft-attachment-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#uploadExpenseClaimDraftAttachmentFile | expense-claim.attachment.draft-upload | covered | — |
 | POST | /expense-claims/:claimId/draft-deletion | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#deleteExpenseClaimDraft | expense-claim.delete-draft | covered | — |
 | POST | /expense-claims/:claimId/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
-| POST | /expense-claims/:claimId/final-disbursement-pdf | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#generateExpenseClaimFinalDisbursementPdf | expense-claim.loan.final-disbursement-pdf.generate | covered | — |
+| POST | /expense-claims/:claimId/final-disbursement-pdf | exit_candidate | none | — | — | not_applicable | — |
 | POST | /expense-claims/:claimId/final-payment-pdf | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#generateExpenseClaimFinalPaymentPdf | expense-claim.final-payment-pdf.generate | covered | — |
 | POST | /expense-claims/:claimId/payment-subject | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#adjustExpenseClaimPaymentSubject | expense-claim.payment-subject.adjust | covered | — |
 | POST | /expense-claims/:claimId/payment-voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#uploadExpenseClaimPaymentVoucherFile | expense-claim.payment-voucher.upload | covered | — |
 | POST | /expense-claims/:claimId/payments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimPayment | expense-claim.payment.record | covered | — |
-| POST | /expense-claims/:claimId/repayment-voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#uploadExpenseClaimLoanRepaymentVoucherFile | expense-claim.loan.repayment-voucher.upload | covered | — |
-| POST | /expense-claims/:claimId/repayments/:repaymentId/confirmation | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#confirmExpenseClaimLoanRepayment | expense-claim.loan.repayment.confirm | covered | — |
-| POST | /expense-claims/:claimId/repayments/:repaymentId/reversal | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#reverseExpenseClaimLoanRepayment | expense-claim.loan.repayment.reverse | covered | — |
-| POST | /expense-claims/:claimId/repayments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanRepayment | expense-claim.loan.repayment.record | covered | — |
+| POST | /expense-claims/:claimId/repayment-voucher-file-uploads | exit_candidate | none | — | — | not_applicable | — |
+| POST | /expense-claims/:claimId/repayments/:repaymentId/confirmation | exit_candidate | none | — | — | not_applicable | — |
+| POST | /expense-claims/:claimId/repayments/:repaymentId/reversal | exit_candidate | none | — | — | not_applicable | — |
+| POST | /expense-claims/:claimId/repayments | exit_candidate | none | — | — | not_applicable | — |
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit | covered | — |
 | POST | /expense-claims/:claimId/withdrawal | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#withdrawExpenseClaim | expense-claim.withdrawal | covered | — |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create<br>general-procurement.createExpenseClaim | covered | — |

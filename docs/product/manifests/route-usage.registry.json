@@ -4,24 +4,24 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 879,
-    "classificationOverrideCount": 276,
-    "derivedProductionPageCount": 603,
-    "classificationOverrideSha256": "4597f15fbb5eedd90a45fd49184232a5ee96c23ac98df1f4f0fc8dd793a3e8a9",
-    "consumerSurfaceOverrideSha256": "c64094bda97716a57e411f568842c74595fab4dc275bb51928156402948108d5",
+    "classificationOverrideCount": 284,
+    "derivedProductionPageCount": 595,
+    "classificationOverrideSha256": "73311f685f6200285cb6bd1a5fe2b488095667d2b2ba00be06795ffacd4e2a4d",
+    "consumerSurfaceOverrideSha256": "aecd8b55f30ad018e11d328e7529b559a22fb60ff1bfdbbd52538c2044a6466a",
     "usageCounts": {
-      "page": 622,
+      "page": 614,
       "external_takeover": 70,
-      "exit_candidate": 122,
-      "internal_task": 65,
+      "exit_candidate": 129,
+      "internal_task": 66,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 674,
+      "web_api_wrapper": 666,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 2,
-      "operator_endpoint": 63,
-      "none": 133
+      "operator_endpoint": 64,
+      "none": 140
     }
   },
   "overrides": [
@@ -1680,6 +1680,54 @@
       "path": "/settlement-workbench/projects/:projectId/imports/:importId/apply",
       "usage": "exit_candidate",
       "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/disbursement-voucher-file-uploads",
+      "usage": "exit_candidate",
+      "reason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/disbursements",
+      "usage": "exit_candidate",
+      "reason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/final-disbursement-pdf",
+      "usage": "exit_candidate",
+      "reason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/repayment-voucher-file-uploads",
+      "usage": "exit_candidate",
+      "reason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/repayments",
+      "usage": "exit_candidate",
+      "reason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/repayments/:repaymentId/confirmation",
+      "usage": "exit_candidate",
+      "reason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/repayments/:repaymentId/reversal",
+      "usage": "exit_candidate",
+      "reason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads"
+    },
+    {
+      "method": "GET",
+      "path": "/expense-claims/:claimId/repayments/:repaymentId/capability",
+      "usage": "internal_task",
+      "reason": "issue_425_historical_employee_loan_repayment_capability_read"
     }
   ],
   "consumerSurfaceOverrides": [
@@ -2100,6 +2148,12 @@
       "path": "/settlement-workbench/contract-versions/:contractVersionId/preview",
       "consumerSurface": "operator_endpoint",
       "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/expense-claims/:claimId/repayments/:repaymentId/capability",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_historical_employee_loan_repayment_capability_read"
     }
   ]
 }

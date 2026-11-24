@@ -182,13 +182,14 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     };
   }
 
-  function seedHistoricalLoan(status: "draft" | "approved_pending_disbursement", reason: string, loanProjectId = projectId, requestedAmountCents = 1n) {
+  function seedHistoricalLoan(status: "draft" | "approved_pending_disbursement" | "disbursed", reason: string, loanProjectId = projectId, requestedAmountCents = 1n) {
     const now = new Date();
-    const approved = status === "approved_pending_disbursement";
+    const approved = status !== "draft";
     return app.get(PrismaService).expenseClaim.create({ data: {
       code: "JK-HIST-" + randomUUID(), claimType: "loan", status, companyEntityId, projectId: loanProjectId,
       companyEntityNameSnapshot: "入口合成公司", applicantUserId, applicantNameSnapshot: browserSession.user.name,
       handledByUserId: applicantUserId, handledByNameSnapshot: browserSession.user.name, reason, requestedAmountCents,
+      fundedAmountCents: status === "disbursed" ? requestedAmountCents : 0n,
       loanExpectedClearanceAt: new Date("2026-12-01"), submittedAt: approved ? now : null, approvedAt: approved ? now : null
     } });
   }
@@ -384,9 +385,10 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const path = `/expense-claims/${created.body.id}`;
     expect(await request(`${path}/submission`, {}, strangerToken)).toMatchObject({ status: 403 });
     expect(await request(`${path}/submission`, {}, accessToken)).toMatchObject({ status: 201 });
-    for (const endpoint of ["approval", "payments", "disbursements"]) {
+    for (const endpoint of ["approval", "payments"]) {
       expect(await request(`${path}/${endpoint}`, { decision: "approve" }, accessToken)).toMatchObject({ status: 403 });
     }
+    expect((await request(path + "/disbursements", {}, accessToken)).status).toBe(410);
     expect(await request(path, undefined, accessToken)).toMatchObject({ status: 200, body: { status: "approval_pending", fundedAmountCents: "0" } });
   });
 
@@ -517,98 +519,90 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     await expect(replay.json()).resolves.toMatchObject({ id: firstBody.id });
   }, 60_000);
 
-  (enabled ? it : it.skip)("历史已批待放款借款仍可上传单字段幂等放款凭证", async () => {
-    const historical = await seedHistoricalLoan("approved_pending_disbursement", "放款凭证上传验证");
+  (enabled ? it : it.skip)("历史借款拒绝两类凭证上传且不新增文件", async () => {
+    const historical = await seedHistoricalLoan("approved_pending_disbursement", "历史待放款凭证入口");
+    const db = app.get(PrismaService);
     const path = "/expense-claims/" + historical.id;
-    expect(await request(path)).toMatchObject({ status: 200, body: { status: "approved_pending_disbursement", requestedAmountCents: "1" } });
+    expect(await request(path)).toMatchObject({ status: 200, body: { status: "approved_pending_disbursement" } });
+    const originalFiles = await db.fileObject.count();
+    for (const route of ["disbursement-voucher-file-uploads", "repayment-voucher-file-uploads"]) {
+      const body = new FormData();
+      body.append("file", new Blob(["合成凭证"], { type: "application/pdf" }), "合成凭证.pdf");
+      body.append("idempotencyKey", randomUUID());
+      const upload = await fetch(baseUrl + path + "/" + route, { method: "POST", headers: { authorization: `Bearer ${financeToken}` }, body });
+      expect(upload.status).toBe(410);
+    }
+    expect(await db.fileObject.count()).toBe(originalFiles);
+  });
 
-    const idempotencyKey = randomUUID();
-    const upload = async () => {
-      const uploadBody = new FormData();
-      uploadBody.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成放款凭证.png");
-      uploadBody.append("idempotencyKey", idempotencyKey);
-      return fetch(`${baseUrl}${path}/disbursement-voucher-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${financeToken}` }, body: uploadBody });
-    };
-    const first = await upload();
-    const firstText = await first.text();
-    if (first.status !== 201) throw new Error(`放款凭证上传失败：${first.status} ${firstText}`);
-    const firstBody = JSON.parse(firstText) as { id: string };
-    expect(firstBody.id).toEqual(expect.any(String));
-    const replay = await upload();
-    expect(replay.status).toBe(201);
-    await expect(replay.json()).resolves.toMatchObject({ id: firstBody.id });
-  }, 60_000);
-
-  (enabled ? it : it.skip)("公开登记实际放款后按原职责登记、确认并更正员工还款", async () => {
-    const createDisbursedLoan = async (targetProjectId: string, label: string) => {
-      const quotaAttachmentBody = new FormData();
-      quotaAttachmentBody.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), `合成垫资申请依据-${label}.png`);
-      const quotaAttachmentResponse = await fetch(`${baseUrl}/files`, { method: "POST", headers: { authorization: `Bearer ${financeToken}` }, body: quotaAttachmentBody });
-      expect(quotaAttachmentResponse.status).toBe(201);
-      const quotaAttachment = await quotaAttachmentResponse.json() as { id: string };
-      const quotaRequest = await request(`/projects/${targetProjectId}/financing-quotas`, { idempotencyKey: randomUUID(), amountCents: "1", reason: `合成${label}还款链放款资金`, attachmentFileId: quotaAttachment.id }, financeToken);
-      expect(quotaRequest.status).toBe(201);
-      const quotaId = (quotaRequest.body as unknown as { quotaId: string }).quotaId;
-      for (const approvalToken of [approvalTokens[2]!, approvalTokens[3]!]) {
-        const capabilityResponse = await fetch(`${baseUrl}/projects/${targetProjectId}/financing-quotas/${quotaId}/review-capability`, { headers: { authorization: `Bearer ${approvalToken}` } });
-        expect(capabilityResponse.status).toBe(200);
-        const capability = await capabilityResponse.json() as { lifecycleToken: string };
-        expect((await request(`/projects/${targetProjectId}/financing-quotas/${quotaId}/approval`, { actionId: randomUUID(), expectedLifecycleToken: capability.lifecycleToken, decision: "approve", confirmationPassword: accountPassword }, approvalToken)).status).toBe(201);
-      }
-      const historical = await seedHistoricalLoan("approved_pending_disbursement", "合成" + label + "还款验证", targetProjectId);
-      const claimPath = "/expense-claims/" + historical.id;
-      const disbursementUploadBody = new FormData();
-      disbursementUploadBody.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), `合成实际放款凭证-${label}.png`);
-      disbursementUploadBody.append("idempotencyKey", randomUUID());
-      const disbursementUpload = await fetch(`${baseUrl}${claimPath}/disbursement-voucher-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${financeToken}` }, body: disbursementUploadBody });
-      expect(disbursementUpload.status).toBe(201);
-      const disbursementFile = await disbursementUpload.json() as { id: string };
-      expect((await request(`${claimPath}/disbursements`, { amountCents: "1", paidAt: "2026-09-17", paymentMethod: "合成银行转账", voucherFileId: disbursementFile.id, confirmationPassword: accountPassword }, financeToken)).status).toBe(201);
-      expect(await request(claimPath)).toMatchObject({ status: 200, body: { status: "disbursed", fundedAmountCents: "1", loanAccount: { balanceAmountCents: "1" } } });
-      return { id: historical.id, path: claimPath };
-    };
-
-    const created = await createDisbursedLoan(projectId, "PG");
-    const path = created.path;
-
-    const idempotencyKey = randomUUID();
-    const upload = async () => {
-      const uploadBody = new FormData();
-      uploadBody.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成还款凭证.png");
-      uploadBody.append("idempotencyKey", idempotencyKey);
-      return fetch(`${baseUrl}${path}/repayment-voucher-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${financeToken}` }, body: uploadBody });
-    };
-    const first = await upload();
-    const firstText = await first.text();
-    if (first.status !== 201) throw new Error(`还款凭证上传失败：${first.status} ${firstText}`);
-    const firstBody = JSON.parse(firstText) as { id: string };
-    expect(firstBody.id).toEqual(expect.any(String));
-    const replay = await upload();
-    expect(replay.status).toBe(201);
-    await expect(replay.json()).resolves.toMatchObject({ id: firstBody.id });
-
-    const overBalance = await request(`${path}/repayments`, { amountCents: "2", repaidAt: "2026-09-17", paymentMethod: "合成银行转账", voucherFileId: firstBody.id, confirmationPassword: accountPassword }, financeToken);
-    expect(overBalance.status).toBe(201);
-    expect(await request(`${path}/repayments/${overBalance.body.id}/confirmation`, { confirmationPassword: accountPassword }, financeDirectorToken)).toMatchObject({ status: 400 });
-
-    const recorded = await request(`${path}/repayments`, { amountCents: "1", repaidAt: "2026-09-17", paymentMethod: "合成银行转账", voucherFileId: firstBody.id, confirmationPassword: accountPassword }, financeToken);
-    expect(recorded).toMatchObject({ status: 201, body: { status: "recorded", amountCents: "1" } });
-    const repaymentId = recorded.body.id;
-    expect(await request(path)).toMatchObject({ status: 200, body: { loanAccount: { fundedAmountCents: "1", repaidAmountCents: "0", balanceAmountCents: "1" }, loanRepayments: expect.arrayContaining([expect.objectContaining({ id: repaymentId, status: "recorded", amountCents: "1" })]) } });
-
-    expect((await request(`${path}/repayments/${repaymentId}/confirmation`, { confirmationPassword: accountPassword }, financeToken)).status).toBe(403);
-    const confirmed = await request(`${path}/repayments/${repaymentId}/confirmation`, { confirmationPassword: accountPassword, confirmationNote: "合成财务核对" }, financeDirectorToken);
-    expect(confirmed).toMatchObject({ status: 201, body: { status: "confirmed", amountCents: "1" } });
-    expect(await request(path)).toMatchObject({ status: 200, body: { loanAccount: { fundedAmountCents: "1", repaidAmountCents: "1", balanceAmountCents: "0" }, loanRepayments: expect.arrayContaining([expect.objectContaining({ id: repaymentId, status: "confirmed", confirmationNote: "合成财务核对" })]) } });
-    expect((await request(`${path}/repayments/${repaymentId}/confirmation`, { confirmationPassword: accountPassword }, financeDirectorToken)).status).toBe(400);
-
-    expect((await request(`${path}/repayments/${repaymentId}/reversal`, { reason: "合成错误更正", confirmationPassword: accountPassword }, financeToken)).status).toBe(403);
-    const reversed = await request(`${path}/repayments/${repaymentId}/reversal`, { reason: "合成错误更正", confirmationPassword: accountPassword }, financeDirectorToken);
-    expect(reversed).toMatchObject({ status: 201, body: { status: "reversed", amountCents: "1" } });
-    expect(await request(path)).toMatchObject({ status: 200, body: { loanAccount: { fundedAmountCents: "1", repaidAmountCents: "0", balanceAmountCents: "1" }, loanRepayments: expect.arrayContaining([expect.objectContaining({ id: repaymentId, status: "reversed", reversalReason: "合成错误更正" })]) } });
-    expect((await request(`${path}/repayments/${repaymentId}/reversal`, { reason: "重复更正", confirmationPassword: accountPassword }, financeDirectorToken)).status).toBe(400);
+  (enabled ? it : it.skip)("历史借款保留余额、放款、还款和现有归档，拒绝继续办理", async () => {
+    const db = app.get(PrismaService);
+    const at = new Date("2026-09-17");
+    async function uploadHistoricalFile(bytes: Uint8Array, mimeType: string, name: string) {
+      const body = new FormData();
+      body.append("file", new Blob([Buffer.from(bytes)], { type: mimeType }), name);
+      const result = await fetch(baseUrl + "/files", { method: "POST", body, headers: { authorization: `Bearer ${financeToken}` } });
+      expect(result.status).toBe(201);
+      const { id } = await result.json() as { id: string };
+      return id;
+    }
+    async function seedDisbursedLoan(targetProjectId: string) {
+      const claim = await seedHistoricalLoan("disbursed", "合成已放款历史借款", targetProjectId);
+      const account = await db.employeeProjectLoanAccount.create({ data: {
+        userId: applicantUserId, projectId: targetProjectId, companyEntityId, scopeKey: `project:${targetProjectId}`,
+        fundedAmountCents: 1n, balanceAmountCents: 1n
+      } });
+      const voucherFileId = await uploadHistoricalFile(
+        Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64"),
+        "image/png", "历史放款凭证.png"
+      );
+      const disbursement = await db.employeeProjectLoanEntry.create({ data: {
+        loanAccountId: account.id, sequenceNo: 1n, entryType: "disbursement", amountCents: 1n, balanceDeltaCents: 1n,
+        sourceExpenseClaimId: claim.id, occurredAt: at, createdByUserId: financeSession.user.id, paymentMethod: "合成历史银行转账", voucherFileId
+      } });
+      const repayment = await db.employeeLoanRepayment.create({ data: {
+        loanAccountId: account.id, amountCents: 1n, repaidAt: at, paymentMethod: "合成历史现金",
+        status: "recorded", recordedByUserId: financeSession.user.id
+      } });
+      const document = await PDFDocument.create();
+      document.addPage().drawText("Synthetic historical expense loan archive");
+      const fileId = await uploadHistoricalFile(await document.save(), "application/pdf", "历史借款归档.pdf");
+      const pdf = await db.pdfDocument.create({ data: {
+        businessType: "expense_claim", businessId: claim.id, fileId, templateKey: "expense_claim_loan_final_disbursement_a5"
+      } });
+      await db.archiveRecord.create({ data: { businessType: "expense_claim", businessId: claim.id, fileId, departmentScope: "finance" } });
+      return { claim, account, disbursement, repayment, pdf };
+    }
+    const { claim, account, disbursement, repayment, pdf } = await seedDisbursedLoan(projectId);
+    const path = "/expense-claims/" + claim.id;
+    expect(await request(path)).toMatchObject({ status: 200, body: {
+      status: "disbursed", fundedAmountCents: "1", loanAccount: { balanceAmountCents: "1" },
+      loanDisbursements: [{ id: disbursement.id, amountCents: "1", voucherFileId: disbursement.voucherFileId }],
+      loanRepayments: [{ id: repayment.id, status: "recorded", amountCents: "1" }],
+      finalPaymentPdf: { id: pdf.id, fileId: pdf.fileId }, attachmentPermissions: { canAppendEvidence: false }
+    } });
+    expect((await request(path, undefined, strangerToken)).status).toBe(404);
+    expect(await request(path + "/repayments/" + repayment.id + "/capability", undefined, financeDirectorToken)).toMatchObject({
+      status: 200, body: { repaymentId: repayment.id, availableActions: [] }
+    });
+    const payload = { amountCents: "1", paymentMethod: "现金", voucherFileId: pdf.fileId, confirmationPassword: accountPassword };
+    for (const [route, input, accessToken] of [
+      ["disbursements", { ...payload, paidAt: at.toISOString().slice(0, 10) }, financeToken],
+      ["repayments", { ...payload, repaidAt: at.toISOString().slice(0, 10) }, financeToken],
+      [`repayments/${repayment.id}/confirmation`, { confirmationPassword: accountPassword }, financeDirectorToken],
+      [`repayments/${repayment.id}/reversal`, { confirmationPassword: accountPassword, reason: "合成更正" }, financeDirectorToken],
+      ["final-disbursement-pdf", {}, financeToken],
+      ["attachments/append", { fileId: pdf.fileId, category: "receipt_or_other" }, financeToken]
+    ] as const) {
+      expect(await request(path + "/" + route, input, accessToken)).toMatchObject({ status: 410 });
+    }
+    expect(await db.employeeProjectLoanAccount.findUnique({ where: { id: account.id } })).toEqual(account);
+    expect(await db.employeeProjectLoanEntry.count({ where: { loanAccountId: account.id } })).toBe(1);
+    expect(await db.employeeLoanRepayment.findMany({ where: { loanAccountId: account.id } })).toEqual([repayment]);
+    expect(await db.pdfDocument.findMany({ where: { businessId: claim.id } })).toEqual([pdf]);
+    expect(await db.archiveRecord.count({ where: { businessId: claim.id, fileId: pdf.fileId } })).toBe(1);
     for (const viewport of ["desktop", "mobile"] as const) {
-      browserRepaymentClaimIds[viewport] = (await createDisbursedLoan(browserRepaymentProjectIds[viewport], viewport)).id;
+      browserRepaymentClaimIds[viewport] = (await seedDisbursedLoan(browserRepaymentProjectIds[viewport])).claim.id;
     }
   }, 60_000);
 

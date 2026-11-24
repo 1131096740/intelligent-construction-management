@@ -195,12 +195,6 @@ export interface ExpenseClaimActionCapabilityReadModel {
   removableAttachmentIds: string[];
 }
 
-export interface ExpenseClaimRepaymentActionCapabilityReadModel {
-  claimId: string;
-  repaymentId: string;
-  availableActions: string[];
-}
-
 export interface CreateExpenseClaimPayload {
   actualPurchaseBatchId?: string;
   generalProcurementId?: string;
@@ -508,17 +502,6 @@ export async function fetchExpenseClaimActionCapability(claimId: string) {
   return response.json() as Promise<ExpenseClaimActionCapabilityReadModel>;
 }
 
-export async function fetchExpenseClaimRepaymentActionCapability(
-  claimId: string,
-  repaymentId: string
-) {
-  const response = await apiFetch(
-    `/expense-claims/${encodeURIComponent(claimId)}/repayments/${encodeURIComponent(repaymentId)}/capability`
-  );
-  await ensureOk(response);
-  return response.json() as Promise<ExpenseClaimRepaymentActionCapabilityReadModel>;
-}
-
 async function uploadExpenseClaimPrivateFile(
   path: string,
   file: Blob,
@@ -577,34 +560,6 @@ export function uploadExpenseClaimPaymentVoucherFile(
   );
 }
 
-export function uploadExpenseClaimLoanDisbursementVoucherFile(
-  claimId: string,
-  file: Blob,
-  fileName: string,
-  idempotencyKey?: string
-) {
-  return uploadExpenseClaimPrivateFile(
-    `/expense-claims/${encodeURIComponent(claimId)}/disbursement-voucher-file-uploads`,
-    file,
-    fileName,
-    idempotencyKey
-  );
-}
-
-export function uploadExpenseClaimLoanRepaymentVoucherFile(
-  claimId: string,
-  file: Blob,
-  fileName: string,
-  idempotencyKey?: string
-) {
-  return uploadExpenseClaimPrivateFile(
-    `/expense-claims/${encodeURIComponent(claimId)}/repayment-voucher-file-uploads`,
-    file,
-    fileName,
-    idempotencyKey
-  );
-}
-
 export async function adjustExpenseClaimPaymentSubject(claimId: string, body: { companyEntityId: string; reason: string }) {
   const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/payment-subject`, {
     method: "POST",
@@ -654,36 +609,6 @@ export async function generateExpenseClaimFinalPaymentPdf(claimId: string) {
   const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/final-payment-pdf`, { method: "POST" });
   await ensureOk(response);
   return response.json() as Promise<{ pdfDocumentId: string; fileId: string; existed: boolean }>;
-}
-
-export async function generateExpenseClaimFinalDisbursementPdf(claimId: string) {
-  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/final-disbursement-pdf`, { method: "POST" });
-  await ensureOk(response);
-  return response.json() as Promise<{ pdfDocumentId: string; fileId: string; existed: boolean }>;
-}
-
-export async function recordExpenseClaimLoanDisbursement(claimId: string, body: { amountCents: string; paidAt: string; paymentMethod: string; voucherFileId: string; confirmationPassword: string; note?: string }) {
-  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/disbursements`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  await ensureOk(response);
-  return response.json() as Promise<{ id: string; status: string; fundedAmountCents: string }>;
-}
-
-export async function recordExpenseClaimLoanRepayment(claimId: string, body: { amountCents: string; repaidAt: string; paymentMethod: string; voucherFileId?: string; confirmationPassword: string }) {
-  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/repayments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  await ensureOk(response);
-  return response.json() as Promise<{ id: string; status: string; amountCents: string }>;
-}
-
-export async function confirmExpenseClaimLoanRepayment(claimId: string, repaymentId: string, body: { confirmationPassword: string; confirmationNote?: string }) {
-  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/repayments/${encodeURIComponent(repaymentId)}/confirmation`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  await ensureOk(response);
-  return response.json() as Promise<{ id: string; status: string; amountCents: string }>;
-}
-
-export async function reverseExpenseClaimLoanRepayment(claimId: string, repaymentId: string, body: { reason: string; confirmationPassword: string }) {
-  const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/repayments/${encodeURIComponent(repaymentId)}/reversal`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  await ensureOk(response);
-  return response.json() as Promise<{ id: string; status: string; amountCents: string }>;
 }
 
 export async function deleteExpenseClaimDraft(claimId: string, expectedUpdatedAt: string) {

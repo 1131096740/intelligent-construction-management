@@ -9,20 +9,20 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 455,
+    "registeredActionCount": 448,
     "pageActionCount": 109,
-    "backgroundActionCount": 346,
+    "backgroundActionCount": 339,
     "reachableVueFileCount": 235,
     "routeRootCount": 80,
     "totalVueFileCount": 255,
     "parsedVueFileCount": 255,
     "reachableProductionModuleCount": 406,
-    "templateEventDirectiveCount": 1554,
+    "templateEventDirectiveCount": 1547,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 446,
-    "candidateProductionMutationConsumerCount": 446,
-    "acceptedProductionMutationConsumerCount": 446,
-    "productionMutationConsumerPairCount": 446,
+    "coveredProductionMutationConsumerCount": 439,
+    "candidateProductionMutationConsumerCount": 439,
+    "acceptedProductionMutationConsumerCount": 439,
+    "productionMutationConsumerPairCount": 439,
     "blockerCount": 0
   },
   "evidence": {
@@ -12497,7 +12497,7 @@
         "event": "call",
         "handler": "appendExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 297,
+        "sourceLine": 279,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12562,7 +12562,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimAppendAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 421,
+        "sourceLine": 343,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12627,7 +12627,7 @@
         "event": "call",
         "handler": "attachExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 286,
+        "sourceLine": 268,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12692,7 +12692,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimDraftAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 413,
+        "sourceLine": 335,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12757,7 +12757,7 @@
         "event": "call",
         "handler": "removeExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 308,
+        "sourceLine": 290,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12887,7 +12887,7 @@
         "event": "call",
         "handler": "deleteExpenseClaimDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 453,
+        "sourceLine": 359,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12988,7 +12988,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalPaymentPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 345,
+        "sourceLine": 327,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13039,461 +13039,6 @@
       ]
     },
     {
-      "id": "expense-claim.loan.disbursement-voucher.upload",
-      "usage": "background",
-      "routePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "ownerRoutePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "uploadExpenseClaimLoanDisbursementVoucherWithCapability",
-        "kind": "background_call",
-        "sourceLine": 437,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "record_expense_claim_loan_disbursement",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "uploadExpenseClaimLoanDisbursementVoucherFile",
-          "method": "POST",
-          "path": "/expense-claims/:param/disbursement-voucher-file-uploads",
-          "normalizedKey": "POST /expense-claims/:param/disbursement-voucher-file-uploads",
-          "bodyKind": "form_data",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/expense-claims/:claimId/disbursement-voucher-file-uploads",
-            "normalizedKey": "POST /expense-claims/:param/disbursement-voucher-file-uploads",
-            "controller": "ExpenseClaimController",
-            "handler": "uploadDisbursementVoucherFile",
-            "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "expense_claim.disburse"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "uploadExpenseClaimLoanDisbursementVoucherWithCapability",
-              "uploadExpenseClaimLoanDisbursementVoucherFile"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "expense-claim.loan.disbursement.record",
-      "usage": "background",
-      "routePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "ownerRoutePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "recordExpenseClaimLoanDisbursementWithCapability",
-        "kind": "background_call",
-        "sourceLine": 353,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "record_expense_claim_loan_disbursement",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "recordExpenseClaimLoanDisbursement",
-          "method": "POST",
-          "path": "/expense-claims/:param/disbursements",
-          "normalizedKey": "POST /expense-claims/:param/disbursements",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/expense-claims/:claimId/disbursements",
-            "normalizedKey": "POST /expense-claims/:param/disbursements",
-            "controller": "ExpenseClaimController",
-            "handler": "recordLoanDisbursement",
-            "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "expense_claim.disburse"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "recordExpenseClaimLoanDisbursementWithCapability",
-              "recordExpenseClaimLoanDisbursement"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "expense-claim.loan.final-disbursement-pdf.generate",
-      "usage": "background",
-      "routePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "ownerRoutePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "generateExpenseClaimFinalDisbursementPdfWithCapability",
-        "kind": "background_call",
-        "sourceLine": 364,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "generate_expense_claim_final_disbursement_pdf",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "generateExpenseClaimFinalDisbursementPdf",
-          "method": "POST",
-          "path": "/expense-claims/:param/final-disbursement-pdf",
-          "normalizedKey": "POST /expense-claims/:param/final-disbursement-pdf",
-          "bodyKind": "none",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/expense-claims/:claimId/final-disbursement-pdf",
-            "normalizedKey": "POST /expense-claims/:param/final-disbursement-pdf",
-            "controller": "ExpenseClaimController",
-            "handler": "generateLoanFinalDisbursementPdf",
-            "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "expense_claim.disburse"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "generateExpenseClaimFinalDisbursementPdfWithCapability",
-              "generateExpenseClaimFinalDisbursementPdf"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "expense-claim.loan.repayment-voucher.upload",
-      "usage": "background",
-      "routePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "ownerRoutePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "uploadExpenseClaimLoanRepaymentVoucherWithCapability",
-        "kind": "background_call",
-        "sourceLine": 445,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "record_expense_claim_loan_repayment",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "uploadExpenseClaimLoanRepaymentVoucherFile",
-          "method": "POST",
-          "path": "/expense-claims/:param/repayment-voucher-file-uploads",
-          "normalizedKey": "POST /expense-claims/:param/repayment-voucher-file-uploads",
-          "bodyKind": "form_data",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/expense-claims/:claimId/repayment-voucher-file-uploads",
-            "normalizedKey": "POST /expense-claims/:param/repayment-voucher-file-uploads",
-            "controller": "ExpenseClaimController",
-            "handler": "uploadRepaymentVoucherFile",
-            "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "expense_claim.repayment.record"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "uploadExpenseClaimLoanRepaymentVoucherWithCapability",
-              "uploadExpenseClaimLoanRepaymentVoucherFile"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "expense-claim.loan.repayment.confirm",
-      "usage": "background",
-      "routePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "ownerRoutePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "confirmExpenseClaimLoanRepaymentWithCapability",
-        "kind": "background_call",
-        "sourceLine": 383,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "confirm_expense_claim_loan_repayment",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "confirmExpenseClaimLoanRepayment",
-          "method": "POST",
-          "path": "/expense-claims/:param/repayments/:param/confirmation",
-          "normalizedKey": "POST /expense-claims/:param/repayments/:param/confirmation",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/expense-claims/:claimId/repayments/:repaymentId/confirmation",
-            "normalizedKey": "POST /expense-claims/:param/repayments/:param/confirmation",
-            "controller": "ExpenseClaimController",
-            "handler": "confirmRepayment",
-            "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "expense_claim.repayment.confirm"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "confirmExpenseClaimLoanRepaymentWithCapability",
-              "confirmExpenseClaimLoanRepayment"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "expense-claim.loan.repayment.record",
-      "usage": "background",
-      "routePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "ownerRoutePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "recordExpenseClaimLoanRepaymentWithCapability",
-        "kind": "background_call",
-        "sourceLine": 372,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "record_expense_claim_loan_repayment",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "recordExpenseClaimLoanRepayment",
-          "method": "POST",
-          "path": "/expense-claims/:param/repayments",
-          "normalizedKey": "POST /expense-claims/:param/repayments",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/expense-claims/:claimId/repayments",
-            "normalizedKey": "POST /expense-claims/:param/repayments",
-            "controller": "ExpenseClaimController",
-            "handler": "recordRepayment",
-            "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "expense_claim.repayment.record"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "recordExpenseClaimLoanRepaymentWithCapability",
-              "recordExpenseClaimLoanRepayment"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "expense-claim.loan.repayment.reverse",
-      "usage": "background",
-      "routePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "ownerRoutePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "reverseExpenseClaimLoanRepaymentWithCapability",
-        "kind": "background_call",
-        "sourceLine": 398,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "available_action_string",
-        "source": "capability.availableActions",
-        "key": "reverse_expense_claim_loan_repayment",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "reverseExpenseClaimLoanRepayment",
-          "method": "POST",
-          "path": "/expense-claims/:param/repayments/:param/reversal",
-          "normalizedKey": "POST /expense-claims/:param/repayments/:param/reversal",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/expense-claims/:claimId/repayments/:repaymentId/reversal",
-            "normalizedKey": "POST /expense-claims/:param/repayments/:param/reversal",
-            "controller": "ExpenseClaimController",
-            "handler": "reverseRepayment",
-            "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "expense_claim.repayment.reverse"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "reverseExpenseClaimLoanRepaymentWithCapability",
-              "reverseExpenseClaimLoanRepayment"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
       "id": "expense-claim.payment-subject.adjust",
       "usage": "background",
       "routePaths": [
@@ -13508,7 +13053,7 @@
         "event": "call",
         "handler": "adjustExpenseClaimPaymentSubjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 323,
+        "sourceLine": 305,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13577,7 +13122,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 429,
+        "sourceLine": 351,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13642,7 +13187,7 @@
         "event": "call",
         "handler": "recordExpenseClaimPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 334,
+        "sourceLine": 316,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13707,7 +13252,7 @@
         "event": "call",
         "handler": "editReturnedExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 240,
+        "sourceLine": 222,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13772,7 +13317,7 @@
         "event": "call",
         "handler": "reviewExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 264,
+        "sourceLine": 246,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13837,7 +13382,7 @@
         "event": "call",
         "handler": "submitExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 199,
+        "sourceLine": 181,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13902,7 +13447,7 @@
         "event": "call",
         "handler": "withdrawExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 216,
+        "sourceLine": 198,
         "sourceColumn": 0
       },
       "semantic": "business_write",

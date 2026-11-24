@@ -22,17 +22,17 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "f428d1648a960e96eee5662b97b74b24f0f3db2f3e066cc2b659b9b5e35b9294",
+      "sha256": "4609917dc07c65be0577b16c719f6636b02976a1d11ca692e83372a148610f1a",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
-        "exportedFunctionCount": 788,
-        "transportWrapperCount": 767,
+        "exportedFunctionCount": 780,
+        "transportWrapperCount": 759,
         "pureExportCount": 21,
-        "mainRequestBindingCount": 838,
+        "mainRequestBindingCount": 830,
         "ticketFollowupCount": 6,
-        "requestEdgeCount": 796,
-        "productionConsumerCount": 655,
+        "requestEdgeCount": 788,
+        "productionConsumerCount": 647,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,51 +42,51 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "78981bd427a6899f4d119ca2f97fda9412e418221d3304575d580a69c389b68d",
+      "sha256": "5b4eb1c27a2d467bc3a7bf1443a2b05cef9abb1bfd98f7d62fb5ae6e766fb895",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 455,
+        "registeredActionCount": 448,
         "pageActionCount": 109,
-        "backgroundActionCount": 346,
+        "backgroundActionCount": 339,
         "reachableVueFileCount": 235,
         "routeRootCount": 80,
         "totalVueFileCount": 255,
         "parsedVueFileCount": 255,
         "reachableProductionModuleCount": 406,
-        "templateEventDirectiveCount": 1554,
+        "templateEventDirectiveCount": 1547,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 446,
-        "candidateProductionMutationConsumerCount": 446,
-        "acceptedProductionMutationConsumerCount": 446,
-        "productionMutationConsumerPairCount": 446,
+        "coveredProductionMutationConsumerCount": 439,
+        "candidateProductionMutationConsumerCount": 439,
+        "acceptedProductionMutationConsumerCount": 439,
+        "productionMutationConsumerPairCount": 439,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "1036f66e79e0a49631e2d677dcb3560988c6d51ec14f47d2c667cdc9a117bf53",
+      "sha256": "be3b0f22f6788fff99dac73898fb812fa6e1fced1aa0194d80b52907915f5744",
       "status": "ready",
       "summary": {
         "routeCount": 879,
         "exactRouteCount": 879,
         "normalizedRouteCount": 879,
-        "classificationOverrideCount": 276,
-        "consumerSurfaceOverrideCount": 67,
-        "classificationOverrideSha256": "4597f15fbb5eedd90a45fd49184232a5ee96c23ac98df1f4f0fc8dd793a3e8a9",
-        "consumerSurfaceOverrideSha256": "c64094bda97716a57e411f568842c74595fab4dc275bb51928156402948108d5",
-        "derivedProductionPageCount": 603,
-        "pageRouteCount": 622,
+        "classificationOverrideCount": 284,
+        "consumerSurfaceOverrideCount": 68,
+        "classificationOverrideSha256": "73311f685f6200285cb6bd1a5fe2b488095667d2b2ba00be06795ffacd4e2a4d",
+        "consumerSurfaceOverrideSha256": "aecd8b55f30ad018e11d328e7529b559a22fb60ff1bfdbbd52538c2044a6466a",
+        "derivedProductionPageCount": 595,
+        "pageRouteCount": 614,
         "externalTakeoverCount": 70,
-        "exitCandidateCount": 122,
-        "internalTaskCount": 65,
+        "exitCandidateCount": 129,
+        "internalTaskCount": 66,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 674,
+          "web_api_wrapper": 666,
           "auth_store": 5,
           "signed_ticket_delivery": 2,
           "machine_probe": 2,
-          "operator_endpoint": 63,
-          "none": 133
+          "operator_endpoint": 64,
+          "none": 140
         },
         "blockerCount": 0
       }
@@ -94,22 +94,22 @@
   },
   "summary": {
     "routeCount": 879,
-    "pageRouteCount": 622,
+    "pageRouteCount": 614,
     "externalTakeoverRouteCount": 70,
-    "exitCandidateRouteCount": 122,
-    "internalTaskRouteCount": 65,
+    "exitCandidateRouteCount": 129,
+    "internalTaskRouteCount": 66,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 838,
+    "mainRequestBindingCount": 830,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 455,
-    "actionBindingCount": 550,
-    "acceptedActionBindingCount": 505,
+    "registeredActionCount": 448,
+    "actionBindingCount": 543,
+    "acceptedActionBindingCount": 498,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 446,
-    "coveredProductionMutationConsumerPairCount": 446,
+    "productionMutationConsumerPairCount": 439,
+    "coveredProductionMutationConsumerPairCount": 439,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -5287,22 +5287,9 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "fetchExpenseClaimRepaymentActionCapability",
-          "method": "GET",
-          "path": "/expense-claims/:param/repayments/:param/capability",
-          "normalizedKey": "GET /expense-claims/:param/repayments/:param/capability",
-          "bodyKind": "none",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "testConsumers": []
-        }
-      ],
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
@@ -27887,52 +27874,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "uploadExpenseClaimLoanDisbursementVoucherFile",
-          "method": "POST",
-          "path": "/expense-claims/:param/disbursement-voucher-file-uploads",
-          "normalizedKey": "POST /expense-claims/:param/disbursement-voucher-file-uploads",
-          "bodyKind": "form_data",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "testConsumers": []
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "expense-claim.loan.disbursement-voucher.upload",
-          "bindingIndex": 0,
-          "identity": "expense-claim.loan.disbursement-voucher.upload\u0000apps/web-admin/src/api/expense-claim.api.ts\u0000uploadExpenseClaimLoanDisbursementVoucherFile\u0000POST\u0000POST /expense-claims/:param/disbursement-voucher-file-uploads\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-          "capability": {
-            "kind": "available_action_string",
-            "source": "capability.availableActions",
-            "key": "record_expense_claim_loan_disbursement",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "uploadExpenseClaimLoanDisbursementVoucherFile",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -27954,54 +27901,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "recordExpenseClaimLoanDisbursement",
-          "method": "POST",
-          "path": "/expense-claims/:param/disbursements",
-          "normalizedKey": "POST /expense-claims/:param/disbursements",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/expense-claim.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "expense-claim.loan.disbursement.record",
-          "bindingIndex": 0,
-          "identity": "expense-claim.loan.disbursement.record\u0000apps/web-admin/src/api/expense-claim.api.ts\u0000recordExpenseClaimLoanDisbursement\u0000POST\u0000POST /expense-claims/:param/disbursements\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-          "capability": {
-            "kind": "available_action_string",
-            "source": "capability.availableActions",
-            "key": "record_expense_claim_loan_disbursement",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "recordExpenseClaimLoanDisbursement",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -28225,54 +28130,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "generateExpenseClaimFinalDisbursementPdf",
-          "method": "POST",
-          "path": "/expense-claims/:param/final-disbursement-pdf",
-          "normalizedKey": "POST /expense-claims/:param/final-disbursement-pdf",
-          "bodyKind": "none",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/expense-claim.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "expense-claim.loan.final-disbursement-pdf.generate",
-          "bindingIndex": 0,
-          "identity": "expense-claim.loan.final-disbursement-pdf.generate\u0000apps/web-admin/src/api/expense-claim.api.ts\u0000generateExpenseClaimFinalDisbursementPdf\u0000POST\u0000POST /expense-claims/:param/final-disbursement-pdf\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-          "capability": {
-            "kind": "available_action_string",
-            "source": "capability.availableActions",
-            "key": "generate_expense_claim_final_disbursement_pdf",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "generateExpenseClaimFinalDisbursementPdf",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -28572,52 +28435,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "uploadExpenseClaimLoanRepaymentVoucherFile",
-          "method": "POST",
-          "path": "/expense-claims/:param/repayment-voucher-file-uploads",
-          "normalizedKey": "POST /expense-claims/:param/repayment-voucher-file-uploads",
-          "bodyKind": "form_data",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "testConsumers": []
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "expense-claim.loan.repayment-voucher.upload",
-          "bindingIndex": 0,
-          "identity": "expense-claim.loan.repayment-voucher.upload\u0000apps/web-admin/src/api/expense-claim.api.ts\u0000uploadExpenseClaimLoanRepaymentVoucherFile\u0000POST\u0000POST /expense-claims/:param/repayment-voucher-file-uploads\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-          "capability": {
-            "kind": "available_action_string",
-            "source": "capability.availableActions",
-            "key": "record_expense_claim_loan_repayment",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "uploadExpenseClaimLoanRepaymentVoucherFile",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -28639,54 +28462,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "confirmExpenseClaimLoanRepayment",
-          "method": "POST",
-          "path": "/expense-claims/:param/repayments/:param/confirmation",
-          "normalizedKey": "POST /expense-claims/:param/repayments/:param/confirmation",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/expense-claim.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "expense-claim.loan.repayment.confirm",
-          "bindingIndex": 0,
-          "identity": "expense-claim.loan.repayment.confirm\u0000apps/web-admin/src/api/expense-claim.api.ts\u0000confirmExpenseClaimLoanRepayment\u0000POST\u0000POST /expense-claims/:param/repayments/:param/confirmation\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-          "capability": {
-            "kind": "available_action_string",
-            "source": "capability.availableActions",
-            "key": "confirm_expense_claim_loan_repayment",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "confirmExpenseClaimLoanRepayment",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -28708,54 +28489,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "reverseExpenseClaimLoanRepayment",
-          "method": "POST",
-          "path": "/expense-claims/:param/repayments/:param/reversal",
-          "normalizedKey": "POST /expense-claims/:param/repayments/:param/reversal",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/expense-claim.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "expense-claim.loan.repayment.reverse",
-          "bindingIndex": 0,
-          "identity": "expense-claim.loan.repayment.reverse\u0000apps/web-admin/src/api/expense-claim.api.ts\u0000reverseExpenseClaimLoanRepayment\u0000POST\u0000POST /expense-claims/:param/repayments/:param/reversal\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-          "capability": {
-            "kind": "available_action_string",
-            "source": "capability.availableActions",
-            "key": "reverse_expense_claim_loan_repayment",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "reverseExpenseClaimLoanRepayment",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -28777,54 +28516,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "recordExpenseClaimLoanRepayment",
-          "method": "POST",
-          "path": "/expense-claims/:param/repayments",
-          "normalizedKey": "POST /expense-claims/:param/repayments",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/expense-claim.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "expense-claim.loan.repayment.record",
-          "bindingIndex": 0,
-          "identity": "expense-claim.loan.repayment.record\u0000apps/web-admin/src/api/expense-claim.api.ts\u0000recordExpenseClaimLoanRepayment\u0000POST\u0000POST /expense-claims/:param/repayments\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-          "capability": {
-            "kind": "available_action_string",
-            "source": "capability.availableActions",
-            "key": "record_expense_claim_loan_repayment",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-          "wrapper": "recordExpenseClaimLoanRepayment",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {

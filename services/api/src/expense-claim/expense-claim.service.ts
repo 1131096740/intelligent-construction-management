@@ -60,11 +60,9 @@ import { EXPENSE_CLAIM_ENTRY_DEFINITION } from "./expense-claim-entry.definition
 import type { CreateExpenseClaimDto, ExpenseClaimLineDto } from "./dto/create-expense-claim.dto";
 import type { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
 import type { EditReturnedExpenseClaimDto } from "./dto/returned-expense-claim.dto";
-import type { RecordLoanDisbursementDto } from "./dto/record-loan-disbursement.dto";
-import type { ConfirmEmployeeLoanRepaymentDto, RecordEmployeeLoanRepaymentDto } from "./dto/record-employee-loan-repayment.dto";
 import type { AttachExpenseClaimAttachmentDto, RemoveExpenseClaimAttachmentDto } from "./dto/manage-expense-claim-attachment.dto";
 import type { AdjustExpenseClaimPaymentSubjectDto } from "./dto/adjust-expense-claim-payment-subject.dto";
-import type { RecordExpenseClaimPaymentDto, ReverseEmployeeLoanRepaymentDto } from "./dto/record-expense-claim-payment.dto";
+import type { RecordExpenseClaimPaymentDto } from "./dto/record-expense-claim-payment.dto";
 
 type ExpenseClaimApprovalNode = FrozenApprovalNode & {
   name: string;
@@ -636,7 +634,7 @@ export class ExpenseClaimService {
     });
     const currentNode = nodes?.[duties[0]?.index ?? activeIndexes[0]] ?? null;
     const isOwner = claim.applicantUserId === actorUserId || claim.handledByUserId === actorUserId;
-    const canAppendEvidence =
+    const canReadExistingExpenseEvidence =
       !["draft", "rejected", "offset_completed"].includes(claim.status) &&
       (claim.handledByUserId === actorUserId ||
         roles.some((role) => ["comprehensive_director", "finance_staff", "finance_director"].includes(role)));
@@ -646,7 +644,7 @@ export class ExpenseClaimService {
       roles.some((role) => PAYMENT_SUBJECT_ADJUSTMENT_ROLES.includes(role));
     const procurementActor = claim.generalProcurementId && claim.projectId ? await generalProcurementActor(this.prisma, this.visibility ?? new ProjectVisibilityService(this.prisma), actorUserId, claim.projectId) : null;
     const canReadProcurementPayment = procurementActor && (procurementActor.globalRoleKeys.some((role) => ["chairman", "general_manager", "comprehensive_director", "finance_staff", "finance_director"].includes(role)) || procurementActor.projectRoleKeys.some((role) => ["project_manager", "finance_staff", "finance_director"].includes(role)));
-    const existingDetailAccess = isOwner || duties.length > 0 || canAppendEvidence || Boolean(canReadProcurementPayment);
+    const existingDetailAccess = isOwner || duties.length > 0 || canReadExistingExpenseEvidence || Boolean(canReadProcurementPayment);
     if (!existingDetailAccess && !(claim.status !== "draft" && await this.approvalProgress?.canViewBusiness("expense_claim", claim.id, actorUserId))) throw new NotFoundException("费用申请不存在或当前账号无权读取");
     const [project, lines, attachments, paymentSubjectCompanyEntities, paymentExecutions, finalPaymentPdf] = await Promise.all([
       claim.projectId
@@ -789,18 +787,18 @@ export class ExpenseClaimService {
         requiresSelfReviewConfirmation: duties.length > 0 && instance?.applicantUserId === actorUserId,
         ...(parallel ? { approvalInstanceId: instance?.id, actionableDuties: duties } : {})
       } : null,
-      attachmentPermissions: { canAppendEvidence },
+      attachmentPermissions: { canAppendEvidence: claim.claimType !== "loan" && canReadExistingExpenseEvidence },
       paymentSubjectPermissions: { canAdjust: canAdjustPaymentSubject },
       paymentSubjectCompanyEntities,
       fundsPermissions: {
         canRecordPayment: (claim.claimType === "reimbursement" || claim.claimType === "incidental_expense") && ["approved_pending_payment", "partially_paid"].includes(claim.status) && roles.includes("finance_staff"),
         canRecordReimbursementPayment: claim.claimType === "reimbursement" && ["approved_pending_payment", "partially_paid"].includes(claim.status) && roles.includes("finance_staff"),
         canGenerateFinalPaymentPdf: claim.claimType === "reimbursement" && claim.status === "paid" && roles.includes("finance_staff"),
-        canGenerateLoanFinalDisbursementPdf: claim.claimType === "loan" && claim.status === "disbursed" && roles.includes("finance_staff"),
-        canRecordLoanDisbursement: claim.claimType === "loan" && ["approved_pending_disbursement", "partially_disbursed"].includes(claim.status) && roles.includes("finance_staff"),
-        canRecordLoanRepayment: claim.claimType === "loan" && roles.includes("finance_staff"),
-        canConfirmLoanRepayment: claim.claimType === "loan" && roles.includes("finance_director"),
-        canReverseLoanRepayment: claim.claimType === "loan" && roles.includes("finance_director"),
+        canGenerateLoanFinalDisbursementPdf: false,
+        canRecordLoanDisbursement: false,
+        canRecordLoanRepayment: false,
+        canConfirmLoanRepayment: false,
+        canReverseLoanRepayment: false,
         canRecordRefund: claim.claimType === "incidental_expense" &&
           ["approved_pending_payment", "partially_paid", "paid"].includes(claim.status) &&
           ["finance_staff", "finance_director", "comprehensive_director"].some((role) => roles.includes(role as RoleKey)),
@@ -892,26 +890,11 @@ export class ExpenseClaimService {
     if (detail.fundsPermissions.canGenerateFinalPaymentPdf) {
       availableActions.push("generate_expense_claim_final_payment_pdf");
     }
-    if (detail.fundsPermissions.canRecordLoanDisbursement) {
-      availableActions.push("record_expense_claim_loan_disbursement");
-    }
-    if (detail.fundsPermissions.canGenerateLoanFinalDisbursementPdf) {
-      availableActions.push(
-        "generate_expense_claim_final_disbursement_pdf"
-      );
-    }
-    if (
-      detail.fundsPermissions.canRecordLoanRepayment &&
-      detail.loanAccount
-    ) {
-      availableActions.push("record_expense_claim_loan_repayment");
-    }
-
     return {
       claimId: detail.id,
       availableActions,
       removableAttachmentIds:
-        detail.status === "draft" && isHandler
+        detail.claimType !== "loan" && detail.status === "draft" && isHandler
           ? detail.attachments
               .filter((attachment) => !attachment.removedAt)
               .map((attachment) => attachment.id)
@@ -932,39 +915,7 @@ export class ExpenseClaimService {
       throw new NotFoundException("员工还款记录不存在或不属于当前借款账户");
     }
 
-    const availableActions: string[] = [];
-    if (
-      repayment.status === "recorded" &&
-      detail.fundsPermissions.canConfirmLoanRepayment &&
-      BigInt(repayment.amountCents) <= BigInt(detail.loanAccount.balanceAmountCents)
-    ) {
-      availableActions.push("confirm_expense_claim_loan_repayment");
-    }
-    if (
-      repayment.status === "confirmed" &&
-      detail.fundsPermissions.canReverseLoanRepayment
-    ) {
-      const original = await this.prisma.employeeProjectLoanEntry.findFirst({
-        where: {
-          loanAccountId: detail.loanAccount.id,
-          sourceRepaymentId: repayment.id,
-          entryType: "repayment"
-        },
-        select: {
-          id: true,
-          amountCents: true,
-          balanceDeltaCents: true
-        }
-      });
-      if (
-        original?.amountCents === BigInt(repayment.amountCents) &&
-        original.balanceDeltaCents === -BigInt(repayment.amountCents)
-      ) {
-        availableActions.push("reverse_expense_claim_loan_repayment");
-      }
-    }
-
-    return { claimId: detail.id, repaymentId: repayment.id, availableActions };
+    return { claimId: detail.id, repaymentId: repayment.id, availableActions: [] };
   }
 
   async assertActionAvailable(
@@ -1084,8 +1035,8 @@ export class ExpenseClaimService {
     if (!this.files) throw new ServiceUnavailableException("费用附件服务暂不可用，请稍后重试");
     const fileId = requiredText(input.fileId, "请选择费用附件");
     return this.prisma.$transaction(async (tx) => {
-      const claims = await tx.$queryRaw<Array<{ id: string; status: string; projectId: string | null; handledByUserId: string }>>(
-        Prisma.sql`SELECT "id", "status", "projectId", "handledByUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`
+      const claims = await tx.$queryRaw<Array<{ id: string; claimType: string; status: string; projectId: string | null; handledByUserId: string }>>(
+        Prisma.sql`SELECT "id", "claimType", "status", "projectId", "handledByUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`
       );
       const claim = claims[0];
       if (!claim) throw new NotFoundException("费用申请不存在");
@@ -1097,6 +1048,7 @@ export class ExpenseClaimService {
         claim.handledByUserId === actorUserId ||
         roleKeys.some((role) => ["comprehensive_director", "finance_staff", "finance_director"].includes(role));
       if (!canAppend) throw new ForbiddenException("当前账号无权追加费用资料");
+      if (claim.claimType === "loan") throw new GoneException(RETIRED_EMPLOYEE_LOAN);
       const file = await this.files!.assertFileHasNoBusinessBinding(tx, fileId);
       if (file.uploadedByUserId !== actorUserId) throw new ForbiddenException("费用附件必须由追加人本人上传");
       const attachment = await (tx as unknown as {
@@ -1591,167 +1543,6 @@ export class ExpenseClaimService {
     return { id: result.id, status: result.status, completed: result.completed };
   }
 
-  async recordLoanDisbursement(claimId: string, actorUserId: string, input: RecordLoanDisbursementDto) {
-    const amountCents = positiveCents(input.amountCents, "放款金额必须大于零");
-    const voucherFileId = requiredText(input.voucherFileId, "放款凭证必填");
-    const paymentMethod = requiredText(input.paymentMethod, "放款方式必填");
-    const paidAt = dateOnly(input.paidAt, "放款日期");
-    const note = optionalText(input.note);
-    if (paidAt.getTime() > Date.now()) throw new BadRequestException("放款日期不能晚于当前时间");
-    if (!input.confirmationPassword?.trim()) throw new BadRequestException("放款登记需要当前登录密码确认");
-    if (!this.auth) throw new ServiceUnavailableException("放款身份确认服务暂不可用，请稍后重试");
-    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
-
-    const result = await translateProjectOperatingSerializationConflict(
-      this.prisma.$transaction(async (tx) => {
-      const fundingScope = this.projectFunding
-        ? await tx.expenseClaim.findUnique({
-            where: { id: claimId },
-            select: { id: true, projectId: true }
-          })
-        : null;
-      if (this.projectFunding && !fundingScope?.projectId) {
-        throw new BadRequestException(
-          "借款申请未关联项目，不能登记放款"
-        );
-      }
-      if (this.projectFunding && fundingScope?.projectId) {
-        await this.projectFunding.lockFundingContext(
-          tx,
-          fundingScope.projectId
-        );
-      }
-      const claims = await tx.$queryRaw<Array<{
-        id: string; claimType: string; status: string; projectId: string | null; companyEntityId: string; applicantUserId: string | null; requestedAmountCents: bigint; fundedAmountCents: bigint;
-      }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "companyEntityId", "applicantUserId", "requestedAmountCents", "fundedAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
-      const claim = claims[0];
-      if (!claim) throw new NotFoundException("借款申请不存在");
-      if (
-        fundingScope &&
-        (fundingScope.id !== claim.id ||
-          fundingScope.projectId !== claim.projectId)
-      ) {
-        throw new ConflictException(
-          "借款申请的项目资金范围已变化，请刷新后重试"
-        );
-      }
-      if (claim.claimType !== "loan" || !claim.projectId || !claim.applicantUserId) throw new BadRequestException("当前申请不支持登记借款放款");
-      const existingEntry = this.projectFunding
-        ? await tx.employeeProjectLoanEntry.findFirst({
-            where: {
-              voucherFileId,
-              entryType: "disbursement"
-            }
-          })
-        : null;
-      if (existingEntry) {
-        if (
-          existingEntry.sourceExpenseClaimId !== claim.id ||
-          existingEntry.amountCents !== amountCents ||
-          existingEntry.balanceDeltaCents !== amountCents ||
-          existingEntry.occurredAt.getTime() !== paidAt.getTime() ||
-          existingEntry.createdByUserId !== actorUserId ||
-          existingEntry.paymentMethod !== paymentMethod ||
-          existingEntry.note !== note
-        ) {
-          throw new ConflictException(
-            "该放款凭证已绑定不同的借款放款事实"
-          );
-        }
-        await this.projectFunding!.allocateExecution(tx, {
-          projectId: claim.projectId,
-          executionType: "employee_loan_disbursement",
-          executionId: existingEntry.id,
-          businessType: "expense_claim",
-          businessId: claim.id,
-          amountCents,
-          occurredAt: paidAt,
-          actorUserId
-        });
-        await this.appendOperatingEmployeeLoanEntry(
-          tx,
-          claim.projectId,
-          existingEntry.id,
-          actorUserId
-        );
-        return {
-          id: existingEntry.id,
-          expenseClaimId: claim.id,
-          loanAccountId: existingEntry.loanAccountId,
-          amountCents: moneyCentsToApi(amountCents),
-          fundedAmountCents:
-            moneyCentsToApi(claim.fundedAmountCents),
-          status: claim.status,
-          replayed: true
-        };
-      }
-      if (!["approved_pending_disbursement", "partially_disbursed"].includes(claim.status)) throw new BadRequestException("当前借款申请不可登记放款");
-      if (amountCents > claim.requestedAmountCents - claim.fundedAmountCents) throw new BadRequestException("放款金额超过借款申请剩余批准金额");
-      const voucher = await tx.fileObject.findUnique({ where: { id: voucherFileId }, select: { id: true, uploadedByUserId: true } });
-      if (!voucher) throw new NotFoundException("放款凭证不存在");
-      if (voucher.uploadedByUserId !== actorUserId) throw new BadRequestException("放款凭证必须由登记人本人上传");
-      if (this.files) {
-        await this.files.assertFileHasNoBusinessBinding(
-          tx,
-          voucherFileId
-        );
-      }
-      const scopeKey = `project:${claim.projectId}`;
-      await tx.employeeProjectLoanAccount.upsert({
-        where: { userId_scopeKey: { userId: claim.applicantUserId, scopeKey } },
-        create: { userId: claim.applicantUserId, projectId: claim.projectId, companyEntityId: claim.companyEntityId, scopeKey },
-        update: {}
-      });
-      const accounts = await tx.$queryRaw<Array<{ id: string; fundedAmountCents: bigint; offsetAmountCents: bigint; repaidAmountCents: bigint; reservedOffsetAmountCents: bigint; balanceAmountCents: bigint }>>(Prisma.sql`SELECT "id", "fundedAmountCents", "offsetAmountCents", "repaidAmountCents", "reservedOffsetAmountCents", "balanceAmountCents" FROM "EmployeeProjectLoanAccount" WHERE "userId" = ${claim.applicantUserId} AND "scopeKey" = ${scopeKey} FOR UPDATE`);
-      const account = accounts[0];
-      if (!account) throw new BadRequestException("借款账户创建失败");
-      const sequences = await tx.$queryRaw<Array<{ nextSequenceNo: bigint }>>(Prisma.sql`SELECT COALESCE(MAX("sequenceNo"), 0) + 1 AS "nextSequenceNo" FROM "EmployeeProjectLoanEntry" WHERE "loanAccountId" = ${account.id}`);
-      const entry = await tx.employeeProjectLoanEntry.create({ data: { loanAccountId: account.id, sequenceNo: sequences[0]!.nextSequenceNo, entryType: "disbursement", amountCents, balanceDeltaCents: amountCents, sourceExpenseClaimId: claim.id, occurredAt: paidAt, createdByUserId: actorUserId, voucherFileId, paymentMethod, note } });
-      const fundingAllocation =
-        this.projectFunding
-          ? await this.projectFunding.allocateExecution(tx, {
-              projectId: claim.projectId,
-              executionType: "employee_loan_disbursement",
-              executionId: entry.id,
-              businessType: "expense_claim",
-              businessId: claim.id,
-              amountCents,
-              occurredAt: paidAt,
-              actorUserId
-            })
-          : null;
-      const fundedAmountCents = account.fundedAmountCents + amountCents;
-      const balanceAmountCents = account.balanceAmountCents + amountCents;
-      await tx.employeeProjectLoanAccount.update({ where: { id: account.id }, data: { fundedAmountCents, balanceAmountCents } });
-      const claimFundedAmountCents = claim.fundedAmountCents + amountCents;
-      const claimStatus = claimFundedAmountCents === claim.requestedAmountCents ? "disbursed" : "partially_disbursed";
-      await tx.expenseClaim.update({ where: { id: claim.id }, data: { fundedAmountCents: claimFundedAmountCents, status: claimStatus } });
-      await this.appendOperatingEmployeeLoanEntry(
-        tx,
-        claim.projectId,
-        entry.id,
-        actorUserId
-      );
-      await this.audit.record(tx, { actorUserId, action: "expense_claim.loan.disbursement.record", businessType: "expense_claim", businessId: claim.id, metadata: { loanAccountId: account.id, loanEntryId: entry.id, amountCents: amountCents.toString(), voucherFileId, paymentMethod, fundingAllocation: fundingAllocation ? { kind: fundingAllocation.kind, projectCashAmountCents: fundingAllocation.projectCashAmountCents.toString(), financingQuotaAmountCents: fundingAllocation.financingQuotaAmountCents.toString(), allocations: fundingAllocation.allocations.map((allocation) => ({ sourceType: allocation.sourceType, sourceId: allocation.sourceId, amountCents: allocation.amountCents.toString() })) } : null } });
-        return { id: entry.id, expenseClaimId: claim.id, loanAccountId: account.id, amountCents: moneyCentsToApi(amountCents), fundedAmountCents: moneyCentsToApi(claimFundedAmountCents), status: claimStatus, replayed: false };
-      }),
-      "借款放款遇到参与公司并发变化，请刷新后重试"
-    );
-    if (result.status === "disbursed" && !result.replayed) {
-      await this.ensureLoanFinalDisbursementPdf(claimId, actorUserId).catch(async () => {
-        await this.audit.record(this.prisma, { actorUserId, action: "expense_claim.loan.final_pdf.generation_failed", businessType: "expense_claim", businessId: claimId, metadata: {} });
-      });
-    }
-    return {
-      id: result.id,
-      expenseClaimId: result.expenseClaimId,
-      loanAccountId: result.loanAccountId,
-      amountCents: result.amountCents,
-      fundedAmountCents: result.fundedAmountCents,
-      status: result.status
-    };
-  }
-
   async recordReimbursementPayment(claimId: string, actorUserId: string, input: RecordExpenseClaimPaymentDto) {
     return this.recordPayment(claimId, actorUserId, input);
   }
@@ -1952,95 +1743,6 @@ export class ExpenseClaimService {
     return this.ensureReimbursementFinalPaymentPdf(claimId, actorUserId);
   }
 
-  async generateLoanFinalDisbursementPdf(claimId: string, actorUserId: string) {
-    return this.ensureLoanFinalDisbursementPdf(claimId, actorUserId);
-  }
-
-  async recordEmployeeLoanRepayment(claimId: string, actorUserId: string, input: RecordEmployeeLoanRepaymentDto) {
-    const amountCents = positiveCents(input.amountCents, "还款金额必须大于零");
-    const repaidAt = dateOnly(input.repaidAt, "还款日期");
-    const paymentMethod = requiredText(input.paymentMethod, "还款方式必填");
-    if (repaidAt.getTime() > Date.now()) throw new BadRequestException("还款日期不能晚于当前时间");
-    if (!this.auth || !input.confirmationPassword?.trim()) throw new BadRequestException("还款登记需要当前登录密码确认");
-    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
-    return this.prisma.$transaction(async (tx) => {
-      const claims = await tx.$queryRaw<Array<{ id: string; claimType: string; projectId: string | null; applicantUserId: string | null }>>(Prisma.sql`SELECT "id", "claimType", "projectId", "applicantUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
-      const claim = claims[0];
-      if (!claim || claim.claimType !== "loan" || !claim.projectId || !claim.applicantUserId) throw new BadRequestException("当前借款不支持登记员工还款");
-      const account = await tx.employeeProjectLoanAccount.findUnique({ where: { userId_scopeKey: { userId: claim.applicantUserId, scopeKey: `project:${claim.projectId}` } }, select: { id: true } });
-      if (!account) throw new BadRequestException("借款账户不存在，不能登记还款");
-      const voucherFileId = input.voucherFileId ? requiredText(input.voucherFileId, "还款凭证不正确") : null;
-      if (voucherFileId) {
-        const voucher = await tx.fileObject.findUnique({ where: { id: voucherFileId }, select: { id: true, uploadedByUserId: true } });
-        if (!voucher || voucher.uploadedByUserId !== actorUserId) throw new BadRequestException("还款凭证必须由登记人本人上传");
-      }
-      const repayment = await tx.employeeLoanRepayment.create({ data: { loanAccountId: account.id, amountCents, repaidAt, paymentMethod, voucherFileId, status: "recorded", recordedByUserId: actorUserId } });
-      await this.audit.record(tx, { actorUserId, action: "expense_claim.loan_repayment.record", businessType: "expense_claim", businessId: claim.id, metadata: { repaymentId: repayment.id, amountCents: amountCents.toString() } });
-      return { id: repayment.id, status: repayment.status, amountCents: moneyCentsToApi(amountCents) };
-    });
-  }
-
-  async confirmEmployeeLoanRepayment(claimId: string, repaymentId: string, actorUserId: string, input: ConfirmEmployeeLoanRepaymentDto) {
-    if (!this.auth || !input.confirmationPassword?.trim()) throw new BadRequestException("还款确认需要当前登录密码确认");
-    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
-    return this.prisma.$transaction(async (tx) => {
-      const claims = await tx.$queryRaw<Array<{ id: string; claimType: string; projectId: string | null; applicantUserId: string | null }>>(Prisma.sql`SELECT "id", "claimType", "projectId", "applicantUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
-      const claim = claims[0];
-      if (!claim || claim.claimType !== "loan" || !claim.projectId || !claim.applicantUserId) throw new BadRequestException("当前借款不支持确认员工还款");
-      const repayments = await tx.$queryRaw<Array<{ id: string; loanAccountId: string; amountCents: bigint; status: string }>>(Prisma.sql`SELECT "id", "loanAccountId", "amountCents", "status" FROM "EmployeeLoanRepayment" WHERE "id" = ${repaymentId} FOR UPDATE`);
-      const repayment = repayments[0];
-      if (!repayment || repayment.status !== "recorded") throw new BadRequestException("当前还款不可确认");
-      const accounts = await tx.$queryRaw<Array<{ id: string; userId: string; scopeKey: string; balanceAmountCents: bigint; repaidAmountCents: bigint }>>(Prisma.sql`SELECT "id", "userId", "scopeKey", "balanceAmountCents", "repaidAmountCents" FROM "EmployeeProjectLoanAccount" WHERE "id" = ${repayment.loanAccountId} FOR UPDATE`);
-      const account = accounts[0];
-      if (!account || account.userId !== claim.applicantUserId || account.scopeKey !== `project:${claim.projectId}`) throw new BadRequestException("还款记录不属于当前借款账户");
-      if (repayment.amountCents > account.balanceAmountCents) throw new BadRequestException("还款金额超过当前借款余额");
-      const sequences = await tx.$queryRaw<Array<{ nextSequenceNo: bigint }>>(Prisma.sql`SELECT COALESCE(MAX("sequenceNo"), 0) + 1 AS "nextSequenceNo" FROM "EmployeeProjectLoanEntry" WHERE "loanAccountId" = ${account.id}`);
-      const entry = await tx.employeeProjectLoanEntry.create({ data: { loanAccountId: account.id, sequenceNo: sequences[0]!.nextSequenceNo, entryType: "repayment", amountCents: repayment.amountCents, balanceDeltaCents: -repayment.amountCents, sourceRepaymentId: repayment.id, occurredAt: new Date(), createdByUserId: actorUserId } });
-      await tx.employeeProjectLoanAccount.update({ where: { id: account.id }, data: { repaidAmountCents: account.repaidAmountCents + repayment.amountCents, balanceAmountCents: account.balanceAmountCents - repayment.amountCents } });
-      const confirmed = await tx.employeeLoanRepayment.update({ where: { id: repayment.id }, data: { status: "confirmed", confirmedByUserId: actorUserId, confirmedAt: new Date(), confirmationNote: optionalText(input.confirmationNote) } });
-      await this.appendOperatingEmployeeLoanEntry(
-        tx,
-        claim.projectId,
-        entry.id,
-        actorUserId
-      );
-      await this.audit.record(tx, { actorUserId, action: "expense_claim.loan_repayment.confirm", businessType: "expense_claim", businessId: claimId, metadata: { repaymentId: repayment.id, loanEntryId: entry.id, amountCents: repayment.amountCents.toString() } });
-      return { id: confirmed.id, status: confirmed.status, amountCents: moneyCentsToApi(repayment.amountCents) };
-    });
-  }
-
-  async reverseEmployeeLoanRepayment(claimId: string, repaymentId: string, actorUserId: string, input: ReverseEmployeeLoanRepaymentDto) {
-    const reason = requiredText(input.reason, "还款更正原因必填");
-    if (!this.auth || !input.confirmationPassword?.trim()) throw new BadRequestException("还款更正需要当前登录密码确认");
-    await this.auth.confirmPassword(actorUserId, input.confirmationPassword);
-    return this.prisma.$transaction(async (tx) => {
-      const claims = await tx.$queryRaw<Array<{ id: string; claimType: string; projectId: string | null; applicantUserId: string | null }>>(Prisma.sql`SELECT "id", "claimType", "projectId", "applicantUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
-      const claim = claims[0];
-      if (!claim || claim.claimType !== "loan" || !claim.projectId || !claim.applicantUserId) throw new BadRequestException("当前借款不支持更正员工还款");
-      const repayments = await tx.$queryRaw<Array<{ id: string; loanAccountId: string; amountCents: bigint; status: string; confirmedByUserId: string | null }>>(Prisma.sql`SELECT "id", "loanAccountId", "amountCents", "status", "confirmedByUserId" FROM "EmployeeLoanRepayment" WHERE "id" = ${repaymentId} FOR UPDATE`);
-      const repayment = repayments[0];
-      if (!repayment || repayment.status !== "confirmed") throw new BadRequestException("当前还款不可更正");
-      const accounts = await tx.$queryRaw<Array<{ id: string; userId: string; scopeKey: string; balanceAmountCents: bigint; repaidAmountCents: bigint }>>(Prisma.sql`SELECT "id", "userId", "scopeKey", "balanceAmountCents", "repaidAmountCents" FROM "EmployeeProjectLoanAccount" WHERE "id" = ${repayment.loanAccountId} FOR UPDATE`);
-      const account = accounts[0];
-      if (!account || account.userId !== claim.applicantUserId || account.scopeKey !== `project:${claim.projectId}`) throw new BadRequestException("还款记录不属于当前借款账户");
-      const entries = await tx.$queryRaw<Array<{ id: string; entryType: string; amountCents: bigint; balanceDeltaCents: bigint; sourceRepaymentId: string | null }>>(Prisma.sql`SELECT "id", "entryType", "amountCents", "balanceDeltaCents", "sourceRepaymentId" FROM "EmployeeProjectLoanEntry" WHERE "loanAccountId" = ${account.id} AND "sourceRepaymentId" = ${repayment.id} FOR UPDATE`);
-      const original = entries.find((entry) => entry.entryType === "repayment" && entry.sourceRepaymentId === repayment.id);
-      if (!original || original.amountCents !== repayment.amountCents || original.balanceDeltaCents !== -repayment.amountCents) throw new BadRequestException("还款台账事实不完整，不能更正");
-      const sequences = await tx.$queryRaw<Array<{ nextSequenceNo: bigint }>>(Prisma.sql`SELECT COALESCE(MAX("sequenceNo"), 0) + 1 AS "nextSequenceNo" FROM "EmployeeProjectLoanEntry" WHERE "loanAccountId" = ${account.id}`);
-      const entry = await tx.employeeProjectLoanEntry.create({ data: { loanAccountId: account.id, sequenceNo: sequences[0]!.nextSequenceNo, entryType: "reversal", amountCents: repayment.amountCents, balanceDeltaCents: repayment.amountCents, reversalOfEntryId: original.id, occurredAt: new Date(), createdByUserId: actorUserId, note: reason } });
-      await tx.employeeProjectLoanAccount.update({ where: { id: account.id }, data: { repaidAmountCents: account.repaidAmountCents - repayment.amountCents, balanceAmountCents: account.balanceAmountCents + repayment.amountCents } });
-      const reversed = await tx.employeeLoanRepayment.update({ where: { id: repayment.id }, data: { status: "reversed", reversedAt: new Date(), reversedByUserId: actorUserId, reversalReason: reason } });
-      await this.appendOperatingEmployeeLoanEntry(
-        tx,
-        claim.projectId,
-        entry.id,
-        actorUserId
-      );
-      await this.audit.record(tx, { actorUserId, action: "expense_claim.loan_repayment.reverse", businessType: "expense_claim", businessId: claim.id, metadata: { repaymentId: repayment.id, loanEntryId: entry.id, reversalOfEntryId: original.id, amountCents: repayment.amountCents.toString(), reason } });
-      return { id: reversed.id, status: reversed.status, amountCents: moneyCentsToApi(repayment.amountCents) };
-    });
-  }
-
   private async ensureReimbursementFinalPaymentPdf(claimId: string, actorUserId: string) {
     if (!this.files) throw new ServiceUnavailableException("费用付讫归档文件服务暂不可用，请稍后重试");
     const [claim, existingPdf, payments] = await Promise.all([
@@ -2094,51 +1796,6 @@ export class ExpenseClaimService {
       const pdfDocument = await tx.pdfDocument.create({ data: { businessType: "expense_claim", businessId: claim.id, fileId: file.id, templateKey: "expense_claim_final_payment_a5" } });
       const archiveRecord = await tx.archiveRecord.create({ data: { businessType: "expense_claim", businessId: claim.id, fileId: file.id, departmentScope: "finance" } });
       await this.audit.record(tx, { actorUserId, action: "expense_claim.reimbursement.final_pdf.archive", businessType: "expense_claim", businessId: claim.id, metadata: { code: claim.code, fileId: file.id, pdfDocumentId: pdfDocument.id, archiveRecordId: archiveRecord.id } });
-      return { pdfDocumentId: pdfDocument.id, fileId: file.id, existed: false };
-    });
-  }
-
-  private async ensureLoanFinalDisbursementPdf(claimId: string, actorUserId: string) {
-    if (!this.files) throw new ServiceUnavailableException("借款放款归档文件服务暂不可用，请稍后重试");
-    const [claim, existingPdf, disbursements] = await Promise.all([
-      this.prisma.expenseClaim.findUnique({ where: { id: claimId }, select: { id: true, code: true, claimType: true, status: true, companyEntityNameSnapshot: true, projectId: true, applicantNameSnapshot: true, reason: true, requestedAmountCents: true, fundedAmountCents: true } }),
-      this.prisma.pdfDocument.findFirst({ where: { businessType: "expense_claim", businessId: claimId, templateKey: "expense_claim_loan_final_disbursement_a5" } }),
-      this.prisma.employeeProjectLoanEntry.findMany({
-        where: { sourceExpenseClaimId: claimId, entryType: "disbursement" },
-        select: { occurredAt: true, paymentMethod: true, amountCents: true, note: true },
-        orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }]
-      })
-    ]);
-    if (!claim || claim.claimType !== "loan") throw new NotFoundException("借款申请不存在");
-    if (existingPdf) return { pdfDocumentId: existingPdf.id, fileId: existingPdf.fileId, existed: true };
-    const paidAmount = disbursements.reduce((total, payment) => total + payment.amountCents, 0n);
-    if (claim.status !== "disbursed" || claim.fundedAmountCents !== claim.requestedAmountCents || paidAmount !== claim.requestedAmountCents) throw new BadRequestException("借款全部放款完成后才能生成归档 PDF");
-    const project = claim.projectId ? await this.prisma.project.findUnique({ where: { id: claim.projectId }, select: { code: true, name: true } }) : null;
-    const buffer = await renderExpenseClaimFinalPaymentPdf({
-      title: "员工借款放款归档单",
-      footerText: "放款归档版：仅在借款已全部实际放款后生成；放款事实、凭证与审批完成版均独立冻结，不得覆盖。",
-      offsetLabel: "已冲销",
-      payableLabel: "批准借款",
-      paidLabel: "实际放款",
-      code: claim.code,
-      companyName: claim.companyEntityNameSnapshot,
-      paymentSubjectName: claim.companyEntityNameSnapshot,
-      projectName: project ? `${project.code} · ${project.name}` : "",
-      applicantName: claim.applicantNameSnapshot,
-      reason: claim.reason,
-      requestedAmountCents: claim.requestedAmountCents,
-      loanOffsetAmountCents: 0n,
-      companyPayableAmountCents: claim.requestedAmountCents,
-      paidAmountCents: paidAmount,
-      payments: disbursements.map((payment) => ({ paidAt: payment.occurredAt, paymentMethod: payment.paymentMethod ?? "未记录", amountCents: payment.amountCents, note: payment.note }))
-    });
-    const file = await this.files.uploadPrivateFile({ originalName: `${claim.code}-loan-final-disbursement-a5.pdf`, mimeType: "application/pdf", sizeBytes: buffer.length, uploadedByUserId: actorUserId, buffer });
-    return this.prisma.$transaction(async (tx) => {
-      const duplicate = await tx.pdfDocument.findFirst({ where: { businessType: "expense_claim", businessId: claim.id, templateKey: "expense_claim_loan_final_disbursement_a5" } });
-      if (duplicate) return { pdfDocumentId: duplicate.id, fileId: duplicate.fileId, existed: true };
-      const pdfDocument = await tx.pdfDocument.create({ data: { businessType: "expense_claim", businessId: claim.id, fileId: file.id, templateKey: "expense_claim_loan_final_disbursement_a5" } });
-      const archiveRecord = await tx.archiveRecord.create({ data: { businessType: "expense_claim", businessId: claim.id, fileId: file.id, departmentScope: "finance" } });
-      await this.audit.record(tx, { actorUserId, action: "expense_claim.loan.final_pdf.archive", businessType: "expense_claim", businessId: claim.id, metadata: { code: claim.code, fileId: file.id, pdfDocumentId: pdfDocument.id, archiveRecordId: archiveRecord.id } });
       return { pdfDocumentId: pdfDocument.id, fileId: file.id, existed: false };
     });
   }

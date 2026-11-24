@@ -1,7 +1,7 @@
 import { ExpenseClaimFundingNotificationService } from "./expense-claim-funding-notification.service";
 import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
 import { DeleteExpenseClaimDraftDto } from "./dto/delete-expense-claim-draft.dto";
-import { BadRequestException, Body, Controller, Get, Optional, Param, Patch, Post, Query, Res, StreamableFile, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, GoneException, Optional, Param, Patch, Post, Query, Res, StreamableFile, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
@@ -11,13 +11,13 @@ import { FileInterceptor, type MemoryUploadedFile, normalizeUploadedOriginalName
 import { CreateExpenseClaimDto } from "./dto/create-expense-claim.dto";
 import { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
 import { EditReturnedExpenseClaimDto, WithdrawExpenseClaimDto } from "./dto/returned-expense-claim.dto";
-import { RecordLoanDisbursementDto } from "./dto/record-loan-disbursement.dto";
-import { ConfirmEmployeeLoanRepaymentDto, RecordEmployeeLoanRepaymentDto } from "./dto/record-employee-loan-repayment.dto";
 import { AttachExpenseClaimAttachmentDto, RemoveExpenseClaimAttachmentDto } from "./dto/manage-expense-claim-attachment.dto";
 import { AdjustExpenseClaimPaymentSubjectDto } from "./dto/adjust-expense-claim-payment-subject.dto";
-import { RecordExpenseClaimPaymentDto, ReverseEmployeeLoanRepaymentDto } from "./dto/record-expense-claim-payment.dto";
+import { RecordExpenseClaimPaymentDto } from "./dto/record-expense-claim-payment.dto";
 import { ledgerExportHeaders } from "../core-flow/business-ledger-export";
 import { ExpenseClaimService } from "./expense-claim.service";
+
+const RETIRED_LOAN_CASH = "员工借款资金办理已停止";
 
 @Controller("expense-claims")
 export class ExpenseClaimController {
@@ -183,48 +183,14 @@ export class ExpenseClaimController {
 
   @Post(":claimId/disbursement-voucher-file-uploads")
   @RequireProjectRole("expense_claim.disburse")
-  @UseInterceptors(
-    FileInterceptor("file", {
-      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
-    })
-  )
-  uploadDisbursementVoucherFile(
-    @Param("claimId") claimId: string,
-    @UploadedFile() file: MemoryUploadedFile | undefined,
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { idempotencyKey?: string } = {}
-  ) {
-    return this.uploadPrivateFile(
-      claimId,
-      user.id,
-      "record_expense_claim_loan_disbursement",
-      file,
-      body.idempotencyKey,
-      "借款放款凭证"
-    );
+  uploadDisbursementVoucherFile() {
+    throw new GoneException(RETIRED_LOAN_CASH);
   }
 
   @Post(":claimId/repayment-voucher-file-uploads")
   @RequireProjectRole("expense_claim.repayment.record")
-  @UseInterceptors(
-    FileInterceptor("file", {
-      limits: { fileSize: Number(process.env.FILE_UPLOAD_MAX_BYTES ?? 104_857_600) }
-    })
-  )
-  uploadRepaymentVoucherFile(
-    @Param("claimId") claimId: string,
-    @UploadedFile() file: MemoryUploadedFile | undefined,
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { idempotencyKey?: string } = {}
-  ) {
-    return this.uploadPrivateFile(
-      claimId,
-      user.id,
-      "record_expense_claim_loan_repayment",
-      file,
-      body.idempotencyKey,
-      "员工还款凭证"
-    );
+  uploadRepaymentVoucherFile() {
+    throw new GoneException(RETIRED_LOAN_CASH);
   }
 
   @Post(":claimId/payment-subject")
@@ -314,12 +280,8 @@ export class ExpenseClaimController {
 
   @Post(":claimId/disbursements")
   @RequireProjectRole("expense_claim.disburse")
-  recordLoanDisbursement(
-    @Param("claimId") claimId: string,
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() body: RecordLoanDisbursementDto
-  ) {
-    return this.claims.recordLoanDisbursement(claimId, user.id, body);
+  recordLoanDisbursement() {
+    throw new GoneException(RETIRED_LOAN_CASH);
   }
 
   @Post(":claimId/payments")
@@ -340,26 +302,26 @@ export class ExpenseClaimController {
 
   @Post(":claimId/final-disbursement-pdf")
   @RequireProjectRole("expense_claim.disburse")
-  generateLoanFinalDisbursementPdf(@Param("claimId") claimId: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.claims.generateLoanFinalDisbursementPdf(claimId, user.id);
+  generateLoanFinalDisbursementPdf() {
+    throw new GoneException(RETIRED_LOAN_CASH);
   }
 
   @Post(":claimId/repayments")
   @RequireProjectRole("expense_claim.repayment.record")
-  recordRepayment(@Param("claimId") claimId: string, @CurrentUser() user: AuthenticatedUser, @Body() body: RecordEmployeeLoanRepaymentDto) {
-    return this.claims.recordEmployeeLoanRepayment(claimId, user.id, body);
+  recordRepayment() {
+    throw new GoneException(RETIRED_LOAN_CASH);
   }
 
   @Post(":claimId/repayments/:repaymentId/confirmation")
   @RequireProjectRole("expense_claim.repayment.confirm")
-  confirmRepayment(@Param("claimId") claimId: string, @Param("repaymentId") repaymentId: string, @CurrentUser() user: AuthenticatedUser, @Body() body: ConfirmEmployeeLoanRepaymentDto) {
-    return this.claims.confirmEmployeeLoanRepayment(claimId, repaymentId, user.id, body);
+  confirmRepayment() {
+    throw new GoneException(RETIRED_LOAN_CASH);
   }
 
   @Post(":claimId/repayments/:repaymentId/reversal")
   @RequireProjectRole("expense_claim.repayment.reverse")
-  reverseRepayment(@Param("claimId") claimId: string, @Param("repaymentId") repaymentId: string, @CurrentUser() user: AuthenticatedUser, @Body() body: ReverseEmployeeLoanRepaymentDto) {
-    return this.claims.reverseEmployeeLoanRepayment(claimId, repaymentId, user.id, body);
+  reverseRepayment() {
+    throw new GoneException(RETIRED_LOAN_CASH);
   }
 
   private async uploadPrivateFile(

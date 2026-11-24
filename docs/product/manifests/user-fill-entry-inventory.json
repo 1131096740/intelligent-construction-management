@@ -8,10 +8,10 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 443,
+    "activeBusinessActionCount": 436,
     "technicalActionCount": 8,
-    "activeBindingCount": 537,
-    "retiredWriteEntryCount": 109,
+    "activeBindingCount": 530,
+    "retiredWriteEntryCount": 116,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
@@ -2801,118 +2801,6 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /expense-claims/:param/final-payment-pdf"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "expense-claim.loan.disbursement-voucher.upload",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /expense-claims/:param/disbursement-voucher-file-uploads"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "expense-claim.loan.disbursement.record",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /expense-claims/:param/disbursements"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "expense-claim.loan.final-disbursement-pdf.generate",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /expense-claims/:param/final-disbursement-pdf"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "expense-claim.loan.repayment-voucher.upload",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /expense-claims/:param/repayment-voucher-file-uploads"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "expense-claim.loan.repayment.confirm",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /expense-claims/:param/repayments/:param/confirmation"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "expense-claim.loan.repayment.record",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /expense-claims/:param/repayments"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "expense-claim.loan.repayment.reverse",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/费用与报销/:claimId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /expense-claims/:param/repayments/:param/reversal"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
@@ -7747,6 +7635,55 @@
       "path": "/contracts/:contractVersionId/formal-files/approval",
       "controller": "ContractController",
       "handler": "uploadFormalApprovalFile",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/disbursement-voucher-file-uploads",
+      "controller": "ExpenseClaimController",
+      "handler": "uploadDisbursementVoucherFile",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/disbursements",
+      "controller": "ExpenseClaimController",
+      "handler": "recordLoanDisbursement",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/final-disbursement-pdf",
+      "controller": "ExpenseClaimController",
+      "handler": "generateLoanFinalDisbursementPdf",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/repayment-voucher-file-uploads",
+      "controller": "ExpenseClaimController",
+      "handler": "uploadRepaymentVoucherFile",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/repayments",
+      "controller": "ExpenseClaimController",
+      "handler": "recordRepayment",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/repayments/:repaymentId/confirmation",
+      "controller": "ExpenseClaimController",
+      "handler": "confirmRepayment",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/expense-claims/:claimId/repayments/:repaymentId/reversal",
+      "controller": "ExpenseClaimController",
+      "handler": "reverseRepayment",
       "status": "gone"
     },
     {

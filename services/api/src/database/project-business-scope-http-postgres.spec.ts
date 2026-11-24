@@ -282,6 +282,54 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     expect(await historicalFixtureOwner.expenseClaim.findUniqueOrThrow({ where: { id: historical.id } })).toEqual(historical);
     expect(await historicalFixtureOwner.approvalInstance.count({ where: { businessId: historical.id } })).toBe(0);
 
+    const fundedLoan = await historicalFixtureOwner.expenseClaim.create({ data: {
+      code: `HISTORICAL-CASH-${randomUUID()}`, claimType: "loan", status: "disbursed", companyEntityId: company,
+      companyEntityNameSnapshot: "合成我方公司", projectId: second, applicantUserId: materialDirector.id,
+      applicantNameSnapshot: "合成物资主管", handledByUserId: materialDirector.id, handledByNameSnapshot: "合成物资主管",
+      reason: "保留历史资金", requestedAmountCents: 12500n, fundedAmountCents: 12500n, approvedAt: historical.submittedAt
+    } });
+    const cashAt = new Date("2026-11-01T00:00:00Z");
+    const account = await historicalFixtureOwner.employeeProjectLoanAccount.create({ data: {
+      userId: materialDirector.id, projectId: second, companyEntityId: company, scopeKey: `project:${second}`,
+      fundedAmountCents: 12500n, balanceAmountCents: 12500n
+    } });
+    const cashVoucher = new FormData();
+    cashVoucher.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "历史放款凭证.png");
+    const cashUpload = await fetch(base + "/files", { method: "POST", body: cashVoucher, headers: { authorization: `Bearer ${financeDirector.token}` } });
+    expect(cashUpload.status).toBe(201);
+    const { id: cashVoucherId } = await cashUpload.json() as { id: string };
+    const ledgerEntry = await historicalFixtureOwner.employeeProjectLoanEntry.create({ data: {
+      loanAccountId: account.id, sequenceNo: 1n, entryType: "disbursement", amountCents: 12500n, balanceDeltaCents: 12500n,
+      sourceExpenseClaimId: fundedLoan.id, occurredAt: cashAt, createdByUserId: financeDirector.id, paymentMethod: "历史转账", voucherFileId: cashVoucherId
+    } });
+    const repayment = await historicalFixtureOwner.employeeLoanRepayment.create({ data: {
+      loanAccountId: account.id, status: "recorded", recordedByUserId: financeDirector.id, amountCents: 100n,
+      repaidAt: cashAt, paymentMethod: "历史现金"
+    } });
+    const cashPath = `/expense-claims/${fundedLoan.id}`;
+    const cashPayload = { amountCents: "100", paymentMethod: "现金", voucherFileId: cashVoucherId, confirmationPassword: password };
+    const cashDay = cashAt.toISOString().slice(0, 10);
+    for (const [suffix, body] of [
+      ["disbursements", { ...cashPayload, paidAt: cashDay }],
+      ["repayments", { ...cashPayload, repaidAt: cashDay }],
+      [`repayments/${repayment.id}/confirmation`, { confirmationPassword: password }],
+      [`repayments/${repayment.id}/reversal`, { confirmationPassword: password, reason: "合成更正" }],
+      ["final-disbursement-pdf", {}],
+      ["disbursement-voucher-file-uploads", {}],
+      ["repayment-voucher-file-uploads", {}]
+    ] as const) {
+      expectStatus(await request(cashPath + "/" + suffix, financeDirector, body), 410);
+    }
+    expect(await request(cashPath, financeDirector)).toMatchObject({ status: 200, body: {
+      fundedAmountCents: "12500", loanAccount: { balanceAmountCents: "12500" },
+      loanDisbursements: [{ id: ledgerEntry.id, paymentMethod: "历史转账", voucherFileId: cashVoucherId }],
+      loanRepayments: [{ id: repayment.id, status: "recorded", paymentMethod: "历史现金" }],
+      attachmentPermissions: { canAppendEvidence: false }
+    } });
+    expect(await historicalFixtureOwner.employeeProjectLoanAccount.findUnique({ where: { id: account.id } })).toEqual(account);
+    expect(await historicalFixtureOwner.employeeLoanRepayment.findMany({ where: { loanAccountId: account.id } })).toEqual([repayment]);
+    expect(await historicalFixtureOwner.employeeProjectLoanEntry.findMany({ where: { loanAccountId: account.id } })).toEqual([ledgerEntry]);
+
     expect((await request("/expense-claims", materialDirector, { ...input, applicantUserId: materialDirector.id })).status).toBe(201);
     expect((await request("/expense-claims", employee, { ...input, applicantUserId: employee.id })).status).toBe(403);
     expect((await request("/expense-claims", materialDirector, { ...input, applicantUserId: employee.id })).status).toBe(403);

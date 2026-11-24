@@ -7,7 +7,7 @@ import { ExpenseClaimFundingNotificationService } from "./expense-claim-funding-
 const databaseUrl = process.env.EXPENSE_FUNDING_NOTICE_DATABASE_URL;
 const pgCase = databaseUrl ? test : test.skip;
 
-pgCase("真实费用资金待办按岗位逐人入队，撤权、办结和待确认结果均由数据库观察", async () => {
+pgCase("真实费用资金待办保留岗位付款通知，旧借款队列不再发送", async () => {
   const url = new URL(databaseUrl!);
   expect(url.hostname).toBe("127.0.0.1");
   expect(url.pathname).toBe("/jiangkong_contract_bill_batch_test");
@@ -61,16 +61,19 @@ pgCase("真实费用资金待办按岗位逐人入队，撤权、办结和待确
       const pendingExpense = await tx.expenseClaim.update({ where: { id: expense.id }, data: { status: "approved_pending_payment", approvedAt: new Date() } });
       const pendingLoan = await tx.expenseClaim.update({ where: { id: loan.id }, data: { status: "approved_pending_disbursement", approvedAt: new Date() } });
       await notice.queue(tx, pendingExpense, applicant.id);
-      await notice.queue(tx, pendingLoan, applicant.id);
-      await notice.queue(tx, pendingLoan, applicant.id);
-      expect(await tx.auditLog.count({ where })).toBe(4);
+      await expect(notice.queue(tx, pendingLoan, applicant.id)).resolves.toBe(false);
+      expect(await tx.auditLog.count({ where })).toBe(2);
       if (rollback) throw new Error("synthetic rollback");
     });
     await expect(transition(true)).rejects.toThrow("synthetic rollback");
     expect(await observer.auditLog.count({ where })).toBe(0);
     expect(await observer.expenseClaim.count({ where: { status: "approval_pending", id: { in: [loan.id, expense.id] } } })).toBe(2);
     await transition();
-    expect(await observer.auditLog.count({ where })).toBe(4);
+    expect(await observer.auditLog.count({ where })).toBe(2);
+    const oldIntent = await writer.auditLog.create({ data: {
+      action: "queued", businessType: "expense_claim_funding_duty_notification", businessId: loan.id,
+      actorUserId: applicant.id, metadata: { recipientId: finance.id, duty: "disbursement" }
+    } });
 
     type Scopes = Array<{ projectId: string; roleKeys: string[] }>;
     const me = new MeService(observer as PrismaService, {} as never) as unknown as {
@@ -79,7 +82,7 @@ pgCase("真实费用资金待办按岗位逐人入队，撤权、办结和待确
     };
     const items = async (actor: string) => me.expenseFundingWorkItems(await me.loadProjectRoleScopes(actor), new Map([[project.id, project.name]]));
     expect((await items(finance.id)).map(item => item.targetPath).sort())
-      .toEqual([`/费用与报销/${expense.id}`, `/费用与报销/${loan.id}`].sort());
+      .toEqual([`/费用与报销/${expense.id}`]);
     expect(await items(outsider.id)).toEqual([]);
     await writer.projectMember.deleteMany({ where: { projectId: project.id, userId: revoked.id } });
     expect(await items(revoked.id)).toEqual([]);
@@ -88,20 +91,20 @@ pgCase("真实费用资金待办按岗位逐人入队，撤权、办结和待确
     expect(send.mock.calls).toEqual(expect.arrayContaining([
       ["13800000014", expect.objectContaining({ businessLabel: "费用待办", dutyName: "登记实际付款", businessCode: "EX-OUTBOX-BX",
         scopeName: project.name, initiatorName: applicant.name, subject: "费用报销", participants: [company.name, applicant.name],
-        amountText: "1.00 元", totalText: "1.00 元", details: ["差旅 1.00 元"], targetPath: `/费用与报销/${expense.id}` })],
-      ["13800000014", expect.objectContaining({ dutyName: "登记借款放款", businessCode: "EX-OUTBOX-JK", subject: "项目借款",
-        details: [], targetPath: `/费用与报销/${loan.id}` })]
+        amountText: "1.00 元", totalText: "1.00 元", details: ["差旅 1.00 元"], targetPath: `/费用与报销/${expense.id}` })]
     ]));
-    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(await notice.notificationStatus(loan.id, finance.id)).toBeNull();
+    await expect(notice.retry(loan.id, finance.id, oldIntent.id)).rejects.toThrow("当前待办或短信记录已变化");
     expect(JSON.stringify(send.mock.calls)).not.toContain("合成敏感事由");
     const counts = await observer.auditLog.groupBy({ by: ["action"], where, _count: true, orderBy: { action: "asc" } });
-    expect(counts).toEqual([{ action: "cancelled", _count: 2 }, { action: "dispatch_claimed", _count: 2 },
-      { action: "queued", _count: 4 }, { action: "unknown", _count: 2 }]);
+    expect(counts).toEqual([{ action: "cancelled", _count: 2 }, { action: "dispatch_claimed", _count: 1 },
+      { action: "queued", _count: 3 }, { action: "unknown", _count: 1 }]);
     await writer.expenseClaim.update({ where: { id: expense.id }, data: { status: "paid", fundedAmountCents: 100n } });
-    expect((await items(finance.id)).map(item => item.businessId)).toEqual([loan.id]);
+    expect((await items(finance.id)).map(item => item.businessId)).toEqual([]);
     process.stdout.write(JSON.stringify({ phase: "expense_outbox_readback", observerSessions: 2, rolledBackIntents: 0,
-      committedIntents: 4, cancelledAfterRevocation: 2, mockSends: 2, replayMockSends: 0,
-      authorisedItemsBeforePayment: 2, remainingAfterPayment: 1, revokedItems: 0, otherProjectItems: 0 }) + "\n");
+      committedIntents: 2, cancelledAfterRevocation: 1, cancelledHistoricalLoanIntents: 1, mockSends: 1, replayMockSends: 0,
+      authorisedItemsBeforePayment: 1, remainingAfterPayment: 0, revokedItems: 0, otherProjectItems: 0 }) + "\n");
   } finally {
     await Promise.all([writer.$disconnect(), observer.$disconnect()]);
   }

@@ -131,7 +131,7 @@ export class ExpenseClaimFundingNotificationService implements OnModuleInit, OnM
 
   private noticeAccess() {
     return {
-      prisma: this.prisma, sms: this.sms, kind,
+      prisma: this.prisma, sms: this.sms, kind, scope: { duty: "payment" },
       lockDuty: (tx: Prisma.TransactionClient, id: string) => this.lockDuty(tx, id),
       currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => this.currentMessage(tx, intent)
     };
@@ -210,7 +210,7 @@ export class ExpenseClaimFundingNotificationService implements OnModuleInit, OnM
     return { phone: user.phone ?? "", intent: {
       businessLabel: "费用待办", dutyName: duty.label, businessCode: claim.code,
       scopeName: project.name, initiatorName: claim.applicantNameSnapshot,
-      subject: duty.duty === "disbursement" ? "项目借款" : claim.claimType === "reimbursement" ? "费用报销" : "零星费用",
+      subject: claim.claimType === "reimbursement" ? "费用报销" : "零星费用",
       participants: [claim.companyEntityNameSnapshot, claim.payeeNameSnapshot ?? claim.applicantNameSnapshot],
       amountText: `${formatMoneyCentsAsPlainYuan(duty.remaining)} 元`,
       totalText: `${formatMoneyCentsAsPlainYuan(claim.requestedAmountCents)} 元`,
