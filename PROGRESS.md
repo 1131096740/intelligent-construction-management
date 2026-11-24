@@ -2,7 +2,7 @@
 
 ## 2026-11-24 #382 集成与 #424 验收接续
 
-GitHub 的 45 项中 41 项已关闭，开放项为 #424 至 #427，按依赖继续。#424 的 #393、#407、#418、#423 四个前置均已关闭。草稿 PR #428 的远端头 `b689df80` 对应 [CI 45294751072](https://github.com/1131096740/intelligent-construction-management/actions/runs/45294751072)，终态 52 项通过、4 项失败。Line A、费用收货、#398 两条浏览器分片均通过；失败为综合采购、#410、剩余动态分片和发布汇总。剩余动态分片已通过留存、项目资金、历史接管及其他前置子段，首次停止在工资单的 329 宿主模式判定。[剩余动态分片](https://github.com/1131096740/intelligent-construction-management/actions/runs/45294751072/job/138112201357)。
+GitHub 的 45 项中 41 项已关闭，开放项为 #424 至 #427，按依赖继续。#424 的 #393、#407、#418、#423 四个前置均已关闭。草稿 PR #428 的远端头 `377d9718` 已触发 [CI 45299410978](https://github.com/1131096740/intelligent-construction-management/actions/runs/45299410978)。上一候选 `b689df80` 的 [CI 45294751072](https://github.com/1131096740/intelligent-construction-management/actions/runs/45294751072) 终态 52 项通过、4 项失败。Line A、费用收货、#398 两条浏览器分片通过；失败为综合采购、#410、剩余动态分片和发布汇总。剩余动态分片已通过留存、项目资金和历史接管等前置子段，首次停止在工资单的 329 宿主模式判定。
 
 费用收货分片的 329 备料摘要与已固定原用例的实际补丁结果不符。隔离候选 `d29e8e96` 仅同步该摘要，三项费用备料逐字节核对通过，原收货用例内容不变。正式隔离入口的应用用例 1/1、历史有效数据迁移和七项历史拒绝检查均通过。前两段核对前后 329 条迁移与 B7，三段资源已清理。修订已合入本地 `b0e52ff9`，随历史接管和 Line A 提交复验。[精确费用收货回执](/private/tmp/jg382-expense-receipt-runtime.HwpKozi0/exact.log)。
 
@@ -47,6 +47,8 @@ POL114 合同版式浏览器夹具 `231144a10` 改用现行预览及下载入口
 综合采购在 `b689df80` 的 329 精确应用与诊断叠加层上复现 11 通过、5 失败，业务启动后确认 `ActualPurchaseBatch` 及 `PaymentExecutionRefund` 读取拒绝。独立候选 `2c20c371` 将采购列表及费用实付所需列的只读权限放入原角色事务。精确应用仍为 `b689df80`，仅叠加该候选夹具与有限诊断，原 16 项全部通过，前后 329 及 B7 一致，资源已清理。综合采购及项目采购备料通过。夹具已合入本地 `9955e821`，远端待复验。[权限诊断回执](/private/tmp/jg382-general-procurement-runtime.zoTehRW6/diagnostic.log) · [修复复验](/private/tmp/jg382-general-procurement-runtime.zoTehRW6/atomic-read-fix-probe.log)。
 
 剩余动态分片的三条工资与历史财务入口已改为使用已校验的迁移数量判断 329 模式，历史 295 分支保持原样。精确候选 `0c564414` 在独占 PostgreSQL 16 上依次通过工资单 24 项、历史工资 12 项、历史财务 4 项。三个分片的 329 账本、数据库身份与 B7 一致，独占资源均已清理。已合入本地，当前入口独立复核 9 种宿主路由情形通过。[宿主验证](/private/tmp/jg382-wage-route-proof.ZeMX8997/green.log) · [工资单](/private/tmp/jg382-wage-route-proof.ZeMX8997/wage-run.log) · [历史工资](/private/tmp/jg382-wage-route-proof.ZeMX8997/historical-wage-run.log) · [历史财务](/private/tmp/jg382-wage-route-proof.ZeMX8997/historical-financial-run.log)。
+
+剩余动态分片最后的资金流动并发也在精确 `0c564414` 独立复验通过原 9 项，零跳过。前后 329 条迁移及 B7 一致，隔离资源已清理。组合候选的完整远端分片仍在复验。[资金流动回执](/private/tmp/jg382-fund-movement-runtime.Jcgogsxk/jg-remaining-fund-movement.QGDDvhkt/receipt.json)。
 
 Line A 精确候选 `f5f6430be` 在隔离 PostgreSQL 16 完整安装 329 条迁移，原 HTTP 用例 12 项全通过，零跳过。覆盖补充协议复核、已签结算及付款依据、履约三职责与并发付款唯一占用。前后账本和 B7 一致，临时角色及见证已清理。当前已和 `58a8f801` 的历史接管重放修复一并合入本地，各自执行源码与实跑候选一致。[Line A 精确回执](docs/progress/2026-11-24-line-a-329.md)。
 
