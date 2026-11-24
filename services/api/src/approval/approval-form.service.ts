@@ -590,13 +590,14 @@ export class ApprovalFormService {
     private readonly approvalProgress?: ApprovalProgressService
   ) {}
 
-  async downloadAvailability(businessType: string, businessId: string, actorUserId: string) {
+  async downloadAvailability(businessType: string, businessId: string, actorUserId: string, expectedApprovalInstanceId?: string) {
     if (!this.prisma || !this.files || !BUSINESS_TYPE_LABELS[businessType]) return { available: false };
     try {
       const instance = await this.prisma.approvalInstance.findFirst({
         where: { businessType, businessId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }]
       });
-      if (!instance) return { available: false };
+      if (!instance || (businessType === "expense_claim" && expectedApprovalInstanceId !== undefined &&
+          instance.id !== expectedApprovalInstanceId)) return { available: false };
       const pendingContract = businessType === "contract_version" && instance.status === "in_progress";
       // 新并联机制允许办理中下载当前轮审批单；旧串联在途材料维持原规则。
       const pendingParallelRound = !pendingContract && !SPOT_PROCUREMENT_APPROVAL_TYPES.has(businessType) &&
@@ -1123,7 +1124,8 @@ export class ApprovalFormService {
     businessId: string,
     downloaderUserId: string,
     confirmationPassword: string | undefined,
-    downloadReason: string | undefined
+    downloadReason: string | undefined,
+    expectedApprovalInstanceId?: string
   ) {
     if (!this.prisma || !this.files) {
       throw new Error("Prisma and file services are required to download approval form");
@@ -1168,6 +1170,11 @@ export class ApprovalFormService {
         businessId,
         downloaderUserId
       );
+    }
+
+    const requestedExpenseRound = businessType === "expense_claim" ? expectedApprovalInstanceId : undefined;
+    if (requestedExpenseRound !== undefined && currentInstance?.id !== requestedExpenseRound) {
+      throw new ConflictException("该费用审批轮已失效，请查看当前审批单");
     }
 
     if (businessType === "contract_version") {
@@ -1246,6 +1253,9 @@ export class ApprovalFormService {
       throw new Error("当前业务尚未完成审批，暂不能下载审批单");
     }
 
+    if (requestedExpenseRound !== undefined && instance.id !== requestedExpenseRound) {
+      throw new ConflictException("该费用审批轮已失效，请查看当前审批单");
+    }
     const downloadToken = await this.loadApprovalFormFreezeToken(this.prisma, instance);
     const downloader = await this.prisma.user.findUnique({ where: { id: downloaderUserId } });
     const watermark = [

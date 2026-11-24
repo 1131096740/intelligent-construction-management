@@ -162,6 +162,7 @@ watch(() => [props.instanceId, props.businessType, props.businessId, props.refre
         <ApprovalDocumentDownload
           :business-type="flow.businessType"
           :business-id="flow.businessId"
+          :approval-instance-id="flow.businessType === 'expense_claim' ? flow.id : undefined"
           :refresh-key="`${flow.id}:${flow.status}`"
         />
         <small>当前轮审批单：已签节点显示签字，未签留空；办理中下载带水印并记录下载。</small>

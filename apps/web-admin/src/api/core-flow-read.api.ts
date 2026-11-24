@@ -7969,7 +7969,7 @@ async function downloadWorkbook(
 export async function downloadApprovalForm(
   businessType: string,
   businessId: string,
-  body: CreatePrivateFileDownloadTicketPayload
+  body: CreatePrivateFileDownloadTicketPayload & { expectedApprovalInstanceId?: string }
 ): Promise<void> {
   const response = await apiFetch(`/approval-forms/${businessType}/${businessId}/download`, {
     method: "POST",

@@ -6,6 +6,7 @@ import { ApprovalFormService } from "./approval-form.service";
 interface DownloadApprovalFormDto {
   confirmationPassword?: string;
   downloadReason?: string;
+  expectedApprovalInstanceId?: string;
 }
 
 // 审批单下载：登录用户直取带水印 PDF（按下载人动态生成），权限在服务层二次校验。
@@ -20,8 +21,13 @@ export class ApprovalFormController {
 
   @Get(":businessType/:businessId/capability")
   @Header("Cache-Control", "no-store")
-  capability(@Param("businessType") businessType: string, @Param("businessId") businessId: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.approvalForms.downloadAvailability(businessType, businessId, user.id);
+  capability(
+    @Param("businessType") businessType: string,
+    @Param("businessId") businessId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("expectedApprovalInstanceId") expectedApprovalInstanceId?: string
+  ) {
+    return this.approvalForms.downloadAvailability(businessType, businessId, user.id, expectedApprovalInstanceId);
   }
 
   @Post(":businessType/:businessId/download")
@@ -38,7 +44,8 @@ export class ApprovalFormController {
       businessId,
       user.id,
       body?.confirmationPassword,
-      body?.downloadReason
+      body?.downloadReason,
+      body?.expectedApprovalInstanceId
     );
 
     response.set({

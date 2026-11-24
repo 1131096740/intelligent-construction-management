@@ -3368,7 +3368,13 @@ it("并联费用办理中按原职责留空、保留已签证据并只对当前�
 
   await expect(service.downloadAvailability("expense_claim", "claim-1", "pending-approver"))
     .resolves.toEqual({ available: true, incomplete: true });
-  const result = await service.renderForDownload("expense_claim", "claim-1", "pending-approver", "password", "查看办理进度");
+  await expect(service.downloadAvailability("expense_claim", "claim-1", "pending-approver", "old-round"))
+    .resolves.toEqual({ available: false });
+  await expect(service.renderForDownload("expense_claim", "claim-1", "pending-approver", "password", "查看旧轮次", "old-round"))
+    .rejects.toThrow("该费用审批轮已失效");
+  expect(files.getFileBuffer).not.toHaveBeenCalled();
+  expect(audit.record).not.toHaveBeenCalled();
+  const result = await service.renderForDownload("expense_claim", "claim-1", "pending-approver", "password", "查看办理进度", instance.id);
   expect(result.fileName).toContain("审批未完成");
   expect(await PDFDocument.load(result.buffer)).toBeDefined();
   const rendered = pdfPublicTextItems(result.buffer).map(item => item.text).join("\n");

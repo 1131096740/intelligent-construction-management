@@ -40,7 +40,7 @@
 import { ref, watch } from "vue";
 import { approvalDocumentCapability } from "../../api/approval-forms.api";
 import { downloadApprovalForm } from "../../api/core-flow-read.api";
-const props = defineProps<{ businessType: string; businessId: string; refreshKey?: unknown }>();
+const props = defineProps<{ businessType: string; businessId: string; approvalInstanceId?: string | null; refreshKey?: unknown }>();
 const available = ref(false);
 const incomplete = ref(false);
 const visible = ref(false);
@@ -49,7 +49,7 @@ const password = ref("");
 const reason = ref("公司纸质归档");
 const error = ref("");
 let request = 0;
-watch(() => [props.businessType, props.businessId, props.refreshKey], async () => {
+watch(() => [props.businessType, props.businessId, props.approvalInstanceId, props.refreshKey], async () => {
   const token = ++request;
   available.value = false;
   incomplete.value = false;
@@ -58,7 +58,7 @@ watch(() => [props.businessType, props.businessId, props.refreshKey], async () =
   error.value = "";
   if (!props.businessId) return;
   try {
-    const capability = await approvalDocumentCapability(props.businessType, props.businessId);
+    const capability = await approvalDocumentCapability(props.businessType, props.businessId, props.approvalInstanceId ?? undefined);
     if (request === token) {
       available.value = capability.available;
       incomplete.value = capability.incomplete === true;
@@ -71,7 +71,11 @@ async function download() {
   downloading.value = true;
   error.value = "";
   try {
-    await downloadApprovalForm(props.businessType, props.businessId, { confirmationPassword: password.value, downloadReason: reason.value.trim() });
+    await downloadApprovalForm(props.businessType, props.businessId, {
+      confirmationPassword: password.value,
+      downloadReason: reason.value.trim(),
+      expectedApprovalInstanceId: props.approvalInstanceId ?? undefined
+    });
     visible.value = false;
   } catch (cause) { error.value = cause instanceof Error ? cause.message : "下载失败，请重试"; }
   finally { password.value = ""; downloading.value = false; }
