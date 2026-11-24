@@ -46,6 +46,29 @@ def patch(source, target, expected, patch_name):
         raise ValueError(f'PROCUREMENT_295_PATCH_POSTIMAGE {source.name}')
 
 
+def stage_approval_fixture(relative, expected, current, anchors):
+    if original['overlays'].get(relative, {}).get('after') != expected:
+        raise ValueError(f'PROCUREMENT_329_SEALED_FIXTURE_PIN {relative}')
+    sealed = read(prior / 'overlays' / expected)
+    if digest(sealed) != expected:
+        raise ValueError(f'PROCUREMENT_329_SEALED_FIXTURE_BYTES {relative}')
+
+    def approval_range(content):
+        start, end = (anchor.encode() for anchor in anchors)
+        if content.count(start) != 1 or content.count(end) != 1:
+            raise ValueError(f'PROCUREMENT_329_APPROVAL_FIXTURE_ANCHOR {relative}')
+        first = content.index(start) + len(start)
+        last = content.index(end)
+        if first >= last:
+            raise ValueError(f'PROCUREMENT_329_APPROVAL_FIXTURE_ORDER {relative}')
+        return first, last
+
+    first, last = approval_range(sealed)
+    candidate = read(current)
+    candidate_first, candidate_last = approval_range(candidate)
+    write(out / 'workspace' / relative, sealed[:first] + candidate[candidate_first:candidate_last] + sealed[last:])
+
+
 runtime = prior / 'plans' / lane
 manifest = gzip.decompress(read(runtime / 'source-inputs.json.gz'))
 if digest(manifest) != original['runtime']['source-inputs.json']:
@@ -57,12 +80,18 @@ role_material = {
     'services/api/prisma/local-staged-migration-qualification.json',
     'services/api/prisma/task398-owned-280-business-read-baseline.json',
 }
-# 329 uses the current approval protocol in both HTTP regression suites.
-# Historical modes still stage their original pinned overlays.
+# Preserve named database admission, archive/expense witnesses and browser staging.
+# Only the linked-expense approval requests and assertions follow current 329.
 current_test_fixtures = {
-    'services/api/src/database/general-procurement-http-postgres.spec.ts',
-    'services/api/src/database/project-business-scope-http-postgres.spec.ts',
-} if current320 else set()
+    'services/api/src/database/general-procurement-http-postgres.spec.ts': (
+        '    expect((await request(`${claimPath}/submission`, "POST", {}, director.token)).status).toBe(201);\n',
+        '    const uploadVoucher = async (token: string) => {',
+    ),
+    'services/api/src/database/project-business-scope-http-postgres.spec.ts': (
+        '    expect((await request(`${claimRoute}/submission`, director, {})).status).toBe(201);\n',
+        '    expect((await request(claimRoute, director)).body).toMatchObject({ projectId: second, status: "approved_pending_payment",',
+    ),
+} if current320 else {}
 staged_role = set()
 for row in json.loads(manifest)['files']:
     relative, expected = row['file'], row['sha256']
@@ -83,10 +112,11 @@ for row in json.loads(manifest)['files']:
         seen.add(relative)
         # 角色材料同时是候选增量时，仍须把候选字节送进容器；否则容器会用旧镜像副本，
         # 既丢失新授权又让 staged_role 闭合失败。
-        if relative in role_material or relative in current_test_fixtures:
-            write(out / 'workspace' / relative, read(current))
         if relative in role_material:
+            write(out / 'workspace' / relative, read(current))
             staged_role.add(relative)
+        elif relative in current_test_fixtures:
+            stage_approval_fixture(relative, expected, current, current_test_fixtures[relative])
         continue
     if original['overlays'].get(relative) != {'candidate': tested, 'after': expected}:
         raise ValueError(f'PROCUREMENT_295_ORIGINAL_OVERLAY_PIN {relative}')
