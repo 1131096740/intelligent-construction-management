@@ -25,7 +25,9 @@ mkdir "$evidence"
 evidence=$(cd "$evidence" && pwd -P)
 source "$(dirname "$0")/../contract-finance/local-build-images.sh"
 qualification_image_scope
-trap qualification_image_cleanup EXIT
+trap 'qualification_image_exit "$?"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 seal=$(shasum -a 256 "$generated/context.sha256" | cut -d' ' -f1)
 build_pol114=0
 [[ $mode != pol114 ]] || build_pol114=1

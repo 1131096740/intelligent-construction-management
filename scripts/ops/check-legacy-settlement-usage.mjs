@@ -35,7 +35,34 @@ async function main() {
         if (!row || typeof row !== "object" || !row.audit) {
           throw new Error("CUT-03 核查未返回结构化结果");
         }
-        return row.audit;
+        const [catalog] = await tx.$queryRaw`
+          SELECT pg_catalog.to_regclass('public."SignedContractSettlement"') IS NOT NULL AS "available"
+        `;
+        if (!catalog.available) {
+          const [ledger] = await tx.$queryRaw`
+            SELECT EXISTS (
+              SELECT 1 FROM public."_prisma_migrations"
+              WHERE migration_name = '20261119004100_signed_contract_settlement_registration'
+                AND finished_at IS NOT NULL AND rolled_back_at IS NULL
+            ) AS "migrationApplied"
+          `;
+          if (ledger.migrationApplied) {
+            throw new Error("已签结算登记迁移已完成，但恢复库缺少登记表");
+          }
+          return {
+            ...row.audit,
+            signedSettlementRegistration: { available: false, total: null, confirmed: null }
+          };
+        }
+
+        const [registration] = await tx.$queryRaw`
+          SELECT jsonb_build_object(
+            'available', true,
+            'total', count(*),
+            'confirmed', count(*) FILTER (WHERE state = 'confirmed')
+          ) AS "counts" FROM public."SignedContractSettlement"
+        `;
+        return { ...row.audit, signedSettlementRegistration: registration.counts };
       },
       { isolationLevel: "RepeatableRead", timeout: 30_000 }
     );

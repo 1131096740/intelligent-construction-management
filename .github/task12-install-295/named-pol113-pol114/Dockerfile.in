@@ -1,11 +1,8 @@
 FROM node:20.20.2-bookworm-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS node
 FROM postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
 COPY --from=node /usr/local/ /usr/local/
-WORKDIR /qualification/source
 ENV COREPACK_HOME=/opt/corepack
-COPY --chmod=0644 checkout.cjs installer.cjs exact-source.json install-only.cjs source-seal.txt source-admission.json /qualification/
-COPY source/ ./
-RUN corepack enable pnpm && corepack prepare pnpm@9.15.9 --activate  && pnpm --filter @jiangkong/api... install --frozen-lockfile
+RUN corepack enable pnpm && corepack prepare pnpm@9.15.9 --activate
 WORKDIR /qualification/workspace
 COPY workspace/package.json workspace/pnpm-lock.yaml workspace/pnpm-workspace.yaml ./
 COPY workspace/packages/shared-domain/package.json packages/shared-domain/
@@ -15,6 +12,11 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/jg-playwright
 RUN apt-get update && apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc fonts-noto-cjk \
  && pnpm --filter @jiangkong/api... --filter @jiangkong/web-admin... install --frozen-lockfile \
  && pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit
+WORKDIR /qualification/source
+COPY source/ ./
+RUN pnpm --filter @jiangkong/api... install --frozen-lockfile
+COPY --chmod=0644 checkout.cjs installer.cjs exact-source.json install-only.cjs source-seal.txt source-admission.json /qualification/
+WORKDIR /qualification/workspace
 @RUNTIME_COPY@
 RUN install -d -m 0755 /qualification/named292
 COPY --chmod=0644 named292/successor.cjs named292/scope.json named292/tree-proof.json named292/successor.sql /qualification/named292/

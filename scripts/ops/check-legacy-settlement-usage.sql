@@ -29,12 +29,6 @@ signed_documents AS (
 processes AS (
   SELECT count(*) AS total
   FROM public."ContractSettlementProcess"
-),
-signed_registration AS (
-  SELECT
-    count(*) FILTER (WHERE state = 'confirmed') AS confirmed,
-    count(*) AS total
-  FROM public."SignedContractSettlement"
 )
 SELECT jsonb_build_object(
   'schema', 'jg_legacy_settlement_usage_audit/V1',
@@ -54,10 +48,6 @@ SELECT jsonb_build_object(
   'legacyArchives', jsonb_build_object('total', archives.total),
   'legacySignedDocuments', jsonb_build_object('total', signed_documents.total),
   'legacyMultiNodeProcesses', jsonb_build_object('total', processes.total),
-  'signedSettlementRegistration', jsonb_build_object(
-    'total', signed_registration.total,
-    'confirmed', signed_registration.confirmed
-  ),
   'verdict', CASE
     WHEN legacy.total > 0 OR drafts.total > 0 OR archives.total > 0
       OR signed_documents.total > 0 OR processes.total > 0
@@ -71,4 +61,4 @@ SELECT jsonb_build_object(
     ELSE '未发现旧多节点结算真实记录；删除仍属 #425，本脚本不执行任何退役。'
   END
 ) AS audit
-FROM legacy, drafts, archives, signed_documents, processes, signed_registration;
+FROM legacy, drafts, archives, signed_documents, processes;

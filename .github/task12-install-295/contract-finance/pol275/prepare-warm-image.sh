@@ -39,6 +39,13 @@ awk '
   END {if (count != 1) exit 1}
 ' "$ctx/Dockerfile" > "$out/Dockerfile"
 cat "$base/workspace.Dockerfile" >> "$out/Dockerfile"
-printf '%s\n' 'FROM contract-finance-api AS pol275-warm' >> "$out/Dockerfile"
+# The sealed legacy workspace is independent of the candidate source and build.
+printf '%s\n' 'FROM contract-finance-loader AS pol275-legacy' >> "$out/Dockerfile"
 sed -n '/^WORKDIR \/qualification\/pol275-legacy/,$p' "$pol/Dockerfile" >> "$out/Dockerfile"
+cat >> "$out/Dockerfile" <<'DOCKERFILE'
+
+FROM contract-finance-api AS pol275-warm
+WORKDIR /qualification/pol275-legacy
+COPY --link --from=pol275-legacy /qualification/pol275-legacy/ ./
+DOCKERFILE
 node "$base/context-sha.cjs" "$ctx" "$out/Dockerfile" "$prepared/source.json" > "$out/context.sha256"

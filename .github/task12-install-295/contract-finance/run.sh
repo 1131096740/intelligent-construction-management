@@ -11,12 +11,15 @@ source "$plan/local-build-images.sh"
 qualification_image_scope
 predecessor_worktree=
 cleanup() {
-  qualification_image_cleanup
+  local status=$1
   if [[ -n $predecessor_worktree ]]; then
-    git -C "$root" worktree remove "$predecessor_worktree"
+    git -C "$root" worktree remove "$predecessor_worktree" || { [[ $status != 0 ]] || status=1; }
   fi
+  qualification_image_exit "$status"
 }
-trap cleanup EXIT
+trap 'cleanup "$?"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 if [[ $# == 3 ]]; then
   predecessor=$3
