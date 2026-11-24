@@ -1070,7 +1070,7 @@
       "general16": "58901077599d29a5db83e55e0619048ec044317abf7519c3292639b0ab4add36",
       "project11": "0692b080530be247e2b06be7ab599eedd5fa99f49ae1eec7fd87f9a2c4b84128"
     },
-    "candidate": "ecbfd1557a5bef471762b4ebbf7a0bfef8eb37639289c43cca6be7c826ee8aeb"
+    "candidate": "c26349b7f8db4af1f3e43c58848d1b3dfbdd556720bd5c4969e9152c506761eb"
   },
   {
     "path": "services/api/src/database/project-roster-http-postgres.spec.ts",
@@ -1130,7 +1130,7 @@
   {
     "path": "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts",
     "expected": "e99beb176be2538e9424ef558241f0720e59f812c6723f2006a8e08d71046de2",
-    "candidate": "a38733583a2693e2a7d359766d4bd9efda0b84b67b085d54d4a44d84898d8c7e"
+    "candidate": "125cb13925baec8ff65bf31b781b3bc785e3d6be3ffbe25342ab5a32ee1e1b05"
   },
   {
     "path": "services/api/src/expense-claim/expense-claim-funding-duty.ts",

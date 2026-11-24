@@ -293,16 +293,21 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
       userId: materialDirector.id, projectId: second, companyEntityId: company, scopeKey: `project:${second}`,
       fundedAmountCents: 12500n, balanceAmountCents: 12500n
     } });
+    const cashVoucher = new FormData();
+    cashVoucher.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "历史放款凭证.png");
+    const cashUpload = await fetch(base + "/files", { method: "POST", body: cashVoucher, headers: { authorization: `Bearer ${financeDirector.token}` } });
+    expect(cashUpload.status).toBe(201);
+    const { id: cashVoucherId } = await cashUpload.json() as { id: string };
     const ledgerEntry = await historicalFixtureOwner.employeeProjectLoanEntry.create({ data: {
       loanAccountId: account.id, sequenceNo: 1n, entryType: "disbursement", amountCents: 12500n, balanceDeltaCents: 12500n,
-      sourceExpenseClaimId: fundedLoan.id, occurredAt: cashAt, createdByUserId: financeDirector.id, paymentMethod: "历史转账"
+      sourceExpenseClaimId: fundedLoan.id, occurredAt: cashAt, createdByUserId: financeDirector.id, paymentMethod: "历史转账", voucherFileId: cashVoucherId
     } });
     const repayment = await historicalFixtureOwner.employeeLoanRepayment.create({ data: {
       loanAccountId: account.id, status: "recorded", recordedByUserId: financeDirector.id, amountCents: 100n,
       repaidAt: cashAt, paymentMethod: "历史现金"
     } });
     const cashPath = `/expense-claims/${fundedLoan.id}`;
-    const cashPayload = { amountCents: "100", paymentMethod: "现金", voucherFileId: "test-voucher", confirmationPassword: password };
+    const cashPayload = { amountCents: "100", paymentMethod: "现金", voucherFileId: cashVoucherId, confirmationPassword: password };
     const cashDay = cashAt.toISOString().slice(0, 10);
     for (const [suffix, body] of [
       ["disbursements", { ...cashPayload, paidAt: cashDay }],
@@ -317,7 +322,7 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     }
     expect(await request(cashPath, financeDirector)).toMatchObject({ status: 200, body: {
       fundedAmountCents: "12500", loanAccount: { balanceAmountCents: "12500" },
-      loanDisbursements: [{ id: ledgerEntry.id, paymentMethod: "历史转账" }],
+      loanDisbursements: [{ id: ledgerEntry.id, paymentMethod: "历史转账", voucherFileId: cashVoucherId }],
       loanRepayments: [{ id: repayment.id, status: "recorded", paymentMethod: "历史现金" }],
       attachmentPermissions: { canAppendEvidence: false }
     } });

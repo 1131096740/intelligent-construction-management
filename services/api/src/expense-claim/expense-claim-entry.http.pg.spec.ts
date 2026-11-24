@@ -538,15 +538,27 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
   (enabled ? it : it.skip)("历史借款保留余额、放款、还款和现有归档，拒绝继续办理", async () => {
     const db = app.get(PrismaService);
     const at = new Date("2026-09-17");
+    async function uploadHistoricalFile(bytes: Uint8Array, mimeType: string, name: string) {
+      const body = new FormData();
+      body.append("file", new Blob([Buffer.from(bytes)], { type: mimeType }), name);
+      const result = await fetch(baseUrl + "/files", { method: "POST", body, headers: { authorization: `Bearer ${financeToken}` } });
+      expect(result.status).toBe(201);
+      const { id } = await result.json() as { id: string };
+      return id;
+    }
     async function seedDisbursedLoan(targetProjectId: string) {
       const claim = await seedHistoricalLoan("disbursed", "合成已放款历史借款", targetProjectId);
       const account = await db.employeeProjectLoanAccount.create({ data: {
         userId: applicantUserId, projectId: targetProjectId, companyEntityId, scopeKey: `project:${targetProjectId}`,
         fundedAmountCents: 1n, balanceAmountCents: 1n
       } });
+      const voucherFileId = await uploadHistoricalFile(
+        Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64"),
+        "image/png", "历史放款凭证.png"
+      );
       const disbursement = await db.employeeProjectLoanEntry.create({ data: {
         loanAccountId: account.id, sequenceNo: 1n, entryType: "disbursement", amountCents: 1n, balanceDeltaCents: 1n,
-        sourceExpenseClaimId: claim.id, occurredAt: at, createdByUserId: applicantUserId, paymentMethod: "合成历史银行转账"
+        sourceExpenseClaimId: claim.id, occurredAt: at, createdByUserId: financeSession.user.id, paymentMethod: "合成历史银行转账", voucherFileId
       } });
       const repayment = await db.employeeLoanRepayment.create({ data: {
         loanAccountId: account.id, amountCents: 1n, repaidAt: at, paymentMethod: "合成历史现金",
@@ -554,11 +566,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       } });
       const document = await PDFDocument.create();
       document.addPage().drawText("Synthetic historical expense loan archive");
-      const upload = new FormData();
-      upload.append("file", new Blob([Buffer.from(await document.save())], { type: "application/pdf" }), "历史借款归档.pdf");
-      const response = await fetch(baseUrl + "/files", { method: "POST", body: upload, headers: { authorization: `Bearer ${financeToken}` } });
-      expect(response.status).toBe(201);
-      const { id: fileId } = await response.json() as { id: string };
+      const fileId = await uploadHistoricalFile(await document.save(), "application/pdf", "历史借款归档.pdf");
       const pdf = await db.pdfDocument.create({ data: {
         businessType: "expense_claim", businessId: claim.id, fileId, templateKey: "expense_claim_loan_final_disbursement_a5"
       } });
@@ -569,7 +577,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const path = "/expense-claims/" + claim.id;
     expect(await request(path)).toMatchObject({ status: 200, body: {
       status: "disbursed", fundedAmountCents: "1", loanAccount: { balanceAmountCents: "1" },
-      loanDisbursements: [{ id: disbursement.id, amountCents: "1" }],
+      loanDisbursements: [{ id: disbursement.id, amountCents: "1", voucherFileId: disbursement.voucherFileId }],
       loanRepayments: [{ id: repayment.id, status: "recorded", amountCents: "1" }],
       finalPaymentPdf: { id: pdf.id, fileId: pdf.fileId }, attachmentPermissions: { canAppendEvidence: false }
     } });
