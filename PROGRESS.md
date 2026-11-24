@@ -2,7 +2,7 @@
 
 ## 2026-11-24 #382 集成与 #424 验收接续
 
-GitHub 的 45 项中 41 项已关闭，开放项为 #424 至 #427，按依赖继续。#424 的 #393、#407、#418、#423 四个前置均已关闭。草稿 PR #428 的远端头 `b689df80` 对应 [CI 45294751072](https://github.com/1131096740/intelligent-construction-management/actions/runs/45294751072)，Line A 已通过，综合采购及 #410 已失败，其余分片继续。上一候选 `e183106d` 的 [CI 45286191016](https://github.com/1131096740/intelligent-construction-management/actions/runs/45286191016) 终态 50 项通过、6 项失败。
+GitHub 的 45 项中 41 项已关闭，开放项为 #424 至 #427，按依赖继续。#424 的 #393、#407、#418、#423 四个前置均已关闭。草稿 PR #428 的远端头 `b689df80` 对应 [CI 45294751072](https://github.com/1131096740/intelligent-construction-management/actions/runs/45294751072)，终态 52 项通过、4 项失败。Line A、费用收货、#398 两条浏览器分片均通过；失败为综合采购、#410、剩余动态分片和发布汇总。剩余动态分片已通过留存、项目资金、历史接管及其他前置子段，首次停止在工资单的 329 宿主模式判定。[剩余动态分片](https://github.com/1131096740/intelligent-construction-management/actions/runs/45294751072/job/138112201357)。
 
 费用收货分片的 329 备料摘要与已固定原用例的实际补丁结果不符。隔离候选 `d29e8e96` 仅同步该摘要，三项费用备料逐字节核对通过，原收货用例内容不变。正式隔离入口的应用用例 1/1、历史有效数据迁移和七项历史拒绝检查均通过。前两段核对前后 329 条迁移与 B7，三段资源已清理。修订已合入本地 `b0e52ff9`，随历史接管和 Line A 提交复验。[精确费用收货回执](/private/tmp/jg382-expense-receipt-runtime.HwpKozi0/exact.log)。
 
