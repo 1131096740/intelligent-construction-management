@@ -2339,6 +2339,56 @@
       ]
     },
     {
+      "id": "expense-claim.withdrawal",
+      "usage": "background",
+      "routePaths": [
+        "/费用与报销/:claimId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "withdrawExpenseClaimWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "withdraw_expense_claim"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "name": "withdrawExpenseClaim"
+        }
+      ]
+    },
+    {
+      "id": "expense-claim.returned-draft.edit",
+      "usage": "background",
+      "routePaths": [
+        "/费用与报销/:claimId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "editReturnedExpenseClaimWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "edit_returned_expense_claim"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "name": "editReturnedExpenseClaimDraft"
+        }
+      ]
+    },
+    {
       "id": "expense-claim.review",
       "usage": "background",
       "routePaths": [

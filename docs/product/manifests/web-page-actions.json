@@ -9,20 +9,20 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 485,
+    "registeredActionCount": 487,
     "pageActionCount": 112,
-    "backgroundActionCount": 373,
+    "backgroundActionCount": 375,
     "reachableVueFileCount": 241,
     "routeRootCount": 80,
     "totalVueFileCount": 254,
     "parsedVueFileCount": 254,
     "reachableProductionModuleCount": 417,
-    "templateEventDirectiveCount": 1648,
+    "templateEventDirectiveCount": 1652,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 475,
-    "candidateProductionMutationConsumerCount": 475,
-    "acceptedProductionMutationConsumerCount": 475,
-    "productionMutationConsumerPairCount": 475,
+    "coveredProductionMutationConsumerCount": 477,
+    "candidateProductionMutationConsumerCount": 477,
+    "acceptedProductionMutationConsumerCount": 477,
+    "productionMutationConsumerPairCount": 477,
     "blockerCount": 0
   },
   "evidence": {
@@ -12535,7 +12535,7 @@
         "event": "call",
         "handler": "appendExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 222,
+        "sourceLine": 297,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12600,7 +12600,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimAppendAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 346,
+        "sourceLine": 421,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12665,7 +12665,7 @@
         "event": "call",
         "handler": "attachExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 211,
+        "sourceLine": 286,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12730,7 +12730,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimDraftAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 338,
+        "sourceLine": 413,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12795,7 +12795,7 @@
         "event": "call",
         "handler": "removeExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 233,
+        "sourceLine": 308,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12925,7 +12925,7 @@
         "event": "call",
         "handler": "deleteExpenseClaimDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 378,
+        "sourceLine": 453,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13026,7 +13026,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalPaymentPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 270,
+        "sourceLine": 345,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13091,7 +13091,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanDisbursementVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 362,
+        "sourceLine": 437,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13156,7 +13156,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanDisbursementWithCapability",
         "kind": "background_call",
-        "sourceLine": 278,
+        "sourceLine": 353,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13221,7 +13221,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalDisbursementPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 289,
+        "sourceLine": 364,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13286,7 +13286,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimLoanRepaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 370,
+        "sourceLine": 445,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13351,7 +13351,7 @@
         "event": "call",
         "handler": "confirmExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 308,
+        "sourceLine": 383,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13416,7 +13416,7 @@
         "event": "call",
         "handler": "recordExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 297,
+        "sourceLine": 372,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13481,7 +13481,7 @@
         "event": "call",
         "handler": "reverseExpenseClaimLoanRepaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 323,
+        "sourceLine": 398,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13546,7 +13546,7 @@
         "event": "call",
         "handler": "adjustExpenseClaimPaymentSubjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 248,
+        "sourceLine": 323,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13615,7 +13615,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 354,
+        "sourceLine": 429,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13680,7 +13680,7 @@
         "event": "call",
         "handler": "recordExpenseClaimPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 259,
+        "sourceLine": 334,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13731,6 +13731,71 @@
       ]
     },
     {
+      "id": "expense-claim.returned-draft.edit",
+      "usage": "background",
+      "routePaths": [
+        "/费用与报销/:claimId"
+      ],
+      "ownerRoutePaths": [
+        "/费用与报销/:claimId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "editReturnedExpenseClaimWithCapability",
+        "kind": "background_call",
+        "sourceLine": 240,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "edit_returned_expense_claim",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "wrapper": "editReturnedExpenseClaimDraft",
+          "method": "PATCH",
+          "path": "/expense-claims/:param/draft",
+          "normalizedKey": "PATCH /expense-claims/:param/draft",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "PATCH",
+            "path": "/expense-claims/:claimId/draft",
+            "normalizedKey": "PATCH /expense-claims/:param/draft",
+            "controller": "ExpenseClaimController",
+            "handler": "editReturnedDraft",
+            "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "editReturnedExpenseClaimWithCapability",
+              "editReturnedExpenseClaimDraft"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "expense-claim.review",
       "usage": "background",
       "routePaths": [
@@ -13745,7 +13810,7 @@
         "event": "call",
         "handler": "reviewExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 189,
+        "sourceLine": 264,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13810,7 +13875,7 @@
         "event": "call",
         "handler": "submitExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 181,
+        "sourceLine": 199,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13854,6 +13919,71 @@
             "localCallChain": [
               "submitExpenseClaimWithCapability",
               "submitExpenseClaim"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
+      "id": "expense-claim.withdrawal",
+      "usage": "background",
+      "routePaths": [
+        "/费用与报销/:claimId"
+      ],
+      "ownerRoutePaths": [
+        "/费用与报销/:claimId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "withdrawExpenseClaimWithCapability",
+        "kind": "background_call",
+        "sourceLine": 216,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "withdraw_expense_claim",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "wrapper": "withdrawExpenseClaim",
+          "method": "POST",
+          "path": "/expense-claims/:param/withdrawal",
+          "normalizedKey": "POST /expense-claims/:param/withdrawal",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/expense-claims/:claimId/withdrawal",
+            "normalizedKey": "POST /expense-claims/:param/withdrawal",
+            "controller": "ExpenseClaimController",
+            "handler": "withdraw",
+            "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "authenticated_only",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": null
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "withdrawExpenseClaimWithCapability",
+              "withdrawExpenseClaim"
             ]
           },
           "ticketFollowups": []

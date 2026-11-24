@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 471,
+    "activeBusinessActionCount": 473,
     "technicalActionCount": 10,
-    "activeBindingCount": 570,
+    "activeBindingCount": 572,
     "retiredWriteEntryCount": 78,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
@@ -2969,6 +2969,22 @@
       "causalVerified": true
     },
     {
+      "id": "expense-claim.returned-draft.edit",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/费用与报销/:claimId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "PATCH /expense-claims/:param/draft"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
       "id": "expense-claim.review",
       "status": "unified_candidate",
       "usage": "background",
@@ -2995,6 +3011,22 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /expense-claims/:param/submission"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "expense-claim.withdrawal",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/费用与报销/:claimId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /expense-claims/:param/withdrawal"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

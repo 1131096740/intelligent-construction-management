@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `3c9943972e85d481b9c22f0566384fdde6df9ffa916e0e8b7c2ee2a978fb38f0` |
-| webApiWrappers | ready | `d75d97402c2e056e63de4903209859815624e3ba8644ade1f0996a5635ec2dc7` |
-| webPageActions | ready | `4e87ddb2071e74a645c02ca0ed0d7d830a3deb0f4c35042120675c3b6d45299d` |
-| routeUsage | ready | `003afc113032ce6c9478ebcfbeeb6f0d7319ac746ba14adbc212faca982f3db5` |
+| nestRoutes | ready | `0227dbadedb7c9b2c24d91e769749093ac6afa276034dbccef0b5988dd9ca853` |
+| webApiWrappers | ready | `fcd0a4c32219ee727a9ae55df61ba95cc99ad4e5fbf2f4bba309b9214a025dbd` |
+| webPageActions | ready | `18e4f9e839b05ec18843c8c0dfa6a3f484eae1ff0e48320a4b93cfb108f892d1` |
+| routeUsage | ready | `3f2635c3c645132ec449fbb0bf712eac4d70a1767bbaafd3ae5612b62faf1540` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 877 |
-| pageRouteCount | 662 |
+| routeCount | 879 |
+| pageRouteCount | 664 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 91 |
 | internalTaskRouteCount | 54 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 858 |
+| mainRequestBindingCount | 860 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 485 |
-| actionBindingCount | 586 |
-| acceptedActionBindingCount | 538 |
+| registeredActionCount | 487 |
+| actionBindingCount | 588 |
+| acceptedActionBindingCount | 540 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 475 |
-| coveredProductionMutationConsumerPairCount | 475 |
+| productionMutationConsumerPairCount | 477 |
+| coveredProductionMutationConsumerPairCount | 477 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -369,6 +369,7 @@
 | PATCH | /contract-workbench/:contractVersionId | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#saveContractDraft | — | not_applicable | — |
 | PATCH | /contract-workbench/:contractVersionId/parties/:partySnapshotId | exit_candidate | none | — | — | not_applicable | — |
 | PATCH | /contracts/:contractVersionId/work-completions/:completionId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviseWorkCompletionDraft | contract-work-completion.revise-draft | covered | — |
+| PATCH | /expense-claims/:claimId/draft | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#editReturnedExpenseClaimDraft | expense-claim.returned-draft.edit | covered | — |
 | PATCH | /fund-executions/cases/:caseId | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#updateFundExecutionCase | fund-execution.case.update | covered | — |
 | PATCH | /fund-executions/cases/:caseId/reversal | page | web_api_wrapper | apps/web-admin/src/api/fund-execution.api.ts#updateFundExecutionReversalReason | fund-execution.reversal.update-reason | covered | — |
 | PATCH | /organization/departments/:departmentId | page | web_api_wrapper | apps/web-admin/src/api/organization.api.ts#updateOrganizationDepartment | organization.department.update | covered | — |
@@ -566,6 +567,7 @@
 | POST | /expense-claims/:claimId/repayments/:repaymentId/reversal | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#reverseExpenseClaimLoanRepayment | expense-claim.loan.repayment.reverse | covered | — |
 | POST | /expense-claims/:claimId/repayments | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#recordExpenseClaimLoanRepayment | expense-claim.loan.repayment.record | covered | — |
 | POST | /expense-claims/:claimId/submission | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#submitExpenseClaim | expense-claim.submit | covered | — |
+| POST | /expense-claims/:claimId/withdrawal | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#withdrawExpenseClaim | expense-claim.withdrawal | covered | — |
 | POST | /expense-claims | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#createExpenseClaim | expense-claim.create<br>general-procurement.createExpenseClaim | covered | — |
 | POST | /files/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPrivateFileDownloadTicket<br>apps/web-admin/src/api/core-flow-read.api.ts#downloadPrivateFileByTicket | archive.download-private-attachment<br>company-transfer.downloadPrivateFileByTicket<br>contract-bank-verification.downloadPrivateFileByTicket<br>contract-document.download-ticket<br>contract-draft.body-paper-preview<br>contract-file.download-private-file-by-ticket<br>contract-file.download-ticket<br>contract-signed-change.download-original<br>contract-takeover.file-download-ticket<br>general-procurement.downloadPrivateFileByTicket<br>layout-sample.read-private-pdf<br>payment-basis.download-signed-attachment<br>payment-detail.file-download-ticket<br>settlement-detail.file-download-ticket<br>settlement-draft.file-download-ticket | covered | — |
 | POST | /files/download-package | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createArchiveDownloadPackage | archive.download-package | covered | — |

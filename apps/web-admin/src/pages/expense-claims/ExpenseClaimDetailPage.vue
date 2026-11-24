@@ -202,30 +202,61 @@ async function submitExpenseClaimWithCapability(claimId: string, actorId: string
   if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
   const operationAllowed = capability.availableActions.includes("submit_expense_claim");
   if (!operationAllowed) throw new Error("当前费用申请不可提交");
-  if (!matchesExpenseActor(claimId, actorId)) throw new Error("费用申请或当前用户已变化，请重新提交");
+  const currentActor = auth.user;
+  const currentClaimId = route.params.claimId;
+  if (!currentActor || currentClaimId !== claimId) {
+    throw new Error("费用申请或当前用户已变化，请重新提交");
+  }
+  const currentActorId = currentActor.id;
+  if (currentActorId !== actorId) {
+    throw new Error("费用申请或当前用户已变化，请重新提交");
+  }
   return submitExpenseClaim(claimId);
 }
-async function withdrawExpenseClaimWithCapability(target: NonNullable<typeof withdrawalTarget.value>) {
-  const { claimId, approvalInstanceId, actorId } = target;
+async function withdrawExpenseClaimWithCapability(
+  claimId: string,
+  approvalInstanceId: string,
+  target: NonNullable<typeof withdrawalTarget.value>
+) {
   const capability = await fetchExpenseClaimActionCapability(claimId);
-  if (capability.claimId !== claimId || !capability.availableActions.includes("withdraw_expense_claim")) {
-    throw new Error("当前费用审批不能撤回，请刷新后核对");
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后核对");
+  const operationAllowed = capability.availableActions.includes("withdraw_expense_claim");
+  if (!operationAllowed) throw new Error("当前费用审批不能撤回，请刷新后核对");
+  const currentActor = auth.user;
+  const currentTarget = withdrawalTarget.value;
+  const currentClaimId = route.params.claimId;
+  const dialogOpen = withdrawalVisible.value;
+  if (!dialogOpen || currentTarget !== target || currentClaimId !== claimId || !currentActor) {
+    throw new Error("费用申请或当前用户已变化，请重新发起撤回");
   }
-  if (!withdrawalVisible.value || withdrawalTarget.value !== target || !matchesExpenseActor(claimId, actorId)) {
+  const currentActorId = currentActor.id;
+  const expectedActorId = target.actorId;
+  if (currentActorId !== expectedActorId) {
     throw new Error("费用申请或当前用户已变化，请重新发起撤回");
   }
   return withdrawExpenseClaim(claimId, approvalInstanceId);
 }
 async function editReturnedExpenseClaimWithCapability(
-  target: NonNullable<typeof draftEditTarget.value>,
-  body: EditReturnedExpenseClaimDraftInput
+  claimId: string,
+  body: EditReturnedExpenseClaimDraftInput,
+  target: NonNullable<typeof draftEditTarget.value>
 ) {
-  const { claimId, actorId } = target;
   const capability = await fetchExpenseClaimActionCapability(claimId);
-  if (capability.claimId !== claimId || !capability.availableActions.includes("edit_returned_expense_claim")) {
-    throw new Error("当前费用草稿不能修改，请刷新后核对");
+  const matchesRequestedClaim = capability.claimId === claimId;
+  if (!matchesRequestedClaim) throw new Error("费用草稿已变化，请刷新后核对");
+  const operationAllowed = capability.availableActions.includes("edit_returned_expense_claim");
+  if (!operationAllowed) throw new Error("当前费用草稿不能修改，请刷新后核对");
+  const currentActor = auth.user;
+  const currentTarget = draftEditTarget.value;
+  const currentClaimId = route.params.claimId;
+  const dialogOpen = draftEditorVisible.value;
+  if (!dialogOpen || currentTarget !== target || currentClaimId !== claimId || !currentActor) {
+    throw new Error("费用草稿或当前用户已变化，请重新打开修改");
   }
-  if (!draftEditorVisible.value || draftEditTarget.value !== target || !matchesExpenseActor(claimId, actorId)) {
+  const currentActorId = currentActor.id;
+  const expectedActorId = target.actorId;
+  if (currentActorId !== expectedActorId) {
     throw new Error("费用草稿或当前用户已变化，请重新打开修改");
   }
   return editReturnedExpenseClaimDraft(claimId, body);
@@ -469,7 +500,7 @@ async function withdrawApproval() {
   submitting.value = true;
   draftWriteError.value = "";
   try {
-    await withdrawExpenseClaimWithCapability(target);
+    await withdrawExpenseClaimWithCapability(target.claimId, target.approvalInstanceId, target);
     if (withdrawalTarget.value === target) withdrawalVisible.value = false;
     if (matchesExpenseActor(target.claimId, target.actorId)) await loadDetail();
   } catch (error) {
@@ -533,7 +564,7 @@ async function saveReturnedDraft() {
         };
       });
     }
-    await editReturnedExpenseClaimWithCapability(target, payload);
+    await editReturnedExpenseClaimWithCapability(target.claimId, payload, target);
     if (draftEditTarget.value === target) draftEditorVisible.value = false;
     if (matchesExpenseActor(target.claimId, target.actorId)) await loadDetail();
   } catch (error) {

@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "3c9943972e85d481b9c22f0566384fdde6df9ffa916e0e8b7c2ee2a978fb38f0",
+      "sha256": "0227dbadedb7c9b2c24d91e769749093ac6afa276034dbccef0b5988dd9ca853",
       "status": "ready",
       "summary": {
-        "routeCount": 877
+        "routeCount": 879
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "d75d97402c2e056e63de4903209859815624e3ba8644ade1f0996a5635ec2dc7",
+      "sha256": "fcd0a4c32219ee727a9ae55df61ba95cc99ad4e5fbf2f4bba309b9214a025dbd",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
-        "exportedFunctionCount": 808,
-        "transportWrapperCount": 784,
+        "exportedFunctionCount": 810,
+        "transportWrapperCount": 786,
         "pureExportCount": 24,
-        "mainRequestBindingCount": 858,
+        "mainRequestBindingCount": 860,
         "ticketFollowupCount": 6,
-        "requestEdgeCount": 814,
-        "productionConsumerCount": 693,
+        "requestEdgeCount": 816,
+        "productionConsumerCount": 695,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "4e87ddb2071e74a645c02ca0ed0d7d830a3deb0f4c35042120675c3b6d45299d",
+      "sha256": "18e4f9e839b05ec18843c8c0dfa6a3f484eae1ff0e48320a4b93cfb108f892d1",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 485,
+        "registeredActionCount": 487,
         "pageActionCount": 112,
-        "backgroundActionCount": 373,
+        "backgroundActionCount": 375,
         "reachableVueFileCount": 241,
         "routeRootCount": 80,
         "totalVueFileCount": 254,
         "parsedVueFileCount": 254,
         "reachableProductionModuleCount": 417,
-        "templateEventDirectiveCount": 1648,
+        "templateEventDirectiveCount": 1652,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 475,
-        "candidateProductionMutationConsumerCount": 475,
-        "acceptedProductionMutationConsumerCount": 475,
-        "productionMutationConsumerPairCount": 475,
+        "coveredProductionMutationConsumerCount": 477,
+        "candidateProductionMutationConsumerCount": 477,
+        "acceptedProductionMutationConsumerCount": 477,
+        "productionMutationConsumerPairCount": 477,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "003afc113032ce6c9478ebcfbeeb6f0d7319ac746ba14adbc212faca982f3db5",
+      "sha256": "3f2635c3c645132ec449fbb0bf712eac4d70a1767bbaafd3ae5612b62faf1540",
       "status": "ready",
       "summary": {
-        "routeCount": 877,
-        "exactRouteCount": 877,
-        "normalizedRouteCount": 877,
+        "routeCount": 879,
+        "exactRouteCount": 879,
+        "normalizedRouteCount": 879,
         "classificationOverrideCount": 234,
         "consumerSurfaceOverrideCount": 56,
         "classificationOverrideSha256": "e5bca7e12b8f29322664da1c2721176179ec533a09edf2dd5f9bfdc4c2624b5d",
         "consumerSurfaceOverrideSha256": "9a7fe70cf05a352bafa35410ffc5de999596c0ba4f0d5d5cb44ede45a5623836",
-        "derivedProductionPageCount": 643,
-        "pageRouteCount": 662,
+        "derivedProductionPageCount": 645,
+        "pageRouteCount": 664,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 91,
         "internalTaskCount": 54,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 714,
+          "web_api_wrapper": 716,
           "auth_store": 5,
           "signed_ticket_delivery": 2,
           "machine_probe": 3,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 877,
-    "pageRouteCount": 662,
+    "routeCount": 879,
+    "pageRouteCount": 664,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 91,
     "internalTaskRouteCount": 54,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 858,
+    "mainRequestBindingCount": 860,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 485,
-    "actionBindingCount": 586,
-    "acceptedActionBindingCount": 538,
+    "registeredActionCount": 487,
+    "actionBindingCount": 588,
+    "acceptedActionBindingCount": 540,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 475,
-    "coveredProductionMutationConsumerPairCount": 475,
+    "productionMutationConsumerPairCount": 477,
+    "coveredProductionMutationConsumerPairCount": 477,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -16464,6 +16464,75 @@
     {
       "route": {
         "method": "PATCH",
+        "path": "/expense-claims/:claimId/draft",
+        "normalizedKey": "PATCH /expense-claims/:param/draft",
+        "controller": "ExpenseClaimController",
+        "handler": "editReturnedDraft",
+        "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "wrapper": "editReturnedExpenseClaimDraft",
+          "method": "PATCH",
+          "path": "/expense-claims/:param/draft",
+          "normalizedKey": "PATCH /expense-claims/:param/draft",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/expense-claim.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "expense-claim.returned-draft.edit",
+          "bindingIndex": 0,
+          "identity": "expense-claim.returned-draft.edit\u0000apps/web-admin/src/api/expense-claim.api.ts\u0000editReturnedExpenseClaimDraft\u0000PATCH\u0000PATCH /expense-claims/:param/draft\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "edit_returned_expense_claim",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "wrapper": "editReturnedExpenseClaimDraft",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "PATCH",
         "path": "/fund-executions/cases/:caseId",
         "normalizedKey": "PATCH /fund-executions/cases/:param",
         "controller": "FundExecutionController",
@@ -29081,6 +29150,75 @@
           },
           "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
           "wrapper": "submitExpenseClaim",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/expense-claims/:claimId/withdrawal",
+        "normalizedKey": "POST /expense-claims/:param/withdrawal",
+        "controller": "ExpenseClaimController",
+        "handler": "withdraw",
+        "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "wrapper": "withdrawExpenseClaim",
+          "method": "POST",
+          "path": "/expense-claims/:param/withdrawal",
+          "normalizedKey": "POST /expense-claims/:param/withdrawal",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/expense-claim.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "expense-claim.withdrawal",
+          "bindingIndex": 0,
+          "identity": "expense-claim.withdrawal\u0000apps/web-admin/src/api/expense-claim.api.ts\u0000withdrawExpenseClaim\u0000POST\u0000POST /expense-claims/:param/withdrawal\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "withdraw_expense_claim",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
+          "wrapper": "withdrawExpenseClaim",
           "productionConsumers": [
             "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
           ],
