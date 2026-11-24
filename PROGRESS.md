@@ -25,13 +25,17 @@
 
 员工借款资金入口在 `b54368d8b8a301f0ac0ba44870814899f281f00c` 的精确 329 project11 通过原 11 项及四项浏览器检查，七条旧写入口返回 410，历史金额、还款及凭证可查。回执 SHA-256 为 `8452f7d6d7be78f58c23fa9320dd016592ea3585fa708c4a0b0207e9d79a7600`。已合入 `c38537d0c723b5421405c7af26a9c9c27fae9b2e`，发布清单 879 条路由、448 项页面动作、116 条 410 入口，零阻塞。
 
-`ae28ccad0202787b636a3bdd9453317db8482eaa` [CI 56 项通过](https://github.com/1131096740/intelligent-construction-management/actions/runs/45453108296)。扩大到员工借款受理的 `eef0b9bfe72b18d09b21cc2f0d51cbb425268f76` [CI](https://github.com/1131096740/intelligent-construction-management/actions/runs/45458086848) 停在构建浏览器测试和入职花名册，发布汇总随之失败。两个旧借款草稿删除测试改用现行零星费用并在两种视口通过。隔离 329 花名册复现定位到最后一条状态断言。现行零星费用退回后回到草稿，原审批轮次保留为已退回；对齐此行为并保留阻断调出、原单保留及退回后调出的检查。精确 `341dfdb5c8189e5cb1a9066b771c35af093bdb1e` 的 329 花名册 10 项通过，零跳过，两项临时授权均已撤销，同轮镜像已清理。回执 SHA-256 为 `82e83c79fab7b9695349d5ad38d6eb262f886c4f0cec1aca3fe05051fa346a48`。[该 SHA 的集成 CI](https://github.com/1131096740/intelligent-construction-management/actions/runs/45464231412)。
+`ae28ccad0202787b636a3bdd9453317db8482eaa` [CI 56 项通过](https://github.com/1131096740/intelligent-construction-management/actions/runs/45453108296)。扩大到员工借款受理的 `eef0b9bfe72b18d09b21cc2f0d51cbb425268f76` [CI](https://github.com/1131096740/intelligent-construction-management/actions/runs/45458086848) 停在构建浏览器测试和入职花名册，发布汇总随之失败。两个旧借款草稿删除测试改用现行零星费用并在两种视口通过。隔离 329 花名册复现定位到最后一条状态断言。现行零星费用退回后回到草稿，原审批轮次保留为已退回；对齐此行为并保留阻断调出、原单保留及退回后调出的检查。精确 `341dfdb5c8189e5cb1a9066b771c35af093bdb1e` 的 329 花名册 10 项通过，零跳过，两项临时授权均已撤销，同轮镜像已清理。回执 SHA-256 为 `82e83c79fab7b9695349d5ad38d6eb262f886c4f0cec1aca3fe05051fa346a48`。[该 SHA 的集成 CI 56 项通过](https://github.com/1131096740/intelligent-construction-management/actions/runs/45464231412)。
 
 共享费用入口的历史员工借款在 `0b9a5ac34d8ef30783badcda05207e7deb5cb1c3` 停止审批、催办和缺失审批单补生成。已有签字归档仍按原权限审计下载。定向 199 项及精确 329 project11 原 11 项通过；回执 SHA-256 为 `5cea414b262c256ec2f10d898107de335bb40fbb78bc223d42fbdbee359fc335`。源码合入 `b62c1ee367f619504ba52bf57d86fcd63e687ecd`。
 
 项目支出的旧员工借款子类型在精确 `415fa3421d6b496b0ad6936ca2d647aa7930fed8` 通过 329 project11 原 11 项及四项浏览器检查。有权的旧审批、催办和项目实付返回 410，越权审批返回 403，原审批、金额和账目保留，业主借款和项目备用金审批继续通过。回执 SHA-256 为 `cd30f84cc3d0a5e2a6f01535aadb5b6944ab595c66f896a0e0ac38c0ec48c1e6`。源码合入 `fdd4a6a311ce1585ed2f43d52b50984589267154`。
 
 独立用印候选 `e7d73e4e67da2eadea666a3497b903d50d631931` 的真实 329 POL114 在申请保存及文书生成阶段停住，八项通过三项。失败回执 SHA-256 为 `ef34d1848b6a47b52bc77c08a482a242003d4a3741215ec32dd215a936426892`，同轮资源已清理。正在进一步定位并验证 V2 现行办理链及旧入口 410。
+
+组合候选 `103ca7c90e81205cf59cf56c6d8b8acd1f24fad6` 的具名 329 银行原 12 项通过，1,946 条执行输入及数据库身份和目录复核通过，同轮镜像和数据库已清理。回执 SHA-256 为 `d6bb9d89777638d76fc9a6280e8ff9f76c7343ac4342b93ab6913bfc553d4d96`。[该 SHA 的集成 CI](https://github.com/1131096740/intelligent-construction-management/actions/runs/45469529355)。
+
+工资应付退役按现有回执保护历史。对 #424 同一受控 197 脱敏派生档案只读统计，工资单、工资应付、历史工资应付、付款工资绑定、核销案件及分配、核销回执、公司往来根和资金执行案件九张表均为零。统计回执 SHA-256 为 `4f5ed6fbcefe51cde11cf55420e48ab0d122f6314e2c45b8995e63575320c31e`。该统计对应 11 月 24 日归档，正式冻写后须复核新增事实。
 
 #425 继续核对独立用印、旧结算审批和工资应付核销剩余写入口。#426 和 #427 仍待前置通过。正式切换窗口、最终候选及切换后备份验收由 #427 接续。
 
