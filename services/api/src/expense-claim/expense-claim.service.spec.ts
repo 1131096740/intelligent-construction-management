@@ -1179,7 +1179,7 @@ describe("ExpenseClaimService", () => {
 
   it.each([
     ["reimbursement", "approved_pending_payment"],
-    ["loan", "approved_pending_disbursement"]
+    ["incidental_expense", "approved_pending_payment"]
   ])("终审 %s 在原事务登记资金待办，提交后才唤醒派发", async (claimType, status) => {
     const claim = { id: "funding-claim", claimType, status: "approval_pending", projectId: "project-1", applicantUserId: "applicant",
       handledByUserId: "applicant", requestedAmountCents: 100n, loanOffsetAmountCents: 0n, companyPayableAmountCents: 100n };
@@ -1206,6 +1206,32 @@ describe("ExpenseClaimService", () => {
     await expect(service.review(claim.id, "reviewer", { decision: "approve" })).resolves.toMatchObject({ status, completed: true });
     expect(events).toEqual(["queued", "commit", "dispatch"]);
     expect(fundingNotifications.queue).toHaveBeenCalledWith(tx, approved, "reviewer");
+  });
+
+  it("keeps the historic loan approval readable but rejects an authorized signature or rejection", async () => {
+    const { service, tx, audit } = createHarness({ roles: ["comprehensive_director"] });
+    const claim = { id: "loan-1", claimType: "loan", status: "approval_pending", applicantUserId: "owner",
+      handledByUserId: "owner", projectId: "project-1", requestedAmountCents: 100n, fundedAmountCents: 0n,
+      companyPayableAmountCents: 0n, loanOffsetAmountCents: 0n };
+    const round = { id: "round-1", currentNodeIndex: 0, applicantUserId: "owner", frozenNodes: [{
+      name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"], candidateUserIdsByRole: { comprehensive_director: ["reviewer"] }
+    }] };
+    tx.expenseClaim.findFirst.mockResolvedValue(claim);
+    tx.employeeProjectLoanEntry.findMany.mockResolvedValue([]);
+    tx.approvalInstance.findFirst.mockResolvedValue(round);
+    const detail = await service.getMine(claim.id, "reviewer");
+    expect(detail.approval).toMatchObject({ currentNodeName: "综合部主管", canReview: false });
+    expect((await service.getActionCapability(claim.id, "reviewer")).availableActions).not.toContain("review_expense_claim");
+
+    for (const decision of ["approve", "reject"] as const) {
+      tx.$queryRaw.mockResolvedValueOnce([claim]).mockResolvedValueOnce([round]);
+      await expect(service.review(claim.id, "reviewer", { decision, comment: "保留原审批" })).rejects.toMatchObject({ status: 410 });
+    }
+    tx.$queryRaw.mockResolvedValueOnce([claim]).mockResolvedValueOnce([round]);
+    await expect(service.review(claim.id, "stranger", { decision: "approve" })).rejects.toMatchObject({ status: 403 });
+    expect(tx.expenseClaim.update).not.toHaveBeenCalled();
+    expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("approves an incidental expense into payment instead of loan disbursement", async () => {

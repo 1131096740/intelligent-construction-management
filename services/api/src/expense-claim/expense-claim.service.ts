@@ -633,6 +633,7 @@ export class ExpenseClaimService {
       return [{ index, name: node.name }];
     });
     const currentNode = nodes?.[duties[0]?.index ?? activeIndexes[0]] ?? null;
+    const canReview = claim.claimType !== "loan" && duties.length > 0;
     const isOwner = claim.applicantUserId === actorUserId || claim.handledByUserId === actorUserId;
     const canReadExistingExpenseEvidence =
       !["draft", "rejected", "offset_completed"].includes(claim.status) &&
@@ -783,8 +784,8 @@ export class ExpenseClaimService {
       fundedAmountCents: moneyCentsToApi(claim.fundedAmountCents),
       approval: currentNode ? {
         currentNodeName: currentNode.name,
-        canReview: duties.length > 0,
-        requiresSelfReviewConfirmation: duties.length > 0 && instance?.applicantUserId === actorUserId,
+        canReview,
+        requiresSelfReviewConfirmation: canReview && instance?.applicantUserId === actorUserId,
         ...(parallel ? { approvalInstanceId: instance?.id, actionableDuties: duties } : {})
       } : null,
       attachmentPermissions: { canAppendEvidence: claim.claimType !== "loan" && canReadExistingExpenseEvidence },
@@ -1407,6 +1408,7 @@ export class ExpenseClaimService {
       if (!identity) {
         throw new ForbiddenException("当前用户不是费用申请的冻结审批人");
       }
+      if (claim.claimType === "loan") throw new GoneException(RETIRED_EMPLOYEE_LOAN);
       if (parallel && input.decision === "reject") await this.assertActiveExpenseActor(tx, actorUserId);
       const selfReview = this.selfReviewMetadata(instance.applicantUserId, actorUserId, identity, input);
       if (selfReview.isSelfReview) {
@@ -1463,9 +1465,7 @@ export class ExpenseClaimService {
         ? await this.postLoanOffsetReservations(tx, claim, actorUserId)
         : 0n;
       const claimUpdate = completed
-        ? claim.claimType === "reimbursement" || claim.claimType === "incidental_expense"
-          ? { status: claim.companyPayableAmountCents > 0n ? "approved_pending_payment" : "offset_completed", approvedAt: new Date() }
-          : { status: "approved_pending_disbursement", approvedAt: new Date() }
+        ? { status: claim.companyPayableAmountCents > 0n ? "approved_pending_payment" : "offset_completed", approvedAt: new Date() }
         : { status: "approval_pending" };
       const updated = await tx.expenseClaim.update({ where: { id: claim.id }, data: claimUpdate });
       await tx.approvalInstance.update({
@@ -2329,8 +2329,8 @@ export class ExpenseClaimService {
       select: { id: true, applicantUserId: true, currentNodeIndex: true, frozenNodes: true }
     });
     if (instance?.applicantUserId !== actorUserId) return;
-    const claim = await this.prisma.expenseClaim.findUnique({ where: { id: claimId }, select: { status: true, projectId: true } });
-    if (claim?.status !== "approval_pending") return;
+    const claim = await this.prisma.expenseClaim.findUnique({ where: { id: claimId }, select: { status: true, projectId: true, claimType: true } });
+    if (claim?.status !== "approval_pending" || claim.claimType === "loan") return;
     const nodeIndex = resolveExpenseReviewNodeIndex(instance, input);
     const nodes = instance.frozenNodes as unknown as ExpenseClaimApprovalNode[];
     const node = nodes[nodeIndex];

@@ -680,53 +680,76 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     }, 60_000
   );
 
-  (enabled ? it.each(["reimbursement", "loan", "incidental_expense"] as const) : it.skip.each(["reimbursement", "loan", "incidental_expense"] as const))("V6 正式 PDF：%s 逐节点签名及未通过下载边界", async claimType => {
-    const db = app.get(PrismaService);
-    const historical = claimType === "loan" ? await seedHistoricalLoan("draft", "历史借款正式审批单验证") : null;
-    const created = claimType === "loan" ? null : await request("/expense-claims", selfInput(applicantUserId, claimType));
-    if (created) expect(created.status).toBe(201);
-    const claimId = historical?.id ?? created!.body.id;
+  (enabled ? it.each(["reimbursement", "incidental_expense"] as const) : it.skip.each(["reimbursement", "incidental_expense"] as const))("V6 正式 PDF：%s 逐节点签名及未通过下载边界", async claimType => {
+    const created = await request("/expense-claims", selfInput(applicantUserId, claimType));
+    expect(created.status).toBe(201);
+    const claimId = created.body.id;
     const path = "/expense-claims/" + claimId;
     const capability = "/approval-forms/expense_claim/" + claimId + "/capability";
     expect(await request(capability)).toMatchObject({ status: 200, body: { available: false } });
+    expect((await request(path + "/submission", {})).status).toBe(201);
     const roles = ["comprehensive_director", "project_manager", "finance_director", "chairman"];
-    if (historical) {
-      const instance = await db.approvalInstance.create({ data: {
-        businessType: "expense_claim", businessId: historical.id, flowType: "expense_claim.approve", status: "in_progress",
-        currentNodeIndex: 0, applicantUserId, frozenNodes: roles.map((role, index) => ({
-          name: role, mode: "any", roleKeys: [role], candidateUserIds: [approvalActorIds[index]!],
-          candidateUserIdsByRole: { [role]: [approvalActorIds[index]!] }
-        }))
-      } });
-      await db.expenseClaim.update({ where: { id: historical.id }, data: {
-        status: "approval_pending", approvalInstanceId: instance.id, submittedAt: new Date()
-      } });
-    } else {
-      expect((await request(path + "/submission", {})).status).toBe(201);
-    }
-    const parallel = claimType !== "loan";
-    const order = parallel ? [2, 3, 0, 1] : [0, 1, 2, 3];
+    const order = [2, 3, 0, 1];
     for (const index of order) {
       const approvalToken = approvalTokens[index]!;
-      expect(await request(capability)).toMatchObject({ status: 200, body: parallel
-        ? { available: true, incomplete: true }
-        : { available: false } });
-      const coordinates = parallel ? await parallelReviewCoordinates(path, approvalToken) : {};
-      const input = { decision: "approve", ...coordinates };
-      if (parallel && index === 2) {
-        expect((await request(`${path}/approval`, { decision: "approve" }, approvalToken)).status).toBe(409);
-        expect((await request(`${path}/approval`, { ...input, approvalInstanceId: randomUUID() }, approvalToken)).status).toBe(409);
+      expect(await request(capability)).toMatchObject({ status: 200, body: { available: true, incomplete: true } });
+      const input = { decision: "approve", ...await parallelReviewCoordinates(path, approvalToken) };
+      if (index === 2) {
+        expect((await request(path + "/approval", { decision: "approve" }, approvalToken)).status).toBe(409);
+        expect((await request(path + "/approval", { ...input, approvalInstanceId: randomUUID() }, approvalToken)).status).toBe(409);
       }
-      expect((await request(`${path}/approval`, input, approvalToken)).status).toBe(201);
-      if (parallel && index === 2) {
-        expect((await request(`${path}/approval`, input, approvalToken)).status).toBe(409);
-      }
+      expect((await request(path + "/approval", input, approvalToken)).status).toBe(201);
+      if (index === 2) expect((await request(path + "/approval", input, approvalToken)).status).toBe(409);
     }
     await verifyApprovedPdf({ db: app.get(PrismaService), baseUrl, token, password: accountPassword,
-      businessType: "expense_claim", businessId: claimId,
-      roles: order.map(index => roles[index]!), label: `费用-${claimType}` });
+      businessType: "expense_claim", businessId: claimId, roles: order.map(index => roles[index]!), label: `费用-${claimType}` });
     expect((await request(`/approval-forms/expense_claim/${claimId}/download`, { confirmationPassword: accountPassword, downloadReason: "无关人员边界" }, strangerToken)).status).toBe(403);
   }, 60_000);
+
+  (enabled ? it : it.skip)("历史借款审批仅可查看，拒绝签批、催办和补生成缺失原件", async () => {
+    const db = app.get(PrismaService);
+    const pending = await seedHistoricalLoan("draft", "合成旧借款审批");
+    const frozenNodes = [{ name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"],
+      candidateUserIds: [approvalActorIds[0]!], candidateUserIdsByRole: { comprehensive_director: [approvalActorIds[0]!] } }];
+    const round = await db.approvalInstance.create({ data: {
+      businessType: "expense_claim", businessId: pending.id, flowType: "expense_claim.approve", status: "in_progress",
+      currentNodeIndex: 0, applicantUserId, frozenNodes
+    } });
+    const loan = await db.expenseClaim.update({ where: { id: pending.id }, data: {
+      status: "approval_pending", approvalInstanceId: round.id, submittedAt: new Date()
+    } });
+    const path = "/expense-claims/" + loan.id;
+    const approver = approvalTokens[0]!;
+    expect(await request(path, undefined, approver)).toMatchObject({
+      status: 200, body: { approval: { currentNodeName: "综合部主管", canReview: false } }
+    });
+    for (const decision of ["approve", "reject"]) {
+      expect((await request(path + "/approval", { decision, comment: "保持历史" }, approver)).status).toBe(410);
+    }
+    expect((await request(`/other-project-payments/${loan.id}/approval`, { decision: "approve" }, approver)).status).toBe(404);
+    const progressPath = "/approval-progress/" + round.id;
+    const progress = await request(progressPath, undefined, approver);
+    expect(progress).toMatchObject({ status: 200, body: { canHandle: false, canRemind: false, pendingRecipients: [] } });
+    expect((await request(progressPath + "/remind", {
+      requestId: randomUUID(), reminderToken: (progress.body as unknown as { reminderToken: string }).reminderToken
+    })).status).toBe(410);
+    expect(await db.expenseClaim.findUnique({ where: { id: loan.id } })).toEqual(loan);
+    expect(await db.approvalInstance.findUnique({ where: { id: round.id } })).toEqual(round);
+    expect(await db.approvalActionLog.count({ where: { approvalInstanceId: round.id } })).toBe(0);
+
+    const approved = await seedHistoricalLoan("approved_pending_disbursement", "历史缺档借款");
+    const approvedRound = await db.approvalInstance.create({ data: {
+      businessType: "expense_claim", businessId: approved.id, flowType: "expense_claim.approve", status: "approved",
+      currentNodeIndex: 1, applicantUserId, frozenNodes
+    } });
+    const pdfPath = "/approval-forms/expense_claim/" + approved.id;
+    expect(await request(pdfPath + "/capability")).toMatchObject({ status: 200, body: { available: false } });
+    expect((await request(pdfPath + "/download", {
+      confirmationPassword: accountPassword, downloadReason: "核验历史"
+    })).status).toBe(410);
+    expect(await db.approvalFormGenerationClaim.count({ where: { approvalInstanceId: approvedRound.id } })).toBe(0);
+    expect(await db.pdfDocument.count({ where: { approvalInstanceId: approvedRound.id } })).toBe(0);
+  });
 
   (enabled ? it : it.skip)("历史合同附件即时回包含本人删除动作，连续删除保留上传与删除审计", async () => {
     const prisma = app.get(PrismaService);

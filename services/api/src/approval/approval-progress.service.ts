@@ -8,7 +8,7 @@ import { GENERAL_REQUEST_DUTY_RESOURCE, generalRequestDutyId, generalRequestDuty
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import {SPOT_APPROVAL_DUTY_RESOURCE, spotApprovalDutyId} from "./spot-approval-duty-access";
 import { activeApprovalNodeIndexes, isParallelApprovalRound, isApprovalDutyComplete, isParallelDutyNotificationEvent } from "./parallel-approval-protocol";
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, GoneException, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma, type ApprovalInstance } from "@prisma/client";
 import { resolveEffectiveRoleKeys, type RoleKey } from "@jiangkong/shared-domain";
 import { createHash, randomUUID } from "node:crypto";
@@ -121,6 +121,7 @@ export class ApprovalProgressService {
         if (existing.actorUserId !== actorId || object(existing.metadata).kind !== "sms_request") throw new ConflictException("催办请求已被使用，请刷新后重试");
         return null;
       }
+      if (context.retiredExpenseApproval) throw new GoneException("员工借款审批催办已停止办理");
       const progress = this.project(context, actorId);
       if (expectedToken !== progress.reminderToken) throw new ConflictException("审批进度或待审批人已变化，请刷新后重新确认催办对象");
       if (!progress.canRemind) throw new ConflictException(progress.reminderUnavailableReason ?? "当前不能催办");
@@ -433,7 +434,8 @@ export class ApprovalProgressService {
         }
       }
     }
-    const businessUnavailable = expenseUnavailable || (legacyContractParallel && !legacyOriginators) || (instance.businessType === "project_financing_quota" && project?.isActive !== true) || (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) && !this.pilot?.isEnabled(projectId)) ||
+    const retiredExpenseApproval = instance.businessType === "expense_claim" && "claimType" in business && business.claimType === "loan";
+    const businessUnavailable = retiredExpenseApproval || expenseUnavailable || (legacyContractParallel && !legacyOriginators) || (instance.businessType === "project_financing_quota" && project?.isActive !== true) || (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) && !this.pilot?.isEnabled(projectId)) ||
       (["general_procurement", "company_transfer", "fund_execution_case"].includes(instance.businessType) &&
         (!("status" in business) || business.status !== (instance.businessType === "general_procurement" ? "approval_pending" : "submitted") || !("approvalInstanceId" in business) || business.approvalInstanceId !== instance.id));
     const expensePendingIds = expensePendingByDuty && new Set(expensePendingByDuty.flat().map(user => user.id));
@@ -469,7 +471,7 @@ export class ApprovalProgressService {
         throw error;
       }
     }) : [];
-    return { instance, business, project, rawNodes, nodeIds, byId, pending, logs, effectiveApprovals, businessUnavailable, participant, expensePendingByDuty };
+    return { instance, business, project, rawNodes, nodeIds, byId, pending, logs, effectiveApprovals, businessUnavailable, retiredExpenseApproval, participant, expensePendingByDuty };
   }
 
   private project(context: Awaited<ReturnType<ApprovalProgressService["context"]>>, actorId: string) {
@@ -540,7 +542,7 @@ export class ApprovalProgressService {
       canHandle: active && pending.some(user => user.id === actorId),
       remindableRecipients,
       canRemind: active && remindableRecipients.length > 0 && this.sms.available(),
-      reminderUnavailableReason: !active ? "流程已结束" : context.businessUnavailable ? (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) ? "本项目尚未启用零采试点，暂不能催办" : "当前业务未处于可审批状态，暂不能催办") : !pending.length ? "当前没有有效待审批人" : !this.sms.available() ? "短信服务尚未启用" : !remindableRecipients.length ? "刚刚已催办，请稍后再试" : null,
+      reminderUnavailableReason: !active ? "流程已结束" : context.retiredExpenseApproval ? "员工借款审批催办已停止办理" : context.businessUnavailable ? (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) ? "本项目尚未启用零采试点，暂不能催办" : "当前业务未处于可审批状态，暂不能催办") : !pending.length ? "当前没有有效待审批人" : !this.sms.available() ? "短信服务尚未启用" : !remindableRecipients.length ? "刚刚已催办，请稍后再试" : null,
       nextRemindAt,
       reminderToken: createHash("sha256").update(JSON.stringify([
         instance.id, instance.status, instance.currentNodeIndex, instance.updatedAt.toISOString(),
