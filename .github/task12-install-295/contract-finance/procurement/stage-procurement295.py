@@ -125,6 +125,27 @@ if current320:
         if text.count(anchor) != 1:
             raise ValueError('PROCUREMENT_320_PAYMENT_DETAIL_OBSERVATION_ANCHOR')
         text = text.replace(anchor, observation + anchor)
+    if lane == 'general16':
+        anchor = '  await ownerSql("ROLE_SETUP",roleSetup("procurement",database,password));'
+        reads = '''
+  await ownerSql("PROCUREMENT_329_BUSINESS_READS",`BEGIN;
+    GRANT SELECT (id,"procurementId","supplierName","effectiveTotalAmountCents","createdAt")
+      ON public."ActualPurchaseBatch" TO general_procurement_runtime;
+    GRANT SELECT (id,"executionType","expenseClaimPaymentExecutionId","amountCents","receivedAt",
+      reason,"evidenceReference","accountId","recordedByUserId","createdAt")
+      ON public."PaymentExecutionRefund" TO general_procurement_runtime;
+    DO $scope$ BEGIN
+      IF EXISTS (
+        SELECT FROM unnest(ARRAY['public."ActualPurchaseBatch"'::regclass,'public."PaymentExecutionRefund"'::regclass]) r(oid)
+        WHERE has_table_privilege('general_procurement_runtime',r.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+          OR has_any_column_privilege('general_procurement_runtime',r.oid,'INSERT,UPDATE,REFERENCES')
+      ) THEN RAISE EXCEPTION 'PROCUREMENT_329_READ_SCOPE'; END IF;
+    END $scope$;
+    COMMIT;`);
+'''
+        if text.count(anchor) != 1:
+            raise ValueError('PROCUREMENT_329_BUSINESS_READ_ANCHOR')
+        text = text.replace(anchor, anchor + reads)
     write(consumer,text.encode())
 for name in ['owner-observation.cjs', *(
     ['project-scope-http-report.cjs', 'project-scope-browser-report.cjs', 'project-scope-browser-pins.json']
