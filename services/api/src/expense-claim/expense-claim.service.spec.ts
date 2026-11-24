@@ -1,3 +1,6 @@
+import { Test } from "@nestjs/testing";
+import { ExpenseClaimController } from "./expense-claim.controller";
+import { createApiValidationPipe } from "../validation/api-validation";
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { ExpenseClaimService } from "./expense-claim.service";
 import { appendRegisteredOperationalPayment, readRegisteredOperationalPayment } from "../fund-account/registered-operational-payment";
@@ -83,6 +86,94 @@ async function expectParticipantSerializationBoundary(
 }
 
 const actor = { id: "user-a", name: "经办人", phone: "13800000000", isActive: true };
+
+describe("employee loan application through HTTP", () => {
+  it("retires valid loan requests while allowing incidental expense drafts", async () => {
+    const files = { assertFileHasNoBusinessBinding: jest.fn().mockResolvedValue({ uploadedByUserId: actor.id }) };
+    const { service, tx } = createHarness({ files });
+    tx.expenseClaimAttachment.create.mockResolvedValue({ id: "attachment-1" });
+    tx.user.findUnique.mockResolvedValue(actor);
+    tx.companyEntity.findFirst.mockResolvedValue({ id: "company-1", name: "建工公司" });
+    tx.expenseClaim.create.mockResolvedValue({ id: "claim-1", status: "draft" });
+    const moduleRef = await Test.createTestingModule({
+      controllers: [ExpenseClaimController],
+      providers: [{ provide: ExpenseClaimService, useValue: service }]
+    }).compile();
+    const app = moduleRef.createNestApplication({ logger: false });
+    app.use((request: { user?: { id: string } }, _response: unknown, next: () => void) => {
+      request.user = actor;
+      next();
+    });
+    app.useGlobalPipes(createApiValidationPipe());
+    await app.listen(0, "127.0.0.1");
+
+    try {
+      const url = `${await app.getUrl()}/expense-claims`;
+      const application = {
+        companyEntityId: "company-1",
+        projectId: "project-1",
+        applicantUserId: actor.id,
+        reason: "现场服务",
+        requestedAmountCents: "1200"
+      };
+      const create = (body: object) => fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const retired = await create({ ...application, claimType: "loan", loanExpectedClearanceOn: "2026-12-01" });
+      expect(retired.status).toBe(410);
+      expect(tx.expenseClaim.create).not.toHaveBeenCalled();
+
+      const incidental = await create({
+        ...application,
+        claimType: "incidental_expense",
+        incidentalExpenseCategory: "temporary_service",
+        payeeName: "服务商"
+      });
+      expect(incidental.status).toBe(201);
+      expect(await incidental.json()).toMatchObject({ status: "draft", requestedAmountCents: "1200" });
+
+      const updatedAt = new Date("2026-07-23T00:00:00Z");
+      const historicalLoan = {
+        ...application,
+        id: "old-loan",
+        handledByUserId: actor.id,
+        claimType: "loan",
+        status: "draft",
+        requestedAmountCents: 1200n,
+        updatedAt
+      };
+      tx.$queryRaw.mockResolvedValueOnce([historicalLoan]);
+      const submit = await fetch(`${url}/old-loan/submission`, { method: "POST" });
+      expect(submit.status).toBe(410);
+      expect(tx.approvalInstance.create).not.toHaveBeenCalled();
+
+      tx.expenseClaim.findUnique.mockResolvedValue({ ...historicalLoan, submittedAt: updatedAt });
+      const edit = await fetch(`${url}/old-loan/draft`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ expectedUpdatedAt: updatedAt.toISOString(), reason: "调整旧借款" })
+      });
+      expect(edit.status).toBe(410);
+      expect(tx.expenseClaim.update).not.toHaveBeenCalled();
+
+      const write = (suffix: string, body: object) => fetch(url + "/old-loan/" + suffix, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
+      });
+      tx.$queryRaw.mockResolvedValueOnce([historicalLoan]);
+      expect((await write("attachments", { fileId: "existing-file", category: "receipt_or_other" })).status).toBe(410);
+      expect(files.assertFileHasNoBusinessBinding).not.toHaveBeenCalled();
+      tx.$queryRaw.mockResolvedValueOnce([historicalLoan]);
+      expect((await write("attachments/old-attachment/removal", { reason: "尝试修改历史资料" })).status).toBe(410);
+      expect(tx.expenseClaimAttachment.update).not.toHaveBeenCalled();
+      tx.expenseClaim.findUnique.mockResolvedValue(historicalLoan);
+      expect((await write("draft-deletion", { expectedUpdatedAt: updatedAt.toISOString() })).status).toBe(410);
+    } finally {
+      await app.close();
+    }
+  });
+});
 
 describe("ExpenseClaimService", () => {
   it("returns all selectable active company entities but only the actor's visible projects", async () => {

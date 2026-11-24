@@ -7,7 +7,7 @@ import { prepareProcurementPayment } from "../general-procurement/general-procur
 import { generalProcurementActor } from "../general-procurement/general-procurement-access";
 import { GENERAL_PROCUREMENT_CATEGORIES, GENERAL_PROCUREMENT_PAYMENT_CATEGORIES } from "@jiangkong/shared-domain";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, GoneException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { GLOBAL_BUSINESS_ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 import { resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../approval/approval-review-identity";
@@ -76,6 +76,7 @@ type ExpenseClaimApprovalNode = FrozenApprovalNode & {
   candidatePolicy?: string;
 };
 
+const RETIRED_EMPLOYEE_LOAN = "员工借款申请已停止办理";
 const COMPREHENSIVE_ROLE: RoleKey = "comprehensive_director";
 const FINAL_ROLES: RoleKey[] = ["chairman", "general_manager"];
 const PAYMENT_SUBJECT_ADJUSTMENT_ROLES: RoleKey[] = ["finance_staff", "finance_director", "comprehensive_director"];
@@ -456,14 +457,12 @@ export class ExpenseClaimService {
 
   async create(actorUserId: string, input: CreateExpenseClaimDto) {
     const claimType = input.claimType;
+    if (claimType === "loan") throw new GoneException(RETIRED_EMPLOYEE_LOAN);
     const requestedAmountCents = positiveCents(input.requestedAmountCents, "申请金额必须大于零");
     const lines = claimType === "reimbursement" ? this.lines(input.lines) : [];
     const lineAmountCents = lines.reduce((total, line) => total + positiveCents(line.amountCents, "费用明细金额必须大于零"), 0n);
     if (claimType === "reimbursement" && lineAmountCents !== requestedAmountCents) {
       throw new BadRequestException("费用明细合计必须等于申请金额");
-    }
-    if (claimType === "loan" && !input.projectId?.trim()) {
-      throw new BadRequestException("借款申请必须选择项目");
     }
     if (claimType === "incidental_expense" && !input.projectId?.trim()) {
       throw new BadRequestException("零星费用必须选择项目");
@@ -530,11 +529,7 @@ export class ExpenseClaimService {
       const factWitness = await this.factWitnessSnapshot(tx, input, project?.id);
       const code = await this.numbering.allocateDaily(
         tx,
-        claimType === "reimbursement"
-          ? "BX"
-          : claimType === "loan"
-            ? "JK"
-            : "LXFY"
+        claimType === "reimbursement" ? "BX" : "LXFY"
       );
       const claim = await tx.expenseClaim.create({
         data: {
@@ -768,7 +763,7 @@ export class ExpenseClaimService {
     const sourcePurchase = claim.actualPurchaseBatchId
       ? await this.readSourcePurchase(claim.actualPurchaseBatchId)
       : null;
-    const canEditReturnedDraft = claim.handledByUserId === actorUserId && isReturnedExpenseDraft(claim);
+    const canEditReturnedDraft = claim.claimType !== "loan" && claim.handledByUserId === actorUserId && isReturnedExpenseDraft(claim);
     const { companyEntityId, voidedAt, ...displayClaim } = claim;
     return {
       ...displayClaim,
@@ -780,7 +775,7 @@ export class ExpenseClaimService {
       ...((claim.claimType === "reimbursement" || claim.claimType === "incidental_expense") ? {
         originalDebtorCompanyId: claim.companyEntityNameSnapshot?.trim() ? companyEntityId : null
       } : {}),
-      canDeleteDraft: claim.status === "draft" && !claim.submittedAt && claim.handledByUserId === actorUserId,
+      canDeleteDraft: claim.claimType !== "loan" && claim.status === "draft" && !claim.submittedAt && claim.handledByUserId === actorUserId,
       generalProcurement: claim.generalProcurementId ? await this.prisma.generalProcurement.findUnique({ where: { id: claim.generalProcurementId }, select: { id: true, code: true } }) : null,
       project,
       entrySnapshots: await this.prisma.expenseClaimEntrySnapshot.findMany({ where: { expenseClaimId: claim.id }, orderBy: [{ frozenAt: "asc" }, { id: "asc" }] }),
@@ -876,11 +871,8 @@ export class ExpenseClaimService {
     if (detail.canEditReturnedDraft) availableActions.push("edit_returned_expense_claim");
     if (detail.canWithdrawApproval) availableActions.push("withdraw_expense_claim");
 
-    if (detail.status === "draft" && isHandler) {
-      availableActions.push(
-        "submit_expense_claim",
-        "attach_expense_claim_attachment"
-      );
+    if (detail.claimType !== "loan" && detail.status === "draft" && isHandler) {
+      availableActions.push("submit_expense_claim", "attach_expense_claim_attachment");
       if (detail.attachments.some((attachment) => !attachment.removedAt)) {
         availableActions.push("remove_expense_claim_attachment");
       }
@@ -1053,13 +1045,14 @@ export class ExpenseClaimService {
     if (!this.files) throw new ServiceUnavailableException("费用附件服务暂不可用，请稍后重试");
     const fileId = requiredText(input.fileId, "请选择费用附件");
     return this.prisma.$transaction(async (tx) => {
-      const claims = await tx.$queryRaw<Array<{ id: string; status: string; handledByUserId: string }>>(
-        Prisma.sql`SELECT "id", "status", "handledByUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`
+      const claims = await tx.$queryRaw<Array<{ id: string; claimType: string; status: string; handledByUserId: string }>>(
+        Prisma.sql`SELECT "id", "claimType", "status", "handledByUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`
       );
       const claim = claims[0];
       if (!claim) throw new NotFoundException("费用申请不存在");
       if (claim.status !== "draft") throw new BadRequestException("费用申请提交后不能替换已冻结附件");
       if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有经办人可以维护草稿费用附件");
+      if (claim.claimType === "loan") throw new GoneException(RETIRED_EMPLOYEE_LOAN);
       const file = await this.files!.assertFileHasNoBusinessBinding(tx, fileId);
       if (file.uploadedByUserId !== actorUserId) throw new ForbiddenException("费用附件必须由当前经办人本人上传");
       const attachment = await (tx as unknown as {
@@ -1133,13 +1126,14 @@ export class ExpenseClaimService {
 
   async removeAttachment(claimId: string, attachmentId: string, actorUserId: string, input: RemoveExpenseClaimAttachmentDto) {
     return this.prisma.$transaction(async (tx) => {
-      const claims = await tx.$queryRaw<Array<{ id: string; status: string; handledByUserId: string }>>(
-        Prisma.sql`SELECT "id", "status", "handledByUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`
+      const claims = await tx.$queryRaw<Array<{ id: string; claimType: string; status: string; handledByUserId: string }>>(
+        Prisma.sql`SELECT "id", "claimType", "status", "handledByUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`
       );
       const claim = claims[0];
       if (!claim) throw new NotFoundException("费用申请不存在");
       if (claim.status !== "draft") throw new BadRequestException("费用申请提交后不能移除已冻结附件");
       if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有经办人可以维护草稿费用附件");
+      if (claim.claimType === "loan") throw new GoneException(RETIRED_EMPLOYEE_LOAN);
       const attachments = await (tx as unknown as {
         expenseClaimAttachment: {
           findFirst(args: { where: { id: string; expenseClaimId: string; removedAt: null }; select: { id: true; fileId: true } }): Promise<{ id: string; fileId: string } | null>;
@@ -1174,6 +1168,7 @@ export class ExpenseClaimService {
       const claim = await tx.expenseClaim.findUnique({ where: { id: claimId } });
       if (!claim) throw new NotFoundException("费用草稿不存在或已删除");
       if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有经办人可以删除费用草稿");
+      if (claim.claimType === "loan") throw new GoneException(RETIRED_EMPLOYEE_LOAN);
       const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
       if (!actor?.isActive) throw new ForbiddenException("当前账号不存在或已停用");
       if (claim.applicantUserId !== actorUserId || claim.generalProcurementId) {
@@ -1229,6 +1224,7 @@ export class ExpenseClaimService {
       const claim = await tx.expenseClaim.findUnique({ where: { id: claimId } });
       if (!claim) throw new NotFoundException("费用申请不存在");
       if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有原经办人可以修改退回的费用申请");
+      if (claim.claimType === "loan") throw new GoneException(RETIRED_EMPLOYEE_LOAN);
       await this.assertActiveExpenseActor(tx, actorUserId);
       if (!isReturnedExpenseDraft(claim) || claim.updatedAt.getTime() !== new Date(input.expectedUpdatedAt).getTime()) {
         throw new ConflictException("费用草稿状态或版本已变化，请刷新后重试");
@@ -1321,6 +1317,7 @@ export class ExpenseClaimService {
       const claim = rows[0];
       if (!claim) throw new NotFoundException("费用申请不存在");
       if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有经办人可以提交费用申请");
+      if (claim.claimType === "loan") throw new GoneException(RETIRED_EMPLOYEE_LOAN);
       if (claim.status !== "draft") throw new BadRequestException("当前费用申请不可提交");
       const source = await tx.expenseClaim.findUnique({ where: { id: claim.id }, select: { generalProcurementId: true } });
       const currentActor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });

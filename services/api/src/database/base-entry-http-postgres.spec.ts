@@ -649,7 +649,7 @@ describePostgres("基础资料公开 HTTP / PostgreSQL 16", () => {
       throw new Error("真实并发请求未进入预期行锁等待");
     };
     const stop = () => request(`${companyFirst ? "/company-entities" : "/projects"}/${id}/status`, "POST", { isActive: false }, chairman);
-    const create = () => request("/expense-claims", "POST", { claimType: "loan", projectId, applicantUserId: employeeId, companyEntityId: company.id, reason: "本机合成并发借款", requestedAmountCents: "10000" }, employee);
+    const create = () => request("/expense-claims", "POST", { claimType: "incidental_expense", incidentalExpenseCategory: "temporary_service", payeeName: "本机合成服务方", projectId, applicantUserId: employeeId, companyEntityId: company.id, reason: "本机合成并发零星费用", requestedAmountCents: "10000" }, employee);
     let first: ReturnType<typeof request> | undefined;
     let second: ReturnType<typeof request> | undefined;
     try {

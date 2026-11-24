@@ -21,11 +21,11 @@ function definition(): BusinessEntrySceneDefinition {
     ], rules: [] };
 }
 
-async function render(isIncidental: boolean, isLoan = false) {
+async function render(isIncidental: boolean) {
   const source = definition();
   const app = createSSRApp(ExpenseClaimPayeeFields, {
-    definition: source, isIncidental, isLoan,
-    modelValue: { payeeName: "", payeeAccountName: "", payeeBankName: "", payeeBankAccount: "", loanExpectedClearanceOn: "" }
+    definition: source, isIncidental,
+    modelValue: { payeeName: "", payeeAccountName: "", payeeBankName: "", payeeBankAccount: "" }
   });
   for (const name of ["TInput", "TDatePicker"]) app.component(name, defineComponent({ setup: () => () => h("input") }));
   const html = await renderToString(app);
@@ -40,9 +40,9 @@ describe("费用收款必填提示", () => {
     expect(html).not.toMatch(/收款账号 \*/);
     expect(html).not.toContain("预计清账日期");
   });
-  it.each([false, true])("报销及借款保留原收款对象可选规则，借款=%s", async isLoan => {
-    const html = await render(false, isLoan);
+  it("报销保留收款对象可选规则且不显示旧借款字段", async () => {
+    const html = await render(false);
     expect(html).not.toMatch(/收款对象 \*/);
-    if (isLoan) expect(html).toMatch(/预计清账日期 \*/);
+    expect(html).not.toContain("预计清账日期");
   });
 });

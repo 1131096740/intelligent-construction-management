@@ -1,5 +1,6 @@
 import { Test } from "@nestjs/testing";
 import { ProjectExpenseController } from "./project-expense.controller";
+import { createApiValidationPipe } from "../validation/api-validation";
 import { FileService } from "../file/file.service";
 import { attachApprovalSignatureFixture } from "../approval/approval-evidence-test-fixture";
 import { BadRequestException } from "@nestjs/common";
@@ -58,6 +59,35 @@ describe("ProjectExpenseService", () => {
 
     expect((service as unknown as Record<string, unknown>).abandonDraft).toBeUndefined();
     expect((service as unknown as Record<string, unknown>).deleteDraft).toBeUndefined();
+  });
+
+  it("rejects the retired employee loan through the project expense HTTP entry", async () => {
+    const service = new ProjectExpenseService({} as never, audit as never, auth as never);
+    const moduleRef = await Test.createTestingModule({
+      controllers: [ProjectExpenseController],
+      providers: [{ provide: ProjectExpenseService, useValue: service }]
+    }).compile();
+    const app = moduleRef.createNestApplication({ logger: false });
+    app.use((request: { user?: { id: string } }, _response: unknown, next: () => void) => {
+      request.user = { id: "applicant-1" };
+      next();
+    });
+    app.useGlobalPipes(createApiValidationPipe());
+    await app.listen(0, "127.0.0.1");
+    try {
+      const result = await fetch(`${await app.getUrl()}/projects/project-1/expense-requests`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          code: "SPEND-001", expenseType: "loan_reserve", expenseSubtype: "employee_loan",
+          paymentSubject: "项目使用", reason: "历史借款入口", requestedAmountCents: "100",
+          paymentMethod: "cash"
+        })
+      });
+      expect(result.status).toBe(410);
+    } finally {
+      await app.close();
+    }
   });
 
   it("derives download capability from the same read boundary as each download mutation", async () => {

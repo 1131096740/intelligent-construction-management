@@ -277,8 +277,9 @@ describePostgres("项目花名册维护 HTTP / PostgreSQL 16", () => {
     const oldPreview = await request("/organization/project-roster/preview", chairman.token, body);
     expect(oldPreview.body.canApply).toBe(true);
     const created = await request("/expense-claims", applicant.token, {
-      claimType: "loan", companyEntityId: company.id, projectId: projectRow.id, applicantUserId: applicant.id,
-      reason: "合成调出检查", requestedAmountCents: "1", loanExpectedClearanceOn: "2026-12-01"
+      claimType: "incidental_expense", incidentalExpenseCategory: "temporary_service", payeeName: "合成收款方",
+      companyEntityId: company.id, projectId: projectRow.id, applicantUserId: applicant.id,
+      reason: "合成调出检查", requestedAmountCents: "1"
     });
     expect(created.status).toBe(201);
     const claimId = created.body.id as string;
@@ -287,8 +288,10 @@ describePostgres("项目花名册维护 HTTP / PostgreSQL 16", () => {
     expect(blocked.body).toMatchObject({ canApply: false, affectedApprovals: 1 });
     expect((await apply(chairman.token, body, oldPreview.body.snapshotHash)).status).toBe(409);
     expect((await apply(chairman.token, body, blocked.body.snapshotHash)).status).toBe(409);
+    const { body: approvalDetail } = await request("/expense-claims/" + claimId, director.token);
+    const { approvalInstanceId, actionableDuties } = approvalDetail.approval;
     expect((await request(`/expense-claims/${claimId}/approval`, director.token,
-      { decision: "reject", comment: "隔离交接回归" })).status).toBe(201);
+      { decision: "reject", comment: "隔离交接回归", approvalInstanceId, approvalDutyIndex: actionableDuties[0].index })).status).toBe(201);
     const ready = await request("/organization/project-roster/preview", chairman.token, body);
     expect(ready.body.canApply).toBe(true);
     expect((await apply(chairman.token, body, ready.body.snapshotHash)).status).toBe(201);

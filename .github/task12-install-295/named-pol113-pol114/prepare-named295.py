@@ -163,6 +163,10 @@ for name,pin in pins['workspace'].items():
             pin = {**pin,
                    'base': 'a3fd1dbbc3b94047f6b532718c9d6f9473eb1c1aa4b75df4455d68f8646a50b2',
                    'result': '0c2eeca354f68331cf1c10ac06904b9c9dcb722c90788b2f166971c1cc8c2f2c'}
+        if current320 and name == 'services/api/src/database/base-entry-http-postgres.spec.ts':
+            pin = {**pin,
+                   'base': '2c336da20dd664b623f2b715c49d1963b6c0f3253df433145fa762daf9cfb37b',
+                   'result': 'f7153477589137d7cb5bd624686c3926d2a6e676cf04bb05a79cb95862de4343'}
         write(path,overlay(material,pin))
 
 files=sorted(p for p in workspace.rglob('*') if p.is_file())

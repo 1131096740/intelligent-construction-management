@@ -32,7 +32,7 @@ test("费用与报销工作台在桌面和手机尺寸读取新域个人事实�
   await expect.poll(() => requestedViews).toContain("in_progress");
 });
 
-test("费用工作台用创建选项和正式写入接口保存借款草稿后进入新域详情", async ({ page }) => {
+test("费用工作台仅保留报销和零星费用，并办理零星费用草稿及附件", async ({ page }) => {
   const requestedViews: string[] = [];
   const posted: unknown[] = [];
   const submitted: string[] = [];
@@ -43,36 +43,41 @@ test("费用工作台用创建选项和正式写入接口保存借款草稿后�
   await login(page);
 
   await page.goto("/费用与报销工作台");
-  await page.getByRole("button", { name: "新建费用报销 / 借款" }).click();
+  await page.getByRole("button", { name: "新建费用申请" }).click();
   await expect(page.locator(".expense-claim-create__title")).toBeVisible();
-  await page.getByText("借款申请", { exact: true }).last().click();
+  const drawer = page.locator(".t-drawer");
+  await expect(drawer.getByText("借款申请", { exact: true })).toHaveCount(0);
+  await expect(drawer.getByText("费用报销", { exact: true })).toBeVisible();
+  await drawer.getByText("零星费用", { exact: true }).click();
+  await drawer.locator(".t-form__item").filter({ hasText: "零星费用分类" }).locator(".t-select").click();
+  await page.locator(".t-select__dropdown:visible").getByText("非材料临时服务", { exact: true }).click();
   await page.getByRole("button", { name: "下一步" }).click();
-  await page.getByPlaceholder("请填写事由").fill("现场周转借款");
+  await page.getByPlaceholder("请填写事由").fill("现场零星服务");
   await page.getByPlaceholder("请填写申请金额").fill("1234.56");
   await page.getByRole("button", { name: "下一步" }).click();
-  await page.getByPlaceholder("请填写预计清账日期").click();
-  await page.locator(".t-date-picker__panel .t-date-picker__cell--now").click();
+  await drawer.locator('[data-field="payeeName"] input').fill("服务供应商");
   await page.getByRole("button", { name: "下一步" }).click();
   await page.getByRole("button", { name: "保存草稿" }).click();
 
-  await expect(page.getByRole("heading", { name: "借款申请" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "零星费用" })).toBeVisible();
   await expect.poll(() => posted).toHaveLength(1);
   expect(posted[0]).toMatchObject({
-    claimType: "loan",
+    claimType: "incidental_expense",
+    incidentalExpenseCategory: "temporary_service",
     companyEntityId: "company-1",
     projectId: "project-1",
     requestedAmountCents: "123456",
-    loanExpectedClearanceOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)
+    payeeName: "服务供应商"
   });
   await page.getByText("附件与证据", { exact: true }).click();
   await page.locator(".expense-claim-detail__attachments input[type=file]").setInputFiles({
-    name: "借款说明.pdf",
+    name: "服务说明.pdf",
     mimeType: "application/pdf",
     buffer: Buffer.from("expense-attachment")
   });
   await page.getByRole("button", { name: "上传并绑定附件" }).click();
   await expect.poll(() => attachments).toEqual(["expense-file-1"]);
-  await expect(page.getByRole("cell", { name: "借款说明.pdf", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "服务说明.pdf", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "提交审批" }).click();
   await page.getByRole("button", { name: "确认提交" }).click();
   await expect.poll(() => submitted).toEqual(["expense-claim-created"]);
@@ -81,7 +86,7 @@ test("费用工作台用创建选项和正式写入接口保存借款草稿后�
   await page.getByRole("button", { name: "提交办理" }).click();
   await page.getByRole("button", { name: "确认办理" }).click();
   await expect.poll(() => reviewed).toEqual(["expense-claim-created"]);
-  await expect(page.getByText("待放款", { exact: true })).toBeVisible();
+  await expect(page.getByText("待公司付款", { exact: true })).toBeVisible();
   await page.getByText("附件与证据", { exact: true }).click();
   await page.locator(".expense-claim-detail__attachments input[type=file]").setInputFiles({
     name: "审批后补充资料.pdf",
@@ -91,6 +96,31 @@ test("费用工作台用创建选项和正式写入接口保存借款草稿后�
   await page.getByRole("button", { name: "追加并绑定资料" }).click();
   await expect.poll(() => appendedEvidence).toEqual(["expense-file-1"]);
   await expect(page.getByRole("cell", { name: "后续追加资料", exact: true })).toBeVisible();
+});
+
+test("旧借款草稿显示历史附件且不再显示草稿操作", async ({ page }) => {
+  await mockExpenseClaimSession(page, []);
+  await page.route("**/api/expense-claims/historical-loan-draft", route => route.fulfill({
+    json: {
+      ...expenseClaim({ id: "historical-loan-draft", code: "JK-HISTORY-001", claimType: "loan", status: "draft", reason: "旧借款草稿" }),
+      canDeleteDraft: true, canEditReturnedDraft: true,
+      submittedAt: null, approvedAt: null, lines: [], loanDisbursements: [], loanRepayments: [],
+      attachments: [{
+        id: "historical-attachment", fileId: "historical-file", fileName: "旧借款资料.pdf", mimeType: "application/pdf",
+        category: "receipt_or_other", stage: "draft", fileStatus: "active", removedAt: null
+      }]
+    }
+  }));
+  await login(page);
+  await page.goto("/费用与报销/historical-loan-draft");
+  await expect(page.getByRole("heading", { name: "借款申请" })).toBeVisible();
+  for (const name of ["修改草稿", "删除草稿", "提交审批", "重新提交审批"]) {
+    await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);
+  }
+  await page.getByText("附件与证据", { exact: true }).click();
+  await expect(page.locator(".expense-claim-detail__attachment-table").getByText("旧借款资料.pdf", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "上传并绑定附件", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "移除", exact: true })).toHaveCount(0);
 });
 
 test("公司日常报销不选择事实证明人也可填写明细", async ({ page }) => {
@@ -112,7 +142,7 @@ test("公司日常报销不选择事实证明人也可填写明细", async ({ pa
   await page.route("**/api/expense-claims/selectable-purchase-batches?*", route => route.fulfill({ json: { batches: [] } }));
   await login(page);
   await page.goto("/费用与报销工作台");
-  await page.getByRole("button", { name: "新建费用报销 / 借款" }).click();
+  await page.getByRole("button", { name: "新建费用申请" }).click();
   await expect(page.getByText("事实证明人（选填）", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "下一步" }).click();
   await expect(page.getByText(/公司常用费用类别/)).toBeVisible();
@@ -561,7 +591,7 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
       return route.fulfill({
         status: 201,
         contentType: "application/json",
-        body: JSON.stringify({ id: "expense-claim-created", code: "JK-20260723-001", status: "draft", requestedAmountCents: "123456" })
+        body: JSON.stringify({ id: "expense-claim-created", code: "LXFY-20260723-001", status: "draft", requestedAmountCents: "123456" })
       });
     }
     const view = url.searchParams.get("view") ?? "all";
@@ -611,15 +641,15 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
   await page.route("**/api/expense-claims/expense-claim-created", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
-      ...expenseClaim({ id: "expense-claim-created", code: "JK-20260723-001", claimType: "loan", status: reviewed.length ? "approved_pending_disbursement" : submitted.length ? "approval_pending" : "draft", reason: "现场周转借款", requestedAmountCents: "123456" }),
+      ...expenseClaim({ id: "expense-claim-created", code: "LXFY-20260723-001", claimType: "incidental_expense", status: reviewed.length ? "approved_pending_payment" : submitted.length ? "approval_pending" : "draft", reason: "现场零星服务", requestedAmountCents: "123456" }),
       applicantPhoneSnapshot: null, proxyReason: null, factWitnessNameSnapshot: null,
       paymentMethod: "bank_transfer", payeeNameSnapshot: null, payeeAccountNameSnapshot: null, payeeBankNameSnapshot: null,
-      payeeBankAccountSnapshot: null, loanExpectedClearanceAt: "2026-07-23T00:00:00.000Z", submittedAt: null, approvedAt: null,
+      payeeBankAccountSnapshot: null, loanExpectedClearanceAt: null, submittedAt: null, approvedAt: null,
       approval: submitted.length && !reviewed.length ? { currentNodeName: "综合部主管", canReview: true, requiresSelfReviewConfirmation: false } : null,
       attachmentPermissions: { canAppendEvidence: appendEvidenceAllowed },
       attachments: [
         ...attached.map((fileId) => ({
-          id: "attachment-1", fileId, fileName: "借款说明.pdf", mimeType: "application/pdf", sizeBytes: 18,
+          id: "attachment-1", fileId, fileName: "服务说明.pdf", mimeType: "application/pdf", sizeBytes: 18,
           fileStatus: "active", category: "receipt_or_other", expenseCategory: null, stage: "draft",
           attachedByUserId: "expense-claim-canary", attachedByName: "费用金丝雀", frozenAt: null, removedAt: null,
           createdAt: "2026-07-23T10:00:00.000Z"
@@ -652,12 +682,12 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
   await page.route("**/api/expense-claims/expense-claim-created/approval", (route) => {
     reviewed.push("expense-claim-created");
     appendEvidenceAllowed = true;
-    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "expense-claim-created", status: "approved_pending_disbursement", completed: true }) });
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "expense-claim-created", status: "approved_pending_payment", completed: true }) });
   });
   await page.route(/\/api\/expense-claims\/expense-claim-created\/(draft|append)-attachment-file-uploads$/, route => route.fulfill({
     status: 201,
     contentType: "application/json",
-    body: JSON.stringify({ id: "expense-file-1", originalName: "借款说明.pdf", mimeType: "application/pdf", sizeBytes: 18 })
+    body: JSON.stringify({ id: "expense-file-1", originalName: "服务说明.pdf", mimeType: "application/pdf", sizeBytes: 18 })
   }));
   await page.route("**/api/expense-claims/expense-claim-created/attachments", (route) => {
     attached.push("expense-file-1");

@@ -83,7 +83,7 @@ test("桌面费用明细从粘贴事件批量录入两行并准确保存", async
     user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
   });
   await page.goto("/费用与报销工作台");
-  await page.getByRole("button", { name: "新建费用报销 / 借款", exact: true }).click();
+  await page.getByRole("button", { name: "新建费用申请", exact: true }).click();
   const drawer = page.locator(".t-drawer");
   await drawer.getByText("借款申请", { exact: true }).click();
   await drawer.getByText("费用报销", { exact: true }).click();
@@ -122,7 +122,7 @@ test("报销表格或移动卡片保存一分钱明细并经真实接口回读",
     user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
   });
   await page.goto("/费用与报销工作台");
-  await page.getByRole("button", { name: "新建费用报销 / 借款", exact: true }).click();
+  await page.getByRole("button", { name: "新建费用申请", exact: true }).click();
   const drawer = page.locator(".t-drawer");
   await drawer.getByText("借款申请", { exact: true }).click();
   await drawer.getByText("费用报销", { exact: true }).click();
@@ -173,20 +173,24 @@ test("报销表格或移动卡片保存一分钱明细并经真实接口回读",
   expect(await history.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 });
 
-test("借款先保存草稿及附件，仅明确提交后冻结审批内容", async ({ page, request }) => {
+test("零星费用先保存草稿及附件，仅明确提交后冻结审批内容", async ({ page, request }) => {
   const session = JSON.parse(process.env.POL115_BROWSER_SESSION!);
   const api = process.env.POL115_API_URL!;
   await page.addInitScript((value) => localStorage.setItem("jiangkong-web-admin-auth", JSON.stringify(value)), {
     user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
   });
   await page.goto("/费用与报销工作台");
-  await page.getByRole("button", { name: "新建费用报销 / 借款", exact: true }).click();
-  await page.locator(".t-drawer").getByText("借款申请", { exact: true }).click();
+  await page.getByRole("button", { name: "新建费用申请", exact: true }).click();
+  const drawer = page.locator(".t-drawer");
+  await expect(drawer.getByText("借款申请", { exact: true })).toHaveCount(0);
+  await drawer.getByText("零星费用", { exact: true }).click();
+  await drawer.locator(".t-form__item").filter({ hasText: "零星费用分类" }).locator(".t-select").click();
+  await page.locator(".t-select__dropdown:visible").getByText("非材料临时服务", { exact: true }).click();
   await selectBusinessProject(page);
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   const form = page.getByRole("region", { name: "费用申请单条业务表单" });
   await expect(form).toBeVisible();
-  await form.locator('[data-field="reason"] textarea').fill("真实浏览器项目借款");
+  await form.locator('[data-field="reason"] textarea').fill("真实浏览器零星费用");
   await form.locator('[data-field="requestedAmountYuan"] input').fill("0.01");
   expect(await form.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await page.getByRole("button", { name: "下一步", exact: true }).click();
@@ -194,8 +198,6 @@ test("借款先保存草稿及附件，仅明确提交后冻结审批内容", as
   await expect(payeeForm).toBeVisible();
   await payeeForm.locator('[data-field="payeeName"] input').fill("合成收款人");
   await payeeForm.locator('[data-field="payeeBankAccount"] input').fill("000012340001");
-  await payeeForm.locator('[data-field="loanExpectedClearanceOn"] input').click();
-  await page.locator(".t-date-picker__cell--now").click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   const saved = page.waitForResponse((response) => response.url().endsWith("/expense-claims") && response.request().method() === "POST");
   await page.getByRole("button", { name: "保存草稿", exact: true }).click();
@@ -204,7 +206,7 @@ test("借款先保存草稿及附件，仅明确提交后冻结审批内容", as
   const claim = await response.json();
   const detail = await request.get(`${api}/expense-claims/${claim.id}`, { headers: { authorization: `Bearer ${session.tokens.accessToken}` } });
   expect(detail.ok()).toBe(true);
-  expect(await detail.json()).toMatchObject({ status: "draft", requestedAmountCents: "1", reason: "真实浏览器项目借款", payeeNameSnapshot: "合成收款人", payeeBankAccountSnapshot: "000012340001", entrySnapshots: [] });
+  expect(await detail.json()).toMatchObject({ status: "draft", requestedAmountCents: "1", reason: "真实浏览器零星费用", payeeNameSnapshot: "合成收款人", payeeBankAccountSnapshot: "000012340001", entrySnapshots: [] });
   await page.goto(`/费用与报销/${claim.id}`);
   await page.getByText("附件与证据", { exact: true }).click();
   await page.locator('.expense-claim-detail__attachments input[type="file"]').setInputFiles({
@@ -235,10 +237,10 @@ test("借款先保存草稿及附件，仅明确提交后冻结审批内容", as
   const frozenDetail = await frozen.json();
   expect(frozenDetail).toMatchObject({ status: "approval_pending", requestedAmountCents: "1", attachments: [{ fileName: "合成费用凭证.png", stage: "approval_frozen" }] });
   expect(frozenDetail.entrySnapshots).toHaveLength(1);
-  expect(frozenDetail.entrySnapshots[0]).toMatchObject({ valuesSnapshot: { reason: "真实浏览器项目借款", requestedAmountCents: "1", payeeBankAccount: "000012340001" } });
+  expect(frozenDetail.entrySnapshots[0]).toMatchObject({ valuesSnapshot: { reason: "真实浏览器零星费用", requestedAmountCents: "1", payeeBankAccount: "000012340001" } });
   await page.getByText("提交记录", { exact: true }).click();
   const history = page.getByRole("region", { name: "费用申请提交记录" });
-  await expect(history.getByText("真实浏览器项目借款", { exact: true })).toBeVisible();
+  await expect(history.getByText("真实浏览器零星费用", { exact: true })).toBeVisible();
   await expect(history.getByText("000012340001", { exact: true })).toBeVisible();
   await expect(history.getByText("0.01 元", { exact: true })).toBeVisible();
   await expect(history).not.toContainText(frozenDetail.projectId);
@@ -255,7 +257,7 @@ test("零星费用选择既有分类后保存并明确提交，桌面和手机�
     user: session.user, accessToken: session.tokens.accessToken, refreshToken: session.tokens.refreshToken
   });
   await page.goto("/费用与报销工作台");
-  await page.getByRole("button", { name: "新建费用报销 / 借款", exact: true }).click();
+  await page.getByRole("button", { name: "新建费用申请", exact: true }).click();
   const drawer = page.locator(".t-drawer");
   await drawer.getByText("零星费用", { exact: true }).click();
   const categoryField = drawer.locator(".t-form__item").filter({ hasText: "零星费用分类" });
@@ -294,7 +296,7 @@ test("零星费用选择既有分类后保存并明确提交，桌面和手机�
     localStorage.setItem(key, JSON.stringify(saved));
   });
   await page.reload();
-  await page.getByRole("button", { name: "新建费用报销 / 借款", exact: true }).click();
+  await page.getByRole("button", { name: "新建费用申请", exact: true }).click();
   await expect(drawer.getByRole("button", { name: "保存草稿", exact: true })).toBeVisible();
   await drawer.getByRole("button", { name: "保存草稿", exact: true }).click();
   await expect(payeeForm).toBeVisible();
