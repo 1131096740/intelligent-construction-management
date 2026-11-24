@@ -113,8 +113,8 @@ const availableProjects = computed(() => options.value?.projects.filter((project
 const projectOptions = computed(() => [...(form.claimType === "reimbursement" ? [{ label: "非项目报销", value: "" }] : []), ...availableProjects.value.map((item) => ({ label: `${item.code} · ${item.name}`, value: item.id }))]);
 const applicantOptions = computed(() => options.value?.applicantUsers.map((item) => ({ label: item.name, value: item.id })) ?? []);
 const witnessOptions = computed(() => options.value?.factWitnessUsers.map((item) => ({ label: item.name, value: item.id })) ?? []);
-const isProject = computed(() => Boolean(form.projectId));
-const needsWitness = computed(() => form.claimType === "reimbursement" && !isProject.value);
+const showFactWitness = computed(() => form.claimType === "reimbursement" && !form.projectId);
+const requiresFactWitness = computed(() => showFactWitness.value && Boolean(form.actualPurchaseBatchId));
 const payeeNameError = computed(() => incidentalPayeeError() && error.value === incidentalPayeeError() ? error.value : "");
 const lineTotalCents = computed(() => {
   try {
@@ -267,7 +267,7 @@ function validateCurrentStep(): string {
     if (form.claimType === "loan" && !form.projectId) return "借款申请必须选择项目";
     if (form.claimType === "incidental_expense" && !form.projectId) return "零星费用申请必须选择项目";
     if (form.claimType === "incidental_expense" && !form.incidentalExpenseCategory) return "请选择零星费用分类";
-    if (needsWitness.value && !form.factWitnessUserId) return "非项目报销必须选择事实证明人";
+    if (requiresFactWitness.value && !form.factWitnessUserId) return "非项目报销必须选择事实证明人";
     if (form.applicantMode === "no_account" && (!form.applicantName.trim() || !form.applicantPhone.trim())) return "请填写无账号人员的姓名和电话";
     if (form.applicantMode !== "no_account" && !form.applicantUserId) return "请选择报销人或借款人";
   }
@@ -307,7 +307,7 @@ function payload(): CreateExpenseClaimPayload {
     incidentalExpenseCategory: form.claimType === "incidental_expense" && form.incidentalExpenseCategory ? form.incidentalExpenseCategory : undefined,
     companyEntityId: form.companyEntityId,
     projectId: form.projectId || undefined,
-    factWitnessUserId: needsWitness.value ? form.factWitnessUserId : undefined,
+    factWitnessUserId: showFactWitness.value ? form.factWitnessUserId || undefined : undefined,
     applicantUserId: form.applicantMode === "no_account" ? undefined : form.applicantMode === "self" ? options.value?.selfApplicantUserId : form.applicantUserId,
     applicantName: form.applicantMode === "no_account" ? form.applicantName.trim() : undefined,
     applicantPhone: form.applicantMode === "no_account" ? form.applicantPhone.trim() : undefined,
@@ -509,12 +509,13 @@ function finishRecovery() {
                 />
               </t-form-item>
               <t-form-item
-                v-if="needsWitness"
-                label="事实证明人"
-                required-mark
+                v-if="showFactWitness"
+                :label="requiresFactWitness ? '事实证明人' : '事实证明人（选填）'"
+                :required-mark="requiresFactWitness"
               >
                 <t-select
                   v-model="form.factWitnessUserId"
+                  :clearable="!requiresFactWitness"
                   :options="witnessOptions"
                   placeholder="选择系统内事实证明人"
                 />

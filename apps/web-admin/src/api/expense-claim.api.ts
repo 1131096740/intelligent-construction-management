@@ -103,7 +103,13 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
   loanDisbursements: Array<{ id: string; amountCents: string; occurredAt: string; paymentMethod: string | null; voucherFileId: string | null; note: string | null }>;
   loanRepayments: Array<{ id: string; amountCents: string; repaidAt: string; paymentMethod: string; voucherFileId: string | null; status: string; confirmationNote: string | null; reversalReason: string | null; createdAt: string }>;
   finalPaymentPdf: { id: string; fileId: string; createdAt: string } | null;
-  approval: { currentNodeName: string; canReview: boolean; requiresSelfReviewConfirmation: boolean } | null;
+  approval: {
+    currentNodeName: string;
+    canReview: boolean;
+    requiresSelfReviewConfirmation: boolean;
+    approvalInstanceId?: string;
+    actionableDuties?: Array<{ index: number; name: string }>;
+  } | null;
 }
 
 export interface ExpenseClaimSourcePurchase {
@@ -404,7 +410,14 @@ export async function submitExpenseClaim(claimId: string) {
   return response.json() as Promise<{ id: string; status: string; submittedAt: string }>;
 }
 
-export async function reviewExpenseClaim(claimId: string, body: { decision: "approve" | "reject"; comment?: string; selfReviewReason?: string; confirmationPassword?: string }) {
+export async function reviewExpenseClaim(claimId: string, body: {
+  decision: "approve" | "reject";
+  comment?: string;
+  selfReviewReason?: string;
+  confirmationPassword?: string;
+  approvalInstanceId?: string;
+  approvalDutyIndex?: number;
+}) {
   const response = await apiFetch(`/expense-claims/${encodeURIComponent(claimId)}/approval`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

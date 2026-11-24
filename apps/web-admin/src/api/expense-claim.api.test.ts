@@ -127,6 +127,24 @@ describe("expense claim API", () => {
     expect(mockApiFetch).toHaveBeenCalledWith("/expense-claims/claim%2F1/approval", expect.objectContaining({ method: "POST", body: JSON.stringify({ decision: "reject", comment: "请补充依据" }) }));
   });
 
+  it("submits an exact parallel round and duty while retaining self-review confirmation", async () => {
+    mockApiFetch.mockResolvedValue(new Response(JSON.stringify({ id: "claim-1", status: "approval_pending", completed: false }), { status: 201 }));
+    const payload = {
+      decision: "approve" as const,
+      approvalInstanceId: "round-1",
+      approvalDutyIndex: 0,
+      selfReviewReason: "本人负责该项费用的复核",
+      confirmationPassword: "fixture-confirmation"
+    };
+
+    await reviewExpenseClaim("claim/1", payload);
+
+    expect(mockApiFetch).toHaveBeenCalledWith("/expense-claims/claim%2F1/approval", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify(payload)
+    }));
+  });
+
   it("binds and removes draft attachments through encoded, server-owned expense actions", async () => {
     mockApiFetch
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: "attachment-1" }), { status: 201 }))

@@ -1,9 +1,10 @@
+import { isPureExpenseReimbursement, loadExpenseApprovalRoleScopes, resolveExpenseParallelDutyIdentity } from "../../expense-claim/expense-claim-parallel-approval";
 import { isLegacyContractParallelRound } from "../../contract/contract-approval-cutover";
 import { isOrdinaryPaymentParallelRound, loadOrdinaryPaymentDelegationPrincipals, resolveOrdinaryPaymentDuty } from "../../payment/ordinary-payment-parallel";
 import { matchesOwnFundReviewReceipt, type FundReviewDecision } from "../../fund-account/fund-account-receipt";
 import { FUND_REVIEW_ACTION, resolveFundReviewIdentity } from "../../fund-account/fund-account-duty";
 import { scopedSpotDutyNodeIndexes } from "../../approval/spot-approval-duty-access";
-import { isParallelApprovalRound } from "../../approval/parallel-approval-protocol";
+import { activeApprovalNodeIndexes, hasVersionedApprovalNodes, isParallelApprovalRound } from "../../approval/parallel-approval-protocol";
 import { contractParallelDutyIdentity, contractRoundSubmissionSnapshot } from "../../contract/contract-parallel-duty-access";
 import {
   CanActivate,
@@ -383,6 +384,31 @@ export class PermissionGuard implements CanActivate {
       select: { id: true, status: true, flowType: true, applicantUserId: true, frozenNodes: true, currentNodeIndex: true }
     });
     if (!instance || !Array.isArray(instance.frozenNodes)) return null;
+    if (requiredAction === "expense_claim.approve" && target.businessType === "expense_claim" &&
+        hasVersionedApprovalNodes(instance.frozenNodes)) {
+      if (!isParallelApprovalRound(instance.frozenNodes) || instance.flowType !== "expense_claim.approve") return false;
+      const [claim, actor] = await Promise.all([
+        this.prisma.expenseClaim.findUnique({
+          where: { id: target.businessId },
+          select: { claimType: true, status: true, projectId: true, approvalInstanceId: true, generalProcurementId: true, actualPurchaseBatchId: true }
+        }),
+        this.prisma.user.findUnique({ where: { id: userId }, select: { isActive: true } })
+      ]);
+      if (!claim || !actor?.isActive || !isPureExpenseReimbursement(claim) ||
+          claim.status !== "approval_pending" || claim.approvalInstanceId !== instance.id) return false;
+      const scopes = await loadExpenseApprovalRoleScopes(this.prisma, userId, claim.projectId);
+      const index = request.body?.approvalDutyIndex;
+      const current = request.body?.approvalInstanceId === instance.id && typeof index === "number" &&
+        activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex).includes(index);
+      // A currently authorized signer may receive the service's explicit stale-coordinate response.
+      // The service repeats the identity check for the exact pending duty under the write lock.
+      const nodes = current
+        ? [instance.frozenNodes[index]]
+        : instance.frozenNodes.map(node => ({ ...node, approvedRoleKeys: [] }));
+      return nodes.some(node => Boolean(resolveExpenseParallelDutyIdentity({
+        node, actorUserId: userId, actorRoleScopes: scopes
+      })));
+    }
     if (target.businessType === "contract_version" && isParallelApprovalRound(instance.frozenNodes)) {
       const index = request.body?.expectedNodeIndex;
       if (!projectId || typeof index !== "number" || !Number.isInteger(index) || index < 0 || index >= instance.frozenNodes.length || request.body?.expectedApprovalInstanceId !== instance.id || instance.flowType !== "contract.approve") return false;

@@ -12,7 +12,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
   const tx = {
     companyEntity: { findFirst: jest.fn(), findMany: jest.fn() },
     project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }), findMany: jest.fn(), findUnique: jest.fn() },
-    userPosition: { findMany: jest.fn().mockResolvedValue(approvalAssignments.length ? approvalAssignments.map(({ userId, positionId }) => ({ userId, positionId })) : (options?.roles ?? []).map((_, index) => ({ positionId: `position-${index}` }))) },
+    userPosition: { findMany: jest.fn().mockResolvedValue(approvalAssignments.length ? approvalAssignments.map(({ userId, positionId, role }) => ({ userId, positionId, projectId: role === "project_manager" ? "project-1" : null })) : (options?.roles ?? []).map((_, index) => ({ positionId: `position-${index}`, projectId: null }))) },
     projectMember: { findMany: jest.fn().mockResolvedValue([]) },
     projectRosterMember: { findMany: jest.fn().mockResolvedValue([{ projectId: "project-1" }]) },
     position: { findMany: jest.fn().mockResolvedValue(approvalAssignments.length ? approvalAssignments.map(({ positionId, role }) => ({ id: positionId, key: role })) : (options?.roles ?? []).map((key, index) => ({ id: `position-${index}`, key })) ) },
@@ -960,6 +960,42 @@ describe("ExpenseClaimService", () => {
       data: expect.objectContaining({ action: "approve", approvedRoleKey: "comprehensive_director", representedUserId: "comp-1" })
     });
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "expense_claim.approval.approve" }));
+  });
+
+  it("lets finance sign a parallel reimbursement before the first frozen duty", async () => {
+    const claim = { id: "claim-1", claimType: "reimbursement", status: "approval_pending", projectId: "project-1", approvalInstanceId: "approval-1" };
+    const instance = {
+      id: "approval-1",
+      currentNodeIndex: 0,
+      applicantUserId: "applicant",
+      frozenNodes: [
+        { name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"], candidateUserIdsByRole: { comprehensive_director: ["comp"] } },
+        { name: "财务主管", mode: "any", roleKeys: ["finance_director"], candidateUserIdsByRole: { finance_director: ["finance"] } }
+      ].map(node => ({ ...node, protocolVersion: 1, executionMode: "parallel" }))
+    };
+    const { service, tx } = createHarness({ roles: ["finance_director"] });
+    tx.$queryRaw
+      .mockResolvedValueOnce([claim])
+      .mockResolvedValueOnce([instance])
+      .mockResolvedValueOnce([{ id: "finance", isActive: true, name: "财务人员" }])
+      .mockResolvedValueOnce([{ id: "signature", fileId: "file", contentSha256: "a".repeat(64) }])
+      .mockResolvedValueOnce([{ id: "file", contentSha256: "a".repeat(64), storageStatus: "active" }]);
+    tx.expenseClaim.update.mockResolvedValue({ id: claim.id, status: "approval_pending" });
+    const review = { decision: "approve" as const, approvalInstanceId: "approval-1", approvalDutyIndex: 1 };
+
+    await expect(service.review(claim.id, "finance", review)).resolves.toEqual({
+      id: claim.id, status: "approval_pending", completed: false
+    });
+    expect(tx.approvalInstance.update).toHaveBeenCalledWith({
+      where: { id: instance.id },
+      data: expect.objectContaining({
+        currentNodeIndex: 0,
+        frozenNodes: [instance.frozenNodes[0], { ...instance.frozenNodes[1], approvedRoleKeys: ["finance_director"] }]
+      })
+    });
+    expect(tx.approvalActionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ approvedRoleKey: "finance_director", signatureVersionIdSnapshot: "signature" })
+    });
   });
 
   it("rejects a same-role user who was not frozen into the current node", async () => {

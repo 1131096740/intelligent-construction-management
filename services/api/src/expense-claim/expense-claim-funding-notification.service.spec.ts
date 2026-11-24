@@ -39,7 +39,7 @@ it("已部分放款仍可收到原待办，失去岗位的人取消，模拟超�
   jest.mocked(loadEffectiveProjectApprovalAssignments).mockImplementation(async (_tx, _project, _roles, userId) =>
     userId === "former" ? [] : userId ? [assignment(userId)] : [assignment("current"), assignment("former")]);
   const claim = { id: "loan", code: "JK-01", applicantNameSnapshot: "借款人", companyEntityNameSnapshot: "费用承担公司", status: "approved_pending_disbursement", claimType: "loan", projectId: "project", requestedAmountCents: 100n, companyPayableAmountCents: 100n, fundedAmountCents: 0n } as ExpenseClaim;
-  type Row = { id: string; action: string; metadata: { intentId?: string; recipientId?: string } };
+  type Row = { id: string; action: string; businessType: string; metadata: { intentId?: string; recipientId?: string } };
   const records: Row[] = [];
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([]),
@@ -55,7 +55,8 @@ it("已部分放款仍可收到原待办，失去岗位的人取消，模拟超�
       })
     }
   };
-  const prisma = { ...tx, $queryRaw: jest.fn(async () => records.filter(row => row.action === "queued")),
+  const prisma = { ...tx, $queryRaw: jest.fn(async (query: Prisma.Sql) =>
+    records.filter(row => row.action === "queued" && row.businessType === query.values[0])),
     $transaction: async (run: (client: typeof tx) => Promise<unknown>) => run(tx) };
   const send = jest.fn().mockRejectedValue(new Error("合成供应商超时"));
   const service = new ExpenseClaimFundingNotificationService(prisma as unknown as PrismaService,
@@ -72,4 +73,30 @@ it("已部分放款仍可收到原待办，失去岗位的人取消，模拟超�
   const former = records.find(row => row.metadata.recipientId === "former");
   expect(records.filter(row => row.metadata.intentId === current?.id).map(row => row.action)).toEqual(["dispatch_claimed", "unknown"]);
   expect(records.filter(row => row.metadata.intentId === former?.id).map(row => row.action)).toEqual(["cancelled"]);
+});
+
+it("uses newly configured current-scope recipients and omits completed historical duties", async () => {
+  const auditLog = { createMany: jest.fn().mockResolvedValue({ count: 2 }) };
+  const tx = {
+    position: { findMany: jest.fn().mockResolvedValue([{ id: "finance-role", key: "finance_director" }]) },
+    userPosition: { findMany: jest.fn().mockResolvedValue([{ userId: "new-finance", positionId: "finance-role", projectId: null }]) },
+    projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+    user: { findMany: jest.fn().mockResolvedValue([{ id: "new-finance" }]) },
+    auditLog
+  };
+  const service = new ExpenseClaimFundingNotificationService({} as PrismaService, {} as ApprovalSmsService);
+  const claim = { id: "expense", status: "approval_pending", approvalInstanceId: "round", projectId: "project" };
+  const round = { id: "round", frozenNodes: [
+    { roleKeys: ["comprehensive_director"], approvedRoleKeys: ["comprehensive_director"], candidateUserIds: ["already-signed"] },
+    { roleKeys: ["finance_director"], candidatePolicy: "current_role_scope", roleScopesByRole: { finance_director: "global" }, candidateUserIds: [] },
+    { roleKeys: ["project_manager"], candidateUserIds: ["frozen-manager"] }
+  ].map(node => ({ ...node, protocolVersion: 1, executionMode: "parallel", mode: "any" })) };
+  const client = tx as unknown as Prisma.TransactionClient;
+  await expect(service.queueApprovalDuties(client, claim, round, "submitter")).resolves.toBe(true);
+  await service.queueApprovalDuties(client, claim, round, "submitter");
+  expect(auditLog.createMany.mock.calls[0]).toEqual(auditLog.createMany.mock.calls[1]);
+  expect(auditLog.createMany).toHaveBeenCalledWith({ skipDuplicates: true, data: [
+    expect.objectContaining({ metadata: { recipientId: "new-finance", approvalInstanceId: "round", approvalDutyIndex: 1 } }),
+    expect.objectContaining({ metadata: { recipientId: "frozen-manager", approvalInstanceId: "round", approvalDutyIndex: 2 } })
+  ] });
 });

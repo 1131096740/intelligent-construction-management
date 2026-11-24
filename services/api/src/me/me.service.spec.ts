@@ -2343,6 +2343,62 @@ describe("MeService", () => {
     expect(failed).toHaveBeenCalledWith(["project-1"], expect.any(Map), true);
   });
 
+  it("公司日常报销为兼岗本人保留每组待办，停用岗位及非当前轮不再出现", async () => {
+    const updatedAt = new Date("2026-11-24T03:00:00Z");
+    const instance = {
+      id: "expense-round", businessType: "expense_claim", businessId: "claim-1", flowType: "expense_claim.approve",
+      status: "in_progress", currentNodeIndex: 0, applicantUserId: "applicant-1", createdAt: updatedAt, updatedAt,
+      frozenNodes: [
+        { name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"], protocolVersion: 1, executionMode: "parallel",
+          approvedRoleKeys: [] as string[], roleScopesByRole: { comprehensive_director: "global" }, candidateUserIdsByRole: { comprehensive_director: ["actor-1"] } },
+        { name: "财务主管", mode: "any", roleKeys: ["finance_director"], protocolVersion: 1, executionMode: "parallel",
+          candidatePolicy: "current_role_scope", roleScopesByRole: { finance_director: "global" }, candidateUserIdsByRole: { finance_director: [] } },
+        { name: "负责人", mode: "any", roleKeys: ["general_manager"], protocolVersion: 1, executionMode: "parallel",
+          roleScopesByRole: { general_manager: "global" }, candidateUserIdsByRole: { general_manager: ["other-1"] } }
+      ]
+    };
+    const claim = {
+      id: "claim-1", projectId: null, code: "BX-001", reason: "差旅费",
+      claimType: "reimbursement", generalProcurementId: null, actualPurchaseBatchId: null, status: "approval_pending",
+      approvalInstanceId: instance.id, requestedAmountCents: 100n
+    };
+    const globalRoles = [{ positionId: "position-1" }, { positionId: "position-2" }];
+    const prisma = {
+      $transaction: async <T>(run: (tx: unknown) => Promise<T>): Promise<T> => run(prisma),
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      userPosition: { findMany: jest.fn(({ where }) => where.projectId === null ? globalRoles : []) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      project: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn(async ({ where }) => where.id.in.map((id: string) => ({
+        id, key: id === "position-1" ? "comprehensive_director" : "finance_director"
+      }))) },
+      contractTakeover: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn() },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn() },
+      approvalActionLog: { findMany: jest.fn().mockResolvedValue([]) },
+      approvalInstance: { findMany: jest.fn(({ where }) => where.applicantUserId ? [] : [instance]) },
+      expenseClaim: { findMany: jest.fn().mockResolvedValue([claim]) },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: "actor-1", isActive: true }), findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const service = new MeService(prisma as never, {} as never);
+    const pending = async () => (await service.getWorkItems("actor-1")).approvalCenter.pendingApproval;
+
+    await expect(pending()).resolves.toEqual([expect.objectContaining({
+      id: "approval:expense-round", projectName: "公司日常", currentNode: "综合部主管、财务主管",
+      businessType: "expense_claim", targetPath: "/费用与报销/claim-1", canHandle: true, actionGroup: "approval",
+      parallelCompletion: { completed: 0, total: 3 }
+    })]);
+    await expect(service.getWorkbenchSummary("actor-1")).resolves.toMatchObject({
+      cards: expect.arrayContaining([expect.objectContaining({ id: "approval_todo", count: 1, targetPath: "/审批中心" })])
+    });
+    instance.frozenNodes[0].approvedRoleKeys = ["comprehensive_director"];
+    await expect(pending()).resolves.toEqual([expect.objectContaining({ currentNode: "财务主管", parallelCompletion: { completed: 1, total: 3 } })]);
+    instance.frozenNodes[0].approvedRoleKeys = [];
+    globalRoles.pop();
+    await expect(pending()).resolves.toEqual([expect.objectContaining({ currentNode: "综合部主管" })]);
+    claim.approvalInstanceId = "different-round";
+    await expect(pending()).resolves.toEqual([]);
+  });
+
   it("审批中心委托并入待审批、逾期作为筛选，摘要显示发起人、状态和并联完成数", async () => {
     const updatedAt = new Date(Date.now() - 72 * 3_600_000);
     const instance = {

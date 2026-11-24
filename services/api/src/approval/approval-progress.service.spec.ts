@@ -659,6 +659,57 @@ it('60秒由待办职责共享，其他并联职责可独立催办', async () =>
   ]);
 });
 
+it('纯报销按每组职责催办，已失去的兼岗职责不再出现在待办人中', async () => {
+  const { service, instance, db, sms } = fixture();
+  db.expenseClaim.findUnique.mockResolvedValue({
+    projectId: 'project', code: 'BX-001', applicantUserId: 'owner', handledByUserId: 'owner',
+    claimType: 'reimbursement', generalProcurementId: null, actualPurchaseBatchId: null, status: 'approval_pending', approvalInstanceId: 'flow'
+  } as never);
+  instance.frozenNodes = [
+    { name: '综合部主管', mode: 'any', roleKeys: ['comprehensive_director'], protocolVersion: 1, executionMode: 'parallel',
+      candidateUserIdsByRole: { comprehensive_director: ['first'] } },
+    { name: '项目经理', mode: 'any', roleKeys: ['project_manager'], protocolVersion: 1, executionMode: 'parallel',
+      roleScopesByRole: { project_manager: 'project' }, candidateUserIdsByRole: { project_manager: ['first', 'later'] } }
+  ];
+  const commonAssignments = [{ userId: 'first', positionId: 'p1', projectId: null }, { userId: 'later', positionId: 'p2', projectId: 'project' }];
+  db.userPosition.findMany.mockResolvedValue([...commonAssignments, { userId: 'first', positionId: 'p2', projectId: 'project' }]);
+  const before = await service.detail('flow', 'owner');
+  expect(before.nodes.map(node => node.pending.map(user => user.id))).toEqual([['first'], ['first', 'later']]);
+  db.userPosition.findMany.mockResolvedValue([...commonAssignments, { userId: 'first', positionId: 'p2', projectId: null }]);
+  const progress = await service.detail('flow', 'owner');
+  expect(progress.pendingRecipients).toEqual(before.pendingRecipients);
+  expect(progress.nodes.map(node => node.pending.map(user => user.id))).toEqual([['first'], ['later']]);
+  await expect(service.remind('flow', 'owner', requestId, before.reminderToken, ['first'])).rejects.toThrow('待审批人已变化');
+  expect(sms.send).not.toHaveBeenCalled();
+  await service.remind('flow', 'owner', requestId, progress.reminderToken, ['first']);
+  expect(sms.send.mock.calls).toEqual([['13800000002', '费用审批', '综合部主管', 'BX-001']]);
+});
+
+it('并联报销缺岗补齐后才给新职责人办理权，轮次失效后关闭办理及催办', async () => {
+  const { service, instance, db } = fixture();
+  const claim = {
+    projectId: 'project', code: 'BX-001', applicantUserId: 'owner', handledByUserId: 'owner',
+    claimType: 'reimbursement', generalProcurementId: null, actualPurchaseBatchId: null,
+    status: 'approval_pending', approvalInstanceId: 'flow'
+  };
+  db.expenseClaim.findUnique.mockResolvedValue(claim as never);
+  instance.frozenNodes = [
+    { name: '项目经理', mode: 'any', roleKeys: ['project_manager'], protocolVersion: 1, executionMode: 'parallel',
+      candidatePolicy: 'current_role_scope', roleScopesByRole: { project_manager: 'project' }, candidateUserIdsByRole: { project_manager: [] } } as FrozenApprovalNode
+  ];
+  db.userPosition.findMany.mockResolvedValue([]);
+  expect((await service.detail('flow', 'owner')).nodes[0]).toMatchObject({ status: '待配置', pending: [] });
+  await expect(service.detail('flow', 'later')).rejects.toThrow('无权查看');
+
+  db.userPosition.findMany.mockResolvedValue([{ userId: 'later', positionId: 'p2', projectId: 'project' }]);
+  const active = await service.detail('flow', 'later');
+  expect(active.canHandle).toBe(true);
+  expect(active.nodes[0].pending.map(user => user.id)).toEqual(['later']);
+  claim.approvalInstanceId = 'new-round';
+  expect(await service.detail('flow', 'owner')).toMatchObject({ canHandle: false, canRemind: false, pendingRecipients: [] });
+  await expect(service.detail('flow', 'later')).rejects.toThrow('无权查看');
+});
+
 it('并联轮所有职责同时展示待办，缺岗补齐后只唤醒未办职责', async () => {
   const { service, instance } = fixture();
   instance.frozenNodes = [

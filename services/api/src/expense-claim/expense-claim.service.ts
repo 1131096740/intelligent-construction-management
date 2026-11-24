@@ -1,3 +1,6 @@
+import { migrateLegacyExpenseApprovalRound } from "./expense-claim-approval-cutover";
+import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
+import { EXPENSE_CURRENT_ROLE_SCOPE, isPureExpenseReimbursement, loadExpenseApprovalRoleScopes, resolveExpenseParallelDutyIdentity } from "./expense-claim-parallel-approval";
 import { ExpenseClaimFundingNotificationService } from "./expense-claim-funding-notification.service";
 import { ActualPurchaseBatchService } from "../actual-purchase/actual-purchase-batch.service";
 import { prepareProcurementPayment } from "../general-procurement/general-procurement-payment";
@@ -8,6 +11,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Inject, Inj
 import { Prisma } from "@prisma/client";
 import { GLOBAL_BUSINESS_ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 import { resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../approval/approval-review-identity";
+import { activeApprovalNodeIndexes, hasVersionedApprovalNodes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import { ApprovalProgressService } from "../approval/approval-progress.service";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import { snapshotApprovalSignature , withApprovalIdentity } from "../approval/approval-signature-snapshot";
@@ -68,6 +72,7 @@ type ExpenseClaimApprovalNode = FrozenApprovalNode & {
   candidateUserIds: string[];
   candidateUserIdsByRole: Partial<Record<RoleKey, string[]>>;
   approvedRoleKeys?: RoleKey[];
+  candidatePolicy?: string;
 };
 
 const COMPREHENSIVE_ROLE: RoleKey = "comprehensive_director";
@@ -104,7 +109,8 @@ export class ExpenseClaimService {
       missingOperatingSourceReplayService(),
     @Optional() private readonly approvalProgress?: ApprovalProgressService,
     @Optional() private readonly fundingNotifications?: ExpenseClaimFundingNotificationService,
-    @Optional() private readonly actualBatches?: ActualPurchaseBatchService
+    @Optional() private readonly actualBatches?: ActualPurchaseBatchService,
+    @Optional() private readonly writeFreeze: OperationalWriteFreezeService = new OperationalWriteFreezeService()
   ) {}
 
   async createOptions(actorUserId: string) {
@@ -616,7 +622,7 @@ export class ExpenseClaimService {
     const claim = await this.prisma.expenseClaim.findFirst({
       where: { id: claimId },
       select: {
-        generalProcurementId: true, actualPurchaseBatchId: true, id: true, code: true, claimType: true, incidentalExpenseCategory: true, status: true, projectId: true, applicantUserId: true, handledByUserId: true, companyEntityId: true, companyEntityNameSnapshot: true,
+        generalProcurementId: true, actualPurchaseBatchId: true, id: true, code: true, claimType: true, incidentalExpenseCategory: true, status: true, projectId: true, applicantUserId: true, handledByUserId: true, companyEntityId: true, companyEntityNameSnapshot: true, approvalInstanceId: true,
         paymentSubjectCompanyEntityId: true, paymentSubjectNameSnapshot: true, paymentSubjectAdjustmentReason: true, paymentSubjectAdjustedAt: true, paymentSubjectAdjustedByUserId: true, paymentSubjectAdjustedByRoleKey: true,
         applicantNameSnapshot: true, applicantPhoneSnapshot: true, handledByNameSnapshot: true, proxyReason: true,
         factWitnessNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true,
@@ -628,18 +634,32 @@ export class ExpenseClaimService {
     if (!claim) throw new NotFoundException("费用申请不存在或当前账号无权读取");
     const instance = claim.status === "approval_pending"
       ? await this.prisma.approvalInstance.findFirst({
-        where: { businessType: "expense_claim", businessId: claim.id, status: "in_progress" },
+        where: { businessType: "expense_claim", businessId: claim.id, flowType: "expense_claim.approve", status: "in_progress" },
         orderBy: { createdAt: "desc" },
-        select: { currentNodeIndex: true, frozenNodes: true, applicantUserId: true }
+        select: { id: true, currentNodeIndex: true, frozenNodes: true, applicantUserId: true }
       })
       : null;
-    const node = instance
-      ? (instance.frozenNodes as unknown as ExpenseClaimApprovalNode[])[instance.currentNodeIndex] ?? null
-      : null;
-    const roles = await this.loadRoleKeys(this.prisma, actorUserId, claim.projectId ?? undefined);
-    const identity = node
-      ? resolveApprovalReviewIdentity({ node, actorUserId, actorRoleKeys: roles })
-      : null;
+    const parallel = Boolean(instance && isPureExpenseReimbursement(claim) &&
+      claim.approvalInstanceId === instance.id && isParallelApprovalRound(instance.frozenNodes));
+    const roleScopes = parallel ? await loadExpenseApprovalRoleScopes(this.prisma, actorUserId, claim.projectId) : undefined;
+    const roles = roleScopes ? [...roleScopes.globalRoleKeys, ...roleScopes.projectRoleKeys]
+      : await this.loadRoleKeys(this.prisma, actorUserId, claim.projectId ?? undefined);
+    const activeIndexes = instance && (parallel || !hasVersionedApprovalNodes(instance.frozenNodes))
+      ? activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex)
+      : [];
+    const nodes = instance?.frozenNodes as ExpenseClaimApprovalNode[] | undefined;
+    const canConsiderIdentity = !parallel || Boolean((await this.prisma.user.findUnique({
+      where: { id: actorUserId }, select: { isActive: true }
+    }))?.isActive);
+    const duties = activeIndexes.flatMap(index => {
+      const node = nodes?.[index];
+      if (!node || !canConsiderIdentity) return [];
+      const identity = roleScopes ? resolveExpenseParallelDutyIdentity({ node, actorUserId, actorRoleScopes: roleScopes })
+        : resolveApprovalReviewIdentity({ node, actorUserId, actorRoleKeys: roles });
+      if (!identity) return [];
+      return [{ index, name: node.name }];
+    });
+    const currentNode = nodes?.[duties[0]?.index ?? activeIndexes[0]] ?? null;
     const isOwner = claim.applicantUserId === actorUserId || claim.handledByUserId === actorUserId;
     const canAppendEvidence =
       !["draft", "rejected", "offset_completed"].includes(claim.status) &&
@@ -651,7 +671,7 @@ export class ExpenseClaimService {
       roles.some((role) => PAYMENT_SUBJECT_ADJUSTMENT_ROLES.includes(role));
     const procurementActor = claim.generalProcurementId && claim.projectId ? await generalProcurementActor(this.prisma, this.visibility ?? new ProjectVisibilityService(this.prisma), actorUserId, claim.projectId) : null;
     const canReadProcurementPayment = procurementActor && (procurementActor.globalRoleKeys.some((role) => ["chairman", "general_manager", "comprehensive_director", "finance_staff", "finance_director"].includes(role)) || procurementActor.projectRoleKeys.some((role) => ["project_manager", "finance_staff", "finance_director"].includes(role)));
-    const existingDetailAccess = isOwner || Boolean(identity) || canAppendEvidence || Boolean(canReadProcurementPayment);
+    const existingDetailAccess = isOwner || duties.length > 0 || canAppendEvidence || Boolean(canReadProcurementPayment);
     if (!existingDetailAccess && !(claim.status !== "draft" && await this.approvalProgress?.canViewBusiness("expense_claim", claim.id, actorUserId))) throw new NotFoundException("费用申请不存在或当前账号无权读取");
     const [project, lines, attachments, paymentSubjectCompanyEntities, paymentExecutions, finalPaymentPdf] = await Promise.all([
       claim.projectId
@@ -783,10 +803,11 @@ export class ExpenseClaimService {
       loanOffsetAmountCents: moneyCentsToApi(claim.loanOffsetAmountCents),
       companyPayableAmountCents: moneyCentsToApi(claim.companyPayableAmountCents),
       fundedAmountCents: moneyCentsToApi(claim.fundedAmountCents),
-      approval: node ? {
-        currentNodeName: node.name,
-        canReview: Boolean(identity),
-        requiresSelfReviewConfirmation: Boolean(identity && instance?.applicantUserId === actorUserId)
+      approval: currentNode ? {
+        currentNodeName: currentNode.name,
+        canReview: duties.length > 0,
+        requiresSelfReviewConfirmation: duties.length > 0 && instance?.applicantUserId === actorUserId,
+        ...(parallel ? { approvalInstanceId: instance?.id, actionableDuties: duties } : {})
       } : null,
       attachmentPermissions: { canAppendEvidence },
       paymentSubjectPermissions: { canAdjust: canAdjustPaymentSubject },
@@ -1181,7 +1202,8 @@ export class ExpenseClaimService {
   }
 
   async submit(claimId: string, actorUserId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    let approvalNoticesQueued = false;
+    const result = await this.prisma.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<Array<{
         id: string; claimType: string; status: string; projectId: string | null; actualPurchaseBatchId: string | null; applicantUserId: string | null; companyEntityId: string; requestedAmountCents: bigint; handledByUserId: string; factWitnessUserId: string | null;
       }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "actualPurchaseBatchId", "applicantUserId", "companyEntityId", "requestedAmountCents", "handledByUserId", "factWitnessUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
@@ -1215,7 +1237,8 @@ export class ExpenseClaimService {
         });
       }
       const offset = await this.reserveLoanOffsets(tx, claim, actorUserId);
-      const nodes = await this.freezeApprovalNodes(tx, claim);
+      const parallel = isPureExpenseReimbursement({ ...claim, generalProcurementId: source?.generalProcurementId ?? null });
+      const nodes = await this.freezeApprovalNodes(tx, claim, parallel);
       const instance = await tx.approvalInstance.create({
         data: {
           flowType: "expense_claim.approve",
@@ -1261,6 +1284,11 @@ export class ExpenseClaimService {
         metadata: { claimType: claim.claimType, approvalInstanceId: instance.id }
       });
       await freezeExpenseClaimEntryInTransaction(tx, claim.id, actorUserId, instance.id);
+      if (parallel && this.fundingNotifications) {
+        approvalNoticesQueued = await this.fundingNotifications.queueApprovalDuties(tx, {
+          id: claim.id, projectId: claim.projectId, status: updated.status, approvalInstanceId: instance.id
+        }, { id: instance.id, frozenNodes: nodes }, actorUserId);
+      }
       const companyPayableAmountCents =
         claim.claimType === "reimbursement"
           ? claim.requestedAmountCents - offset.amountCents
@@ -1269,6 +1297,24 @@ export class ExpenseClaimService {
             : 0n;
       return { id: updated.id, status: updated.status, approvalInstanceId: instance.id, loanOffsetAmountCents: moneyCentsToApi(offset.amountCents), companyPayableAmountCents: moneyCentsToApi(companyPayableAmountCents) };
     });
+    if (approvalNoticesQueued) void this.fundingNotifications?.afterCommit();
+    return result;
+  }
+
+  async migrateLegacyApprovalRound(
+    claimId: string,
+    actorUserId: string,
+    coordinates: { approvalInstanceId: string; claimUpdatedAt: Date; approvalUpdatedAt: Date }
+  ) {
+    if (!this.writeFreeze.isFrozen("expense")) {
+      throw new ConflictException("须暂停费用写入后才能接续历史审批");
+    }
+    if (!this.files || !this.fundingNotifications) {
+      throw new ServiceUnavailableException("费用审批接续服务暂不可用，请稍后重试");
+    }
+    return migrateLegacyExpenseApprovalRound(
+      this.prisma, this.audit, this.files, this.fundingNotifications, claimId, actorUserId, coordinates
+    );
   }
 
   async review(claimId: string, actorUserId: string, input: ReviewExpenseClaimDto) {
@@ -1277,28 +1323,44 @@ export class ExpenseClaimService {
     const result = await translateProjectOperatingSerializationConflict(
       this.prisma.$transaction(async (tx) => {
       const claims = await tx.$queryRaw<Array<{
-        id: string; claimType: string; status: string; projectId: string | null; actualPurchaseBatchId: string | null; applicantUserId: string | null; handledByUserId: string; factWitnessUserId: string | null; requestedAmountCents: bigint; loanOffsetAmountCents: bigint; companyPayableAmountCents: bigint;
-      }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "actualPurchaseBatchId", "applicantUserId", "handledByUserId", "factWitnessUserId", "requestedAmountCents", "loanOffsetAmountCents", "companyPayableAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
+        id: string; claimType: string; status: string; projectId: string | null; actualPurchaseBatchId: string | null; generalProcurementId: string | null; approvalInstanceId: string | null; applicantUserId: string | null; handledByUserId: string; factWitnessUserId: string | null; requestedAmountCents: bigint; loanOffsetAmountCents: bigint; companyPayableAmountCents: bigint;
+      }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "actualPurchaseBatchId", "generalProcurementId", "approvalInstanceId", "applicantUserId", "handledByUserId", "factWitnessUserId", "requestedAmountCents", "loanOffsetAmountCents", "companyPayableAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
       const claim = claims[0];
       if (!claim) throw new NotFoundException("费用申请不存在");
       if (claim.status !== "approval_pending") throw new BadRequestException("当前费用申请不可审批");
       const instances = await tx.$queryRaw<Array<{
         id: string; currentNodeIndex: number; frozenNodes: unknown; applicantUserId: string;
-      }>>(Prisma.sql`SELECT "id", "currentNodeIndex", "frozenNodes", "applicantUserId" FROM "ApprovalInstance" WHERE "businessType" = 'expense_claim' AND "businessId" = ${claim.id} AND "status" = 'in_progress' ORDER BY "createdAt" DESC LIMIT 1 FOR UPDATE`);
+      }>>(Prisma.sql`SELECT "id", "currentNodeIndex", "frozenNodes", "applicantUserId" FROM "ApprovalInstance" WHERE "businessType" = 'expense_claim' AND "businessId" = ${claim.id} AND "flowType" = 'expense_claim.approve' AND "status" = 'in_progress' ORDER BY "createdAt" DESC LIMIT 2 FOR UPDATE`);
       const instance = instances[0];
       if (!instance) throw new BadRequestException("费用申请审批实例不存在");
-      const nodes = instance.frozenNodes as ExpenseClaimApprovalNode[];
-      const node = nodes[instance.currentNodeIndex];
+      const parallel = isParallelApprovalRound(instance.frozenNodes);
+      if (parallel && (instances.length !== 1 || claim.approvalInstanceId !== instance.id || !isPureExpenseReimbursement(claim))) {
+        throw new ConflictException("费用审批轮次已变化，请刷新后重新确认");
+      }
+      const nodeIndex = resolveExpenseReviewNodeIndex(instance, input);
+      const nodes = instance.frozenNodes as unknown as ExpenseClaimApprovalNode[];
+      const node = nodes[nodeIndex];
       if (!node) throw new BadRequestException("费用申请当前审批节点不存在");
-      const roles = await this.loadRoleKeys(tx, actorUserId, claim.projectId ?? undefined);
-      const identity = resolveApprovalReviewIdentity({ node, actorUserId, actorRoleKeys: roles });
-      if (!identity) throw new ForbiddenException("当前用户不是费用申请的冻结审批人");
+      const roleScopes = parallel ? await loadExpenseApprovalRoleScopes(tx, actorUserId, claim.projectId) : undefined;
+      const roles = roleScopes ? [...roleScopes.globalRoleKeys, ...roleScopes.projectRoleKeys]
+        : await this.loadRoleKeys(tx, actorUserId, claim.projectId ?? undefined);
+      const identity = roleScopes ? resolveExpenseParallelDutyIdentity({ node, actorUserId, actorRoleScopes: roleScopes })
+        : resolveApprovalReviewIdentity({ node, actorUserId, actorRoleKeys: roles });
+      if (!identity) {
+        throw new ForbiddenException("当前用户不是费用申请的冻结审批人");
+      }
+      if (parallel && input.decision === "reject") {
+        const [actor] = await tx.$queryRaw<Array<{ isActive: boolean }>>(Prisma.sql`
+          SELECT "isActive" FROM "User" WHERE "id" = ${actorUserId} FOR SHARE
+        `);
+        if (!actor?.isActive) throw new ForbiddenException("当前办理人不存在或已停用");
+      }
       const selfReview = this.selfReviewMetadata(instance.applicantUserId, actorUserId, identity, input);
       if (selfReview.isSelfReview) {
         const [current] = await tx.$queryRaw<Array<{ isActive: boolean; passwordHash: string | null }>>(Prisma.sql`
           SELECT "isActive", "passwordHash" FROM "User" WHERE "id" = ${actorUserId} FOR UPDATE
         `);
-        if (!confirmation || confirmation.instanceId !== instance.id || confirmation.nodeIndex !== instance.currentNodeIndex ||
+        if (!confirmation || confirmation.instanceId !== instance.id || confirmation.nodeIndex !== nodeIndex ||
             !current?.isActive || !confirmation.passwordHash || current.passwordHash !== confirmation.passwordHash) {
           throw new ConflictException("自审资格或登录凭据已变化，请刷新后重新确认");
         }
@@ -1316,7 +1378,7 @@ export class ExpenseClaimService {
             comment: optionalText(input.comment),
             approvedRoleKey: identity.approvedRoleKey,
             representedUserId: identity.representedUserId,
-            ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {})
+            ...(parallel || selfReview.isSelfReview ? { metadata: { ...selfReview.metadata, ...(parallel ? { nodeIndex } : {}) } } : {})
           }
         });
         await this.audit.record(tx, {
@@ -1331,8 +1393,9 @@ export class ExpenseClaimService {
 
       const signature = await snapshotApprovalSignature(tx, actorUserId, { required: true });
       const nextNodes = [...nodes];
-      nextNodes[instance.currentNodeIndex] = { ...node, approvedRoleKeys: [identity.approvedRoleKey] };
-      const nextNodeIndex = instance.currentNodeIndex + 1;
+      nextNodes[nodeIndex] = { ...node, approvedRoleKeys: [identity.approvedRoleKey] };
+      const nextNodeIndex = parallel ? (activeApprovalNodeIndexes(nextNodes, nodeIndex)[0] ?? nextNodes.length)
+        : nodeIndex + 1;
       const completed = nextNodeIndex >= nextNodes.length;
       const postedAmountCents = completed && claim.claimType === "reimbursement"
         ? await this.postLoanOffsetReservations(tx, claim, actorUserId)
@@ -1355,7 +1418,7 @@ export class ExpenseClaimService {
           comment: optionalText(input.comment),
           approvedRoleKey: identity.approvedRoleKey,
           representedUserId: identity.representedUserId,
-          ...(selfReview.isSelfReview ? { metadata: selfReview.metadata } : {}),
+          ...(parallel || selfReview.isSelfReview ? { metadata: { ...selfReview.metadata, ...(parallel ? { nodeIndex } : {}) } } : {}),
           signatureFileIdSnapshot: signature.fileId,
           signatureSha256Snapshot: signature.sha256,
           signatureVersionIdSnapshot: signature.versionId
@@ -2227,15 +2290,20 @@ export class ExpenseClaimService {
 
   private async factWitnessSnapshot(tx: Prisma.TransactionClient, input: CreateExpenseClaimDto, projectId?: string) {
     if (projectId) return null;
-    if (!input.factWitnessUserId?.trim()) throw new BadRequestException("非项目报销必须选择事实证明人");
-    const witness = await tx.user.findUnique({ where: { id: input.factWitnessUserId.trim() }, select: { id: true, name: true, isActive: true } });
+    const witnessId = input.factWitnessUserId?.trim();
+    if (!witnessId) {
+      if (isPureExpenseReimbursement(input)) return null;
+      throw new BadRequestException("非项目报销必须选择事实证明人");
+    }
+    const witness = await tx.user.findUnique({ where: { id: witnessId }, select: { id: true, name: true, isActive: true } });
     if (!witness?.isActive) throw new NotFoundException("事实证明人不存在或已停用");
     return witness;
   }
 
   private async freezeApprovalNodes(
     tx: Prisma.TransactionClient,
-    claim: { claimType: string; projectId: string | null; factWitnessUserId: string | null; handledByUserId: string }
+    claim: { claimType: string; projectId: string | null; factWitnessUserId: string | null; handledByUserId: string },
+    parallel: boolean
   ): Promise<ExpenseClaimApprovalNode[]> {
     if (
       claim.claimType !== "reimbursement" &&
@@ -2260,11 +2328,16 @@ export class ExpenseClaimService {
     const candidatesByRole = new Map<RoleKey, Set<string>>();
     for (const assignment of assignments) {
       const role = roleByPosition.get(assignment.positionId);
-      if (role && (assignment.projectId !== null || GLOBAL_BUSINESS_ROLE_KEYS.includes(role))) {
+      if (role && (assignment.projectId !== null || GLOBAL_BUSINESS_ROLE_KEYS.includes(role)) &&
+          (!parallel || (role === "project_manager" ? assignment.projectId === claim.projectId : assignment.projectId === null))) {
         addCandidate(candidatesByRole, role, assignment.userId);
       }
     }
-    for (const membership of memberships) addCandidate(candidatesByRole, membership.positionKey as RoleKey, membership.userId);
+    for (const membership of memberships) {
+      if (!parallel || membership.positionKey === "project_manager") {
+        addCandidate(candidatesByRole, membership.positionKey as RoleKey, membership.userId);
+      }
+    }
     const candidateIds = [...new Set([...candidatesByRole.values()].flatMap((ids) => [...ids]))];
     const activeUsers = candidateIds.length
       ? await tx.user.findMany({ where: { id: { in: candidateIds }, isActive: true }, select: { id: true } })
@@ -2273,9 +2346,24 @@ export class ExpenseClaimService {
     const node = (name: string, roleKeys: RoleKey[], selectedUserId?: string): ExpenseClaimApprovalNode => {
       const candidateUserIdsByRole = Object.fromEntries(roleKeys.map((role) => [role, [...(candidatesByRole.get(role) ?? [])].filter((id) => activeIds.has(id)).sort()])) as Partial<Record<RoleKey, string[]>>;
       const candidateUserIds = [...new Set(Object.values(candidateUserIdsByRole).flat())].sort();
-      if (!candidateUserIds.length) throw new BadRequestException(`${name}缺少当前有效审批人，请先完成组织配置`);
+      if (!parallel && !candidateUserIds.length) throw new BadRequestException(`${name}缺少当前有效审批人，请先完成组织配置`);
       return { name, mode: "any", roleKeys, candidateUserIds, candidateUserIdsByRole, ...(selectedUserId ? { selectedUserId } : {}) };
     };
+    if (parallel) {
+      const nodes = [
+        node("综合部主管", [COMPREHENSIVE_ROLE]),
+        ...(claim.projectId ? [node("项目经理", ["project_manager"])] : []),
+        node("财务主管", ["finance_director"]),
+        node("董事长/总经理", FINAL_ROLES)
+      ];
+      return nodes.map(frozen => ({
+        ...frozen,
+        protocolVersion: 1,
+        executionMode: "parallel",
+        candidatePolicy: EXPENSE_CURRENT_ROLE_SCOPE,
+        roleScopesByRole: Object.fromEntries(frozen.roleKeys.map(role => [role, role === "project_manager" ? "project" : "global"]))
+      }));
+    }
     const witnessNode = claim.projectId
       ? node("项目经理", ["project_manager"])
       : claim.factWitnessUserId && activeIds.has(claim.factWitnessUserId)
@@ -2439,17 +2527,24 @@ export class ExpenseClaimService {
   private async prepareSelfReviewConfirmation(claimId: string, actorUserId: string, input: ReviewExpenseClaimDto) {
     if (!input.confirmationPassword?.trim()) return;
     const instance = await this.prisma.approvalInstance.findFirst({
-      where: { businessType: "expense_claim", businessId: claimId, status: "in_progress" },
+      where: { businessType: "expense_claim", businessId: claimId, flowType: "expense_claim.approve", status: "in_progress" },
       orderBy: { createdAt: "desc" },
       select: { id: true, applicantUserId: true, currentNodeIndex: true, frozenNodes: true }
     });
     if (instance?.applicantUserId !== actorUserId) return;
     const claim = await this.prisma.expenseClaim.findUnique({ where: { id: claimId }, select: { status: true, projectId: true } });
+    if (claim?.status !== "approval_pending") return;
+    const nodeIndex = resolveExpenseReviewNodeIndex(instance, input);
     const nodes = instance.frozenNodes as unknown as ExpenseClaimApprovalNode[];
-    const node = nodes[instance.currentNodeIndex];
-    if (claim?.status !== "approval_pending" || !node) return;
-    const roles = await this.loadRoleKeys(this.prisma, actorUserId, claim.projectId ?? undefined);
-    const identity = resolveApprovalReviewIdentity({ node, actorUserId, actorRoleKeys: roles });
+    const node = nodes[nodeIndex];
+    if (!node) return;
+    const roleScopes = isParallelApprovalRound(instance.frozenNodes)
+      ? await loadExpenseApprovalRoleScopes(this.prisma, actorUserId, claim.projectId)
+      : undefined;
+    const roles = roleScopes ? [...roleScopes.globalRoleKeys, ...roleScopes.projectRoleKeys]
+      : await this.loadRoleKeys(this.prisma, actorUserId, claim.projectId ?? undefined);
+    const identity = roleScopes ? resolveExpenseParallelDutyIdentity({ node, actorUserId, actorRoleScopes: roleScopes })
+      : resolveApprovalReviewIdentity({ node, actorUserId, actorRoleKeys: roles });
     if (!identity) return;
     const selfReview = this.selfReviewMetadata(instance.applicantUserId, actorUserId, identity, input);
     if (!selfReview.isSelfReview) return;
@@ -2458,7 +2553,7 @@ export class ExpenseClaimService {
       select: { isActive: true, passwordHash: true }
     });
     await selfReview.auth.confirmPassword(actorUserId, input.confirmationPassword, { user: { findUnique: async () => account } });
-    return { instanceId: instance.id, nodeIndex: instance.currentNodeIndex, passwordHash: account?.passwordHash };
+    return { instanceId: instance.id, nodeIndex, passwordHash: account?.passwordHash };
   }
 
   private async loadRoleKeys(tx: Prisma.TransactionClient, userId: string, projectId?: string): Promise<RoleKey[]> {
@@ -2469,6 +2564,24 @@ export class ExpenseClaimService {
     const positions = assignments.length ? await tx.position.findMany({ where: { id: { in: assignments.map((item) => item.positionId) } }, select: { key: true } }) : [];
     return [...new Set([...positions.map((item) => item.key as RoleKey), ...memberships.map((item) => item.positionKey as RoleKey)])];
   }
+}
+
+function resolveExpenseReviewNodeIndex(
+  instance: { id: string; frozenNodes: unknown; currentNodeIndex: number },
+  input: ReviewExpenseClaimDto
+) {
+  if (!hasVersionedApprovalNodes(instance.frozenNodes)) {
+    if (input.approvalInstanceId !== undefined || input.approvalDutyIndex !== undefined) {
+      throw new ConflictException("费用审批轮次已变化，请刷新后重新确认");
+    }
+    return instance.currentNodeIndex;
+  }
+  const indexes = activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex);
+  if (input.approvalInstanceId !== instance.id || input.approvalDutyIndex === undefined ||
+      !indexes.includes(input.approvalDutyIndex)) {
+    throw new ConflictException("费用审批职责已办理或已变化，请刷新后重新确认");
+  }
+  return input.approvalDutyIndex;
 }
 
 function requiredText(value: unknown, message: string) {

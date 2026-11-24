@@ -605,6 +605,34 @@ describe("PermissionGuard", () => {
     }))).rejects.toThrow("当前账号不是该审批节点冻结的处理人");
   });
 
+  it.each([
+    { role: "finance_director", approvalDutyIndex: 1, allowed: true },
+    { role: "finance_director", approvalDutyIndex: 0, allowed: false },
+    { role: "finance_staff", approvalDutyIndex: 1, allowed: false }
+  ])("requires the parallel expense assignee's current role for the requested duty ($role, $approvalDutyIndex)", async ({ role, approvalDutyIndex, allowed }) => {
+    const nodes = [
+      { roleKeys: ["comprehensive_director"], roleScopesByRole: { comprehensive_director: "global" } },
+      { roleKeys: ["finance_director"], roleScopesByRole: { finance_director: "global" } }
+    ].map(node => ({ ...node, protocolVersion: 1, executionMode: "parallel", mode: "any", candidatePolicy: "current_role_scope" }));
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "p-1", projectId: null }]) },
+      position: { findMany: jest.fn().mockResolvedValue([{ id: "p-1", key: role }]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+      expenseClaim: { findUnique: jest.fn().mockResolvedValue({ projectId: null, claimType: "reimbursement", status: "approval_pending", approvalInstanceId: "round" }) },
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue({ id: "round", flowType: "expense_claim.approve", currentNodeIndex: 0, frozenNodes: nodes }) }
+    };
+    const guard = new PermissionGuard({
+      getAllAndOverride: jest.fn().mockReturnValueOnce(undefined).mockReturnValueOnce("expense_claim.approve")
+    } as never, prisma as never);
+    const pending = guard.canActivate(contextWithRequest({
+      user: { id: "reviewer" }, params: { claimId: "claim-1" },
+      body: { approvalInstanceId: "round", approvalDutyIndex }
+    }));
+    if (allowed) await expect(pending).resolves.toBe(true);
+    else await expect(pending).rejects.toThrow(ForbiddenException);
+  });
+
   it("rejects a frozen non-project fact witness without a current approval role", async () => {
     const prisma = {
       ...buildPrisma("employee"),

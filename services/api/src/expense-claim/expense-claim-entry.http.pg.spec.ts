@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { hash } from "bcryptjs";
 import { AppModule } from "../app.module";
+import { ExpenseClaimFundingNotificationService } from "./expense-claim-funding-notification.service";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { PrismaService } from "../database/prisma.service";
 import { createApiValidationPipe } from "../validation/api-validation";
@@ -123,7 +124,22 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
 
   async function request(path: string, body?: unknown, accessToken = token) {
     const response = await fetch(`${baseUrl}${path}`, { method: body === undefined ? "GET" : "POST", headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    return { status: response.status, body: await response.json() as { id: string; status: string; entryDefinition: BusinessEntrySceneDefinition; entrySnapshots: Array<{ definitionSnapshot: BusinessEntrySceneDefinition; valuesSnapshot: Record<string, unknown> }> } };
+    return { status: response.status, body: await response.json() as {
+      id: string;
+      status: string;
+      entryDefinition: BusinessEntrySceneDefinition;
+      entrySnapshots: Array<{ definitionSnapshot: BusinessEntrySceneDefinition; valuesSnapshot: Record<string, unknown> }>;
+      approval?: { approvalInstanceId?: string; actionableDuties?: Array<{ index: number; name: string }> } | null;
+    } };
+  }
+
+  async function parallelReviewCoordinates(path: string, reviewerToken: string) {
+    const detail = await request(path, undefined, reviewerToken);
+    expect(detail.status).toBe(200);
+    const approval = detail.body.approval;
+    expect(approval?.approvalInstanceId).toEqual(expect.any(String));
+    expect(approval?.actionableDuties).toHaveLength(1);
+    return { approvalInstanceId: approval!.approvalInstanceId!, approvalDutyIndex: approval!.actionableDuties![0]!.index };
   }
 
   function procurementInput(reason: string) {
@@ -140,13 +156,13 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     };
   }
 
-  async function selfAccount(role?: RoleKey) {
+  async function selfAccount(role?: RoleKey, assignmentProjectId = projectId) {
     const prisma = app.get(PrismaService);
     const suffix = randomUUID();
     const user = await prisma.user.create({ data: { name: `本人申请${role ?? "未配置岗位"}`, phone: `self-${suffix}`, passwordHash: await hash(accountPassword, 4), mustChangePassword: false } });
     if (role) {
       const position = await prisma.position.upsert({ where: { key: role }, create: { key: role, name: role }, update: {} });
-      await prisma.userPosition.create({ data: { userId: user.id, positionId: position.id, projectId: GLOBAL_USER_POSITION_ROLE_KEYS.includes(role) ? null : projectId } });
+      await prisma.userPosition.create({ data: { userId: user.id, positionId: position.id, projectId: GLOBAL_USER_POSITION_ROLE_KEYS.includes(role) ? null : assignmentProjectId } });
     }
     const response = await fetch(`${baseUrl}/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ phone: user.phone, password: accountPassword }) });
     expect(response.status).toBe(201);
@@ -458,7 +474,8 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const path = `/expense-claims/${created.body.id}`;
     expect((await request(`${path}/submission`, {})).status).toBe(201);
     for (const [approvalIndex, approvalToken] of approvalTokens.entries()) {
-      const approval = await request(`${path}/approval`, { decision: "approve" }, approvalToken);
+      const coordinates = await parallelReviewCoordinates(path, approvalToken);
+      const approval = await request(`${path}/approval`, { decision: "approve", ...coordinates }, approvalToken);
       if (approval.status !== 201) throw new Error(`费用真实审批${approvalIndex + 1}失败：${approval.status} ${JSON.stringify(approval.body)}`);
     }
     expect(await request(path)).toMatchObject({ status: 200, body: { status: "approved_pending_payment", companyPayableAmountCents: "1" } });
@@ -591,13 +608,25 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const capability = `/approval-forms/expense_claim/${created.body.id}/capability`;
     expect(await request(capability)).toMatchObject({ status: 200, body: { available: false } });
     expect((await request(`${path}/submission`, {})).status).toBe(201);
-    for (const approvalToken of approvalTokens) {
+    const order = claimType === "reimbursement" ? [2, 3, 0, 1] : [0, 1, 2, 3];
+    const roles = ["comprehensive_director", "project_manager", "finance_director", "chairman"];
+    for (const index of order) {
+      const approvalToken = approvalTokens[index]!;
       expect(await request(capability)).toMatchObject({ status: 200, body: { available: false } });
-      expect((await request(`${path}/approval`, { decision: "approve" }, approvalToken)).status).toBe(201);
+      const coordinates = claimType === "reimbursement" ? await parallelReviewCoordinates(path, approvalToken) : {};
+      const input = { decision: "approve", ...coordinates };
+      if (claimType === "reimbursement" && index === 2) {
+        expect((await request(`${path}/approval`, { decision: "approve" }, approvalToken)).status).toBe(409);
+        expect((await request(`${path}/approval`, { ...input, approvalInstanceId: randomUUID() }, approvalToken)).status).toBe(409);
+      }
+      expect((await request(`${path}/approval`, input, approvalToken)).status).toBe(201);
+      if (claimType === "reimbursement" && index === 2) {
+        expect((await request(`${path}/approval`, input, approvalToken)).status).toBe(409);
+      }
     }
     await verifyApprovedPdf({ db: app.get(PrismaService), baseUrl, token, password: accountPassword,
       businessType: "expense_claim", businessId: created.body.id,
-      roles: ["comprehensive_director", "project_manager", "finance_director", "chairman"], label: `费用-${claimType}` });
+      roles: order.map(index => roles[index]!), label: `费用-${claimType}` });
     expect((await request(`/approval-forms/expense_claim/${created.body.id}/download`, { confirmationPassword: accountPassword, downloadReason: "无关人员边界" }, strangerToken)).status).toBe(403);
   }, 60_000);
 
@@ -792,7 +821,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const options = await request("/expense-claims/create-options");
     expect(options.status).toBe(200);
     expect(options.body.entryDefinition).toMatchObject({ key: "expense_claim.application", version: 1 });
-    const created = await request("/expense-claims", { claimType: "reimbursement", companyEntityId, applicantUserId, factWitnessUserId, reason: "办公室交通", requestedAmountCents: "3500", lines: [{ expenseCategory: "交通费", occurredOn: "2026-09-16", purpose: "办理公司事务", receiptCount: 0, amountCents: "3500", evidenceType: "none", noEvidenceReason: "公共交通无纸质凭证" }] });
+    const created = await request("/expense-claims", { claimType: "reimbursement", companyEntityId, applicantUserId, reason: "办公室交通", requestedAmountCents: "3500", lines: [{ expenseCategory: "交通费", occurredOn: "2026-09-16", purpose: "办理公司事务", receiptCount: 0, amountCents: "3500", evidenceType: "none", noEvidenceReason: "公共交通无纸质凭证" }] });
     expect(created.status).toBe(201);
     const path = `/expense-claims/${created.body.id}`;
     expect((await request(path)).body.entrySnapshots).toEqual([]);
@@ -801,10 +830,61 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect(detail.body.entrySnapshots).toHaveLength(1);
     expect(detail.body.entrySnapshots[0]!.definitionSnapshot).toEqual(options.body.entryDefinition);
     expect(detail.body.entrySnapshots[0]!.valuesSnapshot).toMatchObject({ projectId: null, claimType: "reimbursement", companyPayableAmountCents: "3500", lines: [{ expenseCategory: "交通费", amountCents: "3500", noEvidenceReason: "公共交通无纸质凭证" }] });
+    const companyDuties = await Promise.all([0, 2, 3].map(index => parallelReviewCoordinates(path, approvalTokens[index]!)));
+    expect(companyDuties.map(item => item.approvalDutyIndex)).toEqual([0, 1, 2]);
+    expect(new Set(companyDuties.map(item => item.approvalInstanceId)).size).toBe(1);
+    for (const index of [2, 1, 0]) {
+      const duty = companyDuties[index]!;
+      const reviewerToken = approvalTokens[[0, 2, 3][index]!]!;
+      expect((await request(`${path}/approval`, { decision: "approve", ...duty }, reviewerToken)).status).toBe(201);
+    }
+    expect(await request(path)).toMatchObject({ status: 200, body: { status: "approved_pending_payment" } });
     expect((await request(path, undefined, strangerToken)).status).toBe(404);
     const illegalLoan = await request("/expense-claims", { claimType: "loan", companyEntityId, applicantUserId, factWitnessUserId, reason: "无项目借款", requestedAmountCents: "100" });
     expect(illegalLoan.status).toBe(400);
   }, 60_000);
+
+  (enabled ? it : it.skip)("在途纯报销缺岗不跳过，到岗接续同一并联轮次", async () => {
+    const db = app.get(PrismaService);
+    const project = await db.project.create({ data: { code: `REIM-NO-PM-${randomUUID()}`, name: "报销审批补位合成项目" } });
+    await db.projectRosterMember.create({ data: { projectId: project.id, userId: applicantUserId } });
+    const created = await request("/expense-claims", { ...selfInput(applicantUserId, "reimbursement"), projectId: project.id });
+    expect(created.status).toBe(201);
+    const path = `/expense-claims/${created.body.id}`;
+    expect(await request(`${path}/submission`, {})).toMatchObject({ status: 201, body: { status: "approval_pending" } });
+    const finance = await parallelReviewCoordinates(path, approvalTokens[2]!);
+    expect((await request(`${path}/approval`, { decision: "approve", ...finance, approvalDutyIndex: 1 }, approvalTokens[2]!)).status).toBe(403);
+    expect(await request(`${path}/approval`, { decision: "approve", ...finance }, approvalTokens[2]!)).toMatchObject({
+      status: 201, body: { status: "approval_pending" }
+    });
+    const assignedManager = await selfAccount("project_manager", project.id);
+    const managerDuty = await parallelReviewCoordinates(path, assignedManager.tokens.accessToken);
+    expect(managerDuty).toEqual({ approvalInstanceId: finance.approvalInstanceId, approvalDutyIndex: 1 });
+    const initial = await db.auditLog.findMany({
+      where: { businessId: created.body.id, businessType: "expense_claim_approval_duty_notification", action: "queued" }
+    });
+    expect(initial.map(row => (row.metadata as { approvalDutyIndex: number }).approvalDutyIndex)).not.toContain(1);
+    const notices = app.get(ExpenseClaimFundingNotificationService);
+    await notices.reconcilePendingApprovalDuties();
+    await notices.reconcilePendingApprovalDuties();
+    const queued = await db.auditLog.findMany({
+      where: { businessId: created.body.id, businessType: "expense_claim_approval_duty_notification", action: "queued" }
+    });
+    expect(queued.filter(row => (row.metadata as { approvalDutyIndex: number }).approvalDutyIndex === 1)).toEqual([
+      expect.objectContaining({ metadata: {
+        recipientId: assignedManager.user.id, approvalInstanceId: finance.approvalInstanceId, approvalDutyIndex: 1
+      } })
+    ]);
+    const signature = new FormData();
+    signature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "项目经理签名.png");
+    const signed = await fetch(`${baseUrl}/me/signature/canvas`, {
+      method: "POST", headers: { authorization: `Bearer ${assignedManager.tokens.accessToken}` }, body: signature
+    });
+    expect(signed.status).toBe(201);
+    expect(await request(`${path}/approval`, { decision: "approve", ...managerDuty }, assignedManager.tokens.accessToken)).toMatchObject({
+      status: 201, body: { status: "approval_pending" }
+    });
+  });
 
   (enabled ? it : it.skip)("缺少项目审批岗位时提交失败，原草稿与空快照可继续回读", async () => {
     const db = app.get(PrismaService);

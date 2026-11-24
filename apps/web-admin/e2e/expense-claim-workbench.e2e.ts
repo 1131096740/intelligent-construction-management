@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { EXPENSE_CLAIM_ENTRY_DEFINITION } from "../../../services/api/src/expense-claim/expense-claim-entry.definition";
 import {
   expectNoDocumentHorizontalOverflow,
   expectNoNestedHorizontalScrollers
@@ -46,10 +47,10 @@ test("费用工作台用创建选项和正式写入接口保存借款草稿后�
   await expect(page.locator(".expense-claim-create__title")).toBeVisible();
   await page.getByText("借款申请", { exact: true }).last().click();
   await page.getByRole("button", { name: "下一步" }).click();
-  await page.getByPlaceholder("说明费用事由和使用场景").fill("现场周转借款");
-  await page.getByPlaceholder("最多 2 位小数").fill("1234.56");
+  await page.getByPlaceholder("请填写事由").fill("现场周转借款");
+  await page.getByPlaceholder("请填写申请金额").fill("1234.56");
   await page.getByRole("button", { name: "下一步" }).click();
-  await page.getByPlaceholder("请选择日期").click();
+  await page.getByPlaceholder("请填写预计清账日期").click();
   await page.locator(".t-date-picker__panel .t-date-picker__cell--now").click();
   await page.getByRole("button", { name: "下一步" }).click();
   await page.getByRole("button", { name: "保存草稿" }).click();
@@ -71,7 +72,7 @@ test("费用工作台用创建选项和正式写入接口保存借款草稿后�
   });
   await page.getByRole("button", { name: "上传并绑定附件" }).click();
   await expect.poll(() => attachments).toEqual(["expense-file-1"]);
-  await expect(page.getByText("借款说明.pdf", { exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "借款说明.pdf", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "提交审批" }).click();
   await page.getByRole("button", { name: "确认提交" }).click();
   await expect.poll(() => submitted).toEqual(["expense-claim-created"]);
@@ -89,7 +90,88 @@ test("费用工作台用创建选项和正式写入接口保存借款草稿后�
   });
   await page.getByRole("button", { name: "追加并绑定资料" }).click();
   await expect.poll(() => appendedEvidence).toEqual(["expense-file-1"]);
-  await expect(page.getByText("后续追加资料", { exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "后续追加资料", exact: true })).toBeVisible();
+});
+
+test("公司日常报销不选择事实证明人也可填写明细", async ({ page }) => {
+  await mockExpenseClaimSession(page, []);
+  await page.route("**/api/expense-claims/create-options", route => route.fulfill({
+    json: {
+      companyEntities: [{ id: "company-1", name: "建工智管有限公司" }],
+      projects: [],
+      selfProjectIds: [],
+      selfApplicantUserId: "expense-claim-canary",
+      canProxy: false,
+      applicantUsers: [],
+      factWitnessUsers: [],
+      entryDefinition: EXPENSE_CLAIM_ENTRY_DEFINITION,
+      availableActions: ["create_expense_claim"]
+    }
+  }));
+  await page.route("**/api/expense-claims/expense-categories?*", route => route.fulfill({ json: { categories: [] } }));
+  await page.route("**/api/expense-claims/selectable-purchase-batches?*", route => route.fulfill({ json: { batches: [] } }));
+  await login(page);
+  await page.goto("/费用与报销工作台");
+  await page.getByRole("button", { name: "新建费用报销 / 借款" }).click();
+  await expect(page.getByText("事实证明人（选填）", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "下一步" }).click();
+  await expect(page.getByText(/公司常用费用类别/)).toBeVisible();
+});
+
+test("报销并联审批重新核对所选职责后提交准确轮次和职责", async ({ page }) => {
+  await mockExpenseClaimSession(page, []);
+  const writes: unknown[] = [];
+  let parallel = true;
+  let duties = [{ index: 0, name: "综合部主管" }, { index: 1, name: "财务主管" }];
+  await page.route("**/api/expense-claims/expense-claim-1", route => route.fulfill({
+    json: {
+      ...expenseClaim({ status: "approval_pending" }),
+      approval: parallel
+        ? { currentNodeName: "并联审批", canReview: Boolean(duties.length), requiresSelfReviewConfirmation: false,
+            approvalInstanceId: "round-1", actionableDuties: duties }
+        : { currentNodeName: "综合部主管", canReview: true, requiresSelfReviewConfirmation: false },
+      attachmentPermissions: { canAppendEvidence: false },
+      lines: [], attachments: [], paymentExecutions: [], entrySnapshots: []
+    }
+  }));
+  await page.route("**/api/expense-claims/expense-claim-1/capability", route => route.fulfill({
+    json: { claimId: "expense-claim-1", availableActions: ["review_expense_claim"] }
+  }));
+  await page.route("**/api/expense-claims/expense-claim-1/approval", route => {
+    writes.push(route.request().postDataJSON());
+    duties = [];
+    return route.fulfill({ status: 201, json: { id: "expense-claim-1", status: "approval_pending" } });
+  });
+  await login(page);
+  await page.goto("/费用与报销/expense-claim-1");
+  await page.getByRole("button", { name: "办理审批" }).click();
+
+  const submit = page.getByRole("button", { name: "提交办理" });
+  const select = page.getByPlaceholder("请选择本次办理的职责");
+  await expect(submit).toBeDisabled();
+  await select.click();
+  await page.getByText("综合部主管", { exact: true }).click();
+  duties = [{ index: 1, name: "财务主管" }];
+  await submit.click();
+  await page.getByRole("button", { name: "确认办理" }).click();
+  await expect(page.getByRole("button", { name: "确认办理" })).toBeHidden();
+  await expect(page.locator(".t-alert").getByText("所选审批职责已变化，请重新选择")).toBeVisible();
+  expect(writes).toEqual([]);
+
+  await select.click();
+  await page.getByText("财务主管", { exact: true }).click();
+  await submit.click();
+  await page.getByRole("button", { name: "确认办理" }).click();
+  const parallelWrite = { decision: "approve", approvalInstanceId: "round-1", approvalDutyIndex: 1 };
+  await expect.poll(() => writes).toEqual([parallelWrite]);
+
+  parallel = false;
+  await page.reload();
+  await page.getByRole("button", { name: "办理审批" }).click();
+  await expect(select).toHaveCount(0);
+  await submit.click();
+  await page.getByRole("button", { name: "确认办理" }).click();
+  await expect.poll(() => writes).toEqual([parallelWrite, { decision: "approve" }]);
 });
 
 test("已批待付款报销只通过受权接口调整实际付款主体并显示审计原因", async ({ page }) => {
@@ -407,7 +489,9 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
       selfApplicantUserId: "expense-claim-canary",
       canProxy: false,
       applicantUsers: [{ id: "expense-claim-canary", name: "费用金丝雀" }],
-      factWitnessUsers: [{ id: "witness-1", name: "事实证明人" }]
+      factWitnessUsers: [{ id: "witness-1", name: "事实证明人" }],
+      entryDefinition: EXPENSE_CLAIM_ENTRY_DEFINITION,
+      availableActions: ["create_expense_claim"]
     })
   }));
   await page.route("**/api/expense-claims/expense-claim-created", (route) => route.fulfill({
@@ -436,6 +520,14 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
       lines: []
     })
   }));
+  await page.route("**/api/expense-claims/expense-claim-created/capability", route => route.fulfill({
+    json: {
+      claimId: "expense-claim-created",
+      availableActions: reviewed.length ? ["append_expense_claim_attachment"] :
+        submitted.length ? ["review_expense_claim"] :
+        ["attach_expense_claim_attachment", "submit_expense_claim"]
+    }
+  }));
   await page.route("**/api/expense-claims/expense-claim-created/submission", (route) => {
     submitted.push("expense-claim-created");
     return route.fulfill({
@@ -448,7 +540,7 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
     appendEvidenceAllowed = true;
     return route.fulfill({ contentType: "application/json", body: JSON.stringify({ id: "expense-claim-created", status: "approved_pending_disbursement", completed: true }) });
   });
-  await page.route("**/api/files", (route) => route.fulfill({
+  await page.route(/\/api\/expense-claims\/expense-claim-created\/(draft|append)-attachment-file-uploads$/, route => route.fulfill({
     status: 201,
     contentType: "application/json",
     body: JSON.stringify({ id: "expense-file-1", originalName: "借款说明.pdf", mimeType: "application/pdf", sizeBytes: 18 })

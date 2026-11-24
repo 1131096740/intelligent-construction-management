@@ -60,6 +60,7 @@ const loadError = ref("");
 const actionError = ref("");
 const submitting = ref(false);
 const reviewVisible = ref(false);
+const reviewConfirmVisible = ref(false);
 const reviewing = ref(false);
 const paymentSubjectVisible = ref(false);
 const paymentSubjectAdjusting = ref(false);
@@ -87,6 +88,17 @@ const attachmentCategory = ref<"invoice" | "receipt_or_other" | "other">("receip
 const attachmentExpenseCategory = ref("");
 const reviewForm = ref({ decision: "approve" as "approve" | "reject", comment: "", selfReviewReason: "", confirmationPassword: "" });
 const detail = ref<ExpenseClaimDetailReadModel | null>(null);
+const reviewTarget = ref<{ claimId: string; actorId?: string; parallel: boolean; approvalInstanceId?: string } | null>(null);
+const selectedApprovalDutyIndex = ref<number>();
+const approvalDuties = computed(() => detail.value?.approval?.actionableDuties);
+const selectedApprovalDuty = computed(() => approvalDuties.value?.find(duty => duty.index === selectedApprovalDutyIndex.value));
+const canSubmitReview = computed(() => {
+  const approval = detail.value?.approval;
+  const target = reviewTarget.value;
+  if (!approval?.canReview || !target || detail.value?.id !== target.claimId) return false;
+  if (!target.parallel) return approval.actionableDuties === undefined;
+  return Boolean(target.approvalInstanceId && target.approvalInstanceId === approval.approvalInstanceId && selectedApprovalDuty.value);
+});
 const registeredFundingMode = ref(false);
 const fundingAccounts = ref<FundAccount[]>([]);
 const fundingLoading = ref(false);
@@ -176,11 +188,13 @@ async function submitExpenseClaimWithCapability(claimId: string) {
 }
 async function reviewExpenseClaimWithCapability(
   claimId: string,
-  body: Parameters<typeof reviewExpenseClaim>[1]
+  body: Parameters<typeof reviewExpenseClaim>[1],
+  target: NonNullable<typeof reviewTarget.value>
 ) {
   const capability = await fetchExpenseClaimActionCapability(claimId);
-  const matchesRequestedClaim = capability.claimId === claimId;
-  if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
+  if (capability.claimId !== claimId || !isReviewTargetCurrent(target)) {
+    throw new Error("费用申请或当前用户已变化，请重新打开审批");
+  }
   const operationAllowed = capability.availableActions.includes("review_expense_claim");
   if (!operationAllowed) throw new Error("当前用户不能审批该费用申请");
   return reviewExpenseClaim(claimId, body);
@@ -379,7 +393,21 @@ async function submit() {
   catch (error) { actionError.value = formatUnknownApiError(error, "提交费用申请失败"); }
   finally { submitting.value = false; }
 }
+function isReviewTargetCurrent(target: NonNullable<typeof reviewTarget.value>) {
+  return reviewVisible.value && reviewTarget.value === target &&
+    String(route.params.claimId) === target.claimId && auth.user?.id === target.actorId;
+}
 function openReview() {
+  if (!detail.value?.approval?.canReview) return;
+  const approval = detail.value.approval;
+  reviewTarget.value = {
+    claimId: detail.value.id,
+    actorId: auth.user?.id,
+    parallel: approval.actionableDuties !== undefined,
+    approvalInstanceId: approval.approvalInstanceId
+  };
+  selectedApprovalDutyIndex.value = undefined;
+  reviewConfirmVisible.value = false;
   reviewForm.value = { decision: "approve", comment: "", selfReviewReason: "", confirmationPassword: "" };
   actionError.value = "";
   reviewVisible.value = true;
@@ -601,16 +629,50 @@ function requestPaymentSubjectAdjustment() {
   paymentSubjectConfirmVisible.value = true;
 }
 async function review() {
-  if (!detail.value || reviewing.value) return;
+  const target = reviewTarget.value;
+  if (!detail.value || !target || reviewing.value || !isReviewTargetCurrent(target)) return;
+  const form = { ...reviewForm.value, comment: reviewForm.value.comment.trim() };
+  actionError.value = "";
   try {
-    const selfReview = buildApprovalSelfReviewPayload(detail.value.approval?.requiresSelfReviewConfirmation === true, reviewForm.value);
-    if (reviewForm.value.decision === "reject" && !reviewForm.value.comment.trim()) throw new Error("驳回必须填写审批意见");
+    if (form.decision === "reject" && !form.comment) throw new Error("驳回必须填写审批意见");
+    const dutyIndex = selectedApprovalDutyIndex.value;
+    if (target.parallel && (!canSubmitReview.value || dutyIndex === undefined)) {
+      throw new Error("请选择当前可办理的审批职责");
+    }
+
     reviewing.value = true;
-    await reviewExpenseClaimWithCapability(detail.value.id, { decision: reviewForm.value.decision, comment: reviewForm.value.comment.trim() || undefined, ...selfReview });
+    let approval = detail.value.approval;
+    if (target.parallel) {
+      const current = await fetchExpenseClaimDetail(target.claimId);
+      if (current.id !== target.claimId || !isReviewTargetCurrent(target)) {
+        throw new Error("费用申请或当前用户已变化，请重新打开审批");
+      }
+      detail.value = current;
+      approval = current.approval;
+      if (!approval?.canReview || approval.approvalInstanceId !== target.approvalInstanceId) {
+        selectedApprovalDutyIndex.value = undefined;
+        throw new Error("审批轮次或办理权限已变化，请重新打开审批");
+      }
+      if (!approval.actionableDuties?.some(duty => duty.index === dutyIndex)) {
+        selectedApprovalDutyIndex.value = undefined;
+        throw new Error("所选审批职责已变化，请重新选择");
+      }
+    }
+
+    const selfReview = buildApprovalSelfReviewPayload(approval?.requiresSelfReviewConfirmation === true, form);
+    await reviewExpenseClaimWithCapability(target.claimId, {
+      decision: form.decision,
+      comment: form.comment || undefined,
+      ...(target.parallel && { approvalInstanceId: target.approvalInstanceId, approvalDutyIndex: dutyIndex }),
+      ...selfReview
+    }, target);
     reviewVisible.value = false;
     await loadDetail();
   } catch (error) { actionError.value = formatUnknownApiError(error, "费用审批办理失败"); }
-  finally { reviewing.value = false; }
+  finally {
+    reviewing.value = false;
+    reviewConfirmVisible.value = false;
+  }
 }
 function selectedAttachmentFiles() {
   return attachmentFiles.value.map((file) => file.raw).filter((file): file is File => file instanceof File);
@@ -755,7 +817,7 @@ onMounted(() => void loadDetail());
           </template>
         </JgPageHeader>
         <t-alert
-          v-if="actionError"
+          v-if="actionError && !reviewVisible"
           theme="error"
           :message="actionError"
           close
@@ -770,10 +832,31 @@ onMounted(() => void loadDetail());
         >
           <div class="expense-claim-detail__review-form">
             <t-alert
+              v-if="actionError"
+              theme="error"
+              :message="actionError"
+            />
+            <t-form-item
+              v-if="reviewTarget?.parallel"
+              label="审批职责"
+            >
+              <t-select
+                v-model="selectedApprovalDutyIndex"
+                aria-label="审批职责"
+                placeholder="请选择本次办理的职责"
+                :options="(approvalDuties ?? []).map(duty => ({ value: duty.index, label: duty.name }))"
+                :disabled="reviewing || !detail.approval?.canReview || detail.approval.approvalInstanceId !== reviewTarget.approvalInstanceId"
+              />
+            </t-form-item>
+            <t-alert
+              v-else
               theme="info"
               :message="`当前审批环节：${detail.approval?.currentNodeName ?? '未知'}`"
             />
-            <t-radio-group v-model="reviewForm.decision">
+            <t-radio-group
+              v-model="reviewForm.decision"
+              :disabled="reviewing"
+            >
               <t-radio value="approve">
                 批准
               </t-radio><t-radio value="reject">
@@ -797,13 +880,24 @@ onMounted(() => void loadDetail());
               @click="reviewVisible = false"
             >
               取消
+            </t-button><t-button
+              v-if="reviewTarget?.parallel"
+              theme="primary"
+              :disabled="!canSubmitReview"
+              :loading="reviewing"
+              @click="reviewConfirmVisible = true"
+            >
+              提交办理
             </t-button><t-popconfirm
-              content="确认按当前冻结节点办理？"
+              v-else
+              content="确认办理当前审批？"
               confirm-btn="确认办理"
+              :disabled="!canSubmitReview || reviewing"
               @confirm="review"
             >
               <t-button
                 theme="primary"
+                :disabled="!canSubmitReview"
                 :loading="reviewing"
               >
                 提交办理
@@ -811,6 +905,16 @@ onMounted(() => void loadDetail());
             </t-popconfirm>
           </template>
         </t-drawer>
+        <t-dialog
+          v-model:visible="reviewConfirmVisible"
+          header="确认费用审批"
+          :body="selectedApprovalDuty ? `确认办理“${selectedApprovalDuty.name}”职责？` : '所选审批职责已变化，请重新选择'"
+          :confirm-btn="{ content: '确认办理', disabled: !canSubmitReview, loading: reviewing }"
+          :close-btn="!reviewing"
+          :close-on-overlay-click="false"
+          :close-on-esc-keydown="!reviewing"
+          @confirm="review"
+        />
         <t-drawer
           v-model:visible="paymentSubjectVisible"
           header="调整实际付款主体"
