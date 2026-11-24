@@ -165,8 +165,8 @@ for name,pin in pins['workspace'].items():
         if current320 and name == 'services/api/src/database/contract-business-entry-http.spec.ts':
             # Keep the archived 295 fixture and pin the current signed-settlement and supplement HTTP fixture.
             pin = {**pin,
-                   'base': '239414dc339ddd2540fc6495c86eace36d7c60d9cd896436720edab0a66b04cf',
-                   'result': 'a119e81d826014c39e30c56633528b482c5a326a469e16425c795b9d9e3b1d12',
+                   'base': '530935849d1e2b78675379d485cdc60721cfddea062d92443f707f01c2cbbd6f',
+                   'result': '27d7e9093dc4e903fc73c1e5af976ae74c0bbf2c799d835b595b756711273522',
                    'file': 'patches/contract-business-entry-signed-settlement-current329.spec.ts.gz'}
         if current320 and name == 'services/api/src/database/base-entry-http-postgres.spec.ts':
             pin = {**pin,
