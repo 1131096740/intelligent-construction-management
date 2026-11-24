@@ -196,6 +196,63 @@
         "fetchActualPurchaseBatch",
         "updateActualPurchaseBatch"
       ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer.",
+      "wrappers": [
+        "copyAbandonedSettlementDraft",
+        "fetchSettlementContractOptions"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer.",
+      "wrappers": [
+        "attachSettlementDraftLineFile",
+        "createSettlementDraftRecord",
+        "executeSettlementDraftLifecycleAction",
+        "generateSettlementFrozenDocument",
+        "invalidateSettlementDraftLineAttachment",
+        "linkSettlementCounterpartySignedDocument",
+        "submitSettlementDraftRecord",
+        "updateSettlementDraftRecord"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "classification": "unreachable_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer.",
+      "wrappers": [
+        "fetchSettlementFinalPreparation",
+        "fetchSettlementProjectCapability",
+        "uploadSettlementDraftPrivateFile"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer.",
+      "wrappers": [
+        "fetchSettlementTemplateRecommendations"
+      ]
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer.",
+      "wrappers": [
+        "applySettlementImport",
+        "downloadSettlementImportErrors",
+        "downloadSettlementImportResult",
+        "downloadSettlementImportTemplate",
+        "fetchSettlementParticipantOptions",
+        "fetchSettlementSourceLines",
+        "previewSettlementImport",
+        "previewSettlementLines"
+      ]
     }
   ]
 }

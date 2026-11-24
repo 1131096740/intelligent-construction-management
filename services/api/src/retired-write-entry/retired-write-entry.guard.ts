@@ -104,6 +104,8 @@ export const RETIRED_WRITE_ENTRIES: readonly RetiredWriteEntry[] = [
   { controller: "SettlementDraftController", handler: "submit" },
   { controller: "SettlementDraftController", handler: "update" },
   { controller: "SettlementDraftController", handler: "uploadPrivateFile" },
+  { controller: "SettlementImportController", handler: "apply" },
+  { controller: "SettlementImportController", handler: "preview" },
   { controller: "SettlementTemplateGovernanceController", handler: "clone" },
   { controller: "SettlementTemplateGovernanceController", handler: "create" },
   { controller: "SettlementTemplateGovernanceController", handler: "discard" },

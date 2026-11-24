@@ -21,7 +21,7 @@ import type {
   SettlementDetailReadModel
 } from "@jiangkong/shared-domain";
 import type { OperatingProjectionExportKind, OperatingProjectionExportFilters } from "@jiangkong/shared-domain";
-import type { SettlementLineDraftPayload } from "./settlement-workbench.api";
+import type { SettlementLineDraftPayload } from "./settlement-drafts.api";
 import type { SettlementSignedDocumentRecordReadModel } from "./settlement-drafts.api";
 import {
   ContractApprovalReviewResultUnknownError,

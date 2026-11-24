@@ -7,31 +7,31 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `0227dbadedb7c9b2c24d91e769749093ac6afa276034dbccef0b5988dd9ca853` |
-| webApiWrappers | ready | `8f05d4e9c118bb9eacf3b9fcc6a720b13ecd0f2a093a13a9ebd8fae3e657a0b9` |
-| webPageActions | ready | `7bc9e1fbb2b818322f405cb473c0baf689d7706413001c57d52aedc623765c87` |
-| routeUsage | ready | `4604ad79665c486ce6f4703b6c1f5dfae94da06be1f54161f1ef053e8164f357` |
+| webApiWrappers | ready | `4e17418413cdb15f9529e0b960bf485de3f82efa441419903b2c10c212725606` |
+| webPageActions | ready | `bb5ed93bf22c66fb20647fe052451560819429f94cae3777ef3cf9eead0fd6e2` |
+| routeUsage | ready | `b5e2cd8d101b0dbd93c39a0966db72a79b97dc26e6284c82136314f323c58cbc` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 879 |
-| pageRouteCount | 655 |
+| pageRouteCount | 633 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 100 |
-| internalTaskRouteCount | 54 |
+| exitCandidateRouteCount | 112 |
+| internalTaskRouteCount | 64 |
 | unclassifiedRouteCount | 0 |
 | mainRequestBindingCount | 849 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 480 |
-| actionBindingCount | 579 |
-| acceptedActionBindingCount | 532 |
+| registeredActionCount | 465 |
+| actionBindingCount | 561 |
+| acceptedActionBindingCount | 516 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 469 |
-| coveredProductionMutationConsumerPairCount | 469 |
+| productionMutationConsumerPairCount | 455 |
+| coveredProductionMutationConsumerPairCount | 455 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -140,7 +140,7 @@
 | GET | /contracts/ledger-export | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadContractLedgerExport | — | not_applicable | — |
 | GET | /contracts/lifecycle-ledger | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractLifecycleLedger | — | not_applicable | — |
 | GET | /contracts/payment-create-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchPaymentContractOptions | — | not_applicable | — |
-| GET | /contracts/settlement-create-options | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementContractOptions | — | not_applicable | — |
+| GET | /contracts/settlement-create-options | internal_task | operator_endpoint | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementContractOptions | — | not_applicable | — |
 | GET | /contracts/workbench | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#fetchContractWorkbenchLedger | — | not_applicable | — |
 | GET | /draft-retention/preview | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchDraftRetentionPreview | — | not_applicable | — |
 | GET | /employee-onboarding/applications | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#fetchEmployeeApplications | — | not_applicable | — |
@@ -283,10 +283,10 @@
 | GET | /projects/:projectId/operating-takeovers/workbook-template | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#downloadOperatingTakeoverTemplate | — | not_applicable | — |
 | GET | /projects/:projectId/owner-settlements/record-capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectOwnerSettlementCapability | — | not_applicable | — |
 | GET | /projects/:projectId/participating-company-options | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#fetchProjectParticipatingCompanyOptions | — | not_applicable | — |
-| GET | /projects/:projectId/settlement-drafts/:draftId/final-preparation | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementFinalPreparation | — | not_applicable | — |
+| GET | /projects/:projectId/settlement-drafts/:draftId/final-preparation | internal_task | operator_endpoint | apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementFinalPreparation | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts/:draftId/line-attachments | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#listSettlementDraftLineAttachments | — | not_applicable | — |
-| GET | /projects/:projectId/settlement-drafts/:draftId | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#executeSettlementDraftLifecycleAction<br>apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementDraftRecord | settlement-draft.abandon-application<br>settlement-draft.delete-pristine | not_applicable | — |
-| GET | /projects/:projectId/settlement-drafts/capability | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementProjectCapability | — | not_applicable | — |
+| GET | /projects/:projectId/settlement-drafts/:draftId | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#executeSettlementDraftLifecycleAction<br>apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementDraftRecord | — | not_applicable | — |
+| GET | /projects/:projectId/settlement-drafts/capability | internal_task | operator_endpoint | apps/web-admin/src/api/settlement-drafts.api.ts#fetchSettlementProjectCapability | — | not_applicable | — |
 | GET | /projects/:projectId/settlement-drafts | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#listSettlementDraftRecords | — | not_applicable | — |
 | GET | /projects/:projectId/signed-contract-settlements/:id/attachments/:fileId/download | page | signed_ticket_delivery | — | — | not_applicable | — |
 | GET | /projects/:projectId/signed-contract-settlements/:id/attachments/:fileId | page | web_api_wrapper | apps/web-admin/src/api/signed-contract-settlement.api.ts#readSignedSettlementAttachment | payment-basis.download-signed-attachment<br>signed-settlement.attachment-access | not_applicable | — |
@@ -312,12 +312,12 @@
 | GET | /settlement-template-workbench/versions/:versionId/capability | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#fetchTemplateVersionCapability | — | not_applicable | — |
 | GET | /settlement-templates/:templateId | page | web_api_wrapper | apps/web-admin/src/api/settlement-template.api.ts#getSettlementTemplate | — | not_applicable | — |
 | GET | /settlement-templates | page | web_api_wrapper | apps/web-admin/src/api/settlement-template.api.ts#listSettlementTemplates | — | not_applicable | — |
-| GET | /settlement-workbench/contract-versions/:contractVersionId/import-template | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#downloadSettlementImportTemplate | — | not_applicable | — |
-| GET | /settlement-workbench/contract-versions/:contractVersionId/participant-options | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#fetchSettlementParticipantOptions | — | not_applicable | — |
-| GET | /settlement-workbench/contract-versions/:contractVersionId/source-lines | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#fetchSettlementSourceLines | — | not_applicable | — |
-| GET | /settlement-workbench/projects/:projectId/contract-versions/:contractVersionId/template-recommendations | page | web_api_wrapper | apps/web-admin/src/api/settlement-template.api.ts#fetchSettlementTemplateRecommendations | — | not_applicable | — |
-| GET | /settlement-workbench/projects/:projectId/imports/:importId/errors.xlsx | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#downloadSettlementImportErrors | — | not_applicable | — |
-| GET | /settlement-workbench/projects/:projectId/imports/:importId/result.xlsx | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#downloadSettlementImportResult | — | not_applicable | — |
+| GET | /settlement-workbench/contract-versions/:contractVersionId/import-template | internal_task | operator_endpoint | apps/web-admin/src/api/settlement-workbench.api.ts#downloadSettlementImportTemplate | — | not_applicable | — |
+| GET | /settlement-workbench/contract-versions/:contractVersionId/participant-options | internal_task | operator_endpoint | apps/web-admin/src/api/settlement-workbench.api.ts#fetchSettlementParticipantOptions | — | not_applicable | — |
+| GET | /settlement-workbench/contract-versions/:contractVersionId/source-lines | internal_task | operator_endpoint | apps/web-admin/src/api/settlement-workbench.api.ts#fetchSettlementSourceLines | — | not_applicable | — |
+| GET | /settlement-workbench/projects/:projectId/contract-versions/:contractVersionId/template-recommendations | internal_task | operator_endpoint | apps/web-admin/src/api/settlement-template.api.ts#fetchSettlementTemplateRecommendations | — | not_applicable | — |
+| GET | /settlement-workbench/projects/:projectId/imports/:importId/errors.xlsx | internal_task | operator_endpoint | apps/web-admin/src/api/settlement-workbench.api.ts#downloadSettlementImportErrors | — | not_applicable | — |
+| GET | /settlement-workbench/projects/:projectId/imports/:importId/result.xlsx | internal_task | operator_endpoint | apps/web-admin/src/api/settlement-workbench.api.ts#downloadSettlementImportResult | — | not_applicable | — |
 | GET | /settlements/:settlementId/attachment-templates/:templateKey/download | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementAttachmentTemplate | — | not_applicable | — |
 | GET | /settlements/:settlementId/capability | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchSettlementActionCapability | — | not_applicable | — |
 | GET | /settlements/:settlementId/draft-excel | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementDraftExcel | — | not_applicable | — |
@@ -382,7 +382,7 @@
 | PATCH | /projects/:projectId/operating-takeovers/:batchId/rows/:rowId | external_takeover | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#updateOperatingTakeoverRow | operating-takeover.update-row | covered | — |
 | PATCH | /projects/:projectId/participating-companies/:participantId/deactivation | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#deactivateProjectParticipatingCompany | project-operating-profile.deactivate-participating-company | covered | — |
 | PATCH | /projects/:projectId | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#updateProject | project.update | covered | — |
-| PATCH | /projects/:projectId/settlement-drafts/:draftId | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#updateSettlementDraftRecord | settlement-draft.update-local-gate | covered | — |
+| PATCH | /projects/:projectId/settlement-drafts/:draftId | exit_candidate | none | apps/web-admin/src/api/settlement-drafts.api.ts#updateSettlementDraftRecord | — | not_applicable | — |
 | PATCH | /projects/:projectId/signed-contract-settlements/:id | page | web_api_wrapper | apps/web-admin/src/api/signed-contract-settlement.api.ts#saveSignedSettlement | signed-settlement.save | covered | — |
 | PATCH | /settlement-template-versions/:versionId | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#updateSettlementTemplateVersion | — | not_applicable | — |
 | PATCH | /settlement-template-workbench/versions/:versionId | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#updateSettlementTemplateVersion | template-workbench.save<br>template-workbench.save-source | covered | — |
@@ -782,15 +782,15 @@
 | POST | /projects/:projectId/participating-companies | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#addProjectParticipatingCompany | project-operating-profile.add-participating-company | covered | — |
 | POST | /projects/:projectId/proxy-payments | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#recordProjectProxyPayment | — | not_applicable | — |
 | POST | /projects/:projectId/receipts | exit_candidate | none | — | — | not_applicable | — |
-| POST | /projects/:projectId/settlement-drafts/:draftId/abandonment | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#abandonSettlementDraftRecord<br>apps/web-admin/src/api/settlement-drafts.api.ts#executeSettlementDraftLifecycleAction | settlement-draft.abandon-application<br>settlement-draft.delete-pristine | covered | — |
-| POST | /projects/:projectId/settlement-drafts/:draftId/approval-submission | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#submitSettlementDraftRecord | settlement-draft.submit | covered | — |
-| POST | /projects/:projectId/settlement-drafts/:draftId/copies | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedSettlementDraft | settlement-list.copy-abandoned-draft | covered | — |
-| POST | /projects/:projectId/settlement-drafts/:draftId/counterparty-signed-documents | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#linkSettlementCounterpartySignedDocument | settlement-draft.link-signed-document | covered | — |
-| POST | /projects/:projectId/settlement-drafts/:draftId/frozen-document | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#generateSettlementFrozenDocument | settlement-draft.generate-frozen-document | covered | — |
-| POST | /projects/:projectId/settlement-drafts/:draftId/line-attachments/:attachmentId/invalidation | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#invalidateSettlementDraftLineAttachment | settlement-line-attachment.invalidate | covered | — |
-| POST | /projects/:projectId/settlement-drafts/:draftId/lines/:lineKey/attachments | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#attachSettlementDraftLineFile | settlement-line-attachment.attach | covered | — |
-| POST | /projects/:projectId/settlement-drafts/files | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#uploadSettlementDraftPrivateFile | settlement-draft.upload-signed-document<br>settlement-import.preview-local-gate<br>settlement-line-attachment.upload | covered | — |
-| POST | /projects/:projectId/settlement-drafts | page | web_api_wrapper | apps/web-admin/src/api/settlement-drafts.api.ts#createSettlementDraftRecord | settlement-draft.save-local-gate | covered | — |
+| POST | /projects/:projectId/settlement-drafts/:draftId/abandonment | exit_candidate | none | apps/web-admin/src/api/settlement-drafts.api.ts#abandonSettlementDraftRecord<br>apps/web-admin/src/api/settlement-drafts.api.ts#executeSettlementDraftLifecycleAction | — | not_applicable | — |
+| POST | /projects/:projectId/settlement-drafts/:draftId/approval-submission | exit_candidate | none | apps/web-admin/src/api/settlement-drafts.api.ts#submitSettlementDraftRecord | — | not_applicable | — |
+| POST | /projects/:projectId/settlement-drafts/:draftId/copies | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedSettlementDraft | — | not_applicable | — |
+| POST | /projects/:projectId/settlement-drafts/:draftId/counterparty-signed-documents | exit_candidate | none | apps/web-admin/src/api/settlement-drafts.api.ts#linkSettlementCounterpartySignedDocument | — | not_applicable | — |
+| POST | /projects/:projectId/settlement-drafts/:draftId/frozen-document | exit_candidate | none | apps/web-admin/src/api/settlement-drafts.api.ts#generateSettlementFrozenDocument | — | not_applicable | — |
+| POST | /projects/:projectId/settlement-drafts/:draftId/line-attachments/:attachmentId/invalidation | exit_candidate | none | apps/web-admin/src/api/settlement-drafts.api.ts#invalidateSettlementDraftLineAttachment | — | not_applicable | — |
+| POST | /projects/:projectId/settlement-drafts/:draftId/lines/:lineKey/attachments | exit_candidate | none | apps/web-admin/src/api/settlement-drafts.api.ts#attachSettlementDraftLineFile | — | not_applicable | — |
+| POST | /projects/:projectId/settlement-drafts/files | exit_candidate | none | apps/web-admin/src/api/settlement-drafts.api.ts#uploadSettlementDraftPrivateFile | — | not_applicable | — |
+| POST | /projects/:projectId/settlement-drafts | exit_candidate | none | apps/web-admin/src/api/settlement-drafts.api.ts#createSettlementDraftRecord | — | not_applicable | — |
 | POST | /projects/:projectId/settlement-exception-quotas/:quotaId/approval | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#reviewSettlementExceptionQuota | — | not_applicable | — |
 | POST | /projects/:projectId/settlement-exception-quotas | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#requestSettlementExceptionQuota | — | not_applicable | — |
 | POST | /projects/:projectId/signed-contract-settlements/:id/attachments/:fileId/download-ticket | page | web_api_wrapper | apps/web-admin/src/api/signed-contract-settlement.api.ts#readSignedSettlementAttachment | payment-basis.download-signed-attachment<br>signed-settlement.attachment-access | covered | — |
@@ -829,9 +829,9 @@
 | POST | /settlement-template-workbench/versions/:versionId/stop | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#stopSettlementTemplateVersion | template-workbench.stop | covered | — |
 | POST | /settlement-template-workbench/versions/:versionId/submission | page | web_api_wrapper | apps/web-admin/src/api/settlement-template-workbench.api.ts#submitSettlementTemplateVersion | template-workbench.submit | covered | — |
 | POST | /settlement-templates | exit_candidate | none | apps/web-admin/src/api/settlement-template.api.ts#createSettlementTemplate | — | not_applicable | — |
-| POST | /settlement-workbench/contract-versions/:contractVersionId/imports/preview | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#previewSettlementImport | settlement-import.preview-local-gate | covered | — |
-| POST | /settlement-workbench/contract-versions/:contractVersionId/preview | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#previewSettlementLines | settlement-preview.background-local-gate | covered | — |
-| POST | /settlement-workbench/projects/:projectId/imports/:importId/apply | page | web_api_wrapper | apps/web-admin/src/api/settlement-workbench.api.ts#applySettlementImport | settlement-import.apply | covered | — |
+| POST | /settlement-workbench/contract-versions/:contractVersionId/imports/preview | exit_candidate | none | apps/web-admin/src/api/settlement-workbench.api.ts#previewSettlementImport | — | not_applicable | — |
+| POST | /settlement-workbench/contract-versions/:contractVersionId/preview | internal_task | operator_endpoint | apps/web-admin/src/api/settlement-workbench.api.ts#previewSettlementLines | — | not_applicable | — |
+| POST | /settlement-workbench/projects/:projectId/imports/:importId/apply | exit_candidate | none | apps/web-admin/src/api/settlement-workbench.api.ts#applySettlementImport | — | not_applicable | — |
 | POST | /settlements/:settlementId/approval-delegation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#delegateSettlementApproval | settlement-detail.delegate | covered | — |
 | POST | /settlements/:settlementId/approval-pdf/latest | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadSettlementLatestApprovalPdf | settlement-detail.approval-pdf | covered | — |
 | POST | /settlements/:settlementId/approval-reminder | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#remindSettlementApproval | — | not_applicable | — |

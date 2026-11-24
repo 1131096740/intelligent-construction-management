@@ -12,7 +12,7 @@
           <t-descriptions-item label="结算编号">{{ draft.code || "—" }}</t-descriptions-item>
           <t-descriptions-item label="结算期间">{{ draft.periodLabel || "—" }}</t-descriptions-item>
           <t-descriptions-item label="项目">{{ projectLabel }}</t-descriptions-item>
-          <t-descriptions-item label="历史状态">{{ statusLabels[draft.status] }}</t-descriptions-item>
+          <t-descriptions-item label="历史状态">{{ statusLabels[draft.status] || '历史记录' }}</t-descriptions-item>
           <t-descriptions-item label="结算类型">{{ draft.isFinal ? "最终结算" : "过程结算" }}</t-descriptions-item>
           <t-descriptions-item v-if="draft.abandonReason" label="放弃原因">{{ draft.abandonReason }}</t-descriptions-item>
         </t-descriptions>
@@ -94,7 +94,7 @@ const lines = computed(() => (draft.value?.lines ?? []).map((line, index) => ({
   key: index,
   name: line.name || line.description || `第 ${index + 1} 条明细`,
   quantity: [line.quantity, line.unit].filter(Boolean).join(" ") || "—",
-  amount: line.amountCents === undefined ? "—" : centsTextToYuanText(line.amountCents),
+  amount: typeof line.amountCents === "string" ? centsTextToYuanText(line.amountCents) : "—",
   reason: [line.reason, line.remark].filter(Boolean).join(" · ") || "—"
 })));
 const historyFiles = computed<HistoryFile[]>(() => {
@@ -133,16 +133,19 @@ watch(() => [routeText(route.query.project), routeText(route.query.draftId)], as
   try {
     const projects = await fetchProjects();
     const matches = project ? projects.filter(row => [row.id, row.code, row.name].includes(project)) : projects;
-    const matchesDraft = async (projectId: string) => {
-      const records = await listSettlementDraftRecords(projectId).catch(() => []);
-      return records.some(record => record.id === id);
-    };
-    const candidates = project ? matches : (await Promise.all(matches.map(async row =>
-      await matchesDraft(row.id) ? row : null
-    ))).filter(row => row !== null);
+    let owner = project && matches.length === 1 ? matches[0] : undefined;
+    if (!project) {
+      for (const visibleProject of matches) {
+        if (!current) return;
+        const records = await listSettlementDraftRecords(visibleProject.id).catch(() => []);
+        if (records.some(record => record.id === id)) {
+          owner = visibleProject;
+          break;
+        }
+      }
+    }
     if (!current) return;
-    if (candidates.length !== 1) throw new Error("未找到可查看的历史草稿，请从结算台账重新进入。");
-    const owner = candidates[0];
+    if (!owner) throw new Error("未找到可查看的历史草稿，请从结算台账重新进入。");
     const result = await fetchSettlementDraftRecord(owner.id, id);
     if (!current) return;
     if (result.id !== id || result.projectId !== owner.id) throw new Error("历史草稿读取坐标不一致。");
@@ -167,17 +170,24 @@ function prepareFileDownload(file: HistoryFile) {
   downloadVisible.value = true;
 }
 
+async function createHistoricalDownloadTicketWithCapability(
+  fileId: string,
+  body: Parameters<typeof createPrivateFileDownloadTicket>[1]
+) {
+  const capability = await getPrivateFileDownloadTicketCapability(fileId);
+  const operationAllowed = capability.availableActions.includes(
+    "create_private_file_download_ticket"
+  );
+  if (!operationAllowed) throw new Error("当前账号无权下载该历史文件。");
+  return createPrivateFileDownloadTicket(fileId, body);
+}
+
 async function downloadHistoryFile(values: { reason: string; password: string }) {
   const target = downloadTarget.value;
   if (!target || downloading.value) return;
   downloading.value = true;
   try {
-    const capability = await getPrivateFileDownloadTicketCapability(target.fileId);
-    if (!capability.availableActions.includes("create_private_file_download_ticket")) {
-      throw new Error("当前账号无权下载该历史文件。");
-    }
-    if (target !== downloadTarget.value) return;
-    const { downloadUrl } = await createPrivateFileDownloadTicket(target.fileId, {
+    const { downloadUrl } = await createHistoricalDownloadTicketWithCapability(target.fileId, {
       confirmationPassword: values.password,
       downloadReason: values.reason
     });

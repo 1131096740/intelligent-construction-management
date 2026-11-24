@@ -8,6 +8,8 @@ import { SettlementSubmissionService } from "./settlement-submission.service";
 import { SettlementCounterpartyDocumentService } from "./settlement-counterparty-document.service";
 import { SettlementFrozenDocumentService } from "./settlement-frozen-document.service";
 import { SettlementLineAttachmentService } from "./settlement-line-attachment.service";
+import { SettlementImportController } from "./settlement-import.controller";
+import { SettlementImportService } from "./settlement-import.service";
 
 describe("历史结算草稿 HTTP 入口", () => {
   let app: INestApplication;
@@ -22,6 +24,7 @@ describe("历史结算草稿 HTTP 入口", () => {
     finalPreparation: jest.fn().mockResolvedValue({ draftId: "draft-1", revision: 3 })
   };
   const submissions = { submitDraft: jest.fn() };
+  const imports = { previewImport: jest.fn(), applyImport: jest.fn() };
   const counterparty = { link: jest.fn() };
   const frozen = { generate: jest.fn() };
   const attachments = {
@@ -32,9 +35,10 @@ describe("历史结算草稿 HTTP 入口", () => {
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
-      controllers: [SettlementDraftController],
+      controllers: [SettlementDraftController, SettlementImportController],
       providers: [
         { provide: SettlementDraftService, useValue: drafts },
+        { provide: SettlementImportService, useValue: imports },
         { provide: SettlementSubmissionService, useValue: submissions },
         { provide: SettlementCounterpartyDocumentService, useValue: counterparty },
         { provide: SettlementFrozenDocumentService, useValue: frozen },
@@ -78,6 +82,19 @@ describe("历史结算草稿 HTTP 入口", () => {
     expect(response.status).toBe(410);
     expect(await response.json()).toMatchObject({ code: "OLD_WRITE_ENTRY_RETIRED" });
     if (mutate) expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["/contract-versions/contract-version-1/imports/preview", imports.previewImport],
+    ["/projects/project-1/imports/import-1/apply", imports.applyImport]
+  ])("禁止旧结算导入落库 %s", async (path, mutate) => {
+    const response = await fetch(`${await app.getUrl()}/settlement-workbench${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}"
+    });
+    expect(response.status).toBe(410);
+    expect(mutate).not.toHaveBeenCalled();
   });
 
   it.each([

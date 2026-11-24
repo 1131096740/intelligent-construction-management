@@ -8,10 +8,10 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 466,
-    "technicalActionCount": 10,
-    "activeBindingCount": 563,
-    "retiredWriteEntryCount": 87,
+    "activeBusinessActionCount": 453,
+    "technicalActionCount": 8,
+    "activeBindingCount": 548,
+    "retiredWriteEntryCount": 99,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
@@ -6165,226 +6165,16 @@
       "causalVerified": true
     },
     {
-      "id": "settlement-draft.abandon-application",
-      "status": "unified_candidate",
-      "usage": "page_action",
-      "routePaths": [
-        "/结算工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-      "capabilityKind": "detail_action",
-      "bindingKeys": [
-        "GET /projects/:param/settlement-drafts/:param",
-        "POST /projects/:param/settlement-drafts/:param/abandonment"
-      ],
-      "bindingCount": 2,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "settlement-draft.delete-pristine",
-      "status": "unified_candidate",
-      "usage": "page_action",
-      "routePaths": [
-        "/结算工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-      "capabilityKind": "detail_action",
-      "bindingKeys": [
-        "GET /projects/:param/settlement-drafts/:param",
-        "POST /projects/:param/settlement-drafts/:param/abandonment"
-      ],
-      "bindingCount": 2,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
       "id": "settlement-draft.file-download-ticket",
       "status": "unified_candidate",
       "usage": "background",
       "routePaths": [
         "/结算工作台/新建"
       ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+      "sourceFile": "apps/web-admin/src/pages/settlements/HistoricalSettlementDraftPage.vue",
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /files/:param/download-ticket"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "settlement-draft.generate-frozen-document",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/结算工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /projects/:param/settlement-drafts/:param/frozen-document"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "settlement-draft.link-signed-document",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/结算工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /projects/:param/settlement-drafts/:param/counterparty-signed-documents"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "settlement-draft.save-local-gate",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/结算工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /projects/:param/settlement-drafts"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "settlement-draft.submit",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/结算工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /projects/:param/settlement-drafts/:param/approval-submission"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "settlement-draft.update-local-gate",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/结算工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "PATCH /projects/:param/settlement-drafts/:param"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "settlement-draft.upload-signed-document",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/结算工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /projects/:param/settlement-drafts/files"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 2,
-      "causalVerified": true
-    },
-    {
-      "id": "settlement-import.apply",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/结算工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /settlement-workbench/projects/:param/imports/:param/apply"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "settlement-line-attachment.attach",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/结算工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /projects/:param/settlement-drafts/:param/lines/:param/attachments"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "settlement-line-attachment.invalidate",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/结算工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /projects/:param/settlement-drafts/:param/line-attachments/:param/invalidation"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "settlement-line-attachment.upload",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/结算工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /projects/:param/settlement-drafts/files"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "settlement-list.copy-abandoned-draft",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/结算工作台"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /projects/:param/settlement-drafts/:param/copies"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
@@ -7768,39 +7558,6 @@
       "causalVerified": true
     },
     {
-      "id": "settlement-import.preview-local-gate",
-      "status": "technical_only",
-      "usage": "background",
-      "routePaths": [
-        "/结算工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /projects/:param/settlement-drafts/files",
-        "POST /settlement-workbench/contract-versions/:param/imports/preview"
-      ],
-      "bindingCount": 2,
-      "productionConsumerCount": 2,
-      "causalVerified": true
-    },
-    {
-      "id": "settlement-preview.background-local-gate",
-      "status": "technical_only",
-      "usage": "background",
-      "routePaths": [
-        "/结算工作台/新建"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /settlement-workbench/contract-versions/:param/preview"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
       "id": "signature.create-canvas-handoff",
       "status": "technical_only",
       "usage": "page_action",
@@ -7879,6 +7636,13 @@
       "path": "/contract-workbench/:contractVersionId/parties/:partySnapshotId",
       "controller": "BusinessPartyController",
       "handler": "updateContractPartyRole",
+      "status": "gone"
+    },
+    {
+      "method": "PATCH",
+      "path": "/projects/:projectId/settlement-drafts/:draftId",
+      "controller": "SettlementDraftController",
+      "handler": "update",
       "status": "gone"
     },
     {
@@ -8191,6 +7955,69 @@
     },
     {
       "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts",
+      "controller": "SettlementDraftController",
+      "handler": "create",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/abandonment",
+      "controller": "SettlementDraftController",
+      "handler": "abandon",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/approval-submission",
+      "controller": "SettlementDraftController",
+      "handler": "submit",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/copies",
+      "controller": "SettlementDraftController",
+      "handler": "copyAbandoned",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/counterparty-signed-documents",
+      "controller": "SettlementDraftController",
+      "handler": "linkCounterpartySignedDocument",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/frozen-document",
+      "controller": "SettlementDraftController",
+      "handler": "generateFrozenDocument",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/line-attachments/:attachmentId/invalidation",
+      "controller": "SettlementDraftController",
+      "handler": "invalidateLineAttachment",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/lines/:lineKey/attachments",
+      "controller": "SettlementDraftController",
+      "handler": "attachLineFile",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/files",
+      "controller": "SettlementDraftController",
+      "handler": "uploadPrivateFile",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
       "path": "/projects/:projectId/settlement-exception-quotas",
       "controller": "ProjectController",
       "handler": "requestSettlementExceptionQuota",
@@ -8271,6 +8098,20 @@
       "path": "/settlement-templates",
       "controller": "SettlementTemplateGovernanceController",
       "handler": "create",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/imports/preview",
+      "controller": "SettlementImportController",
+      "handler": "preview",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/settlement-workbench/projects/:projectId/imports/:importId/apply",
+      "controller": "SettlementImportController",
+      "handler": "apply",
       "status": "gone"
     },
     {
