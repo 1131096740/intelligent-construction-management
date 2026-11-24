@@ -216,13 +216,19 @@ async function main(args) {
       // Some tools return connection strings and fixture secrets on failure.
       // Each command's projection is limited to its status and business stage.
       const diagnostic = result.stdout?.match(/SEAL_329_NATIVE_FAILURE (\{[^\n]{1,500}\})/u)?.[1];
-      const errorText = result.stderr ?? "";
+      const errorText = (result.stderr ?? "") + "\n" + (result.stdout ?? "");
       const prismaCode = errorText.match(/(?:Error: |^)(P[0-9]{4})\b/mu)?.[1];
       const sqlState = (errorText.match(/Database error code:\s*([0-9A-Z]{5})\b/u) ??
         errorText.match(/^(?:psql:.*?: )?ERROR:\s+([0-9A-Z]{5}):/mu))?.[1];
       const reportedMigration = errorText.match(/Migration name:\s*(\d{14}_[a-z0-9_]{1,140})\b/u)?.[1];
       const migration = source.ledger.some(row => row.name === reportedMigration) ? reportedMigration : undefined;
-      firstFailure ??= { stage: phase, exit: result.status, signal: result.signal ?? undefined, prismaCode, sqlState, migration,
+      // Prisma sometimes reports a native-driver error without a P-code.
+      // Project only the first database error line and redact all local connection coordinates.
+      const reason = /^Error:\s*(?:ERROR:\s*)?([^\n]{1,200})$/mu.exec(errorText)?.[1]
+        ?.replace(/postgres(?:ql)?:\/\/\S+/gu, "[database URL]")
+        ?.replace(/\/private\/tmp\/[^\s"']+/gu, "[owned path]")
+        ?.replace(/\b(?:jg_task01_|jg_fixture_app_)?[a-f0-9]{24,}\b/gu, "[private id]");
+      firstFailure ??= { stage: phase, exit: result.status, signal: result.signal ?? undefined, prismaCode, sqlState, migration, reason,
         ...(diagnostic ? { diagnostic: JSON.parse(diagnostic) } : {}) };
       throw new Error("NATIVE_329_COMMAND");
     }
