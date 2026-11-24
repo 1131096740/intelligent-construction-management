@@ -3,6 +3,9 @@ qualification_image_scope() {
   JG_QUALIFICATION_LOCAL_RUN=
   if [[ ${GITHUB_ACTIONS:-} != true ]]; then
     JG_QUALIFICATION_LOCAL_RUN=$(node -p 'require("node:crypto").randomUUID()')
+    if [[ -n ${1:-} ]]; then
+      (set -o noclobber; printf '%s\n' "$JG_QUALIFICATION_LOCAL_RUN" > "$1/local-image-run.id")
+    fi
   fi
   export JG_QUALIFICATION_LOCAL_RUN
 }

@@ -24,7 +24,7 @@ if pgrep -x postgres >/dev/null; then exit 65; fi
 mkdir "$evidence"
 evidence=$(cd "$evidence" && pwd -P)
 source "$(dirname "$0")/../contract-finance/local-build-images.sh"
-qualification_image_scope
+qualification_image_scope "$evidence"
 trap 'qualification_image_exit "$?"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM

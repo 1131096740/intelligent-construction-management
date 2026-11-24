@@ -6,7 +6,7 @@ root=$(git rev-parse --show-toplevel)
 plan=$(cd "$(dirname "$0")" && pwd -P)
 temp=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-procurement-290.XXXXXXXX")
 source "$plan/../../task12-install-295/contract-finance/local-build-images.sh"
-qualification_image_scope
+qualification_image_scope "$temp"
 trap 'qualification_image_exit "$?"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM

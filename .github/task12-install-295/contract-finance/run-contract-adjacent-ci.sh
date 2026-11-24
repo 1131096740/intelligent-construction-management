@@ -14,7 +14,7 @@ root=$(git rev-parse --show-toplevel)
 plan=$(cd "$(dirname "$0")" && pwd -P)
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-contract-adjacent.XXXXXXXX")
 source "$plan/local-build-images.sh"
-qualification_image_scope
+qualification_image_scope "$work"
 predecessor_worktree=
 cleanup() {
   local status=$1

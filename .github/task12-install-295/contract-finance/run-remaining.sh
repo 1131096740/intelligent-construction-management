@@ -8,7 +8,7 @@ root=$(git rev-parse --show-toplevel)
 plan=$(cd "$(dirname "$0")" && pwd -P)
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-remaining-dynamic.XXXXXXXX")
 source "$plan/local-build-images.sh"
-qualification_image_scope
+qualification_image_scope "$work"
 trap 'qualification_image_exit "$?"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
