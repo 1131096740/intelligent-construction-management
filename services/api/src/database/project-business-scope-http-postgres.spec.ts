@@ -460,9 +460,18 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     expect(claim.status).toBe(201);
     const claimRoute = `/expense-claims/${claim.body.id}`;
     expect((await request(`${claimRoute}/submission`, director, {})).status).toBe(201);
-    expect((await request(`${claimRoute}/approval`, director, { decision: "approve", selfReviewReason: "按已归档采购办理", confirmationPassword: password })).status).toBe(201);
-    expect((await request(`${claimRoute}/approval`, firstManager, { decision: "approve" })).status).toBe(403);
-    for (const reviewer of [secondManager, financeDirector, chairman]) expectStatus(await request(`${claimRoute}/approval`, reviewer, { decision: "approve" }), 201);
+    const managerView = await request(claimRoute, secondManager);
+    expectStatus(managerView, 200);
+    const approvalInstanceId = managerView.body.approval.approvalInstanceId;
+    expect((await request(`${claimRoute}/approval`, firstManager, {
+      decision: "approve", approvalInstanceId, approvalDutyIndex: 1
+    })).status).toBe(403);
+    for (const [reviewer, approvalDutyIndex] of [[financeDirector, 2], [chairman, 3], [secondManager, 1], [director, 0]] as const) {
+      expectStatus(await request(`${claimRoute}/approval`, reviewer, {
+        decision: "approve", approvalInstanceId, approvalDutyIndex,
+        ...(reviewer.id === director.id ? { selfReviewReason: "按已归档采购办理", confirmationPassword: password } : {})
+      }), 201);
+    }
     expect((await request(claimRoute, director)).body).toMatchObject({ projectId: second, status: "approved_pending_payment", companyPayableAmountCents: "10000" });
   });
 

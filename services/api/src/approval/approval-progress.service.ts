@@ -1,7 +1,7 @@
 import { resolveContractOriginators } from "../contract/contract-originators";
 import { isLegacyContractParallelRound } from "../contract/contract-approval-cutover";
 import { isLiveOrdinaryPaymentDelegation, isOrdinaryPaymentParallelRound, paymentParallelRoundEvidence, resolveOrdinaryPaymentDuty } from "../payment/ordinary-payment-parallel";
-import { EXPENSE_CURRENT_ROLE_SCOPE, isPureExpenseReimbursement, resolveExpenseParallelDutyIdentity } from "../expense-claim/expense-claim-parallel-approval";
+import { EXPENSE_CURRENT_ROLE_SCOPE, supportsExpenseParallelApproval, resolveExpenseParallelDutyIdentity } from "../expense-claim/expense-claim-parallel-approval";
 import { companyTransferReminderIntent, contractReminderIntent, expenseReminderIntent, paymentReminderIntent, settlementReminderIntent, spotApplicationReminderIntent, spotPaymentReminderIntent } from "./approval-reminder-business-intent";
 import { generalProcurementDutySmsIntent } from "../general-procurement/general-procurement-request-facts";
 import { GENERAL_REQUEST_DUTY_RESOURCE, generalRequestDutyId, generalRequestDutyIdentity, generalRequestActor, generalRequestCanRead } from "../general-procurement/general-procurement-request-access";
@@ -275,10 +275,10 @@ export class ApprovalProgressService {
     const business = await this.business(db, instance);
     if (!business) throw new NotFoundException("审批流程不存在或无权查看");
     const projectId = business.projectId;
-    const parallelReimbursement = instance.businessType === "expense_claim" &&
+    const parallelExpense = instance.businessType === "expense_claim" &&
       instance.flowType === "expense_claim.approve" && isParallelApprovalRound(instance.frozenNodes) &&
-      "claimType" in business && isPureExpenseReimbursement(business);
-    const reimbursementUnavailable = parallelReimbursement && (
+      "claimType" in business && supportsExpenseParallelApproval(business);
+    const expenseUnavailable = parallelExpense && (
       business.status !== "approval_pending" || business.approvalInstanceId !== instance.id || instance.status !== "in_progress"
     );
     const parallelGeneral = instance.businessType === "general_procurement" && "requestProtocolVersion" in business && business.requestProtocolVersion === 2 && isParallelApprovalRound(instance.frozenNodes);
@@ -322,7 +322,7 @@ export class ApprovalProgressService {
     });
     const validAssignment = (node: FrozenApprovalNode, value: unknown) => {
       const assignment = object(value);
-      if (legacyContractParallel || parallelReimbursement ||
+      if (legacyContractParallel || parallelExpense ||
           !["contract_version", "settlement", "payment_request", "expense_claim", "fund_execution_case", "contract_work_completion"].includes(instance.businessType)) return false;
       if (typeof assignment.fromUserId !== "string" || typeof assignment.toUserId !== "string" || typeof assignment.fromRoleKey !== "string") return false;
       if (!strings(node.roleKeys).includes(assignment.fromRoleKey)) return false;
@@ -365,10 +365,10 @@ export class ApprovalProgressService {
         ? paymentParallelRoundEvidence(ACTIVE.has(instance.status) ? "approval_pending" : instance.status, instance.frozenNodes, logs, instance)
         : [])
       : null;
-    const reimbursementActiveIndexes = parallelReimbursement && !reimbursementUnavailable
+    const expenseActiveIndexes = parallelExpense && !expenseUnavailable
       ? activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex) : [];
-    const expensePendingByDuty = parallelReimbursement ? rawNodes.map((node, index) => {
-      if (!reimbursementActiveIndexes.includes(index)) return [];
+    const expensePendingByDuty = parallelExpense ? rawNodes.map((node, index) => {
+      if (!expenseActiveIndexes.includes(index)) return [];
       return users.filter(user => {
         const scopes = roles.get(user.id);
         return user.isActive && scopes &&
@@ -433,7 +433,7 @@ export class ApprovalProgressService {
         }
       }
     }
-    const businessUnavailable = reimbursementUnavailable || (legacyContractParallel && !legacyOriginators) || (instance.businessType === "project_financing_quota" && project?.isActive !== true) || (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) && !this.pilot?.isEnabled(projectId)) ||
+    const businessUnavailable = expenseUnavailable || (legacyContractParallel && !legacyOriginators) || (instance.businessType === "project_financing_quota" && project?.isActive !== true) || (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) && !this.pilot?.isEnabled(projectId)) ||
       (["general_procurement", "company_transfer", "fund_execution_case"].includes(instance.businessType) &&
         (!("status" in business) || business.status !== (instance.businessType === "general_procurement" ? "approval_pending" : "submitted") || !("approvalInstanceId" in business) || business.approvalInstanceId !== instance.id));
     const expensePendingIds = expensePendingByDuty && new Set(expensePendingByDuty.flat().map(user => user.id));

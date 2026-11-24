@@ -97,6 +97,21 @@ export function isPureExpenseReimbursement(claim: {
     claim.generalProcurementId == null && claim.actualPurchaseBatchId == null;
 }
 
+export const pureExpenseReimbursementWhere = {
+  claimType: "reimbursement", generalProcurementId: null, actualPurchaseBatchId: null
+} satisfies Prisma.ExpenseClaimWhereInput;
+
+export const projectIncidentalExpenseWhere = {
+  claimType: "incidental_expense", projectId: { not: null }
+} satisfies Prisma.ExpenseClaimWhereInput;
+
+export function supportsExpenseParallelApproval(claim: Parameters<typeof isPureExpenseReimbursement>[0] & {
+  projectId: string | null;
+}): boolean {
+  return isPureExpenseReimbursement(claim) ||
+    (claim.claimType === "incidental_expense" && claim.projectId != null);
+}
+
 export async function loadExpenseApprovalRoleScopes(
   tx: Prisma.TransactionClient,
   userId: string,

@@ -1,6 +1,6 @@
 import { expenseReminderIntent } from "../approval/approval-reminder-business-intent";
 import { activeApprovalNodeIndexes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
-import { EXPENSE_CURRENT_ROLE_SCOPE, isPureExpenseReimbursement, loadExpenseApprovalCandidateIds, loadExpenseApprovalRoleScopes, resolveExpenseParallelDutyIdentity } from "./expense-claim-parallel-approval";
+import { EXPENSE_CURRENT_ROLE_SCOPE, supportsExpenseParallelApproval, loadExpenseApprovalCandidateIds, loadExpenseApprovalRoleScopes, projectIncidentalExpenseWhere, pureExpenseReimbursementWhere, resolveExpenseParallelDutyIdentity } from "./expense-claim-parallel-approval";
 import { approvalDutyTarget } from "../approval/approval-duty-sms-intent";
 import { formatMoneyCentsAsPlainYuan } from "../money/decimal-money";
 import { expenseClaimFundingDuty } from "./expense-claim-funding-duty";
@@ -75,11 +75,11 @@ export class ExpenseClaimFundingNotificationService implements OnModuleInit, OnM
     if (this.approvalReconcileBusy) return;
     this.approvalReconcileBusy = true;
     try {
-      // Pull only pending pure reimbursements. A newly staffed duty enters the same
-      // persistent queue as a duty that had an assignee at the time of submission.
+      // A newly staffed duty enters the same persistent queue as a duty that
+      // had an assignee at submission. Migrated frozen candidates are not reseated.
       const claims = await this.prisma.expenseClaim.findMany({
-        where: { claimType: "reimbursement", status: "approval_pending", voidedAt: null,
-          generalProcurementId: null, actualPurchaseBatchId: null, approvalInstanceId: { not: null },
+        where: { OR: [pureExpenseReimbursementWhere, projectIncidentalExpenseWhere],
+          status: "approval_pending", voidedAt: null, approvalInstanceId: { not: null },
           ...(this.approvalCursor ? { id: { gt: this.approvalCursor } } : {}) },
         select: { id: true },
         orderBy: { id: "asc" },
@@ -94,7 +94,7 @@ export class ExpenseClaimFundingNotificationService implements OnModuleInit, OnM
             actualPurchaseBatchId: true, generalProcurementId: true, voidedAt: true }
         });
         if (!claim?.approvalInstanceId || claim.status !== "approval_pending" || claim.voidedAt ||
-            !isPureExpenseReimbursement(claim)) return;
+            !supportsExpenseParallelApproval(claim)) return;
         const round = await tx.approvalInstance.findUnique({ where: { id: claim.approvalInstanceId } });
         const nodes: unknown = round?.frozenNodes;
         if (!round || round.status !== "in_progress" || round.businessType !== "expense_claim" ||
@@ -159,7 +159,7 @@ export class ExpenseClaimFundingNotificationService implements OnModuleInit, OnM
       select: { id: true, projectId: true, claimType: true, generalProcurementId: true, actualPurchaseBatchId: true,
         approvalInstanceId: true, status: true, voidedAt: true }
     });
-    if (!claim || !isPureExpenseReimbursement(claim) || claim.voidedAt ||
+    if (!claim || !supportsExpenseParallelApproval(claim) || claim.voidedAt ||
         claim.status !== "approval_pending" || claim.approvalInstanceId !== instanceId) return null;
     const round = await tx.approvalInstance.findUnique({
       where: { id: instanceId },
@@ -181,7 +181,9 @@ export class ExpenseClaimFundingNotificationService implements OnModuleInit, OnM
     }) : null;
     if (claim.projectId && !project?.isActive) return null;
     const message = await expenseReminderIntent(tx, claim.id, {
-      projectId: claim.projectId, projectName: project?.name, businessLabel: "费用报销", dutyName: node.name
+      projectId: claim.projectId, projectName: project?.name, dutyName: node.name,
+      businessLabel: claim.claimType === "reimbursement" ? "费用报销"
+        : claim.generalProcurementId ? "综合采购付款" : "零星费用"
     });
     return message ? { phone: user.phone ?? "", intent: message } : null;
   }

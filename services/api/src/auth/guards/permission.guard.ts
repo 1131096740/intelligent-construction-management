@@ -1,4 +1,4 @@
-import { isPureExpenseReimbursement, loadExpenseApprovalRoleScopes, resolveExpenseParallelDutyIdentity } from "../../expense-claim/expense-claim-parallel-approval";
+import { supportsExpenseParallelApproval, loadExpenseApprovalRoleScopes, resolveExpenseParallelDutyIdentity } from "../../expense-claim/expense-claim-parallel-approval";
 import { isLegacyContractParallelRound } from "../../contract/contract-approval-cutover";
 import { isOrdinaryPaymentParallelRound, loadOrdinaryPaymentDelegationPrincipals, resolveOrdinaryPaymentDuty } from "../../payment/ordinary-payment-parallel";
 import { matchesOwnFundReviewReceipt, type FundReviewDecision } from "../../fund-account/fund-account-receipt";
@@ -394,7 +394,7 @@ export class PermissionGuard implements CanActivate {
         }),
         this.prisma.user.findUnique({ where: { id: userId }, select: { isActive: true } })
       ]);
-      if (!claim || !actor?.isActive || !isPureExpenseReimbursement(claim) ||
+      if (!claim || !actor?.isActive || !supportsExpenseParallelApproval(claim) ||
           claim.status !== "approval_pending" || claim.approvalInstanceId !== instance.id) return false;
       const scopes = await loadExpenseApprovalRoleScopes(this.prisma, userId, claim.projectId);
       const index = request.body?.approvalDutyIndex;

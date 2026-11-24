@@ -361,7 +361,7 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
     expect(claim.body.generalProcurement).toMatchObject({ id, code: detail.body.code });
   });
 
-  it("采购工作台与审批中心显示当前员工应办事项，付款延续原审批链", async () => {
+  it("采购工作台与审批中心显示当前员工应办事项，付款走并联职责", async () => {
     const options = await request("/general-procurements/create-options");
     expect(options).toMatchObject({ status: 200, body: { canCreate: true, projects: expect.arrayContaining([expect.objectContaining({ id: projectId })]) } });
     const beforeSummary = await request("/me/workbench-summary", "GET", undefined, director.token);
@@ -421,7 +421,7 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
     expect((await request(`/expense-claims/${claim.body.id}/submission`, "POST", {}, director.token)).status).toBe(400);
   });
 
-  it("关联付款走原四步审批，财务分次实付及重复凭证不会重复实付", async () => {
+  it("关联付款四岗并联审批，财务分次实付及重复凭证不会重复实付", async () => {
     const { id, path } = await approvedApplication("50000");
     const uploaded = await uploadArchive(path);
     expect((await request(`${path}/archive`, "POST", { revision: 5, fileId: uploaded.body.id, note: "合成归档" }, director.token)).status).toBe(201);
@@ -433,17 +433,25 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
     expect(await request(claimPath, "GET", undefined, generalManager.token)).toMatchObject({ status: 200, body: { status: "draft" } });
     expect((await request(claimPath, "GET", undefined, employee.token)).status).toBe(404);
     expect((await request(`${claimPath}/submission`, "POST", {}, director.token)).status).toBe(201);
-    expect((await request(`${claimPath}/approval`, "POST", { decision: "approve" }, director.token)).status).toBe(400);
-    expect(await request(claimPath, "GET", undefined, generalManager.token)).toMatchObject({ status: 200, body: { approval: { canReview: false } } });
-    expect((await request(`${claimPath}/approval`, "POST", { decision: "approve" }, generalManager.token)).status).toBe(403);
-    for (const reviewer of [director, manager, financeDirector, chairman]) {
-      const result = await request(`${claimPath}/approval`, "POST", { decision: "approve", ...(reviewer.id === director.id ? { selfReviewReason: "综合部按已批准采购办理付款", confirmationPassword: password } : {}) }, reviewer.token);
+    expect((await request(`${claimPath}/approval`, "POST", { decision: "approve" }, director.token)).status).toBe(409);
+    const alternateLeader = await request(claimPath, "GET", undefined, generalManager.token);
+    expect(alternateLeader.body.approval).toMatchObject({ canReview: true, actionableDuties: [{ index: 3 }] });
+    for (const reviewer of [financeDirector, chairman, director, manager]) {
+      const detail = await request(claimPath, "GET", undefined, reviewer.token);
+      const { approvalInstanceId, actionableDuties } = detail.body.approval;
+      const result = await request(`${claimPath}/approval`, "POST", {
+        decision: "approve", approvalInstanceId, approvalDutyIndex: actionableDuties[0].index,
+        ...(reviewer.id === director.id ? { selfReviewReason: "综合部按已批准采购办理付款", confirmationPassword: password } : {})
+      }, reviewer.token);
       expect(result).toMatchObject({ status: 201 });
+      if (reviewer.id === chairman.id) {
+        expect((await request(`${claimPath}/approval`, "POST", { decision: "approve", approvalInstanceId, approvalDutyIndex: 3 }, generalManager.token)).status).toBe(409);
+      }
     }
     expect((await request(claimPath, "GET", undefined, finance.token)).body).toMatchObject({ status: "approved_pending_payment", companyPayableAmountCents: "20000" });
     await verifyApprovedPdf({ db: app.get(PrismaService), baseUrl: base, token: director.token, password,
       businessType: "expense_claim", businessId: claim.body.id,
-      roles: ["comprehensive_director", "project_manager", "finance_director", "chairman"], label: "综合采购付款" });
+      roles: ["finance_director", "chairman", "comprehensive_director", "project_manager"], label: "综合采购付款" });
     const uploadVoucher = async (token: string) => {
       const form = new FormData(); form.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "合成银行付款凭证.png");
       const response = await fetch(`${base}${claimPath}/payment-voucher-file-uploads`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: form });

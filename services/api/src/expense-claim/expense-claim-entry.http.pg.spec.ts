@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { hash } from "bcryptjs";
 import { AppModule } from "../app.module";
+import { ExpenseClaimService } from "./expense-claim.service";
 import { ExpenseClaimFundingNotificationService } from "./expense-claim-funding-notification.service";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { PrismaService } from "../database/prisma.service";
@@ -33,6 +34,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
   let financeDirectorToken: string;
   let accountPassword: string;
   const approvalTokens: string[] = [];
+  const approvalActorIds: string[] = [];
   let browserSession: BrowserAuthSession;
   let financeSession: BrowserAuthSession;
   let proxySession: BrowserAuthSession;
@@ -94,6 +96,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
             financeDirectorSession = positionSession;
           }
           approvalTokens.push(positionToken);
+          approvalActorIds.push(userId);
           const signatureBody = new FormData();
           signatureBody.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), `合成签名-${key}.png`);
           const signature = await fetch(`${baseUrl}/me/signature/canvas`, { method: "POST", headers: { authorization: `Bearer ${positionToken}` }, body: signatureBody });
@@ -608,19 +611,20 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const capability = `/approval-forms/expense_claim/${created.body.id}/capability`;
     expect(await request(capability)).toMatchObject({ status: 200, body: { available: false } });
     expect((await request(`${path}/submission`, {})).status).toBe(201);
-    const order = claimType === "reimbursement" ? [2, 3, 0, 1] : [0, 1, 2, 3];
+    const parallel = claimType !== "loan";
+    const order = parallel ? [2, 3, 0, 1] : [0, 1, 2, 3];
     const roles = ["comprehensive_director", "project_manager", "finance_director", "chairman"];
     for (const index of order) {
       const approvalToken = approvalTokens[index]!;
       expect(await request(capability)).toMatchObject({ status: 200, body: { available: false } });
-      const coordinates = claimType === "reimbursement" ? await parallelReviewCoordinates(path, approvalToken) : {};
+      const coordinates = parallel ? await parallelReviewCoordinates(path, approvalToken) : {};
       const input = { decision: "approve", ...coordinates };
-      if (claimType === "reimbursement" && index === 2) {
+      if (parallel && index === 2) {
         expect((await request(`${path}/approval`, { decision: "approve" }, approvalToken)).status).toBe(409);
         expect((await request(`${path}/approval`, { ...input, approvalInstanceId: randomUUID() }, approvalToken)).status).toBe(409);
       }
       expect((await request(`${path}/approval`, input, approvalToken)).status).toBe(201);
-      if (claimType === "reimbursement" && index === 2) {
+      if (parallel && index === 2) {
         expect((await request(`${path}/approval`, input, approvalToken)).status).toBe(409);
       }
     }
@@ -885,6 +889,111 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       status: 201, body: { status: "approval_pending" }
     });
   });
+
+  (enabled ? it.each : it.skip.each)([false, true])("在途零星费用保留原签批、按原岗位并联接续（关联采购 %s）", async linked => {
+    const db = app.get(PrismaService);
+    const owner = linked ? proxySession : browserSession;
+    const accessToken = owner.tokens.accessToken;
+    const archive = linked ? await db.fileObject.create({
+      data: { bucket: "isolated", objectKey: `legacy-expense-${randomUUID()}`, originalName: "合成采购归档.pdf",
+        mimeType: "application/pdf", sizeBytes: 1, uploadedByUserId: owner.user.id, storageStatus: "active" }
+    }) : null;
+    const procurement = archive ? await db.generalProcurement.create({
+      data: {
+        code: `LEGACY-${randomUUID()}`, requestKey: randomUUID(), creationFingerprint: "b".repeat(64),
+        projectId, companyEntityId, companyNameSnapshot: "入口合成公司", applicantUserId: owner.user.id,
+        applicantNameSnapshot: owner.user.name, category: "office_supplies", reason: "历史综合采购原单",
+        requestedAmountCents: 500n, requestProtocolVersion: 1, status: "archived", revision: 6,
+        archivedAt: new Date(), archivedByUserId: owner.user.id, archiveNote: "历史采购合成归档", archiveFileId: archive.id
+      }
+    }) : null;
+    const draft = await request("/expense-claims", {
+      ...selfInput(owner.user.id, "incidental_expense"),
+      ...(procurement ? {
+        generalProcurementId: procurement.id, generalProcurementRequestKey: randomUUID(),
+        incidentalExpenseCategory: "procurement_office_supplies"
+      } : {})
+    }, accessToken);
+    expect(draft.status).toBe(201);
+
+    const claimId = draft.body.id;
+    const path = `/expense-claims/${claimId}`;
+    const roles = ["comprehensive_director", "project_manager", "finance_director", "chairman"];
+    const names = ["综合部主管", "项目经理", "财务主管", "董事长/总经理"];
+    const original = await db.approvalInstance.create({
+      data: {
+        flowType: "expense_claim.approve", businessType: "expense_claim", businessId: claimId,
+        status: "in_progress", currentNodeIndex: 0, applicantUserId: owner.user.id,
+        frozenNodes: roles.map((role, index) => ({
+          name: names[index], mode: "any", roleKeys: [role], candidateUserIds: [approvalActorIds[index]],
+          candidateUserIdsByRole: { [role]: [approvalActorIds[index]] }
+        }))
+      }
+    });
+    await db.expenseClaim.update({ where: { id: claimId }, data: {
+      status: "approval_pending", approvalInstanceId: original.id, submittedAt: new Date(), companyPayableAmountCents: 1n
+    } });
+    if (linked) {
+      expect(await request(`${path}/approval`, {
+        decision: "approve", selfReviewReason: "核对原来办理的采购付款", confirmationPassword: accountPassword
+      }, approvalTokens[0]!)).toMatchObject({ status: 201, body: { status: "approval_pending" } });
+    }
+    const before = await db.expenseClaim.findUniqueOrThrow({ where: { id: claimId } });
+    const round = await db.approvalInstance.findUniqueOrThrow({ where: { id: original.id } });
+    const oldActions = await db.approvalActionLog.findMany({ where: { approvalInstanceId: round.id } });
+    expect(oldActions).toHaveLength(linked ? 1 : 0);
+    const beforeFreeze = process.env.OPERATIONAL_WRITE_FREEZE_MODE;
+    const beforeModules = process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
+    const coordinates = { approvalInstanceId: round.id, claimUpdatedAt: before.updatedAt, approvalUpdatedAt: round.updatedAt };
+    try {
+      process.env.OPERATIONAL_WRITE_FREEZE_MODE = "modules";
+      process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "expense";
+      expect((await request(`${path}/approval`, { decision: "approve" }, approvalTokens[2]!)).status).toBe(503);
+      const service = app.get(ExpenseClaimService);
+      await expect(service.migrateLegacyApprovalRound(claimId, owner.user.id, coordinates)).resolves.toEqual({
+        status: "mapped", pendingNodeIndexes: linked ? [1, 2, 3] : [0, 1, 2, 3]
+      });
+      await expect(service.migrateLegacyApprovalRound(claimId, owner.user.id, coordinates)).resolves.toEqual({ status: "already_mapped" });
+    } finally {
+      if (beforeFreeze === undefined) delete process.env.OPERATIONAL_WRITE_FREEZE_MODE;
+      else process.env.OPERATIONAL_WRITE_FREEZE_MODE = beforeFreeze;
+      if (beforeModules === undefined) delete process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
+      else process.env.OPERATIONAL_WRITE_FREEZE_MODULES = beforeModules;
+    }
+    expect(await db.expenseClaim.findUniqueOrThrow({ where: { id: claimId } })).toEqual(before);
+    expect(await db.approvalActionLog.findMany({ where: { approvalInstanceId: round.id } })).toEqual(oldActions);
+    const noticeRows = await db.auditLog.findMany({ where: {
+      businessId: claimId, businessType: "expense_claim_approval_duty_notification", action: "queued"
+    } });
+    expect(noticeRows.map(row => (row.metadata as { approvalDutyIndex: number }).approvalDutyIndex).sort()).toEqual(
+      linked ? [1, 2, 3] : [0, 1, 2, 3]
+    );
+    const financeDuty = await parallelReviewCoordinates(path, approvalTokens[2]!);
+    expect(financeDuty).toEqual({ approvalInstanceId: round.id, approvalDutyIndex: 2 });
+    expect(await request("/me/work-items", undefined, approvalTokens[2]!)).toMatchObject({
+      status: 200, body: { approvalCenter: { pendingApproval: expect.arrayContaining([
+        expect.objectContaining({ businessId: claimId, currentNode: "财务主管" })
+      ]) } }
+    });
+    expect((await request(`${path}/approval`, { decision: "approve", ...financeDuty }, strangerToken)).status).toBe(403);
+    const order = linked ? [2, 3, 1] : [2, 3, 1, 0];
+    for (const index of order) {
+      expect(await request(`${path}/approval`, {
+        decision: "approve", approvalInstanceId: round.id, approvalDutyIndex: index
+      }, approvalTokens[index]!)).toMatchObject({ status: 201, body: {
+        status: index === order.at(-1) ? "approved_pending_payment" : "approval_pending"
+      } });
+      if (index === 2) {
+        expect((await request(`${path}/approval`, { decision: "approve", ...financeDuty }, approvalTokens[2]!)).status).toBe(409);
+      }
+    }
+    expect(await db.approvalInstance.count({ where: { businessType: "expense_claim", businessId: claimId } })).toBe(1);
+    expect(await db.approvalActionLog.findMany({ where: { id: { in: oldActions.map(action => action.id) } } })).toEqual(oldActions);
+    expect(await db.expenseClaimPaymentExecution.count({ where: { expenseClaimId: claimId } })).toBe(0);
+    await verifyApprovedPdf({ db, baseUrl, token: accessToken, password: accountPassword, businessType: "expense_claim",
+      businessId: claimId, roles: [...(linked ? [roles[0]!] : []), ...order.map(index => roles[index]!)], label: "历史零星费用接续"
+    });
+  }, 60_000);
 
   (enabled ? it : it.skip)("缺少项目审批岗位时提交失败，原草稿与空快照可继续回读", async () => {
     const db = app.get(PrismaService);

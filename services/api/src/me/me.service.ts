@@ -9,7 +9,7 @@ import { approvalDutyTarget } from "../approval/approval-duty-sms-intent";
 import { SpotProcurementPilotService } from "../spot-procurement/spot-procurement-pilot.service";
 import { readSpotReceiptReviewDuty } from "../spot-procurement/spot-procurement-receipt-review-duty";
 import { IndependentApprovalProgressService } from "../approval/independent-approval-progress.service";
-import { isPureExpenseReimbursement, resolveExpenseParallelDutyIdentity } from "../expense-claim/expense-claim-parallel-approval";
+import { isPureExpenseReimbursement, projectIncidentalExpenseWhere, pureExpenseReimbursementWhere, resolveExpenseParallelDutyIdentity, supportsExpenseParallelApproval } from "../expense-claim/expense-claim-parallel-approval";
 import { expenseClaimFundingDuty, expenseFundingFacets } from "../expense-claim/expense-claim-funding-duty";
 import { workItemNoticeAt } from "./work-item-notice-order";
 import { contractRoundSubmissionSnapshot, hasActiveContractGlobalRole } from "../contract/contract-parallel-duty-access";
@@ -285,7 +285,11 @@ type ApprovalInstanceForWorkItem = {
 
 interface ApprovalBusinessDetail {
   requestProtocolVersion?: number;
-  reimbursement?: { status: string; approvalInstanceId: string | null };
+  expenseApproval?: {
+    status: string;
+    approvalInstanceId: string | null;
+    countKey: "reimbursement" | "incidentalExpense" | "procurementPayment";
+  };
   projectId: string | null;
   projectName: string;
   businessCode: string;
@@ -586,16 +590,16 @@ export class MeService {
     }, select: {id: true}}) : null;
     const fundReviewTodos = await fundReviewWorkItems(this.prisma, userId);
     const hasOtherApprovalScope = Boolean(approvalProjects.length || scopedSpotMandate || fundReviewTodos.length);
-    const canApproveCompanyExpense = !hasOtherApprovalScope && await this.hasCompanyReimbursementRole(userId);
+    const canApproveCompanyExpense = !hasOtherApprovalScope && await this.hasCompanyExpenseApprovalRole(userId);
     const approvalCounts = hasOtherApprovalScope || canApproveCompanyExpense
       ? await this.countApprovalTodos(scopes, userId, !hasOtherApprovalScope) : null;
-    if (approvalCounts && (hasOtherApprovalScope || approvalCounts.reimbursement)) {
+    if (approvalCounts && (hasOtherApprovalScope || approvalCounts.total)) {
       approvalCounts.total += fundReviewTodos.length;
       cards.push({
         id: "approval_todo",
         title: "待审批",
         count: approvalCounts.total,
-        description: `${fundReviewTodos.length ? `余额核对 ${fundReviewTodos.length} · ` : ""}${approvalCounts.procurement || approvalCounts.procurementPayment ? `综合采购 ${approvalCounts.procurement} · 采购付款 ${approvalCounts.procurementPayment} · ` : ""}${approvalCounts.reimbursement ? `报销 ${approvalCounts.reimbursement} · ` : ""}合同 ${approvalCounts.contract} · 结算 ${approvalCounts.settlement} · 付款 ${approvalCounts.payment} · 支出 ${approvalCounts.expense}${
+        description: `${fundReviewTodos.length ? `余额核对 ${fundReviewTodos.length} · ` : ""}${approvalCounts.procurement || approvalCounts.procurementPayment ? `综合采购 ${approvalCounts.procurement} · 采购付款 ${approvalCounts.procurementPayment} · ` : ""}${approvalCounts.reimbursement ? `报销 ${approvalCounts.reimbursement} · ` : ""}${approvalCounts.incidentalExpense ? `零星费用 ${approvalCounts.incidentalExpense} · ` : ""}合同 ${approvalCounts.contract} · 结算 ${approvalCounts.settlement} · 付款 ${approvalCounts.payment} · 支出 ${approvalCounts.expense}${
           approvalCounts.spotProcurement || approvalCounts.spotPayment
             ? ` · 零星采购 ${approvalCounts.spotProcurement} · 零星付款 ${approvalCounts.spotPayment}`
             : ""
@@ -2703,11 +2707,11 @@ export class MeService {
     for (const instance of instances) {
       const detail = details.get(`${instance.businessType}:${instance.businessId}`);
       if (detail?.requestProtocolVersion === 2) continue;
-      const reimbursement = detail?.reimbursement;
+      const expenseApproval = detail?.expenseApproval;
       let expenseDuties: number[] | undefined;
-      if (detail && reimbursement) {
-        if (mode === "delegated" || !this.isCurrentReimbursementRound(instance, reimbursement)) continue;
-        expenseDuties = mode === "pending" ? await this.reimbursementDutyIndexes(instance, detail.projectId, userId, expenseActors)
+      if (detail && expenseApproval) {
+        if (mode === "delegated" || !this.isCurrentExpenseRound(instance, expenseApproval)) continue;
+        expenseDuties = mode === "pending" ? await this.expenseDutyIndexes(instance, detail.projectId, userId, expenseActors)
           : activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex);
         if (expenseDuties.length === 0) continue;
       }
@@ -2722,7 +2726,7 @@ export class MeService {
       }
       const roleKeys = (detail.projectId ? roleKeysByProject.get(detail.projectId) : undefined) ?? [];
       const supportsIndirect = this.supportsIndirectApproval(instance.businessType);
-      const hasRoleTodo = reimbursement ? mode === "pending" : ["general_procurement", "expense_claim"].includes(instance.businessType)
+      const hasRoleTodo = expenseApproval ? mode === "pending" : ["general_procurement", "expense_claim"].includes(instance.businessType)
         ? await this.canActOnProcurementNode(node, userId, detail.projectId)
         : supportsIndirect ? this.canActOnApprovalNode(node, roleKeys, userId) : this.hasDirectRoleTodo(node, roleKeys);
       const hasDirectTodo =
@@ -2815,7 +2819,7 @@ export class MeService {
         ? details.get(`${instance.businessType}:${instance.businessId}`)
         : undefined;
       if (!instance || !detail) continue;
-      const companyReimbursementAction = detail.reimbursement && detail.projectId === null &&
+      const companyReimbursementAction = detail.expenseApproval?.countKey === "reimbursement" && detail.projectId === null &&
         instance.flowType === "expense_claim.approve" && ["approve", "reject"].includes(log.action);
       if (!companyReimbursementAction && (detail.projectId == null || !visibleProjectIds.has(detail.projectId))) continue;
       seen.add(log.approvalInstanceId);
@@ -3088,44 +3092,48 @@ export class MeService {
     return new Map(users.map(user => [user.id, user.name]));
   }
 
-  private async hasCompanyReimbursementRole(userId: string) {
+  private async hasCompanyExpenseApprovalRole(userId: string) {
     const assignments = await this.prisma.userPosition.findMany({ where: { userId, projectId: null }, select: { positionId: true } });
     if (!assignments.length) return false;
     const positions = await this.prisma.position.findMany({ where: { id: { in: assignments.map(row => row.positionId) } }, select: { key: true } });
     return canPerform("expense_claim.approve", positions.map(row => row.key as RoleKey));
   }
 
-  private async expenseApprovalDetails(instances: ReadonlyArray<Pick<ApprovalInstanceForWorkItem, "businessType" | "businessId">>, reimbursementsOnly = false) {
+  private async expenseApprovalDetails(instances: ReadonlyArray<Pick<ApprovalInstanceForWorkItem, "businessType" | "businessId">>, expenseOnly = false) {
     const result = new Map<string, ApprovalBusinessDetail>();
     const claimIds = instances.filter(instance => instance.businessType === "expense_claim").map(instance => instance.businessId);
     if (!claimIds.length) return result;
-    const reimbursementWhere = { claimType: "reimbursement", generalProcurementId: null, actualPurchaseBatchId: null };
     const claimRows = await this.prisma.expenseClaim.findMany({
-      where: { id: { in: claimIds }, OR: [reimbursementWhere, ...(!reimbursementsOnly ? [{ generalProcurementId: { not: null } }] : [])] },
+      where: { id: { in: claimIds }, OR: [pureExpenseReimbursementWhere, projectIncidentalExpenseWhere,
+        ...(!expenseOnly ? [{ generalProcurementId: { not: null } }] : [])] },
       select: { id: true, projectId: true, code: true, reason: true, requestedAmountCents: true,
         claimType: true, generalProcurementId: true, actualPurchaseBatchId: true, approvalInstanceId: true, status: true }
     });
     const projectNames = await this.projectNames(claimRows.flatMap(row => row.projectId ? [row.projectId] : []));
     for (const row of claimRows) {
       const pure = isPureExpenseReimbursement(row);
-      if (!pure && (reimbursementsOnly || !row.projectId)) continue;
+      if (!pure && !row.projectId) continue;
+      const title = pure ? "报销审批" : row.generalProcurementId ? "综合采购付款" : "零星费用审批";
+      const countKey = pure ? "reimbursement" : row.generalProcurementId ? "procurementPayment" : "incidentalExpense";
       result.set(`expense_claim:${row.id}`, {
         projectId: row.projectId, projectName: row.projectId ? projectNames.get(row.projectId) ?? "所属项目" : "公司日常",
-        businessCode: row.code, title: `${pure ? "报销审批" : "综合采购付款"}：${row.reason}`,
+        businessCode: row.code, title: `${title}：${row.reason}`,
         amountCents: row.requestedAmountCents, targetPath: `/费用与报销/${encodeURIComponent(row.id)}`,
-        ...(pure ? { reimbursement: { status: row.status, approvalInstanceId: row.approvalInstanceId } } : {})
+        ...(supportsExpenseParallelApproval(row) ? {
+          expenseApproval: { status: row.status, approvalInstanceId: row.approvalInstanceId, countKey }
+        } : {})
       });
     }
     return result;
   }
 
-  private isCurrentReimbursementRound(instance: Pick<ApprovalInstanceForWorkItem, "id" | "flowType" | "status">,
-    reimbursement: NonNullable<ApprovalBusinessDetail["reimbursement"]>) {
+  private isCurrentExpenseRound(instance: Pick<ApprovalInstanceForWorkItem, "id" | "flowType" | "status">,
+    expense: NonNullable<ApprovalBusinessDetail["expenseApproval"]>) {
     return instance.flowType === "expense_claim.approve" && instance.status === "in_progress" &&
-      reimbursement.status === "approval_pending" && reimbursement.approvalInstanceId === instance.id;
+      expense.status === "approval_pending" && expense.approvalInstanceId === instance.id;
   }
 
-  private async reimbursementDutyIndexes(instance: Pick<ApprovalInstanceForWorkItem, "frozenNodes" | "currentNodeIndex">,
+  private async expenseDutyIndexes(instance: Pick<ApprovalInstanceForWorkItem, "frozenNodes" | "currentNodeIndex">,
     projectId: string | null, userId: string, actors: Map<string | null, Promise<ApprovalActorRoleScopes | null>>) {
     if (!Array.isArray(instance.frozenNodes)) return [];
     const nodes: unknown[] = instance.frozenNodes;
@@ -3151,17 +3159,17 @@ export class MeService {
     });
   }
 
-  private async countApprovalTodos(scopes: ProjectRoleScope[], userId: string, reimbursementsOnly = false) {
+  private async countApprovalTodos(scopes: ProjectRoleScope[], userId: string, expenseOnly = false) {
     const evaluatedAt = new Date();
     const roleKeysByProject = new Map(scopes.map((scope) => [scope.projectId, scope.roleKeys]));
     const instances = await this.prisma.approvalInstance.findMany({
       where: {
-        ...(reimbursementsOnly ? { businessType: "expense_claim", status: "in_progress" } : this.activeApprovalWhere())
+        ...(expenseOnly ? { businessType: "expense_claim", status: "in_progress" } : this.activeApprovalWhere())
       }
     });
-    const expenseDetails = await this.expenseApprovalDetails(instances, reimbursementsOnly);
+    const expenseDetails = await this.expenseApprovalDetails(instances, expenseOnly);
     const expenseActors = new Map<string | null, Promise<ApprovalActorRoleScopes | null>>();
-    const businessProjectIds = reimbursementsOnly ? new Map<string, string>() : await this.approvalBusinessProjectIds(instances);
+    const businessProjectIds = expenseOnly ? new Map<string, string>() : await this.approvalBusinessProjectIds(instances);
     const counts = {
       contract: 0,
       settlement: 0,
@@ -3172,20 +3180,21 @@ export class MeService {
       procurement: 0,
       procurementPayment: 0,
       reimbursement: 0,
+      incidentalExpense: 0,
       total: 0
     };
 
     for (const instance of instances) {
       const expense = expenseDetails.get(`${instance.businessType}:${instance.businessId}`);
-      if (expense?.reimbursement) {
-        if (this.isCurrentReimbursementRound(instance, expense.reimbursement) &&
-          (await this.reimbursementDutyIndexes(instance, expense.projectId, userId, expenseActors)).length) {
-          counts.reimbursement += 1;
+      if (expense?.expenseApproval) {
+        if (this.isCurrentExpenseRound(instance, expense.expenseApproval) &&
+          (await this.expenseDutyIndexes(instance, expense.projectId, userId, expenseActors)).length) {
+          counts[expense.expenseApproval.countKey] += 1;
           counts.total += 1;
         }
         continue;
       }
-      if (reimbursementsOnly) continue;
+      if (expenseOnly) continue;
       const projectId = expense?.projectId ?? businessProjectIds.get(`${instance.businessType}:${instance.businessId}`);
       if (!projectId) {
         continue;
@@ -3233,7 +3242,7 @@ export class MeService {
       counts.total += 1;
     }
 
-    if (!reimbursementsOnly) {
+    if (!expenseOnly) {
       const generalDuties = await generalRequestWorkItems(this.prisma as Prisma.TransactionClient, new ProjectVisibilityService(this.prisma), userId);
       counts.procurement += generalDuties.length;
       counts.total += generalDuties.length;
@@ -3776,8 +3785,9 @@ export class MeService {
     procurement: number;
     procurementPayment: number;
     reimbursement: number;
+    incidentalExpense: number;
   }) {
-    if (counts.reimbursement > 0 || counts.procurement > 0 || counts.procurementPayment > 0) return "/审批中心";
+    if (counts.reimbursement > 0 || counts.incidentalExpense > 0 || counts.procurement > 0 || counts.procurementPayment > 0) return "/审批中心";
     if (counts.payment > 0) return "/付款管理";
     if (counts.settlement > 0) return "/结算管理";
     if (counts.expense > 0) return "/项目经营";

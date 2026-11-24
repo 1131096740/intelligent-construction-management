@@ -229,8 +229,11 @@ acceptance("real expense HTTP records two independent registered payers and pres
     const linkedExpensePath = `/expense-claims/${linked.id}`;
     await exchange("PROCUREMENT_SUBMIT_EXPENSE", `${linkedExpensePath}/submission`, 201, reviewers[0], {});
     for (const [index, reviewer] of reviewers.entries()) {
+      const detail = await exchange(`PROCUREMENT_DUTY_${index}`, linkedExpensePath, 200, reviewer);
+      const { approvalInstanceId, actionableDuties } = detail.approval;
       const approval = await exchange(`PROCUREMENT_APPROVE_EXPENSE_${index}`, `${linkedExpensePath}/approval`, 201, reviewer, {
-        decision: "approve", ...(index === 0 ? { selfReviewReason: "合成综合部发起核对", confirmationPassword: password } : {})
+        decision: "approve", approvalInstanceId, approvalDutyIndex: actionableDuties[0].index,
+        ...(index === 0 ? { selfReviewReason: "合成综合部发起核对", confirmationPassword: password } : {})
       });
       expect(approval.status).toBe(index === reviewers.length - 1 ? "approved_pending_payment" : "approval_pending");
     }

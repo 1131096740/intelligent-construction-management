@@ -6,7 +6,7 @@ import { hasVersionedApprovalNodes, isParallelApprovalRound } from "../approval/
 import type { AuditService } from "../audit/audit.service";
 import type { PrismaService } from "../database/prisma.service";
 import type { FileService } from "../file/file.service";
-import { isPureExpenseReimbursement } from "./expense-claim-parallel-approval";
+import { supportsExpenseParallelApproval } from "./expense-claim-parallel-approval";
 import type { ExpenseClaimFundingNotificationService } from "./expense-claim-funding-notification.service";
 
 const validRoles = new Set(["comprehensive_director", "project_manager", "employee", "finance_director", "chairman", "general_manager"]);
@@ -24,7 +24,7 @@ export function planLegacyExpenseApproval(
     "representedUserId" | "signatureFileIdSnapshot" | "signatureSha256Snapshot" | "signatureVersionIdSnapshot">>
 ) {
   const { frozenNodes, currentNodeIndex } = round;
-  const unsupported = () => new ConflictException("原报销审批职责或签批无法唯一对应，请先核对");
+  const unsupported = () => new ConflictException("原费用审批职责或签批无法唯一对应，请先核对");
   if (!Array.isArray(frozenNodes) || hasVersionedApprovalNodes(frozenNodes) ||
       !Number.isInteger(currentNodeIndex) || currentNodeIndex < 0 || currentNodeIndex >= frozenNodes.length) {
     throw unsupported();
@@ -96,21 +96,21 @@ export async function migrateLegacyExpenseApprovalRound(
       AND "businessId" = ${claimId} AND "flowType" = 'expense_claim.approve' AND status = 'in_progress' FOR UPDATE`;
 
     if (!(await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } }))?.isActive) {
-      throw new ForbiddenException("报销审批切换经办人不存在或已停用");
+      throw new ForbiddenException("费用审批切换经办人不存在或已停用");
     }
     const claim = await tx.expenseClaim.findUnique({ where: { id: claimId } });
-    if (!claim || !isPureExpenseReimbursement(claim) || claim.status !== "approval_pending" ||
+    if (!claim || !supportsExpenseParallelApproval(claim) || claim.status !== "approval_pending" ||
         claim.approvedAt || claim.fundedAmountCents !== 0n ||
         await tx.expenseClaimPaymentExecution.findFirst({ where: { expenseClaimId: claimId }, select: { id: true } })) {
-      throw new ConflictException("只有尚未通过审批且未付款的独立报销可切换审批");
+      throw new ConflictException("只有尚未通过审批且未付款的费用申请可切换审批");
     }
     const rounds = await tx.approvalInstance.findMany({
       where: { businessType: "expense_claim", businessId: claimId, flowType: "expense_claim.approve", status: "in_progress" },
       take: 2
     });
-    if (rounds.length !== 1) throw new ConflictException("在途报销审批轮次缺失或不唯一");
+    if (rounds.length !== 1) throw new ConflictException("在途费用审批轮次缺失或不唯一");
     const [round] = rounds;
-    const stale = () => new ConflictException("报销审批轮次已变化，请重新盘点");
+    const stale = () => new ConflictException("费用审批轮次已变化，请重新盘点");
     if (round.id !== claim.approvalInstanceId || round.id !== expected.approvalInstanceId ||
         claim.updatedAt.getTime() !== expected.claimUpdatedAt.getTime()) throw stale();
 
@@ -141,11 +141,11 @@ export async function migrateLegacyExpenseApprovalRound(
       if (!signature || signature.source !== "canvas" || signature.userId !== log.actorUserId ||
           signature.fileId !== log.signatureFileIdSnapshot ||
           signature.contentSha256.toLowerCase() !== log.signatureSha256Snapshot?.toLowerCase()) {
-        throw new ConflictException("原报销签名版本与签批记录不一致");
+        throw new ConflictException("原费用签名版本与签批记录不一致");
       }
       const { file, buffer } = await files.getFileBuffer(signature.fileId, tx);
       if (file.storageStatus !== "active" || file.contentSha256?.toLowerCase() !== signature.contentSha256.toLowerCase()) {
-        throw new ConflictException("原报销签名文件状态或摘要不一致");
+        throw new ConflictException("原费用签名文件状态或摘要不一致");
       }
       verifyApprovalSignatureSnapshot(buffer, signature.contentSha256);
     }

@@ -1,6 +1,6 @@
 import { migrateLegacyExpenseApprovalRound } from "./expense-claim-approval-cutover";
 import { OperationalWriteFreezeService } from "../operational-write-freeze/operational-write-freeze.service";
-import { EXPENSE_CURRENT_ROLE_SCOPE, isPureExpenseReimbursement, loadExpenseApprovalRoleScopes, resolveExpenseParallelDutyIdentity } from "./expense-claim-parallel-approval";
+import { EXPENSE_CURRENT_ROLE_SCOPE, isPureExpenseReimbursement, supportsExpenseParallelApproval, loadExpenseApprovalRoleScopes, resolveExpenseParallelDutyIdentity } from "./expense-claim-parallel-approval";
 import { ExpenseClaimFundingNotificationService } from "./expense-claim-funding-notification.service";
 import { ActualPurchaseBatchService } from "../actual-purchase/actual-purchase-batch.service";
 import { prepareProcurementPayment } from "../general-procurement/general-procurement-payment";
@@ -639,7 +639,7 @@ export class ExpenseClaimService {
         select: { id: true, currentNodeIndex: true, frozenNodes: true, applicantUserId: true }
       })
       : null;
-    const parallel = Boolean(instance && isPureExpenseReimbursement(claim) &&
+    const parallel = Boolean(instance && supportsExpenseParallelApproval(claim) &&
       claim.approvalInstanceId === instance.id && isParallelApprovalRound(instance.frozenNodes));
     const roleScopes = parallel ? await loadExpenseApprovalRoleScopes(this.prisma, actorUserId, claim.projectId) : undefined;
     const roles = roleScopes ? [...roleScopes.globalRoleKeys, ...roleScopes.projectRoleKeys]
@@ -1237,7 +1237,7 @@ export class ExpenseClaimService {
         });
       }
       const offset = await this.reserveLoanOffsets(tx, claim, actorUserId);
-      const parallel = isPureExpenseReimbursement({ ...claim, generalProcurementId: source?.generalProcurementId ?? null });
+      const parallel = supportsExpenseParallelApproval({ ...claim, generalProcurementId: source?.generalProcurementId ?? null });
       const nodes = await this.freezeApprovalNodes(tx, claim, parallel);
       const instance = await tx.approvalInstance.create({
         data: {
@@ -1334,7 +1334,7 @@ export class ExpenseClaimService {
       const instance = instances[0];
       if (!instance) throw new BadRequestException("费用申请审批实例不存在");
       const parallel = isParallelApprovalRound(instance.frozenNodes);
-      if (parallel && (instances.length !== 1 || claim.approvalInstanceId !== instance.id || !isPureExpenseReimbursement(claim))) {
+      if (parallel && (instances.length !== 1 || claim.approvalInstanceId !== instance.id || !supportsExpenseParallelApproval(claim))) {
         throw new ConflictException("费用审批轮次已变化，请刷新后重新确认");
       }
       const nodeIndex = resolveExpenseReviewNodeIndex(instance, input);

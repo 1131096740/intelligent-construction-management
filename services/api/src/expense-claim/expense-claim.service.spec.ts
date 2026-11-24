@@ -962,8 +962,12 @@ describe("ExpenseClaimService", () => {
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "expense_claim.approval.approve" }));
   });
 
-  it("lets finance sign a parallel reimbursement before the first frozen duty", async () => {
-    const claim = { id: "claim-1", claimType: "reimbursement", status: "approval_pending", projectId: "project-1", approvalInstanceId: "approval-1" };
+  it.each([
+    { claimType: "reimbursement", generalProcurementId: null },
+    { claimType: "incidental_expense", generalProcurementId: null },
+    { claimType: "incidental_expense", generalProcurementId: "procurement-1" }
+  ])("lets finance sign $claimType with procurement $generalProcurementId before the first frozen duty", async source => {
+    const claim = { id: "claim-1", ...source, status: "approval_pending", projectId: "project-1", approvalInstanceId: "approval-1" };
     const instance = {
       id: "approval-1",
       currentNodeIndex: 0,
