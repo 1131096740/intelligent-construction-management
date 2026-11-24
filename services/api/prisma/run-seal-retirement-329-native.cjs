@@ -132,7 +132,12 @@ async function migrate({ source, database, directory, sql, url, run, stage, runI
   const clean = JSON.parse(sql(controls.cleanReadSql(plan, setup)));
   assert.ok(clean.schemaAbsent && clean.eventAbsent && clean.applicationQualified && clean.appOid === setup.appOid);
   const read = async (_phase, text) => JSON.parse(sql(text));
-  const tail = createLocalTailQualification({ plan, setup, migrations }, { read, write: read });
+  stage("TAIL_SETUP");
+  const tailMaterials = [];
+  const tail = createLocalTailQualification({ plan, setup, migrations }, { read, write: read, recordMaterial(row) {
+    assert.equal(hash(row.sql), row.afterSha256);
+    tailMaterials.push({ kind: row.kind, beforeSha256: row.beforeSha256, afterSha256: row.afterSha256 });
+  } });
   for (const size of [213, 215, 218, 221]) {
     deploy(size);
     verify(inspect(), size);
@@ -140,7 +145,7 @@ async function migrate({ source, database, directory, sql, url, run, stage, runI
   }
   deploy(source.ledger.length);
   verify(inspect(), source.ledger.length);
-  return { appOid: setup.appOid, app: plan.appName };
+  return { appOid: setup.appOid, app: plan.appName, tailMaterials };
 }
 
 function grantApplication(sql, database, app, appPassword) {
@@ -280,7 +285,8 @@ async function main(args) {
       });
       assert.equal(negative.status, 2);
     }
-    const { appOid, app } = await migrate({ source, database, directory, sql, url: ownerUrl, run, stage, runId });
+    const { appOid, app, tailMaterials } = await migrate({ source, database, directory, sql, url: ownerUrl, run, stage, runId });
+    receipt.tailMaterials = tailMaterials;
     stage("ROLE");
     grantApplication(sql, database, app, appPassword);
     const appUrl = new URL(ownerUrl);
