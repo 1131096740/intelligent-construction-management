@@ -487,7 +487,7 @@
   {
     "path": "services/api/prisma/run-contract-settlement-governance-uat.cjs",
     "expected": "a595ea24a3bccd972bbf6aa14a879e0ba54710ef09f37c8615426cd959fcb392",
-    "candidate": "828fc240d8d10bee95f799ac7b4c1c7af50f03e8dac2714c7ed00ce78db3c632"
+    "candidate": "315bbf94a39d751142eb4ea9c60a14ba2cb97163e03a3e8c257931ddc90ab232"
   },
   {
     "path": "services/api/prisma/run-contract-settlement-governance-uat.test.cjs",
@@ -522,7 +522,7 @@
   {
     "path": "services/api/prisma/verify-trial-run.cjs",
     "expected": "316ccb7035292e63c80de7e8321a5eb0a9b4f5e0b696f66bd351fbd7e706b785",
-    "candidate": "7eca831d083a9ceaa8e62c557c2f0a4c0815e9ea7262d719f86fb0172b5ef027"
+    "candidate": "385ea72cdf015bedb61608ff1c9e1b0bca67a946a4a29dfd8afc1780e5543711"
   },
   {
     "path": "services/api/scripts/business-zeroing-policy.cjs",
@@ -918,6 +918,11 @@
     "path": "services/api/src/database/contract-lifecycle-route.spec.ts",
     "expected": "0b7e34a3a97e2a7ebb2cdb1bdcbefbbd690d5768061ec110dba46236bca4939d",
     "candidate": "abbf21a612ff1e6b12ef63d01736314ca059d03c63b8bf8692e7d91b6855df9c"
+  },
+  {
+    "path": "services/api/src/database/contract-settlement-governance-uat-runner.spec.ts",
+    "expected": "a10f7775001f2ed82cd4412d0816fba8b610644555bce2f51e60c72bddf3ee82",
+    "candidate": "acf52c4f2bd8265fd69f82fe088e7db11bd10e85140a3027b19d9e71a7c16694"
   },
   {
     "path": "services/api/src/database/contract-takeover-confirmation-concurrency.spec.ts",

@@ -916,7 +916,7 @@ async function assertChangeBoundary(percentLabel, amountDeltaYuan, effectiveAmou
   assert(list.originalAmountYuan === "10000.0000" && list.effectiveAmountYuan === effectiveAmountYuan,
     `${percentLabel}% 补充协议未保留原金额或未更新当前金额`);
   assert(list.currentPaymentAgreementText === agreement, `${percentLabel}% 补充协议的新付款约定未生效`);
-  evidence.set(`contract_change_${suffix}_percent`, [base.version.id, approved.id, fileId]);
+  evidence.set(`signed_supplement_${suffix}_percent`, [base.version.id, approved.id, fileId]);
 }
 
 async function createSettlementTemplate(tokens) {
@@ -1061,7 +1061,7 @@ function writeEvidence() {
     "contract_director_initiator_self_review", "contract_director_handler_self_archive", "contract_final_or_sign",
     "contract_authorization_none_none", "contract_authorization_first_only",
     "contract_authorization_counterparty_only", "contract_authorization_both",
-    "contract_change_9_99_percent", "contract_change_10_percent", "contract_change_10_01_percent",
+    "signed_supplement_9_99_percent", "signed_supplement_10_percent", "signed_supplement_10_01_percent",
     "settlement_material_route", "settlement_labor_route",
     "settlement_single_page_signatures", "settlement_multi_page_signatures",
     "readonly_cross_domain_positive", "readonly_cross_domain_negative"
