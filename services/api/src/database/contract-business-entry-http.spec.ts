@@ -650,9 +650,19 @@ if (enabled) {
             submitted = await requestSigned<SignedRecord>("POST", `${rowPath}/submission`, { revision: resaved.revision });
             await loginAs(roleUsers.get("contract_director")!);
           }
-          const confirmed = await requestSigned<SignedRecord>("POST", `${rowPath}/review`, {
-            revision: submitted.revision, decision: "confirm"
-          });
+          const review = { revision: submitted.revision, decision: "confirm" };
+          const attempts = await Promise.allSettled([
+            requestSigned<SignedRecord>("POST", `${rowPath}/review`, review),
+            requestSigned<SignedRecord>("POST", `${rowPath}/review`, review)
+          ]);
+          const approved = attempts.filter((attempt) => attempt.status === "fulfilled");
+          const rejected = attempts.filter((attempt) => attempt.status === "rejected");
+          expect(approved).toHaveLength(1);
+          expect(rejected).toHaveLength(1);
+          expect(rejected[0]?.reason).toEqual(expect.objectContaining({
+            message: expect.stringContaining(`POST ${rowPath}/review: 409`)
+          }));
+          const confirmed = approved[0]!.value;
           expect(confirmed.state).toBe("confirmed");
           const filePath = `${rowPath}/attachments/${file.id}`;
           expect(await requestSigned("GET", filePath)).toMatchObject({ fileId: file.id, mimeType: "application/pdf" });
@@ -935,6 +945,53 @@ if (enabled) {
         amountCents: "1", occurredAt: "2026-09-17T04:34:56.000Z", confirmationPassword: nonFinanceIdentity.password
       })).rejects.toThrow("403");
       expect((await request<{ financeEntry: { history: BusinessEntryFrozenSnapshot[] } }>("GET", `/payments/${payment.id}`)).financeEntry.history).toEqual([]);
+      if (settlementFinance) {
+        const reviewer = roleUsers.get("contract_director")!;
+        await loginAs(reviewer);
+        const applicant = roleUsers.get("contract_staff")!;
+        const terms = await prisma.paymentTermsVersion.findFirstOrThrow({
+          where: { contractVersionId: draft.version.id }, select: { id: true }
+        });
+        const historical = await prisma.settlement.create({ data: {
+          projectId: project.id, contractId: draft.contract.id, contractVersionId: draft.version.id, paymentTermsVersionId: terms.id,
+          code: `POL114-HISTORICAL-ST-${randomUUID()}`, periodLabel: "2026-09", status: "approval_pending",
+          amountCents: 2500n, payableAmountCents: 2500n, preparedByUserId: applicant
+        } });
+        const round = await prisma.approvalInstance.create({ data: {
+          businessType: "settlement", businessId: historical.id, flowType: "settlement.approve",
+          status: "in_progress", applicantUserId: applicant, currentNodeIndex: 0,
+          frozenNodes: [{ name: "合同部主管", mode: "any", roleKeys: ["contract_director"],
+            candidateUserIds: [reviewer], candidateUserIdsByRole: { contract_director: [reviewer] } }]
+        } });
+        const path = `/settlements/${historical.id}`;
+        expect(await request("GET", path)).toMatchObject({
+          id: historical.code, settlementId: historical.id, withdrawApprovalContext: null, availableActionKeys: []
+        });
+        for (const [action, body] of [
+          ["approval", { decision: "approve" }],
+          ["approval-transfer", { toUserId: applicant }],
+          ["approval-delegation", { toUserId: applicant }]
+        ] as const) {
+          await expect(request("POST", `${path}/${action}`, body)).rejects.toThrow(/410.*OLD_WRITE_ENTRY_RETIRED/u);
+        }
+        const approvalProgressPath = `/approval-progress/${round.id}`;
+        expect(await request("GET", approvalProgressPath)).toMatchObject({
+          businessCode: historical.code, canHandle: false, canRemind: false
+        });
+        await loginAs(applicant);
+        await expect(request("POST", path + "/approval-withdrawal", {
+          expectedSettlementUpdatedAt: historical.updatedAt.toISOString(), expectedApprovalInstanceId: round.id,
+          expectedNodeIndex: 0, expectedApprovalUpdatedAt: round.updatedAt.toISOString()
+        })).rejects.toThrow(/410.*OLD_WRITE_ENTRY_RETIRED/u);
+        const progress = await request<{ reminderToken: string }>("GET", approvalProgressPath);
+        await expect(request("POST", approvalProgressPath + "/remind", {
+          requestId: randomUUID(), reminderToken: progress.reminderToken
+        })).rejects.toThrow(/410/u);
+        expect(await prisma.settlement.findUnique({ where: { id: historical.id } })).toEqual(historical);
+        expect(await prisma.approvalInstance.findUnique({ where: { id: round.id } })).toEqual(round);
+        expect(await prisma.approvalActionLog.count({ where: { approvalInstanceId: round.id } })).toBe(0);
+        expect(await prisma.auditLog.count({ where: { businessType: "settlement", businessId: historical.id } })).toBe(0);
+      }
       if (paymentMode === "direct") {
         const signedChange = createSignedChangeQualification(process.env.DATABASE_URL!);
         const previousWitnessKey = process.env.CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY;
