@@ -194,6 +194,9 @@ case "$command_text" in
   *pg_catalog.pg_tables*)
     printf '%s\n' "${FAKE_PUBLIC_TABLE_COUNT:-0}"
     ;;
+  *to_regprocedure*)
+    printf '%s\n' legacy
+    ;;
   *_prisma_migrations*)
     if [[ -n "${FAKE_MIGRATION_APPLIED_MARKER:-}" && -f "$FAKE_MIGRATION_APPLIED_MARKER" ]]; then
       printf '%s\n' "${FAKE_MIGRATION_SUMMARY_AFTER:-51|0|0}"
@@ -636,6 +639,8 @@ grep -q '^pre_migration_count=50$' <<< "$candidate_restore_output" ||
   fail "candidate restore evidence did not record the source migration count"
 grep -q '^completed_migration_count=51$' <<< "$candidate_restore_output" ||
   fail "candidate restore evidence did not record the final migration count"
+grep -q '^archive_closure_status=not_applicable$' <<< "$candidate_restore_output" ||
+  fail "candidate restore evidence did not identify the pre-closure fixture"
 
 : > "$FAKE_LOG"
 if PATH="$FAKE_BIN:$PATH" \
