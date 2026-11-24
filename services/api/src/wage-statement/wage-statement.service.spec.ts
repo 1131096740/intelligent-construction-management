@@ -477,15 +477,15 @@ describe("WageStatementService", () => {
     expect(tx.wageApprovedSourceVersion.create).not.toHaveBeenCalled();
   });
 
-  it("issues only canonical role-derived action booleans through the capability read seam", async () => {
+  it("advertises historical access without old write capabilities to a finance director", async () => {
     const { service, roles } = setup();
     roles.resolveActiveRoleScopes.mockResolvedValue(["finance_director"]);
 
     await expect(service.capabilities("actor-1")).resolves.toEqual({
-      canPrepare: true,
-      canSubmit: true,
-      canReturn: true,
-      canConfirm: true,
+      canPrepare: false,
+      canSubmit: false,
+      canReturn: false,
+      canConfirm: false,
       canReadSensitive: true,
       canDownloadSensitive: true,
       canExportSensitive: true

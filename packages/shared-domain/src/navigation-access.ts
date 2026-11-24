@@ -127,15 +127,7 @@ export const NAVIGATION_ENTRY_ACCESS = {
   clearing_workbench: { kind: "actions", actions: ["clearing.read"] },
   necessary_expense_reserve: { kind: "actions", actions: ["necessary_expense_reserve.read"] },
   project_fund_dispute: { kind: "actions", actions: ["project_fund_dispute.read"] },
-  wage_assumption: {
-    kind: "actions",
-    actions: [
-      "wage_statement.prepare",
-      "wage_statement.submit",
-      "wage_statement.confirm",
-      "wage_statement.return"
-    ]
-  },
+  wage_assumption: { kind: "actions", actions: ["wage_sensitive_read"] },
   global_invoice_allocation: { kind: "actions", actions: ["clearing.read"] },
   employee_management: { kind: "positions", roles: ORGANIZATION_DIRECTORY_READ_ROLE_KEYS },
 

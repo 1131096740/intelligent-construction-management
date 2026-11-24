@@ -1,7 +1,7 @@
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
-/** A lifecycle rejection is a known response, unlike an uncertain transport failure. */
+/** Carries the HTTP response status for a historical read failure. */
 export class WageStatementApiError extends Error {
   readonly name = "WageStatementApiError";
 
@@ -12,7 +12,7 @@ export class WageStatementApiError extends Error {
 
 export type WageStatementWorkflowStatus = "draft" | "submitted" | "returned" | "confirmed";
 
-/** Action availability is issued by the server; the client never infers it from roles. */
+/** The server retains disabled write flags for older clients. */
 export interface WageStatementCapabilities {
   canPrepare: boolean;
   canSubmit: boolean;
@@ -76,32 +76,8 @@ export interface WageStatementImportPreviewReadModel {
   projectAllocationCount: number;
 }
 
-export interface WageStatementCommandInput {
-  idempotencyKey: string;
-  expectedRevision: number;
-}
-
-export interface ReturnWageStatementInput extends WageStatementCommandInput {
-  reason: string;
-}
-
-export interface WageStatementCommandResult {
-  statementId: string;
-  revision: number;
-  status?: WageStatementWorkflowStatus;
-}
-
-export interface ApprovedWageSourceResult {
-  id: string;
-}
-
 export async function fetchWageStatementWorkbench(page = 1, pageSize = 20) {
   return read<WageStatementWorkbenchReadModel>(`/wage-statements/workbench?page=${page}&pageSize=${pageSize}`, "读取月度工资承担工作台失败");
-}
-
-/** Fresh capability reads gate writes; aggregate reads are display hints only. */
-export async function fetchWageStatementCapabilities() {
-  return read<WageStatementCapabilities>("/wage-statements/capabilities", "读取工资承担操作权限失败");
 }
 
 export async function fetchWageStatementSummary(statementId: string) {
@@ -118,43 +94,6 @@ export async function fetchWageStatementImportPreview(statementId: string) {
   );
 }
 
-/**
- * The external approved-source payload is intentionally opaque in this UI module:
- * it is parsed locally only to produce non-sensitive counts, then sent to the
- * domain API. No employee, amount, or evidence field is rendered by this page.
- */
-export function createApprovedWageSource(body: Record<string, unknown>) {
-  return post<ApprovedWageSourceResult>("/wage-statements/approved-sources", body, "导入外部批准工资来源失败");
-}
-
-export function createWageStatementDraft(body: Record<string, unknown>) {
-  return post<WageStatementCommandResult>("/wage-statements/drafts", body, "创建工资承担草稿失败");
-}
-
-export function createWageStatementRevision(statementId: string, body: Record<string, unknown>) {
-  return post<WageStatementCommandResult>(
-    `/wage-statements/${encodeURIComponent(statementId)}/revisions`,
-    body,
-    "创建工资冲销修订失败"
-  );
-}
-
-export function updateWageStatementDraft(statementId: string, body: Record<string, unknown>) {
-  return post<WageStatementCommandResult>(`/wage-statements/${encodeURIComponent(statementId)}/draft`, body, "更新工资承担草稿失败");
-}
-
-export function submitWageStatement(statementId: string, body: WageStatementCommandInput) {
-  return command(statementId, "submit", body, "提交工资承担单失败");
-}
-
-export function returnWageStatement(statementId: string, body: ReturnWageStatementInput) {
-  return command(statementId, "return", body, "退回工资承担单失败");
-}
-
-export function confirmWageStatement(statementId: string, body: WageStatementCommandInput) {
-  return command(statementId, "confirm", body, "确认工资承担单失败");
-}
-
 async function read<T>(path: string, fallback: string): Promise<T> {
   const response = await apiFetch(path);
   if (response.ok) return response.json() as Promise<T>;
@@ -165,41 +104,6 @@ async function read<T>(path: string, fallback: string): Promise<T> {
       ? body.message
       : Array.isArray(body.message)
         ? body.message.join("；")
-        : message;
-    message = formatApiErrorMessage(detail, response.status, fallback);
-  } catch {
-    message = formatApiErrorMessage(message, response.status, fallback);
-  }
-  throw new WageStatementApiError(message, response.status);
-}
-
-function command(
-  statementId: string,
-  action: "submit" | "return" | "confirm",
-  body: WageStatementCommandInput | ReturnWageStatementInput,
-  fallback: string
-) {
-  return post<WageStatementCommandResult>(
-    `/wage-statements/${encodeURIComponent(statementId)}/${action}`,
-    body,
-    fallback
-  );
-}
-
-async function post<T>(path: string, body: unknown, fallback: string): Promise<T> {
-  const response = await apiFetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  if (response.ok) return response.json() as Promise<T>;
-  let message = `${fallback}：${response.status}`;
-  try {
-    const payload = await response.clone().json() as { message?: unknown };
-    const detail = typeof payload.message === "string"
-      ? payload.message
-      : Array.isArray(payload.message)
-        ? payload.message.join("；")
         : message;
     message = formatApiErrorMessage(detail, response.status, fallback);
   } catch {

@@ -4,24 +4,24 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 879,
-    "classificationOverrideCount": 235,
-    "derivedProductionPageCount": 644,
-    "classificationOverrideSha256": "7446141d30dbe4e979f9b3261af2fd732b0b14469f95ea8c27333f82ee7b652c",
-    "consumerSurfaceOverrideSha256": "9a7fe70cf05a352bafa35410ffc5de999596c0ba4f0d5d5cb44ede45a5623836",
+    "classificationOverrideCount": 243,
+    "derivedProductionPageCount": 636,
+    "classificationOverrideSha256": "eed3388acb3e1be1487a9e4ed75f6216ab24cf81336f1b65c954a026188ce29e",
+    "consumerSurfaceOverrideSha256": "f31670e01b7a05530e0d1d07c76e24a313da562abce4eb3270bad51de73c66a8",
     "usageCounts": {
-      "page": 663,
+      "page": 655,
       "external_takeover": 70,
-      "exit_candidate": 92,
-      "internal_task": 54,
+      "exit_candidate": 99,
+      "internal_task": 55,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 715,
+      "web_api_wrapper": 707,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 3,
-      "operator_endpoint": 51,
-      "none": 103
+      "operator_endpoint": 52,
+      "none": 110
     }
   },
   "overrides": [
@@ -546,6 +546,54 @@
       "path": "/draft-retention/controlled-entry",
       "usage": "internal_task",
       "reason": "super_admin_operator_preview_only"
+    },
+    {
+      "method": "GET",
+      "path": "/wage-statements/capabilities",
+      "usage": "internal_task",
+      "reason": "issue_425_historical_wage_access_capabilities_legacy_clients"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/approved-sources",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/drafts",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/revisions",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/draft",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/submit",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/return",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved"
+    },
+    {
+      "method": "POST",
+      "path": "/wage-statements/:statementId/confirm",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_wage_mutation_retired_history_reads_preserved"
     },
     {
       "method": "GET",
@@ -1492,6 +1540,12 @@
       "path": "/draft-retention/controlled-entry",
       "consumerSurface": "operator_endpoint",
       "reason": "super_admin_controlled_preview_entry_execute_forbidden"
+    },
+    {
+      "method": "GET",
+      "path": "/wage-statements/capabilities",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_historical_wage_access_capabilities_legacy_clients"
     },
     {
       "method": "GET",
