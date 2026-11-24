@@ -482,17 +482,17 @@
   {
     "path": "services/api/prisma/run-contract-settlement-governance-uat-local.cjs",
     "expected": "932028949ff887d6a492283946d32fcf9f5b01bc2f9644d2bdc3c92cc96a2fca",
-    "candidate": "1db7d4ac583296391dfba3dd6b30416655035972df364581ab5b31229c25ef9c"
+    "candidate": "3cfeda9e0f3a5a6b4ef4ef0979e93b58f3ac4f4667c7f51f7ae67d20a259f5b3"
   },
   {
     "path": "services/api/prisma/run-contract-settlement-governance-uat.cjs",
     "expected": "a595ea24a3bccd972bbf6aa14a879e0ba54710ef09f37c8615426cd959fcb392",
-    "candidate": "315bbf94a39d751142eb4ea9c60a14ba2cb97163e03a3e8c257931ddc90ab232"
+    "candidate": "58393f22eefb73833268091f65ef1e6b44f620fafcdc6566162e993a450ee0b3"
   },
   {
     "path": "services/api/prisma/run-contract-settlement-governance-uat.test.cjs",
     "expected": "850b01fd3ec8f394c9dec15a84756a45cb0c0527ebe7774c2418225ec639faa4",
-    "candidate": "60d1262b94b08baff8b61a224002b22b435e3599261b9a60677f58b663ed751e"
+    "candidate": "8f3a53c437ba584aaac6d53a3605fd37447e176c0b22c740a7f8d750019d41b4"
   },
   {
     "path": "services/api/prisma/run-database-dynamic-gate-local.cjs",
@@ -912,7 +912,7 @@
   {
     "path": "services/api/src/database/contract-business-entry-http.spec.ts",
     "expected": "e4475a9bfb2a08fecaca0ca6f89d2e631b0355e6c58a4f2418dc612651ef73d9",
-    "candidate": "3a97444c7c80aa645a04eb1caa29432acfd873f2d6b55ed8358a204c0b82ac15"
+    "candidate": "e6fa59ed9cd5fe992f3d380017f6ae90b92cdb82b487ee065aa35030e73f24af"
   },
   {
     "path": "services/api/src/database/contract-lifecycle-route.spec.ts",

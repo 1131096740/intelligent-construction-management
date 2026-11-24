@@ -1,9 +1,10 @@
 const { spawn } = require("node:child_process");
-const { randomBytes, randomUUID } = require("node:crypto");
+const { randomUUID } = require("node:crypto");
 const { mkdtemp, rm } = require("node:fs/promises");
 const net = require("node:net");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
+const { createSignedChangeQualification } = require("./signed-change-qualification.cjs");
 const {
   createCommandRuntime,
   createRunnerCleanup,
@@ -67,7 +68,8 @@ async function waitForApi(apiBaseUrl, apiProcess, apiOutput) {
 async function main() {
   const evidencePath = process.env.TRIAL_RUN_GOVERNANCE_EVIDENCE_PATH;
   assert(evidencePath, "必须设置 TRIAL_RUN_GOVERNANCE_EVIDENCE_PATH 以保留隔离 UAT 证据");
-  const [databasePort, apiPort, freezeApiPort] = await Promise.all([
+  const [databasePort, apiPort, freezeApiPort, signedChangeApiPort] = await Promise.all([
+    freePort(),
     freePort(),
     freePort(),
     freePort()
@@ -77,12 +79,13 @@ async function main() {
   const containerName = `jiangkong-governance-uat-${suffix}`;
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "jiangkong-governance-uat-"));
   const databasePassword = randomUUID();
-  const signedChangeWitnessKey = randomBytes(32).toString("hex");
   const seedPassword = `Local@1-${randomUUID()}`;
   const trialPassword = `Trial@1-${randomUUID()}`;
   const databaseUrl = `postgresql://jiangkong:${databasePassword}@127.0.0.1:${databasePort}/jiangkong_governance_uat`;
   const apiBaseUrl = `http://127.0.0.1:${apiPort}`;
   const freezeApiBaseUrl = `http://127.0.0.1:${freezeApiPort}`;
+  const signedChangeApiBaseUrl = `http://127.0.0.1:${signedChangeApiPort}`;
+  const signedChange = createSignedChangeQualification(databaseUrl);
   const shaResult = await command("git", ["rev-parse", "HEAD"]);
   const candidateSha = shaResult.stdout.trim();
   assert(/^[0-9a-f]{40}$/.test(candidateSha), "无法读取当前 40 位候选 SHA");
@@ -106,7 +109,7 @@ async function main() {
     FILE_DOWNLOAD_SECRET: randomUUID(),
     FILE_STORAGE_DRIVER: "local",
     FILE_STORAGE_ROOT: path.join(temporaryRoot, "storage", "private"),
-    CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY: signedChangeWitnessKey,
+    TRIAL_RUN_SIGNED_CHANGE_API_BASE_URL: signedChangeApiBaseUrl,
     SEED_PASSWORD: seedPassword,
     TRIAL_RUN_PASSWORD: trialPassword,
     TRIAL_RUN_ID: runId,
@@ -155,15 +158,10 @@ async function main() {
     await command(pnpm, ["--filter", "@jiangkong/api", "build"], { env: runtimeEnv, timeoutMs: 15 * 60 * 1000 });
     console.log("合同结算治理 UAT API 构建完成");
     await command(pnpm, ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"], { env: runtimeEnv });
-    await command(process.execPath, ["-e", [
-      'const { PrismaClient } = require("@prisma/client");',
-      'const prisma = new PrismaClient();',
-      'prisma.$executeRaw`',
-      '  INSERT INTO public.jg_contract_signed_change_submit_witness (singleton, "key", "databaseOid", "runtimeRoleOid")',
-      "  SELECT true, decode(${process.env.CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY}, 'hex'), oid, current_user::regrole::oid",
-      '  FROM pg_database WHERE datname = current_database()',
-      '`.catch(() => { process.exitCode = 1; }).finally(() => prisma.$disconnect());'
-    ].join("\n")], { cwd: path.join(root, "services/api"), env: runtimeEnv });
+    await command(docker, [
+      "exec", "-i", containerName, "psql", "-X", "-q", "-v", "ON_ERROR_STOP=1",
+      "-U", "jiangkong", "-d", "jiangkong_governance_uat", "-f", "-"
+    ], { stdinText: ["BEGIN", ...signedChange.install, "COMMIT", ""].join(";\n") });
     console.log("合同结算治理 UAT 迁移完成");
     await command(process.execPath, [path.join(root, "services/api/prisma/seed.cjs")], { cwd: temporaryRoot, env: runtimeEnv });
     console.log("合同结算治理 UAT seed 完成");
@@ -180,6 +178,25 @@ async function main() {
       });
     }
     await waitForApi(apiBaseUrl, apiProcess, apiOutput);
+    const signedChangeApiOutput = [];
+    const signedChangeApiProcess = commandRuntime.track(spawn(process.execPath, [path.join(root, "services/api/dist/main.js")], {
+      cwd: root,
+      env: {
+        ...runtimeEnv,
+        PORT: String(signedChangeApiPort),
+        API_BASE_URL: signedChangeApiBaseUrl,
+        DATABASE_URL: signedChange.databaseUrl,
+        CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY: signedChange.witnessKey
+      },
+      stdio: ["ignore", "pipe", "pipe"]
+    }));
+    for (const stream of [signedChangeApiProcess.stdout, signedChangeApiProcess.stderr]) {
+      stream.on("data", (chunk) => {
+        signedChangeApiOutput.push(String(chunk));
+        if (signedChangeApiOutput.length > 200) signedChangeApiOutput.shift();
+      });
+    }
+    await waitForApi(signedChangeApiBaseUrl, signedChangeApiProcess, signedChangeApiOutput);
     const freezeApiOutput = [];
     const freezeApiProcess = commandRuntime.track(spawn(process.execPath, [path.join(root, "services/api/dist/main.js")], {
       cwd: root,

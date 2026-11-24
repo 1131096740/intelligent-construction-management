@@ -158,8 +158,8 @@ for name,pin in pins['workspace'].items():
         if current320 and name == 'services/api/src/database/contract-business-entry-http.spec.ts':
             # Keep the original 295 input signed off while admitting the current signed-supplement HTTP fixture.
             pin = {**pin,
-                   'base': '3a97444c7c80aa645a04eb1caa29432acfd873f2d6b55ed8358a204c0b82ac15',
-                   'result': '01cdc0a458b2ead682c8c30bc173f3d5b192624cc0fa6b4fb81fb131b15b6ecc'}
+                   'base': 'e6fa59ed9cd5fe992f3d380017f6ae90b92cdb82b487ee065aa35030e73f24af',
+                   'result': 'c13b53aa650b0b430b83a77689bd4dba6bd0cfc325ac81880d135b3dea593940'}
         write(path,overlay(material,pin))
 
 files=sorted(p for p in workspace.rglob('*') if p.is_file())

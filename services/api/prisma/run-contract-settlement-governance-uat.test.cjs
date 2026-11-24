@@ -199,7 +199,7 @@ test("governance UAT formal-file request bodies conform to the current controlle
 test("governance UAT submits the signed supplement before director review", () => {
   assert.match(changeSource, /\/signed-changes/u);
   assert.match(changeSource, /uploadPdf\(tokens\.contractStaff/u);
-  assert.match(changeSource, /request\("POST", path, tokens\.contractStaff/u);
+  assert.match(changeSource, /signedChangeRequest\("POST", path, tokens\.contractStaff/u);
   assert.match(changeSource, /fileId: pdf\.id, summary: "UAT 已签补充协议", amountDeltaYuan, paymentAgreementText/u);
   assert.match(changeSource, /\$\{change\.id\}\/review\x60, tokens\.contractDirector/u);
   assert.match(changeSource, /currentPaymentAgreementText === agreement/u);

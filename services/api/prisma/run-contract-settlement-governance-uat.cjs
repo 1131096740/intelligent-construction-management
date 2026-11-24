@@ -9,6 +9,7 @@ const env = { ...readEnvFile(path.resolve(__dirname, "..", ".env")), ...process.
 if (!process.env.DATABASE_URL && env.DATABASE_URL) process.env.DATABASE_URL = env.DATABASE_URL;
 const prisma = new PrismaClient();
 const baseUrl = env.API_BASE_URL || "http://127.0.0.1:3000";
+const signedChangeBaseUrl = env.TRIAL_RUN_SIGNED_CHANGE_API_BASE_URL || baseUrl;
 const initialPassword = process.env.SEED_PASSWORD || "Jgzg@2026";
 const password = process.env.TRIAL_RUN_PASSWORD || "Jgzg-UAT@2026";
 const runId = String(process.env.TRIAL_RUN_ID || "").replace(/[^0-9A-Za-z-]/g, "").slice(0, 48);
@@ -77,15 +78,17 @@ function guard() {
   assert(/^[0-9a-f]{40}$/.test(candidateSha), "TRIAL_RUN_CANDIDATE_SHA 必须是 40 位小写 SHA");
   assert(evidencePath, "必须设置 TRIAL_RUN_GOVERNANCE_EVIDENCE_PATH");
   const api = new URL(baseUrl);
+  const signedChangeApi = new URL(signedChangeBaseUrl);
   const database = new URL(env.DATABASE_URL || "");
   assert(localHost(api.hostname), `UAT 拒绝非本机 API：${api.origin}`);
+  assert(localHost(signedChangeApi.hostname), "UAT 拒绝非本机补充协议 API");
   assert(localHost(database.hostname), "UAT 拒绝非本机 PostgreSQL");
   assert(!/prod|production/i.test(database.pathname), "UAT 拒绝疑似生产数据库");
   assert(String(env.FILE_STORAGE_DRIVER || "local").toLowerCase() === "local", "UAT 必须使用 local 文件存储");
 }
 
-async function request(method, urlPath, token, body, expectedStatus, extraHeaders = {}) {
-  const response = await fetch(`${baseUrl}${urlPath}`, {
+async function request(method, urlPath, token, body, expectedStatus, extraHeaders = {}, target = baseUrl) {
+  const response = await fetch(`${target}${urlPath}`, {
     method,
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -101,6 +104,10 @@ async function request(method, urlPath, token, body, expectedStatus, extraHeader
   }
   assert(response.ok, `${method} ${urlPath} 失败 HTTP ${response.status}: ${text}`);
   return text ? JSON.parse(text) : null;
+}
+
+function signedChangeRequest(method, urlPath, token, body) {
+  return request(method, urlPath, token, body, undefined, {}, signedChangeBaseUrl);
 }
 
 async function login(account) {
@@ -895,11 +902,11 @@ async function createEffectiveBoundaryBase(type, suffix, shared, tokens) {
 async function approveSignedSupplement(fixture, suffix, amountDeltaYuan, paymentAgreementText, tokens) {
   const path = `/contracts/${fixture.version.id}/signed-changes`;
   const pdf = await uploadPdf(tokens.contractStaff, `UAT-${runId}-change-${suffix}-mutually-signed.pdf`);
-  const change = await request("POST", path, tokens.contractStaff, {
+  const change = await signedChangeRequest("POST", path, tokens.contractStaff, {
     fileId: pdf.id, summary: "UAT 已签补充协议", amountDeltaYuan, paymentAgreementText
   });
   assert(change.status === "pending_review", "已签补充协议未进入待复核");
-  const approved = await request("POST", `${path}/${change.id}/review`, tokens.contractDirector, {
+  const approved = await signedChangeRequest("POST", `${path}/${change.id}/review`, tokens.contractDirector, {
     decision: "approve"
   });
   assert(approved.status === "approved", "合同部主管复核后补充协议未生效");
@@ -912,7 +919,7 @@ async function assertChangeBoundary(percentLabel, amountDeltaYuan, effectiveAmou
   const agreement = `UAT 补充协议调整付款约定 ${percentLabel}%`;
   const { approved, fileId } = await approveSignedSupplement(base, suffix, amountDeltaYuan, agreement, tokens);
   assert(approved.effectiveAmountYuan === effectiveAmountYuan, `${percentLabel}% 补充协议生效金额错误`);
-  const list = await request("GET", `/contracts/${base.version.id}/signed-changes`, tokens.contractStaff);
+  const list = await signedChangeRequest("GET", `/contracts/${base.version.id}/signed-changes`, tokens.contractStaff);
   assert(list.originalAmountYuan === "10000.0000" && list.effectiveAmountYuan === effectiveAmountYuan,
     `${percentLabel}% 补充协议未保留原金额或未更新当前金额`);
   assert(list.currentPaymentAgreementText === agreement, `${percentLabel}% 补充协议的新付款约定未生效`);

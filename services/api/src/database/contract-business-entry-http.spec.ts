@@ -10,6 +10,7 @@ import { join } from "node:path";
 import PizZip from "pizzip";
 import { PDFDocument } from "pdf-lib";
 import * as ExcelJS from "exceljs";
+import { createRequire } from "node:module";
 import type { BusinessEntryFrozenSnapshot, BusinessEntrySceneDefinition, ContractDetailReadModel, ContractPaymentApplicationPreviewReadModel, PaymentDetailReadModel } from "@jiangkong/shared-domain";
 import { AppModule } from "../app.module";
 import { SEED_LAYOUT_FONT } from "../contract-document/seed-layout-docx-source";
@@ -18,6 +19,11 @@ import { apiJsonReplacer } from "../api-json-replacer";
 import { createApiValidationPipe } from "../validation/api-validation";
 
 const enabled = process.env.RUN_POL114_HTTP_PG16 === "1";
+const { createSignedChangeQualification } = createRequire(__filename)("../../prisma/signed-change-qualification.cjs") as {
+  createSignedChangeQualification(databaseUrl: string): {
+    databaseUrl: string; witnessKey: string; install: string[]; uninstall: string[];
+  };
+};
 type Identified = { id: string };
 type CreatedDraft = { version: Identified; contract: Identified };
 type Workbench = {
@@ -1224,19 +1230,34 @@ if (enabled) {
       })).rejects.toThrow("403");
       expect((await request<{ financeEntry: { history: BusinessEntryFrozenSnapshot[] } }>("GET", `/payments/${payment.id}`)).financeEntry.history).toEqual([]);
       if (paymentMode === "direct") {
-        const witnessKey = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("hex");
+        const signedChange = createSignedChangeQualification(process.env.DATABASE_URL!);
         const previousWitnessKey = process.env.CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY;
-        await prisma.$executeRaw`
-          INSERT INTO public.jg_contract_signed_change_submit_witness (singleton, "key", "databaseOid", "runtimeRoleOid")
-          SELECT true, decode(${witnessKey}, 'hex'), oid, current_user::regrole::oid
-          FROM pg_database WHERE datname = current_database()
-        `;
-        process.env.CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY = witnessKey;
+        await prisma.$transaction(signedChange.install.map(sql => prisma.$executeRawUnsafe(sql)));
+        process.env.CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY = signedChange.witnessKey;
+        const signedPrisma = new PrismaService({ datasourceUrl: signedChange.databaseUrl });
+        let signedApp: INestApplication | undefined;
         try {
+          const signedModule = await Test.createTestingModule({ imports: [AppModule] })
+            .overrideProvider(PrismaService).useValue(signedPrisma).compile();
+          signedApp = signedModule.createNestApplication();
+          signedApp.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
+          signedApp.useGlobalPipes(createApiValidationPipe());
+          await signedApp.listen(0, "127.0.0.1");
+          const signedApiUrl = await signedApp.getUrl();
+          const submitSignedRequest = async (path: string, body: Record<string, string>) => {
+            const response = await fetch(`${signedApiUrl}${path}`, {
+              method: "POST",
+              headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+              body: JSON.stringify(body)
+            });
+            expect(response.status).toBe(201);
+            return await response.json() as Identified & { status: string };
+          };
+
           await loginAs(actorUserId);
           const changeFile = await upload("合成双方签章补充协议.pdf", "application/pdf", await pdf.save());
           const paymentAgreementText = "补充协议约定验收后三十日付款";
-          const change = await request<Identified & { status: string }>("POST", `/contracts/${draft.version.id}/signed-changes`, {
+          const change = await submitSignedRequest(`/contracts/${draft.version.id}/signed-changes`, {
             fileId: changeFile.id, summary: "合成合同付款约定调整，金额不变", amountDeltaYuan: "0", paymentAgreementText
           });
           expect(change.status).toBe("pending_review");
@@ -1246,7 +1267,7 @@ if (enabled) {
           expect(originalPayment.financeEntry?.history).toEqual(recorded.financeEntry.history);
 
           await loginAs(roleUsers.get("contract_director")!);
-          const reviewed = await request<{ status: string }>("POST", `/contracts/${draft.version.id}/signed-changes/${change.id}/review`, {
+          const reviewed = await submitSignedRequest(`/contracts/${draft.version.id}/signed-changes/${change.id}/review`, {
             decision: "approve"
           });
           expect(reviewed.status).toBe("approved");
@@ -1265,9 +1286,9 @@ if (enabled) {
         } finally {
           if (previousWitnessKey === undefined) delete process.env.CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY;
           else process.env.CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY = previousWitnessKey;
-          await prisma.$executeRaw`
-            DELETE FROM public.jg_contract_signed_change_submit_witness WHERE "key" = decode(${witnessKey}, 'hex')
-          `;
+          if (signedApp) await signedApp.close();
+          else await signedPrisma.$disconnect();
+          await prisma.$transaction(signedChange.uninstall.map(sql => prisma.$executeRawUnsafe(sql)));
         }
       }
       if(process.env.COMPANY_TRANSFER_CORE_RECEIPT)await writeFile(process.env.COMPANY_TRANSFER_CORE_RECEIPT,JSON.stringify({projectId:project.id,companyId:company.id,contractId:draft.contract.id,contractVersionId:draft.version.id,paymentId:payment.id}),{mode:0o600});
