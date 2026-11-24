@@ -29,9 +29,9 @@
     "pendingFiles": 103,
     "fullyPendingSuites": 82,
     "partiallyPendingSuites": 21,
-    "pendingTests": 616,
+    "pendingTests": 619,
     "coveredFiles": 103,
-    "coveredTests": 616,
+    "coveredTests": 619,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -338,7 +338,7 @@
     },
     {
       "id": "pol113_pol115_business_entries",
-      "pendingTests": 182,
+      "pendingTests": 185,
       "testFiles": [
         {
           "path": "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -352,7 +352,7 @@
         },
         {
           "path": "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts",
-          "pendingTests": 56,
+          "pendingTests": 59,
           "suiteStatus": "fully_pending"
         },
         {
@@ -1104,7 +1104,7 @@
     "ciEligible": {
       "groups": 44,
       "files": 102,
-      "tests": 615
+      "tests": 618
     },
     "manualOnly": {
       "groups": 1,

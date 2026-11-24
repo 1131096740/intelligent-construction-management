@@ -892,7 +892,11 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     });
   });
 
-  (enabled ? it.each : it.skip.each)([false, true])("在途零星费用保留原签批、按原岗位并联接续（关联采购 %s）", async linked => {
+  (enabled ? it.each : it.skip.each)([
+    { label: "已签项目报销", claimType: "reimbursement", linked: false, signed: true },
+    { label: "独立零星费用", claimType: "incidental_expense", linked: false, signed: false },
+    { label: "已签综合采购付款", claimType: "incidental_expense", linked: true, signed: true }
+  ] as const)("在途费用并联接续：$label", async ({ label, claimType, linked, signed }) => {
     const db = app.get(PrismaService);
     const owner = linked ? proxySession : browserSession;
     const accessToken = owner.tokens.accessToken;
@@ -910,7 +914,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       }
     }) : null;
     const draft = await request("/expense-claims", {
-      ...selfInput(owner.user.id, "incidental_expense"),
+      ...selfInput(owner.user.id, claimType),
       ...(procurement ? {
         generalProcurementId: procurement.id, generalProcurementRequestKey: randomUUID(),
         incidentalExpenseCategory: "procurement_office_supplies"
@@ -935,15 +939,15 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     await db.expenseClaim.update({ where: { id: claimId }, data: {
       status: "approval_pending", approvalInstanceId: original.id, submittedAt: new Date(), companyPayableAmountCents: 1n
     } });
-    if (linked) {
+    if (signed) {
       expect(await request(`${path}/approval`, {
-        decision: "approve", selfReviewReason: "核对原来办理的采购付款", confirmationPassword: accountPassword
+        decision: "approve", ...(linked ? { selfReviewReason: "核对原来办理的采购付款", confirmationPassword: accountPassword } : {})
       }, approvalTokens[0]!)).toMatchObject({ status: 201, body: { status: "approval_pending" } });
     }
     const before = await db.expenseClaim.findUniqueOrThrow({ where: { id: claimId } });
     const round = await db.approvalInstance.findUniqueOrThrow({ where: { id: original.id } });
     const oldActions = await db.approvalActionLog.findMany({ where: { approvalInstanceId: round.id } });
-    expect(oldActions).toHaveLength(linked ? 1 : 0);
+    expect(oldActions).toHaveLength(signed ? 1 : 0);
     const beforeFreeze = process.env.OPERATIONAL_WRITE_FREEZE_MODE;
     const beforeModules = process.env.OPERATIONAL_WRITE_FREEZE_MODULES;
     const coordinates = { approvalInstanceId: round.id, claimUpdatedAt: before.updatedAt, approvalUpdatedAt: round.updatedAt };
@@ -952,8 +956,11 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       process.env.OPERATIONAL_WRITE_FREEZE_MODULES = "expense";
       expect((await request(`${path}/approval`, { decision: "approve" }, approvalTokens[2]!)).status).toBe(503);
       const service = app.get(ExpenseClaimService);
+      await expect(service.migrateLegacyApprovalRound(claimId, owner.user.id, {
+        ...coordinates, approvalUpdatedAt: new Date(0)
+      })).rejects.toThrow("已变化");
       await expect(service.migrateLegacyApprovalRound(claimId, owner.user.id, coordinates)).resolves.toEqual({
-        status: "mapped", pendingNodeIndexes: linked ? [1, 2, 3] : [0, 1, 2, 3]
+        status: "mapped", pendingNodeIndexes: signed ? [1, 2, 3] : [0, 1, 2, 3]
       });
       await expect(service.migrateLegacyApprovalRound(claimId, owner.user.id, coordinates)).resolves.toEqual({ status: "already_mapped" });
     } finally {
@@ -968,7 +975,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       businessId: claimId, businessType: "expense_claim_approval_duty_notification", action: "queued"
     } });
     expect(noticeRows.map(row => (row.metadata as { approvalDutyIndex: number }).approvalDutyIndex).sort()).toEqual(
-      linked ? [1, 2, 3] : [0, 1, 2, 3]
+      signed ? [1, 2, 3] : [0, 1, 2, 3]
     );
     const financeDuty = await parallelReviewCoordinates(path, approvalTokens[2]!);
     expect(financeDuty).toEqual({ approvalInstanceId: round.id, approvalDutyIndex: 2 });
@@ -978,7 +985,8 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       ]) } }
     });
     expect((await request(`${path}/approval`, { decision: "approve", ...financeDuty }, strangerToken)).status).toBe(403);
-    const order = linked ? [2, 3, 1] : [2, 3, 1, 0];
+    expect(await db.auditLog.count({ where: { businessId: claimId, action: "expense_claim.approval.legacy_cutover" } })).toBe(1);
+    const order = signed ? [2, 3, 1] : [2, 3, 1, 0];
     for (const index of order) {
       expect(await request(`${path}/approval`, {
         decision: "approve", approvalInstanceId: round.id, approvalDutyIndex: index
@@ -993,7 +1001,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect(await db.approvalActionLog.findMany({ where: { id: { in: oldActions.map(action => action.id) } } })).toEqual(oldActions);
     expect(await db.expenseClaimPaymentExecution.count({ where: { expenseClaimId: claimId } })).toBe(0);
     await verifyApprovedPdf({ db, baseUrl, token: accessToken, password: accountPassword, businessType: "expense_claim",
-      businessId: claimId, roles: [...(linked ? [roles[0]!] : []), ...order.map(index => roles[index]!)], label: "历史零星费用接续"
+      businessId: claimId, roles: [...(signed ? [roles[0]!] : []), ...order.map(index => roles[index]!)], label
     });
   }, 60_000);
 
