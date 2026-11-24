@@ -155,6 +155,11 @@ for name,pin in pins['workspace'].items():
             before['migrationBaseline'][key] = original['migrationBaseline'][key]
         write(path,(json.dumps(before,ensure_ascii=False,indent=2)+'\n').encode())
     else:
+        if current320 and name == 'services/api/src/database/contract-business-entry-http.spec.ts':
+            # Keep the original 295 input signed off while admitting the current signed-supplement HTTP fixture.
+            pin = {**pin,
+                   'base': '3a97444c7c80aa645a04eb1caa29432acfd873f2d6b55ed8358a204c0b82ac15',
+                   'result': '01cdc0a458b2ead682c8c30bc173f3d5b192624cc0fa6b4fb81fb131b15b6ecc'}
         write(path,overlay(material,pin))
 
 files=sorted(p for p in workspace.rglob('*') if p.is_file())

@@ -1,5 +1,5 @@
 const { spawn } = require("node:child_process");
-const { randomUUID } = require("node:crypto");
+const { randomBytes, randomUUID } = require("node:crypto");
 const { mkdtemp, rm } = require("node:fs/promises");
 const net = require("node:net");
 const { tmpdir } = require("node:os");
@@ -77,6 +77,7 @@ async function main() {
   const containerName = `jiangkong-governance-uat-${suffix}`;
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "jiangkong-governance-uat-"));
   const databasePassword = randomUUID();
+  const signedChangeWitnessKey = randomBytes(32).toString("hex");
   const seedPassword = `Local@1-${randomUUID()}`;
   const trialPassword = `Trial@1-${randomUUID()}`;
   const databaseUrl = `postgresql://jiangkong:${databasePassword}@127.0.0.1:${databasePort}/jiangkong_governance_uat`;
@@ -105,6 +106,7 @@ async function main() {
     FILE_DOWNLOAD_SECRET: randomUUID(),
     FILE_STORAGE_DRIVER: "local",
     FILE_STORAGE_ROOT: path.join(temporaryRoot, "storage", "private"),
+    CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY: signedChangeWitnessKey,
     SEED_PASSWORD: seedPassword,
     TRIAL_RUN_PASSWORD: trialPassword,
     TRIAL_RUN_ID: runId,
@@ -153,6 +155,15 @@ async function main() {
     await command(pnpm, ["--filter", "@jiangkong/api", "build"], { env: runtimeEnv, timeoutMs: 15 * 60 * 1000 });
     console.log("合同结算治理 UAT API 构建完成");
     await command(pnpm, ["--filter", "@jiangkong/api", "exec", "prisma", "migrate", "deploy"], { env: runtimeEnv });
+    await command(process.execPath, ["-e", [
+      'const { PrismaClient } = require("@prisma/client");',
+      'const prisma = new PrismaClient();',
+      'prisma.$executeRaw`',
+      '  INSERT INTO public.jg_contract_signed_change_submit_witness (singleton, "key", "databaseOid", "runtimeRoleOid")',
+      "  SELECT true, decode(${process.env.CONTRACT_SIGNED_CHANGE_SUBMIT_WITNESS_KEY}, 'hex'), oid, current_user::regrole::oid",
+      '  FROM pg_database WHERE datname = current_database()',
+      '`.catch(() => { process.exitCode = 1; }).finally(() => prisma.$disconnect());'
+    ].join("\n")], { cwd: path.join(root, "services/api"), env: runtimeEnv });
     console.log("合同结算治理 UAT 迁移完成");
     await command(process.execPath, [path.join(root, "services/api/prisma/seed.cjs")], { cwd: temporaryRoot, env: runtimeEnv });
     console.log("合同结算治理 UAT seed 完成");

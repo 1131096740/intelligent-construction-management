@@ -892,73 +892,31 @@ async function createEffectiveBoundaryBase(type, suffix, shared, tokens) {
   return fixture;
 }
 
-async function assertChangeBoundary(percentLabel, cents, allowed, shared, tokens) {
+async function approveSignedSupplement(fixture, suffix, amountDeltaYuan, paymentAgreementText, tokens) {
+  const path = `/contracts/${fixture.version.id}/signed-changes`;
+  const pdf = await uploadPdf(tokens.contractStaff, `UAT-${runId}-change-${suffix}-mutually-signed.pdf`);
+  const change = await request("POST", path, tokens.contractStaff, {
+    fileId: pdf.id, summary: "UAT 已签补充协议", amountDeltaYuan, paymentAgreementText
+  });
+  assert(change.status === "pending_review", "已签补充协议未进入待复核");
+  const approved = await request("POST", `${path}/${change.id}/review`, tokens.contractDirector, {
+    decision: "approve"
+  });
+  assert(approved.status === "approved", "合同部主管复核后补充协议未生效");
+  return { approved, fileId: pdf.id };
+}
+
+async function assertChangeBoundary(percentLabel, amountDeltaYuan, effectiveAmountYuan, shared, tokens) {
   const suffix = percentLabel.replace(".", "_");
   const base = await createEffectiveBoundaryBase("material_purchase", suffix, shared, tokens);
-  const draft = await request("POST", `/contracts/${base.version.id}/change-drafts`, tokens.contractStaff, {
-    changeType: "change",
-    changeReason: `UAT 累计正增项 ${percentLabel}%`,
-    changeDirection: "increase",
-    changeAmountCents: String(cents)
-  });
-  const draftVersion = await prisma.contractVersion.findUnique({ where: { id: draft.id } });
-  const changeFixture = {
-    config: { type: "material_purchase" },
-    version: draftVersion,
-    applicantRole: "contractStaff"
-  };
-  await setAuthorization(changeFixture, "first_party", false, tokens);
-  await setAuthorization(changeFixture, "counterparty", false, tokens);
-  let current = await prisma.contractVersion.findUnique({ where: { id: draft.id } });
-  await request(
-    "POST",
-    `/contract-workbench/${draft.id}/settlement-mode/confirm`,
-    tokens.contractDirector,
-    { expectedRevision: current.draftRevision, settlementMode: "settlement_required" }
-  );
-  current = await prisma.contractVersion.findUnique({ where: { id: draft.id } });
-  await establishContractDocumentContent(changeFixture, tokens);
-  current = await prisma.contractVersion.findUnique({ where: { id: draft.id } });
-  const changeCounterpartySignedPdf = await uploadContractDraftPdf(
-    tokens.contractStaff,
-    draft.id,
-    `UAT-${runId}-change-${suffix}-counterparty-signed.pdf`
-  );
-  const changeCounterpartySigned = await request(
-    "POST",
-    `/contracts/${draft.id}/formal-files/counterparty`,
-    tokens.contractStaff,
-    {
-      fileIds: [changeCounterpartySignedPdf.id],
-      sourceRevision: current.draftRevision
-    }
-  );
-  await request(
-    "POST",
-    `/contracts/${draft.id}/formal-files/counterparty/confirmation`,
-    tokens.contractStaff,
-    {
-      formalFileId: changeCounterpartySigned.previewFormalFileId,
-      expectedDraftRevision: current.draftRevision
-    }
-  );
-  if (allowed) {
-    const submitted = await submitContractDraft(draft.id, tokens.contractStaff);
-    assert(submitted.status === "in_approval", `${percentLabel}% 变更未进入审批`);
-    const instance = await prisma.approvalInstance.findFirst({
-      where: { businessType: "contract_version", businessId: draft.id, flowType: "contract.approve" }
-    });
-    assert(instance, `${percentLabel}% 变更未生成审批实例`);
-    evidence.set(`contract_change_${suffix}_percent`, [draft.id, instance.id, changeCounterpartySignedPdf.id]);
-  } else {
-    const failed = await submitContractDraft(draft.id, tokens.contractStaff, 400);
-    assert(failed.body.includes("超过原合同 10%"), "10.01% 未返回必须新签合同的中文提示");
-    const denial = await prisma.auditLog.findFirst({
-      where: { action: "contract.change.limit.denied", businessId: draft.id }
-    });
-    assert(denial, "10.01% 阻断未持久化审计日志");
-    evidence.set(`contract_change_${suffix}_percent`, [draft.id, denial.id, changeCounterpartySignedPdf.id]);
-  }
+  const agreement = `UAT 补充协议调整付款约定 ${percentLabel}%`;
+  const { approved, fileId } = await approveSignedSupplement(base, suffix, amountDeltaYuan, agreement, tokens);
+  assert(approved.effectiveAmountYuan === effectiveAmountYuan, `${percentLabel}% 补充协议生效金额错误`);
+  const list = await request("GET", `/contracts/${base.version.id}/signed-changes`, tokens.contractStaff);
+  assert(list.originalAmountYuan === "10000.0000" && list.effectiveAmountYuan === effectiveAmountYuan,
+    `${percentLabel}% 补充协议未保留原金额或未更新当前金额`);
+  assert(list.currentPaymentAgreementText === agreement, `${percentLabel}% 补充协议的新付款约定未生效`);
+  evidence.set(`contract_change_${suffix}_percent`, [base.version.id, approved.id, fileId]);
 }
 
 async function createSettlementTemplate(tokens) {
@@ -1063,7 +1021,18 @@ async function assertGenericDirectPayment(genericFixture, tokens) {
   assert(payment.status === "approval_pending" && payment.settlementId == null, "通用合同直付未冻结为无结算来源");
   const persisted = await prisma.paymentRequest.findUnique({ where: { id: payment.id } });
   assert(persisted.paymentTermsStageId === stage.id, "通用合同直付未冻结付款阶段");
-  evidence.set("contract_generic", [genericFixture.contract.id, genericFixture.version.id, stage.id, payment.id]);
+  const original = await request("GET", `/payments/${payment.id}`, tokens.contractStaff);
+  const agreement = "UAT 双方确认验收后延后三十日付款";
+  const { approved, fileId } = await approveSignedSupplement(genericFixture, "direct-payment", "0", agreement, tokens);
+  const updated = await request("GET", `/payments/${payment.id}`, tokens.contractStaff);
+  const value = (detail, label) => detail.baseInfo.find(item => item.label === label)?.value;
+  assert(updated.meta.some(item => item.label === "付款约定" && item.value === "约定已更新，请核对提交时和最新约定"),
+    "已提交付款缺少付款约定更新提示");
+  assert(value(original, "付款约定原文") === value(updated, "提交时付款约定") &&
+    value(updated, "最新付款约定") === agreement, "付款详情未同时保留提交时和最新约定");
+  assert(value(updated, "付款阶段") === value(original, "付款阶段") &&
+    value(updated, "申请金额") === value(original, "申请金额"), "补充协议改写了冻结的付款依据");
+  evidence.set("contract_generic", [genericFixture.contract.id, genericFixture.version.id, stage.id, payment.id, approved.id, fileId]);
 }
 
 async function assertReadonlyBoundaries(tokens) {
@@ -1150,9 +1119,9 @@ async function main() {
   await sealAndArchive(fixtures.generic_contract, tokens);
   await assertDirectorInitiatorSelfReview(shared, tokens);
   await assertDirectorHandlerSelfArchive(shared, tokens);
-  await assertChangeBoundary("9.99", 99_900, true, shared, tokens);
-  await assertChangeBoundary("10", 100_000, true, shared, tokens);
-  await assertChangeBoundary("10.01", 100_100, false, shared, tokens);
+  await assertChangeBoundary("9.99", "999.0000", "10999.0000", shared, tokens);
+  await assertChangeBoundary("10", "1000.0000", "11000.0000", shared, tokens);
+  await assertChangeBoundary("10.01", "1001.0000", "11001.0000", shared, tokens);
   const laborEffective = await createEffectiveBoundaryBase("labor_subcontract", "labor-settlement", shared, tokens);
   const template = await createSettlementTemplate(tokens);
   await runSettlementScenario("settlement_material_route", fixtures.material_purchase, "materialStaff", "material_staff", 1, template, tokens);

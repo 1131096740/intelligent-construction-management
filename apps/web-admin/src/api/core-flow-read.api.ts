@@ -377,13 +377,6 @@ export interface ContractChangeEligibilityReadModel {
   activeChange: ContractChangeVersionProjection | null;
 }
 
-export interface CreateContractChangeDraftPayload {
-  changeType: "change";
-  changeReason: string;
-  changeDirection: "increase" | "decrease" | "unchanged";
-  changeAmountCents: string;
-}
-
 export function fetchContractChangeEligibility(contractVersionId: string) {
   return readJson<ContractChangeEligibilityReadModel>(
     `/contracts/${encodeURIComponent(contractVersionId)}/change-eligibility`
@@ -466,16 +459,6 @@ export function reviewContractTaxRevision(versionId: string, revisionId: string,
   decision: "approve" | "reject"; reason?: string; selfReviewReason?: string; confirmationPassword?: string;
 }) {
   return postJson(`/contracts/${encodeURIComponent(versionId)}/tax-revisions/${encodeURIComponent(revisionId)}/review`, body);
-}
-
-export function createContractChangeDraft(
-  contractVersionId: string,
-  body: CreateContractChangeDraftPayload
-) {
-  return postJson<ContractChangeVersionProjection>(
-    `/contracts/${encodeURIComponent(contractVersionId)}/change-drafts`,
-    body
-  );
 }
 
 export function fetchSettlementDetail(settlementId: string) {

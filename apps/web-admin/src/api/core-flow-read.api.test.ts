@@ -90,7 +90,6 @@ import {
   recordProjectExpenseExecutionWithUpload,
   recordProjectExpenseFinance,
   recordProjectExpensePurchaseExecution,
-  createContractChangeDraft,
   fetchWorkCompletions,
   saveWorkCompletionDraft,
   reviseWorkCompletionDraft,
@@ -466,33 +465,16 @@ describe("core flow read API client", () => {
     }));
   });
 
-  it("uses contractVersionId routes for contract change eligibility and creation", async () => {
+  it("uses contractVersionId for historical contract change eligibility", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
       ok: true,
       json: async () => ({ eligible: true })
     } as Response);
 
     await fetchContractChangeEligibility("version/1");
-    await createContractChangeDraft("version/1", {
-      changeType: "change",
-      changeReason: "补充工程量",
-      changeDirection: "increase",
-      changeAmountCents: "100"
-    });
-
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
-      "/api/contracts/version%2F1/change-eligibility",
-      "/api/contracts/version%2F1/change-drafts"
+      "/api/contracts/version%2F1/change-eligibility"
     ]);
-    expect(fetchMock.mock.calls[1]?.[1]).toEqual(expect.objectContaining({
-      method: "POST",
-      body: JSON.stringify({
-        changeType: "change",
-        changeReason: "补充工程量",
-        changeDirection: "increase",
-        changeAmountCents: "100"
-      })
-    }));
   });
 
   it("uses version scope and preserves four-place amounts and the selected review duty", async () => {

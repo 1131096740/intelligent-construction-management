@@ -7,9 +7,9 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `0227dbadedb7c9b2c24d91e769749093ac6afa276034dbccef0b5988dd9ca853` |
-| webApiWrappers | ready | `fcd0a4c32219ee727a9ae55df61ba95cc99ad4e5fbf2f4bba309b9214a025dbd` |
-| webPageActions | ready | `18e4f9e839b05ec18843c8c0dfa6a3f484eae1ff0e48320a4b93cfb108f892d1` |
-| routeUsage | ready | `3f2635c3c645132ec449fbb0bf712eac4d70a1767bbaafd3ae5612b62faf1540` |
+| webApiWrappers | ready | `eee231a87cb65ad126803339e0efc2f5147c76bf0fba9cface301caeddc4682d` |
+| webPageActions | ready | `b711b83a2a8c586bfda5a95d2e03aee1fd4378eb621888a7bfc0b104087c1268` |
+| routeUsage | ready | `12f390cd188ea9e266ef0570b2503fa05fc4b1b42bfd3b4a8237a616033b9438` |
 
 ## 汇总
 
@@ -18,10 +18,10 @@
 | routeCount | 879 |
 | pageRouteCount | 664 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 91 |
-| internalTaskRouteCount | 54 |
+| exitCandidateRouteCount | 92 |
+| internalTaskRouteCount | 53 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 860 |
+| mainRequestBindingCount | 859 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
@@ -516,7 +516,7 @@
 | POST | /contracts/:contractVersionId/archive-confirmation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractArchive | contract-archive.confirm | covered | — |
 | POST | /contracts/:contractVersionId/archive-files | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadContractArchiveFile | contract-archive.associate | covered | — |
 | POST | /contracts/:contractVersionId/authorizations | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#setContractAuthorization | contract-authorization.set | covered | — |
-| POST | /contracts/:contractVersionId/change-drafts | internal_task | machine_probe | apps/web-admin/src/api/core-flow-read.api.ts#createContractChangeDraft | — | not_applicable | — |
+| POST | /contracts/:contractVersionId/change-drafts | exit_candidate | none | — | — | not_applicable | — |
 | POST | /contracts/:contractVersionId/copies | exit_candidate | none | apps/web-admin/src/api/core-flow-read.api.ts#copyAbandonedContractDraft | — | not_applicable | — |
 | POST | /contracts/:contractVersionId/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/multi-duty-sms.api.ts#retryMultiDutySms | multi-duty-sms.retry | covered | — |
 | POST | /contracts/:contractVersionId/formal-files/approval | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#uploadContractFormalApprovalFile | — | not_applicable | — |

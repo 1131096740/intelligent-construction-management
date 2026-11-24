@@ -68,7 +68,7 @@ const selfArchiveFinalUploadSource = selfArchiveSource.slice(
   selfArchiveFinalUploadStart,
   selfArchiveFinalUploadEnd
 );
-const changeStart = runnerSource.indexOf("async function assertChangeBoundary");
+const changeStart = runnerSource.indexOf("async function approveSignedSupplement");
 const changeEnd = runnerSource.indexOf("\nasync function createSettlementTemplate", changeStart);
 const changeSource = runnerSource.slice(changeStart, changeEnd);
 
@@ -153,7 +153,7 @@ test("governance UAT establishes document content through the public draft flow 
 
 test("governance UAT confirms counterparty files before every operational contract submission", () => {
   const contractSubmissions = [...runnerSource.matchAll(/await submitContractDraft\(/gu)];
-  assert.equal(contractSubmissions.length, 4);
+  assert.equal(contractSubmissions.length, 2);
   assert.doesNotMatch(runnerSource, /`\/contracts\/\$\{[^`]+\/approval-submission`/u);
   const helperStart = runnerSource.indexOf("async function submitContractDraft");
   const helperEnd = runnerSource.indexOf("\nasync function prepareSharedFixtures", helperStart);
@@ -167,20 +167,6 @@ test("governance UAT confirms counterparty files before every operational contra
     submitSource.indexOf("/formal-files/counterparty/confirmation`") <
       submitSource.lastIndexOf("const submitted = await submitContractDraft("),
     "正常合同提交必须发生在乙方签章整体确认之后"
-  );
-  assert.match(
-    changeSource,
-    /const changeCounterpartySignedPdf = await uploadContractDraftPdf\(\s*tokens\.contractStaff,\s*draft\.id,\s*`UAT-\$\{runId\}-change-\$\{suffix\}-counterparty-signed\.pdf`/u
-  );
-  assert.match(changeSource, /fileIds: \[changeCounterpartySignedPdf\.id\]/u);
-  assert.match(changeSource, /formalFileId: changeCounterpartySigned\.previewFormalFileId/u);
-  const changeCounterpartyUploadIndex = changeSource.indexOf("/formal-files/counterparty`");
-  const changeCounterpartyConfirmationIndex = changeSource.indexOf("/formal-files/counterparty/confirmation`");
-  const changeSubmissionIndex = changeSource.indexOf("await submitContractDraft(");
-  assert(
-    changeCounterpartyUploadIndex < changeCounterpartyConfirmationIndex &&
-      changeCounterpartyConfirmationIndex < changeSubmissionIndex,
-    "变更边界的允许和 10.01% 阻断提交都必须发生在乙方签章整体确认之后"
   );
 });
 
@@ -208,8 +194,15 @@ test("governance UAT formal-file request bodies conform to the current controlle
   }
   assert.match(finalConfirmationSource, /\.\.\.completion,[\s\S]*formalFileId: final\.id[\s\S]*onlyPermittedSignatureChanges: true[\s\S]*documentOrderConfirmed: true/u);
   assert.doesNotMatch(finalConfirmationSource, /confirmationPassword/u);
-  assert.match(changeSource, /fileIds: \[changeCounterpartySignedPdf\.id\][\s\S]*sourceRevision: current\.draftRevision/u);
-  assert.match(changeSource, /formalFileId: changeCounterpartySigned\.previewFormalFileId[\s\S]*expectedDraftRevision: current\.draftRevision/u);
+});
+
+test("governance UAT submits the signed supplement before director review", () => {
+  assert.match(changeSource, /\/signed-changes/u);
+  assert.match(changeSource, /uploadPdf\(tokens\.contractStaff/u);
+  assert.match(changeSource, /request\("POST", path, tokens\.contractStaff/u);
+  assert.match(changeSource, /fileId: pdf\.id, summary: "UAT 已签补充协议", amountDeltaYuan, paymentAgreementText/u);
+  assert.match(changeSource, /\$\{change\.id\}\/review\x60, tokens\.contractDirector/u);
+  assert.match(changeSource, /currentPaymentAgreementText === agreement/u);
 });
 
 test("post-approval final files use the non-draft upload route", () => {
