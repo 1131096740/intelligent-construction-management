@@ -1,3 +1,4 @@
+import { isRetiredProjectEmployeeLoan } from "../project-expense/project-employee-loan-retirement";
 import { currentSpotPaymentDuty, spotPaymentDutyAssignments, spotPaymentDutySelect } from "../spot-procurement/spot-payment-execution-duty";
 import { workItemNoticeKey, workItemNoticeSnapshot } from "./work-item-notice-snapshot";
 import {
@@ -283,6 +284,7 @@ type ApprovalInstanceForWorkItem = {
 };
 
 interface ApprovalBusinessDetail {
+  historicalEmployeeLoan?: boolean;
   requestProtocolVersion?: number;
   expenseApproval?: {
     status: string;
@@ -2679,7 +2681,7 @@ export class MeService {
 
     for (const instance of instances) {
       const detail = details.get(`${instance.businessType}:${instance.businessId}`);
-      if (detail?.requestProtocolVersion === 2) continue;
+      if (detail?.requestProtocolVersion === 2 || (mode !== "started" && detail?.historicalEmployeeLoan)) continue;
       const expenseApproval = detail?.expenseApproval;
       let expenseDuties: number[] | undefined;
       if (detail && expenseApproval) {
@@ -2902,6 +2904,7 @@ export class MeService {
               projectId: true,
               code: true,
               expenseType: true,
+              expenseSubtype: true,
               paymentSubject: true,
               requestedAmountCents: true
             }
@@ -3006,6 +3009,7 @@ export class MeService {
     }
     for (const expense of expenses) {
       result.set(`project_expense_request:${expense.id}`, {
+        historicalEmployeeLoan: isRetiredProjectEmployeeLoan(expense),
         projectId: expense.projectId,
         projectName: projectNames.get(expense.projectId) ?? expense.projectId,
         businessCode: expense.code,
@@ -3289,7 +3293,7 @@ export class MeService {
       expenseIds.length
         ? this.prisma.projectExpenseRequest.findMany({
             where: { id: { in: expenseIds } },
-            select: { id: true, projectId: true }
+            select: { id: true, projectId: true, expenseType: true, expenseSubtype: true }
           })
         : Promise.resolve([]),
       spotVersionIds.length
@@ -3334,7 +3338,7 @@ export class MeService {
     for (const settlement of settlements) ids.set(`settlement:${settlement.id}`, settlement.projectId);
     for (const payment of payments) ids.set(`payment_request:${payment.id}`, payment.projectId);
     for (const expense of expenses) {
-      ids.set(`project_expense_request:${expense.id}`, expense.projectId);
+      if (!isRetiredProjectEmployeeLoan(expense)) ids.set(`project_expense_request:${expense.id}`, expense.projectId);
     }
     for (const version of spotVersions) {
       const projectId = projectIdBySpotProcurementId.get(version.procurementId);

@@ -166,6 +166,7 @@ describe("ProjectExpenseService", () => {
     approvedAmountCents = status === "approval_pending" ? null : 50_000n,
     financeRecordedAmounts = [],
     expenseType = "reimbursement",
+    expenseSubtype = "reimbursement",
     purchaseExecutedAt = null,
     receiptConfirmedAt = null,
     receiptConfirmedByUserId = null,
@@ -183,6 +184,7 @@ describe("ProjectExpenseService", () => {
     approvedAmountCents?: bigint | null;
     financeRecordedAmounts?: readonly bigint[];
     expenseType?: string;
+    expenseSubtype?: string;
     purchaseExecutedAt?: Date | null;
     receiptConfirmedAt?: Date | null;
     receiptConfirmedByUserId?: string | null;
@@ -197,7 +199,7 @@ describe("ProjectExpenseService", () => {
           projectId: "project-1",
           code: "BX-2026-001",
           expenseType,
-          expenseSubtype: "reimbursement",
+          expenseSubtype,
           paymentSubject: "建工智管",
           reason: "现场费用报销",
           requestedAmountCents: 50_000n,
@@ -259,6 +261,37 @@ describe("ProjectExpenseService", () => {
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
     return { service, prisma, actorUserId };
   }
+
+  it("keeps a historical employee-loan detail and timeline readable without approval actions", async () => {
+    const { service, actorUserId } = approvalDetailFixture({ expenseType: "loan_reserve", expenseSubtype: "employee_loan" });
+    const detail = await service.getApprovalDetail("project-1", "expense-1", actorUserId);
+
+    expect(detail.expenseSubtypeLabel).toBe("员工借款");
+    expect(detail.approvalTimeline).toHaveLength(1);
+    expect(detail.reviewAction.enabled).toBe(false);
+    expect(detail.availableActions.filter((action) => action.enabled)).toEqual([]);
+  });
+
+  it.each([
+    ["loan_reserve", "employee_loan", 410],
+    ["loan_reserve", "owner_loan", 201]
+  ])("handles execution-voucher upload for %s/%s", async (expenseType, expenseSubtype, expectedStatus) => {
+    const { service, actorUserId } = approvalDetailFixture({
+      expenseType, expenseSubtype, status: "approved_pending_payment", actorRoleKeys: ["finance_staff"]
+    });
+    files.uploadPrivateFile.mockResolvedValue({ id: "voucher-1" });
+    const controller = new ProjectExpenseController(service, files as never);
+    const upload = controller.uploadExecutionVoucherPrivateFile("project-1", "expense-1", {
+      originalname: "voucher.pdf", mimetype: "application/pdf", size: 5, buffer: Buffer.from("%PDF-")
+    }, { id: actorUserId } as never);
+    if (expectedStatus === 410) {
+      await expect(upload).rejects.toMatchObject({ status: 410 });
+      expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    } else {
+      await expect(upload).resolves.toEqual({ id: "voucher-1" });
+      expect(files.uploadPrivateFile).toHaveBeenCalledTimes(1);
+    }
+  });
 
   it("直接持有当前项目支出节点岗位时返回可审批详情和共享时间线", async () => {
     const { service, prisma, actorUserId } = approvalDetailFixture();
@@ -1643,7 +1676,12 @@ describe("ProjectExpenseService", () => {
     expect(tx.projectExpenseFinancingQuotaUsage.createMany).not.toHaveBeenCalled();
   });
 
-  it("approves the final OR node into approved pending payment", async () => {
+  it.each([
+    ["loan_reserve", "employee_loan"],
+    ["loan_reserve", "owner_loan"],
+    ["loan_reserve", "project_reserve"],
+    ["reimbursement", "reimbursement"]
+  ])("handles final approval for %s/%s according to subtype", async (expenseType, expenseSubtype) => {
     const tx = {
       $queryRaw: jest
         .fn()
@@ -1652,6 +1690,8 @@ describe("ProjectExpenseService", () => {
             id: "expense-1",
             projectId: "project-1",
             code: "LX-2026-004",
+            expenseType,
+            expenseSubtype,
             status: "approval_pending",
             requestedAmountCents: 50_000n,
             approvedAmountCents: null,
@@ -1694,12 +1734,20 @@ describe("ProjectExpenseService", () => {
     const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
     const service = new ProjectExpenseService(prisma as never, audit as never, auth as never);
 
-    const approved = await service.reviewApproval("project-1", "expense-1", "chairman-1", {
+    const review = service.reviewApproval("project-1", "expense-1", "chairman-1", {
       decision: "approve",
       ...reviewCoordinates(3),
       approvedAmountCents: "45000"
     });
 
+    if (expenseSubtype === "employee_loan") {
+      await expect(review).rejects.toMatchObject({ status: 410 });
+      expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
+      expect(tx.approvalInstance.update).not.toHaveBeenCalled();
+      expect(tx.approvalActionLog.create).not.toHaveBeenCalled();
+      return;
+    }
+    const approved = await review;
     expect(approved.status).toBe("approved_pending_payment");
     expect(tx.projectExpenseRequest.update).toHaveBeenCalledWith({
       where: { id: "expense-1" },
@@ -2253,6 +2301,7 @@ describe("ProjectExpenseService", () => {
       projectId: string;
       code: string;
       expenseType: string;
+      expenseSubtype: string;
       status: string;
       requestedAmountCents: bigint;
       approvedAmountCents: bigint | null;
@@ -2367,6 +2416,42 @@ describe("ProjectExpenseService", () => {
       const future = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, paidAt: "2026-11-05T00:31:00+08:00" }) });
       expect(future.status).toBe(400); expect(tx.projectExpenseExecution.create).not.toHaveBeenCalled(); expect(prisma.$transaction).not.toHaveBeenCalled();
     } finally { await app.close(); jest.useRealTimers(); }
+  });
+
+  it.each([
+    ["loan_reserve", "employee_loan", 410],
+    ["loan_reserve", "owner_loan", 201],
+    ["loan_reserve", "project_reserve", 201],
+    ["spot_purchase", "spot_material_purchase", 201]
+  ])("handles project expense payment HTTP for %s/%s", async (expenseType, expenseSubtype, expectedStatus) => {
+    const { service, tx } = hardenedProjectExpenseExecutionFixture({
+      expenseType, expenseSubtype, purchaseExecutedAt: new Date("2026-07-30T10:00:00Z")
+    });
+    const moduleRef = await Test.createTestingModule({
+      controllers: [ProjectExpenseController],
+      providers: [{ provide: ProjectExpenseService, useValue: service }]
+    }).compile();
+    const app = moduleRef.createNestApplication({ logger: false });
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => {
+      request.user = { id: "cashier-1" };
+      next();
+    });
+    app.useGlobalPipes(createApiValidationPipe());
+    try {
+      await app.listen(0, "127.0.0.1");
+      const response = await fetch(`${await app.getUrl()}/projects/project-1/expense-requests/expense-1/executions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(hardenedProjectExpenseExecutionInput())
+      });
+      expect(response.status).toBe(expectedStatus);
+      const expectedWrites = expectedStatus === 410 ? 0 : 1;
+      expect(tx.projectExpenseExecution.create).toHaveBeenCalledTimes(expectedWrites);
+      expect(tx.projectExpenseRequest.update).toHaveBeenCalledTimes(expectedWrites);
+      expect(projectFunding.allocateExecution).toHaveBeenCalledTimes(expectedWrites);
+    } finally {
+      await app.close();
+    }
   });
 
   it("records one project expense execution with exact CAS, fixed lock order and atomic funding audit", async () => {
@@ -3015,6 +3100,8 @@ describe("ProjectExpenseService", () => {
 
   function projectExpenseFinanceRow(
     overrides: Partial<{
+      expenseType: string;
+      expenseSubtype: string;
       status: string;
       paidAmountCents: bigint;
       updatedAt: Date;
@@ -3127,6 +3214,18 @@ describe("ProjectExpenseService", () => {
       confirmationPassword: "current-password"
     };
   }
+
+  it("keeps historical employee-loan finance facts unchanged when recording is requested", async () => {
+    const { service, tx } = hardenedProjectExpenseFinanceFixture({
+      requestOverrides: { expenseType: "loan_reserve", expenseSubtype: "employee_loan" }
+    });
+
+    await expect(service.recordFinance("project-1", "expense-1", "finance-1", hardenedProjectExpenseFinanceInput()))
+      .rejects.toMatchObject({ status: 410 });
+    expect(tx.financeRecord.create).not.toHaveBeenCalled();
+    expect(tx.projectExpenseRequest.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
 
   it.each(["finance_staff", "finance_director"] as const)(
     "records one project expense finance fact for current project %s with CAS, idempotency and audit",

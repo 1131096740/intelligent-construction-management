@@ -1,3 +1,4 @@
+import { isRetiredProjectEmployeeLoan } from "../project-expense/project-employee-loan-retirement";
 import { resolveContractOriginators } from "../contract/contract-originators";
 import { isLegacyContractParallelRound } from "../contract/contract-approval-cutover";
 import { isLiveOrdinaryPaymentDelegation, isOrdinaryPaymentParallelRound, paymentParallelRoundEvidence, resolveOrdinaryPaymentDuty } from "../payment/ordinary-payment-parallel";
@@ -254,7 +255,7 @@ export class ApprovalProgressService {
         const contract = version ? await db.contract.findUnique({ where: { id: version.contractId }, select: { projectId: true, code: true } }) : null;
         return contract ? { projectId: contract.projectId, code: contract.code ?? "合同履约确认", contractVersionId: completion!.contractVersionId } : null;
       }
-      case "project_expense_request": return db.projectExpenseRequest.findUnique({ where: { id }, select: { projectId: true, code: true } });
+      case "project_expense_request": return db.projectExpenseRequest.findUnique({ where: { id }, select: { projectId: true, code: true, expenseType: true, expenseSubtype: true } });
       case "expense_claim": return db.expenseClaim.findUnique({ where: { id }, select: {
         projectId: true, code: true, applicantUserId: true, handledByUserId: true, status: true,
         approvalInstanceId: true, claimType: true, generalProcurementId: true, actualPurchaseBatchId: true
@@ -434,7 +435,10 @@ export class ApprovalProgressService {
         }
       }
     }
-    const retiredExpenseApproval = instance.businessType === "expense_claim" && "claimType" in business && business.claimType === "loan";
+    const retiredExpenseApproval =
+      (instance.businessType === "expense_claim" && "claimType" in business && business.claimType === "loan") ||
+      (instance.businessType === "project_expense_request" && "expenseType" in business &&
+        "expenseSubtype" in business && isRetiredProjectEmployeeLoan(business));
     const businessUnavailable = retiredExpenseApproval || expenseUnavailable || (legacyContractParallel && !legacyOriginators) || (instance.businessType === "project_financing_quota" && project?.isActive !== true) || (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) && !this.pilot?.isEnabled(projectId)) ||
       (["general_procurement", "company_transfer", "fund_execution_case"].includes(instance.businessType) &&
         (!("status" in business) || business.status !== (instance.businessType === "general_procurement" ? "approval_pending" : "submitted") || !("approvalInstanceId" in business) || business.approvalInstanceId !== instance.id));

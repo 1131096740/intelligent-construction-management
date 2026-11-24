@@ -959,7 +959,12 @@ describe("MeService", () => {
     expect(result.approvalCenter.pendingApproval[0].id).toBe("approval:approval-1");
   });
 
-  it("routes project expense approval work items to the independent detail", async () => {
+  it.each([
+    ["loan_reserve", "project_reserve"],
+    ["loan_reserve", "owner_loan"],
+    ["loan_reserve", "employee_loan"],
+    ["reimbursement", "reimbursement"]
+  ])("projects actionable approval duties for %s/%s", async (expenseType, expenseSubtype) => {
     const expenseInstance = {
       id: "approval-expense-1",
       businessType: "project_expense_request",
@@ -1002,7 +1007,8 @@ describe("MeService", () => {
             id: "expense-1",
             projectId: "project-1",
             code: "BX-001",
-            expenseType: "reimbursement",
+            expenseType,
+            expenseSubtype,
             paymentSubject: "现场报销",
             requestedAmountCents: 50_000n
           }
@@ -1013,6 +1019,11 @@ describe("MeService", () => {
 
     const result = await service.getWorkItems("manager-1");
 
+    if (expenseSubtype === "employee_loan") {
+      expect(result.queues.pending).toEqual([]);
+      expect(result.approvalCenter.pendingApproval).toEqual([]);
+      return;
+    }
     expect(result.queues.pending[0]).toMatchObject({
       businessId: "expense-1",
       targetPath: "/项目支出/project-1/expense-1"

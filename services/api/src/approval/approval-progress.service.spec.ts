@@ -180,10 +180,19 @@ describe('短信催办', () => {
   });
 });
 
-it("keeps the historic loan round available to its participants and closes live reminder sends", async () => {
-  const { service, db, sms, logs } = fixture();
+it.each(["expense_claim", "project_expense_request"])(
+  "keeps the historic %s loan round readable and closes live reminder sends",
+  async (businessType) => {
+  const { service, db, sms, logs, instance } = fixture();
+  instance.businessType = businessType;
   const claim = { projectId: "project", code: "JK-001", applicantUserId: "owner", handledByUserId: "owner", claimType: "loan" };
-  db.expenseClaim.findUnique.mockResolvedValue(claim);
+  if (businessType === "expense_claim") {
+    db.expenseClaim.findUnique.mockResolvedValue(claim);
+  } else {
+    Object.assign(db, { projectExpenseRequest: { findUnique: jest.fn().mockResolvedValue({
+      projectId: "project", code: "JK-001", expenseType: "loan_reserve", expenseSubtype: "employee_loan"
+    }) } });
+  }
   const previousRequest = "22222222-2222-4222-8222-222222222222";
   logs.push({
     id: previousRequest, approvalInstanceId: "flow", actorUserId: "owner", action: "remind", createdAt: new Date(),

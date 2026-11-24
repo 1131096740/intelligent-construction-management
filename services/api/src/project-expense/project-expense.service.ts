@@ -50,6 +50,12 @@ import type { RecordProjectExpensePurchaseExecutionDto } from "./dto/record-proj
 import type { ReviewProjectExpenseApprovalDto } from "./dto/review-project-expense-approval.dto";
 import type { WithdrawProjectExpenseApprovalDto } from "./dto/withdraw-project-expense-approval.dto";
 
+import {
+  assertProjectEmployeeLoanWritable,
+  isRetiredProjectEmployeeLoan,
+  PROJECT_EMPLOYEE_LOAN_RETIRED
+} from "./project-employee-loan-retirement";
+
 interface ProjectExpenseApprovalNode extends FrozenApprovalNode {
   name: string;
   mode: "any";
@@ -71,6 +77,7 @@ type ProjectExpenseApprovalLifecycleReadModel = ProjectExpenseApprovalDetailRead
   ledgerView: "formal_ledger" | "ended";
   lifecycleUpdatedAt: string | null;
   hasPersistentDraft: false;
+  historicalEmployeeLoan: boolean;
   availableActions: DetailActionReadModel[];
   blockedReasons: string[];
   withdrawalContext: ProjectExpenseWithdrawalContext | null;
@@ -113,6 +120,7 @@ interface ExpenseLockRow {
   projectId: string;
   code: string;
   expenseType: string;
+  expenseSubtype: string;
   status: string;
   requestedAmountCents: bigint;
   approvedAmountCents: bigint | null;
@@ -341,10 +349,12 @@ export class ProjectExpenseService {
       const paid = row.paidAmountCents > 0n || row.status === "paid";
       const receiptConfirmed = row.receiptConfirmedAt instanceof Date;
       const availableActions: string[] = [];
-      if (row.status === "approval_pending" && applicantUserId === actorUserId) {
+      const retired = isRetiredProjectEmployeeLoan(row);
+      if (!retired && row.status === "approval_pending" && applicantUserId === actorUserId) {
         availableActions.push("withdraw");
       }
       if (
+        !retired &&
         ["approval_pending", "approved_pending_payment"].includes(row.status) &&
         !paid &&
         !receiptConfirmed &&
@@ -574,8 +584,11 @@ export class ProjectExpenseService {
       reviewIdentity?.representedUserId === actorUserId &&
       reviewIdentity.viaAssignment !== true &&
       (approvedRoleKey === "chairman" || approvedRoleKey === "general_manager");
-    const canReview = expense.status === "approval_pending" && Boolean(currentNode && approvedRoleKey);
-    const disabledReason = expense.status !== "approval_pending"
+    const retired = isRetiredProjectEmployeeLoan(expense);
+    const canReview = !retired && expense.status === "approval_pending" && Boolean(currentNode && approvedRoleKey);
+    const disabledReason = retired
+      ? PROJECT_EMPLOYEE_LOAN_RETIRED
+      : expense.status !== "approval_pending"
       ? "当前项目支出状态不可审批"
       : instances.length !== 1
         ? "项目支出审批实例异常，请联系管理员处理"
@@ -605,6 +618,7 @@ export class ProjectExpenseService {
         ? approvedAmountCents - paidAmountCents
         : 0n;
     const executionEnabled =
+      !retired &&
       canExecuteExpense &&
       ["approved_pending_payment", "partially_paid"].includes(expense.status) &&
       approvedAmountCents !== null &&
@@ -616,6 +630,7 @@ export class ProjectExpenseService {
       ? { expectedExpenseUpdatedAt: expense.updatedAt.toISOString() }
       : null;
     const financeEnabled =
+      !retired &&
       financeRoleAccess.actorActive &&
       financeRoleAccess.canRecordFinance &&
       ["partially_paid", "paid", "payment_blocked"].includes(
@@ -631,6 +646,7 @@ export class ProjectExpenseService {
     const availableActions: DetailActionReadModel[] = [];
     const blockedReasons: string[] = [];
     const withdrawalContext =
+      !retired &&
       expense.status === "approval_pending" &&
       isExpenseApplicant &&
       instance?.applicantUserId === actorUserId &&
@@ -685,7 +701,9 @@ export class ProjectExpenseService {
         requiresSelfReviewConfirmation: isLeaderSelfReview
       }));
     }
-    if (ended) {
+    if (retired) {
+      blockedReasons.push(PROJECT_EMPLOYEE_LOAN_RETIRED);
+    } else if (ended) {
       blockedReasons.push("项目支出申请已结束，只能查看历史记录");
     } else if (expense.receiptConfirmedAt instanceof Date) {
       blockedReasons.push("已确认收货，不能普通作废");
@@ -792,6 +810,7 @@ export class ProjectExpenseService {
       ledgerView: ended ? "ended" : "formal_ledger",
       lifecycleUpdatedAt: expense.updatedAt instanceof Date ? expense.updatedAt.toISOString() : null,
       hasPersistentDraft: false,
+      historicalEmployeeLoan: retired,
       availableActions,
       blockedReasons,
       withdrawalContext,
@@ -813,6 +832,7 @@ export class ProjectExpenseService {
         id: true,
         projectId: true,
         expenseType: true,
+        expenseSubtype: true,
         status: true,
         applicantUserId: true,
         attachmentFileId: true,
@@ -835,6 +855,7 @@ export class ProjectExpenseService {
     const receiptConfirmed = expense.receiptConfirmedAt instanceof Date;
     const availableActions: string[] = [];
     if (
+      !isRetiredProjectEmployeeLoan(expense) &&
       !expense.voidedAt &&
       ["approval_pending", "approved_pending_payment"].includes(expense.status) &&
       !paid &&
@@ -1138,6 +1159,7 @@ export class ProjectExpenseService {
       if (!identity) {
         throw new ForbiddenException(`当前账号不能处理“${currentNode.name}”项目支出审批节点`);
       }
+      assertProjectEmployeeLoanWritable(request);
       const approvedRoleKey = identity.approvedRoleKey;
 
       const selfReview = await confirmApprovalSelfReview({
@@ -1379,6 +1401,7 @@ export class ProjectExpenseService {
           "项目支出申请人与审批实例不一致，请刷新后重试"
         );
       }
+      assertProjectEmployeeLoanWritable(request);
       if (
         request.updatedAt.getTime() !==
           expectedExpenseUpdatedAt.getTime() ||
@@ -1443,6 +1466,7 @@ export class ProjectExpenseService {
       if (!request) {
         throw new NotFoundException("项目支出申请不存在");
       }
+      assertProjectEmployeeLoanWritable(request);
       if (request.receiptConfirmedAt) {
         throw new BadRequestException("已确认收货的项目支出不能普通作废");
       }
@@ -1557,6 +1581,8 @@ export class ProjectExpenseService {
             actorUserId,
             request.projectId
           );
+
+          assertProjectEmployeeLoanWritable(request);
 
           const executionClient = tx.projectExpenseExecution as unknown as {
             findUnique(input: {
@@ -1933,6 +1959,8 @@ export class ProjectExpenseService {
             actorUserId,
             request.projectId
           );
+
+          assertProjectEmployeeLoanWritable(request);
 
           const financeClient = tx.financeRecord as unknown as {
             findUnique(input: {
@@ -2982,6 +3010,7 @@ export class ProjectExpenseService {
         "projectId",
         "code",
         "expenseType",
+        "expenseSubtype",
         "status",
         "requestedAmountCents",
         "approvedAmountCents",
@@ -3012,6 +3041,7 @@ export class ProjectExpenseService {
         "projectId",
         "code",
         "expenseType",
+        "expenseSubtype",
         "status",
         "requestedAmountCents",
         "approvedAmountCents",

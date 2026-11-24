@@ -1,3 +1,4 @@
+import { isRetiredProjectEmployeeLoan } from "../project-expense/project-employee-loan-retirement";
 import { isPendingLegacyContractCutover, readLegacyContractSignature } from "../contract/contract-approval-cutover";
 import { isDeepStrictEqual } from "node:util";
 import { contractPendingApprovalSnapshot } from "../contract/contract-parallel-duty-access";
@@ -678,6 +679,13 @@ export class ApprovalFormService {
     client: ApprovalFormClient,
     instance: Pick<ApprovalInstance, "businessType" | "businessId">
   ) {
+    if (instance.businessType === "project_expense_request") {
+      const expense = await client.projectExpenseRequest.findUnique({
+        where: { id: instance.businessId },
+        select: { expenseType: true, expenseSubtype: true }
+      });
+      return isRetiredProjectEmployeeLoan(expense);
+    }
     if (instance.businessType !== "expense_claim") return false;
     const claim = await client.expenseClaim.findUnique({ where: { id: instance.businessId }, select: { claimType: true } });
     return claim?.claimType === "loan";

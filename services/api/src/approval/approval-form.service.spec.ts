@@ -846,18 +846,32 @@ getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.include
     );
   });
 
-  it("blocks lazy archival only for an authorized employee loan with no stored signed document", async () => {
-    const instance = { id: "inst-1", businessType: "expense_claim", businessId: "claim-1", status: "approved",
+  it.each(["expense_claim", "project_expense_request"])(
+    "only downloads a stored signed archive for authorized historical %s employee loans",
+    async (businessType) => {
+    const instance = { id: "inst-1", businessType, businessId: "claim-1", status: "approved",
       applicantUserId: "user-applicant", updatedAt: new Date("2026-06-24T08:30:00Z"),
       frozenNodes: [{ name: "董事长", mode: "any", roleKeys: ["chairman"] }] };
     const claim = { id: "claim-1", code: "JK-001", claimType: "loan", status: "approved_pending_disbursement",
       projectId: "proj-1", applicantNameSnapshot: "原经办人", companyEntityNameSnapshot: "建工公司", reason: "历史借款",
       requestedAmountCents: 100n, loanOffsetAmountCents: 0n, companyPayableAmountCents: 0n, fundedAmountCents: 0n };
+    const projectExpense = {
+      ...claim, expenseType: "loan_reserve", expenseSubtype: "employee_loan",
+      paymentSubject: "项目借款", approvedAmountCents: 100n
+    };
     const prisma = buildPrisma({
       approvalInstance: { findFirst: jest.fn(async () => instance), findUnique: jest.fn(async () => instance), findMany: jest.fn(async () => [instance]) },
       user: { findUnique: jest.fn(async () => ({ id: "user-chair", isActive: true, name: "董事长乙" })),
         findMany: jest.fn(async () => [{ id: "user-chair", name: "董事长乙" }]) },
       expenseClaim: { findUnique: jest.fn(async () => claim) },
+      project: {
+        findUnique: jest.fn(async () => ({ name: "项目" })),
+        findUniqueOrThrow: jest.fn(async () => ({ name: "项目" }))
+      },
+      projectExpenseRequest: {
+        findUnique: jest.fn(async () => projectExpense),
+        findUniqueOrThrow: jest.fn(async () => projectExpense)
+      },
       expenseClaimLine: { findMany: jest.fn(async () => []) }
     });
     const files = {
@@ -872,11 +886,11 @@ getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.include
     const auth = { confirmPassword: jest.fn() };
     const service = new ApprovalFormService(prisma as never, files as never, audit as never, auth as never);
 
-    await expect(service.renderForDownload("expense_claim", "claim-1", "stranger", "password", "核对历史"))
+    await expect(service.renderForDownload(businessType, "claim-1", "stranger", "password", "核对历史"))
       .rejects.toMatchObject({ status: 404 });
-    await expect(service.renderForDownload("expense_claim", "claim-1", "user-chair", "password", "核对历史"))
+    await expect(service.renderForDownload(businessType, "claim-1", "user-chair", "password", "核对历史"))
       .rejects.toMatchObject({ status: 410 });
-    await expect(service.downloadAvailability("expense_claim", "claim-1", "user-chair"))
+    await expect(service.downloadAvailability(businessType, "claim-1", "user-chair"))
       .resolves.toEqual({ available: false });
     await expect(service.listForDownload("user-chair")).resolves.toMatchObject({ items: [{ businessId: "claim-1", available: false }] });
     expect(prisma.approvalFormGenerationClaim.create).not.toHaveBeenCalled();
@@ -884,12 +898,12 @@ getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.include
     expect(audit.record).not.toHaveBeenCalled();
 
     prisma.pdfDocument.findFirst.mockResolvedValue(prisma.created);
-    await expect(service.downloadAvailability("expense_claim", "claim-1", "user-chair")).resolves.toEqual({ available: true });
+    await expect(service.downloadAvailability(businessType, "claim-1", "user-chair")).resolves.toEqual({ available: true });
     await expect(service.listForDownload("user-chair")).resolves.toMatchObject({ items: [{ businessId: "claim-1", available: true }] });
-    const download = await service.renderForDownload("expense_claim", "claim-1", "user-chair", "password", "核对历史");
+    const download = await service.renderForDownload(businessType, "claim-1", "user-chair", "password", "核对历史");
     expect(download.buffer.subarray(0, 5).toString()).toBe("%PDF-");
     expect(files.assertApprovalFormArchiveAnchor).toHaveBeenCalledWith({
-      pdfDocumentId: prisma.created.id, fileId: prisma.created.fileId, businessType: "expense_claim",
+      pdfDocumentId: prisma.created.id, fileId: prisma.created.fileId, businessType,
       businessId: "claim-1", approvalInstanceId: instance.id
     });
     expect(audit.record).toHaveBeenCalledTimes(1);

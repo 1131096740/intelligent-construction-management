@@ -267,6 +267,74 @@ describePg("多项目业务范围公开 HTTP / PostgreSQL 16", () => {
     expectStatus(await request(projectExpensePath, secondManager, projectLoanInput), 410);
     expect(await historicalFixtureOwner.expenseClaim.count({ where: { projectId: second, reason: loanInput.reason } })).toBe(0);
 
+    const projectLoanData = {
+      ...projectLoanInput, projectId: second, requestedAmountCents: 12500n, status: "approval_pending",
+      applicantUserId: materialDirector.id, handlerUserId: materialDirector.id
+    };
+    const projectLoan = await historicalFixtureOwner.projectExpenseRequest.create({ data: {
+      ...projectLoanData, code: `HISTORICAL-PROJECT-LOAN-${randomUUID()}`
+    } });
+    const projectLoanNodes = [{ name: "项目经理", mode: "any", roleKeys: ["project_manager"],
+      candidateUserIds: [secondManager.id], candidateUserIdsByRole: { project_manager: [secondManager.id] } }];
+    const projectLoanRound = await historicalFixtureOwner.approvalInstance.create({ data: {
+      businessType: "project_expense_request", businessId: projectLoan.id, flowType: "project_expense.approve",
+      status: "in_progress", applicantUserId: materialDirector.id, currentNodeIndex: 0, frozenNodes: projectLoanNodes
+    } });
+    const projectLoanPath = `${projectExpensePath}/${projectLoan.id}`;
+    const reviewCoordinates = {
+      expectedExpenseUpdatedAt: projectLoan.updatedAt.toISOString(), expectedApprovalInstanceId: projectLoanRound.id,
+      expectedNodeIndex: 0, expectedApprovalUpdatedAt: projectLoanRound.updatedAt.toISOString()
+    };
+    expect(await request(projectLoanPath + "/approval-detail", secondManager)).toMatchObject({
+      status: 200, body: { id: projectLoan.id, status: "approval_pending", expenseSubtypeLabel: "员工借款",
+        requestedAmountCents: "12500", reviewAction: { enabled: false }, reviewApprovalContext: null }
+    });
+    expectStatus(await request(projectLoanPath + "/approval", firstManager, { decision: "approve", ...reviewCoordinates }), 403);
+    expectStatus(await request(projectLoanPath + "/approval", secondManager, { decision: "approve", ...reviewCoordinates }), 410);
+    const loanProgressPath = `/approval-progress/${projectLoanRound.id}`;
+    const loanProgress = await request(loanProgressPath, secondManager);
+    expect(loanProgress).toMatchObject({ status: 200, body: { canHandle: false, canRemind: false, pendingRecipients: [] } });
+    expectStatus(await request(loanProgressPath + "/remind", materialDirector, {
+      requestId: randomUUID(), reminderToken: loanProgress.body.reminderToken
+    }), 410);
+    expect(await historicalFixtureOwner.projectExpenseRequest.findUnique({ where: { id: projectLoan.id } })).toEqual(projectLoan);
+    expect(await historicalFixtureOwner.approvalInstance.findUnique({ where: { id: projectLoanRound.id } })).toEqual(projectLoanRound);
+    expect(await historicalFixtureOwner.approvalActionLog.count({ where: { approvalInstanceId: projectLoanRound.id } })).toBe(0);
+
+    const payableProjectLoan = await historicalFixtureOwner.projectExpenseRequest.create({ data: {
+      ...projectLoanData, code: `HISTORICAL-PROJECT-LOAN-FUND-${randomUUID()}`, status: "approved_pending_payment", approvedAmountCents: 12500n
+    } });
+    const projectCashier = await person("finance_staff", [second]);
+    const executionPath = `${projectExpensePath}/${payableProjectLoan.id}/executions`;
+    expectStatus(await request(executionPath, projectCashier, {
+      amountCents: "12500", paidAt: "2026-11-01", voucherFileId: "unused-historical-voucher",
+      idempotencyKey: randomUUID(), expectedExpenseUpdatedAt: payableProjectLoan.updatedAt.toISOString(),
+      confirmationPassword: password
+    }), 410);
+    expect(await historicalFixtureOwner.projectExpenseRequest.findUnique({ where: { id: payableProjectLoan.id } })).toEqual(payableProjectLoan);
+    expect(await historicalFixtureOwner.projectExpenseExecution.count({ where: { projectExpenseRequestId: payableProjectLoan.id } })).toBe(0);
+    expect(await historicalFixtureOwner.auditLog.count({ where: {
+      businessType: "project_expense_request", businessId: { in: [projectLoan.id, payableProjectLoan.id] }
+    } })).toBe(0);
+
+    for (const expenseSubtype of ["owner_loan", "project_reserve"]) {
+      const adjacent = await historicalFixtureOwner.projectExpenseRequest.create({ data: {
+        ...projectLoanData, code: `HISTORICAL-ADJACENT-${randomUUID()}`, expenseSubtype
+      } });
+      await historicalFixtureOwner.approvalInstance.create({ data: {
+        businessType: "project_expense_request", businessId: adjacent.id, flowType: "project_expense.approve",
+        status: "in_progress", applicantUserId: materialDirector.id, currentNodeIndex: 0, frozenNodes: projectLoanNodes
+      } });
+      const adjacentPath = `${projectExpensePath}/${adjacent.id}`;
+      const detail = await request(adjacentPath + "/approval-detail", secondManager);
+      expect(detail).toMatchObject({ status: 200, body: { reviewAction: { enabled: true } } });
+      expectStatus(await request(adjacentPath + "/approval", secondManager, {
+        decision: "approve", ...detail.body.reviewApprovalContext
+      }), 201);
+      expect(await historicalFixtureOwner.projectExpenseRequest.findUnique({ where: { id: adjacent.id } }))
+        .toMatchObject({ status: "approved_pending_payment", approvedAmountCents: 12500n });
+    }
+
     const historical = await historicalFixtureOwner.expenseClaim.create({ data: {
       code: `HISTORICAL-LOAN-${randomUUID()}`, claimType: "loan", status: "draft", companyEntityId: company,
       companyEntityNameSnapshot: "合成我方公司", projectId: second, applicantUserId: materialDirector.id,
