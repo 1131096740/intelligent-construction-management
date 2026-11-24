@@ -430,8 +430,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       },
       {
         path: "结算工作台/新建",
-        component: () => import("../pages/settlements/SettlementWorkbenchPage.vue"),
-        meta: { requiredRoleKeys: settlementMaintenanceRoleKeys, title: "新建结算" }
+        beforeEnter: (to) => typeof to.query.draftId === "string" && to.query.draftId.trim()
+          ? true
+          : { path: "/结算工作台/已签登记", replace: true },
+        component: () => import("../pages/settlements/HistoricalSettlementDraftPage.vue"),
+        meta: { requiredRoleKeys: settlementMaintenanceRoleKeys, title: "历史结算草稿" }
       },
       {
         path: "结算管理",

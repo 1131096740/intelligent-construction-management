@@ -4,24 +4,24 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 879,
-    "classificationOverrideCount": 254,
-    "derivedProductionPageCount": 625,
-    "classificationOverrideSha256": "664a5215f04d3e44b490e2e3760fde4ba0cf7d03d52eb9dea0ee6dc0ddfe0adc",
-    "consumerSurfaceOverrideSha256": "babfba79d5a19194cbea430bb6e03c6cd7adf4508a4a44121c8a4f651ab5d19f",
+    "classificationOverrideCount": 276,
+    "derivedProductionPageCount": 603,
+    "classificationOverrideSha256": "4597f15fbb5eedd90a45fd49184232a5ee96c23ac98df1f4f0fc8dd793a3e8a9",
+    "consumerSurfaceOverrideSha256": "c64094bda97716a57e411f568842c74595fab4dc275bb51928156402948108d5",
     "usageCounts": {
-      "page": 644,
+      "page": 622,
       "external_takeover": 70,
-      "exit_candidate": 110,
-      "internal_task": 55,
+      "exit_candidate": 122,
+      "internal_task": 65,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 696,
+      "web_api_wrapper": 674,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 2,
-      "operator_endpoint": 53,
-      "none": 121
+      "operator_endpoint": 63,
+      "none": 133
     }
   },
   "overrides": [
@@ -1548,6 +1548,138 @@
       "path": "/spot-procurements/:procurementId/receipt/submission",
       "usage": "exit_candidate",
       "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/settlement-create-options",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/final-preparation",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/settlement-drafts/capability",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/import-template",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/participant-options",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/source-lines",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/projects/:projectId/contract-versions/:contractVersionId/template-recommendations",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/projects/:projectId/imports/:importId/errors.xlsx",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/projects/:projectId/imports/:importId/result.xlsx",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "PATCH",
+      "path": "/projects/:projectId/settlement-drafts/:draftId",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/abandonment",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/approval-submission",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/copies",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/counterparty-signed-documents",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/frozen-document",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/line-attachments/:attachmentId/invalidation",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/lines/:lineKey/attachments",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/settlement-drafts/files",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/imports/preview",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
+    },
+    {
+      "method": "POST",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/preview",
+      "usage": "internal_task",
+      "reason": "issue_425_legacy_settlement_read_or_nonpersisting_preview_retained_for_historical_interfaces"
+    },
+    {
+      "method": "POST",
+      "path": "/settlement-workbench/projects/:projectId/imports/:importId/apply",
+      "usage": "exit_candidate",
+      "reason": "issue_425_legacy_settlement_draft_preparation_write_closed_use_signed_registration"
     }
   ],
   "consumerSurfaceOverrides": [
@@ -1908,6 +2040,66 @@
       "path": "/spot-procurements/:procurementId/receipt/duty-sms",
       "consumerSurface": "operator_endpoint",
       "reason": "issue_425_historical_receipt_notification_audit_read"
+    },
+    {
+      "method": "GET",
+      "path": "/contracts/settlement-create-options",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/settlement-drafts/:draftId/final-preparation",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/settlement-drafts/capability",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/import-template",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/participant-options",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/source-lines",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/projects/:projectId/contract-versions/:contractVersionId/template-recommendations",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/projects/:projectId/imports/:importId/errors.xlsx",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "GET",
+      "path": "/settlement-workbench/projects/:projectId/imports/:importId/result.xlsx",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
+    },
+    {
+      "method": "POST",
+      "path": "/settlement-workbench/contract-versions/:contractVersionId/preview",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_legacy_settlement_read_or_preview_without_current_web_consumer"
     }
   ]
 }

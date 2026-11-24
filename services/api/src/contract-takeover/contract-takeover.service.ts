@@ -162,6 +162,7 @@ type TakeoverReadClient = Pick<
   | "contractTakeoverBatch"
   | "contractTakeoverCorrection"
   | "settlement"
+  | "signedContractSettlement"
   | "paymentRequest"
   | "paymentExecution"
   | "financeRecord"
@@ -1000,10 +1001,7 @@ export class ContractTakeoverService {
         contractSide: null,
         financeSide: null,
         appliedCorrections: [],
-        postConfirmationVerification: postConfirmationVerificationReadModel(
-          takeover,
-          emptyPostConfirmationVerificationStats()
-        )
+        verificationStats: emptyPostConfirmationVerificationStats()
       }, actorUserId);
   }
 
@@ -1156,10 +1154,7 @@ export class ContractTakeoverService {
         contractSide: null,
         financeSide: null,
         appliedCorrections: [],
-        postConfirmationVerification: postConfirmationVerificationReadModel(
-          updated,
-          emptyPostConfirmationVerificationStats()
-        )
+        verificationStats: emptyPostConfirmationVerificationStats()
       }, actorUserId);
     });
   }
@@ -3695,7 +3690,8 @@ export class ContractTakeoverService {
     const files = typeof archiveClient.fileObject?.findMany === "function" && fileIds.length
       ? await archiveClient.fileObject.findMany({ where: { id: { in: fileIds } } })
       : [];
-    const [postConfirmationSettlements, postConfirmationPaymentRequests] = await Promise.all([
+    const confirmedTakeovers = takeovers.filter(takeover => takeover.takeoverStatus === "confirmed" && takeover.confirmedAt);
+    const [postConfirmationSettlements, postConfirmationPaymentRequests, signedSettlements] = await Promise.all([
       typeof verificationClient.settlement?.findMany === "function"
         ? verificationClient.settlement.findMany({
             where: { contractVersionId: { in: contractVersionIds } },
@@ -3713,8 +3709,29 @@ export class ContractTakeoverService {
             where: { contractVersionId: { in: contractVersionIds } },
             select: { id: true, contractVersionId: true, status: true }
           })
+        : Promise.resolve([]),
+      confirmedTakeovers.length && client.signedContractSettlement
+        ? client.signedContractSettlement.findMany({
+            where: {
+              state: "confirmed",
+              contractKind: "downstream",
+              OR: confirmedTakeovers.map(takeover => ({
+                projectId: takeover.projectId,
+                contractId: takeover.contractId,
+                reviewedAt: { gte: takeover.confirmedAt! },
+                confirmedContractSource: { path: ["sourceRecordId"], equals: takeover.contractVersionId }
+              }))
+            },
+            select: { confirmedContractSource: true }
+          })
         : Promise.resolve([])
     ]);
+    const signedCountsByVersion = new Map<string, number>();
+    for (const { confirmedContractSource } of signedSettlements) {
+      const versionId = isPlainObject(confirmedContractSource) ? confirmedContractSource.sourceRecordId : null;
+      if (typeof versionId !== "string") continue;
+      signedCountsByVersion.set(versionId, (signedCountsByVersion.get(versionId) ?? 0) + 1);
+    }
     const activePostConfirmationPaymentRequests = postConfirmationPaymentRequests.filter(
       (request) => !isInactiveBusinessStatus(request.status)
     );
@@ -4122,11 +4139,9 @@ export class ContractTakeoverService {
               targetBalanceEntryId: correction.targetBalanceEntryId
             };
           }),
-        postConfirmationVerification: postConfirmationVerificationReadModel(
-          takeover,
-          postConfirmationVerificationByVersionId.get(takeover.contractVersionId) ??
-            emptyPostConfirmationVerificationStats()
-        )
+        verificationStats: postConfirmationVerificationByVersionId.get(takeover.contractVersionId) ??
+          emptyPostConfirmationVerificationStats(),
+        signedSettlementCount: signedCountsByVersion.get(takeover.contractVersionId)
       }, actorUserId)
     );
   }
@@ -4203,7 +4218,8 @@ export class ContractTakeoverService {
       contractSide: ContractTakeoverBusinessReadModel["contractSide"];
       financeSide: ContractTakeoverBusinessReadModel["financeSide"];
       appliedCorrections: ContractTakeoverBusinessReadModel["appliedCorrections"];
-      postConfirmationVerification: ContractTakeoverPostConfirmationVerificationReadModel;
+      verificationStats: PostConfirmationVerificationStats;
+      signedSettlementCount?: number;
     },
     actorUserId: string | undefined
   ): ContractTakeoverBusinessReadModel {
@@ -4219,7 +4235,7 @@ export class ContractTakeoverService {
     const owns = Boolean(actorUserId) && (
       takeover.createdByUserId === actorUserId || takeover.responsibleUserId === actorUserId
     );
-    const downstream = contract.postConfirmationVerification;
+    const downstream = contract.verificationStats;
     const lifecycleBlockers = [
       ...(takeover.takeoverStatus === "abandoned" ? ["接管记录已放弃"] : []),
       ...(terminal ? ["接管已确认"] : []),
@@ -4363,7 +4379,10 @@ export class ContractTakeoverService {
       contractSide: contract.contractSide,
       financeSide: contract.financeSide,
       appliedCorrections: contract.appliedCorrections,
-      postConfirmationVerification: contract.postConfirmationVerification,
+      postConfirmationVerification: postConfirmationVerificationReadModel(takeover, {
+        ...downstream,
+        newSettlementCount: downstream.newSettlementCount + (contract.signedSettlementCount ?? 0)
+      }),
       lifecycleKind,
       lifecycleBlockers,
       availableActions,

@@ -1,5 +1,5 @@
 const { randomUUID } = require("node:crypto");
-const { PrismaClient } = require("@prisma/client");
+const { Prisma, PrismaClient } = require("@prisma/client");
 const {
   PRECISION_SENTINEL_CENTS,
   TARGET_CONTRACT_CENTS,
@@ -48,8 +48,8 @@ async function verifyCoreFlowPersistence() {
 
   const [version, settlement, executions, financeRecords] = await Promise.all([
     prisma.contractVersion.findUnique({ where: { id: payment.contractVersionId } }),
-    payment.settlementId
-      ? prisma.settlement.findUnique({ where: { id: payment.settlementId } })
+    payment.signedSettlementId
+      ? prisma.signedContractSettlement.findUnique({ where: { id: payment.signedSettlementId } })
       : null,
     prisma.paymentExecution.findMany({
       where: { paymentRequestId: payment.id },
@@ -61,9 +61,12 @@ async function verifyCoreFlowPersistence() {
   assert(version, "大额付款未关联合同版本");
   assert(settlement, "大额付款未关联结算");
   assertBigint(version.amountCents, target, "合同金额");
-  assertBigint(settlement.amountCents, target, "结算金额");
-  assertBigint(settlement.payableAmountCents, target, "结算可付金额");
-  assertBigint(settlement.paidAmountCents, target, "结算累计实付金额");
+  const targetYuan = new Prisma.Decimal(target.toString()).div(100);
+  assert(settlement.state === "confirmed" && payment.sourceType === "signed_settlement" && payment.settlementId === null,
+    "大额付款须冻结已确认的已签结算来源");
+  assert(settlement.amountYuan?.equals(targetYuan), "已签结算金额精度不一致");
+  assert(payment.signedSettlementConfirmedYuan?.equals(targetYuan), "付款冻结的单期已签结算金额精度不一致");
+  assert(payment.signedSettlementContractConfirmedYuan?.equals(targetYuan), "付款冻结的累计已签结算金额精度不一致");
   assertBigint(payment.requestedAmountCents, target, "付款申请金额");
   assertBigint(payment.approvedAmountCents, target, "付款批准金额");
   assertBigint(payment.paidAmountCents, target, "付款累计实付金额");

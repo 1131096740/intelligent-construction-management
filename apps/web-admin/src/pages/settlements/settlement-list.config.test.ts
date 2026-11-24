@@ -28,29 +28,29 @@ describe("settlement ledger page configuration", () => {
 
   it("uses the settlement root workbench without per-project draft fan-out", () => {
     const source = readFileSync(new URL("./SettlementListPage.vue", import.meta.url), "utf8");
-    expect(source).toContain("我的草稿");
+    expect(source).toContain("历史草稿");
     expect(source).toContain("fetchSettlementWorkbenchLedger");
     expect(source).toContain("<t-pagination");
-    expect(source).toContain("继续填写");
+    expect(source).toContain("查看历史");
     expect(source).toContain("draftId: row.id");
     expect(source).not.toContain("listSettlementDraftRecords");
     expect(source).not.toContain("fetchProjects");
   });
 
-  it("keeps ended history read-only while offering server-advertised copy as a new draft", () => {
+  it("keeps the recorded end reason and opens historical drafts read-only", () => {
     const source = readFileSync(new URL("./SettlementListPage.vue", import.meta.url), "utf8");
     expect(source).toContain("row.abandonReason || row.returnReason || '—'");
-    expect(source).toContain("历史已保留");
-    expect(source).toContain("activeView === 'all' && row.copyAvailable");
-    expect(source).toContain("复制为新草稿");
-    expect(source).toContain("copyAbandonedSettlementDraft");
+    expect(source).toContain("查看历史");
+    expect(source).not.toContain("row.copyAvailable");
+    expect(source).not.toContain("复制为新草稿");
+    expect(source).not.toContain("copyAbandonedSettlementDraft");
   });
 
   it("labels returned formal records as detail processing rather than draft editing", () => {
     const source = readFileSync(new URL("./SettlementListPage.vue", import.meta.url), "utf8");
     expect(source).toContain("'查看并处理'");
     expect(source).toMatch(
-      /activeView === 'my_drafts'[\s\S]{0,80}\? '继续填写'[\s\S]{0,120}activeView === 'pending_action'[\s\S]{0,80}\? '查看并处理'/
+      /row.lifecycleKind !== 'formal_record'[\s\S]{0,80}\? '查看历史'[\s\S]{0,120}activeView === 'pending_action'[\s\S]{0,80}\? '查看并处理'/
     );
   });
 

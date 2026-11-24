@@ -17,6 +17,7 @@ import { SEED_LAYOUT_FONT } from "../contract-document/seed-layout-docx-source";
 import { PrismaService } from "./prisma.service";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { createApiValidationPipe } from "../validation/api-validation";
+import { openSignedSettlementQualification } from "./signed-settlement-qualification.test-support";
 
 const enabled = process.env.RUN_POL114_HTTP_PG16 === "1";
 const { createSignedChangeQualification } = createRequire(__filename)("../../prisma/signed-change-qualification.cjs") as {
@@ -55,15 +56,12 @@ if (enabled) {
   let actorPhone: string;
   let actorPassword: string;
   let prisma: PrismaService;
-  let settlementAttachmentSnapshotFailure = false;
+  let signedSettlementQualification: Awaited<ReturnType<typeof openSignedSettlementQualification>> | undefined;
+  let signedBaseUrl: string | undefined;
   const identities = new Map<string, { phone: string; password: string }>();
   jest.setTimeout(60_000);
 
-  async function runSettlementBrowserAcceptance(
-    settlementId: string,
-    expectedLines: Array<{ name: string; amountYuan: string; quantity?: string }>,
-    expectedAttachmentPurposes: string[] = []
-  ) {
+  async function runSignedSettlementBrowserAcceptance(projectId: string, settlementId: string, number: string, amount: string) {
     if (process.env.RUN_POL114_BROWSER !== "1") return;
     await new Promise<void>((resolve, reject) => {
       const childEnv = { ...process.env };
@@ -76,20 +74,21 @@ if (enabled) {
         cwd: join(__dirname, "../../../.."),
         env: {
           ...childEnv,
-          POL114_REAL_SETTLEMENT_ID: settlementId,
+          POL114_SIGNED_SETTLEMENT_ID: settlementId,
+          POL114_SIGNED_SETTLEMENT_PROJECT_ID: projectId,
+          POL114_SIGNED_SETTLEMENT_NUMBER: number,
+          POL114_SIGNED_SETTLEMENT_AMOUNT: amount,
+          POL114_SIGNED_SETTLEMENT_API: signedBaseUrl,
           POL114_REAL_SETTLEMENT_PHONE: actorPhone,
           POL114_REAL_SETTLEMENT_PASSWORD: actorPassword,
-          POL114_REAL_SETTLEMENT_LINES: JSON.stringify(expectedLines),
-          POL114_REAL_SETTLEMENT_ATTACHMENT_PURPOSES: JSON.stringify(expectedAttachmentPurposes),
           VITE_API_PROXY_TARGET: baseUrl
         },
         stdio: "inherit"
       });
       child.once("error", reject);
-      child.once("close", (code, signal) => {
-        if (code === 0) resolve();
-        else reject(new Error(`真实结算历史浏览器验收失败：${signal ?? code ?? "unknown"}`));
-      });
+      child.once("close", (code, signal) => code === 0
+        ? resolve()
+        : reject(new Error(`真实已签结算浏览器验收失败：${signal ?? code ?? "unknown"}`)));
     });
   }
 
@@ -102,17 +101,6 @@ if (enabled) {
     baseUrl = await app.getUrl();
     prisma = app.get(PrismaService);
     if(process.env.OPERATING_LEDGER_DB_WRITE_SECRET){const secret=process.env.OPERATING_LEDGER_DB_WRITE_SECRET;await prisma.$executeRaw`INSERT INTO "OperatingLedgerWriteSecret" ("id","secretHash") VALUES (1,crypt(${secret},gen_salt('bf'))) ON CONFLICT("id") DO UPDATE SET "secretHash"=EXCLUDED."secretHash"`;}
-    // Test-only database-boundary fault; all earlier writes use the real PG transaction.
-    // No production service is replaced and no persistent database object is installed.
-    prisma.$use(async (params, next) => {
-      if (settlementAttachmentSnapshotFailure &&
-          params.model === "BusinessEntrySubmissionSnapshot" && params.action === "create" &&
-          params.args?.data?.sceneKey === "settlement_line_attachment_purpose") {
-        settlementAttachmentSnapshotFailure = false;
-        throw new Error("POL114_SYNTHETIC_SETTLEMENT_ATTACHMENT_SNAPSHOT_FAILURE");
-      }
-      return next(params);
-    });
     const phone = process.env.POL114_HTTP_TEST_PHONE ?? `114${Date.now()}`;
     const password = process.env.POL114_HTTP_TEST_PASSWORD ?? `Test-${randomUUID()}`;
     actorPhone = phone;
@@ -135,13 +123,23 @@ if (enabled) {
     await verifyLayoutPreviewHttp(app, baseUrl, { id: actorUserId, phone: actorPhone, password: actorPassword });
   }, 180_000);
 
-  afterAll(async () => { await app?.close(); });
+  afterAll(async () => {
+    try { await signedSettlementQualification?.close(); }
+    finally { await app?.close(); }
+  });
+
+  function signedSettlementFailure(status: number, value: unknown) {
+    const code = (value as { code?: string } | null)?.code;
+    const allowed = code && ["OPERATIONAL_WRITE_FREEZE_ACTIVE", "OPERATIONAL_WRITE_FREEZE_ROUTE_UNCLASSIFIED", "OLD_WRITE_ENTRY_RETIRED"].includes(code)
+      ? code : "UNCLASSIFIED";
+    return `POL114_SIGNED_SETTLEMENT_HTTP_${status}_${allowed} ${signedSettlementQualification?.takeQueryFailure() ?? ""}`;
+  }
 
   async function runContractCase(entryMode: "aggregate" | "legacy" | "legacy-ownerless", typeOverride?: string, paymentMode?: "direct") {
     // Each case owns its identity, even if Jest eventually aborts an earlier case.
     let token = "";
-    async function request<T = unknown>(method: string, path: string, body?: unknown, leaseToken?: string): Promise<T> {
-      const response = await fetch(`${baseUrl}${path}`, {
+    async function request<T = unknown>(method: string, path: string, body?: unknown, leaseToken?: string, target = baseUrl): Promise<T> {
+      const response = await fetch(`${target}${path}`, {
         method,
         headers: {
           "content-type": "application/json",
@@ -151,18 +149,24 @@ if (enabled) {
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
       });
       const value = await response.json() as T;
-      if (!response.ok) throw new Error(`${method} ${path}: ${response.status} ${JSON.stringify(value)}`);
+      if (!response.ok) {
+        const diagnostic = target !== baseUrl ? signedSettlementFailure(response.status, value) : JSON.stringify(value);
+        throw new Error(`${method} ${path}: ${response.status} ${diagnostic}`);
+      }
       return value;
     }
 
-    async function upload(name: string, mimeType: string, data: Uint8Array, uploadPath = "/files") {
+    async function upload(name: string, mimeType: string, data: Uint8Array, uploadPath = "/files", target = baseUrl) {
       const form = new FormData();
       form.append("file", new Blob([Uint8Array.from(data).buffer], { type: mimeType }), name);
-      const response = await fetch(`${baseUrl}${uploadPath}`, {
+      const response = await fetch(`${target}${uploadPath}`, {
         method: "POST", headers: { authorization: `Bearer ${token}` }, body: form
       });
       const result = await response.json() as Identified;
-      if (!response.ok) throw new Error(`上传失败：${JSON.stringify(result)}`);
+      if (!response.ok) {
+        const diagnostic = target !== baseUrl ? signedSettlementFailure(response.status, result) : JSON.stringify(result);
+        throw new Error(`上传失败 HTTP ${response.status}: ${diagnostic}`);
+      }
       return result;
     }
 
@@ -174,9 +178,6 @@ if (enabled) {
     const paymentFinance = paymentMode === "direct" || process.env.RUN_POL114_PAYMENT_HTTP_PG16 === "1" || settlementFinance;
     const contractTypeKey = typeOverride ?? (paymentFinance && !settlementFinance ? "generic_contract" : "material_purchase");
     const engineering = ["labor_subcontract", "professional_subcontract"].includes(contractTypeKey);
-    const fieldReviewerRole = engineering ? "engineering_foreman" : "material_staff";
-    const applicantRole = engineering ? "engineering_tech" : "contract_staff";
-    const settlementRoles = [fieldReviewerRole, engineering ? "engineering_director" : "material_director", "contract_director", "project_manager", "finance_director"];
     const settlementMode = settlementFinance ? "settlement_required" : "direct_payment";
     const project = await request<Identified>("POST", "/projects", {
       code: `POL114-${randomUUID()}`, name: "合同统一录入合成项目"
@@ -603,36 +604,10 @@ if (enabled) {
       });
       let payment: Identified & { businessEntrySnapshot?: BusinessEntryFrozenSnapshot };
       if (settlementFinance) {
-        const effectiveContract = await prisma.contractVersion.findUniqueOrThrow({
-          where: { id: draft.version.id }, select: { effectiveAt: true }
-        });
-        if (!effectiveContract.effectiveAt) throw new Error("合成合同未生效");
-        // The public archive flow sets effectiveAt at runtime; settlement periods must follow it.
-        const effectiveAt = effectiveContract.effectiveAt;
-        const periodEnd = (process.env.COMPANY_TRANSFER_CORE_RECEIPT ? effectiveAt : new Date(Date.UTC(effectiveAt.getUTCFullYear(), effectiveAt.getUTCMonth() + 1, 0)))
-          .toISOString().slice(0, 10);
-        const periodLabel = periodEnd.slice(0, 7);
-        const offsetPeriodEnd = new Date(Date.UTC(effectiveAt.getUTCFullYear(), effectiveAt.getUTCMonth() + 2, 0))
-          .toISOString().slice(0, 10);
-        const workbook = new ExcelJS.Workbook();
-        const sheet = workbook.addWorksheet("本期结算明细");
-        sheet.addRow(["清单编码/行号", "清单项名称", "是否本期结算", "合同数量", "合同单价", "前期已结算数量", "本期数量", "累计结算数量", "剩余可结算数量", "本期结算金额(分)", "人工调整金额(分)", "调整原因", "证据说明", "异常说明", "备注"]);
-        sheet.getCell("A6").value = "经办人签字：";
-        sheet.getCell("H6").value = "审核人签字：";
-        sheet.pageSetup.printArea = "A1:O8";
-        const source = await upload("synthetic-settlement-template.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", new Uint8Array(await workbook.xlsx.writeBuffer()));
-        const settlementTemplateRecord = await prisma.settlementTemplate.create({ data: {
-          name: "公开链合成结算模板", code: `POL114-ST-${randomUUID()}`, createdByUserId: actorUserId
-        } });
-        const settlementTemplateVersion = await prisma.settlementTemplateVersion.create({ data: {
-          settlementTemplateId: settlementTemplateRecord.id, versionNo: 1, status: "published",
-          xlsxFileId: source.id, compatibleContractTypeKeys: [contractTypeKey],
-          columnSchema: {}, printRules: {}, evidenceRules: {}, anomalyRules: {},
-          inspectionReport: { blockingErrors: [], warnings: [] }, inspectionRevision: 1,
-          submittedByUserId: actorUserId, publishedByUserId: actorUserId,
-          publishedAt: new Date(), changeSummary: "合成结算公开链"
-        } });
-        const settlementTemplate = { version: { id: settlementTemplateVersion.id } };
+        if (!signedSettlementQualification) {
+          signedSettlementQualification = await openSignedSettlementQualification(prisma, process.env.DATABASE_URL!);
+          signedBaseUrl = signedSettlementQualification.baseUrl;
+        }
         const upstreamActor = await loginAs(roleUsers.get("budget_staff")!);
         const upstreamSignature = new FormData();
         upstreamSignature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "synthetic-upstream-signature.png");
@@ -644,338 +619,65 @@ if (enabled) {
           approvingPartyName: "合成业主", periodLabel: "2026-09", voucherFileId: upstreamVoucher.id
         });
         expect(await request("POST", `/projects/${project.id}/upstream-settlements/${upstream.id}/confirmation`, { confirmationPassword: upstreamActor.password })).toMatchObject({ status: "confirmed" });
-        const settlementApplicant = await loginAs(roleUsers.get(applicantRole)!);
-        const applicantSignature = new FormData();
-        applicantSignature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "synthetic-applicant-signature.png");
-        const applicantSignatureResponse = await fetch(`${baseUrl}/me/signature/canvas`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: applicantSignature });
-        if (!applicantSignatureResponse.ok) throw new Error(`合成经办签名上传失败：${applicantSignatureResponse.status}`);
-        const settlementDraftPath = `/projects/${project.id}/settlement-drafts`;
-        const uploadSettlement = (name: string, mimeType: string, data: Uint8Array) => upload(name, mimeType, data, `${settlementDraftPath}/files`);
-        const rejectedSubmissionBaseline = {
-          approvals: await prisma.approvalInstance.count({ where: { businessType: "settlement" } }),
-          snapshots: await prisma.businessEntrySubmissionSnapshot.count({
-            where: { sceneKey: { in: ["settlement_basic", "settlement_line"] } }
-          })
-        };
-        const rejectedSettlementCode = `POL114-ST-REJECT-${randomUUID()}`;
-        const rejectedQuantityDraft = await request<Identified & { revision: number }>("POST", settlementDraftPath, {
-          contractVersionId: draft.version.id, settlementTemplateVersionId: settlementTemplate.version.id,
-          code: rejectedSettlementCode, periodLabel: "2026-09",
-          settlementLines: [{ sourceType: "manual_adjustment", name: "非法负数量", quantity: "-1", amountCents: "10000", reason: "失败不应写入" }]
-        });
-        await expect(request("POST", `${settlementDraftPath}/${rejectedQuantityDraft.id}/frozen-document`, {
-          expectedRevision: rejectedQuantityDraft.revision
-        })).rejects.toThrow(`POST ${settlementDraftPath}/${rejectedQuantityDraft.id}/frozen-document: 400`);
-        expect(await prisma.settlementDraft.count({ where: { code: rejectedSettlementCode, status: "draft" } })).toBe(1);
-        const rejectedUnitPriceCode = `POL114-ST-PRICE-REJECT-${randomUUID()}`;
-        await expect(request("POST", settlementDraftPath, {
-          contractVersionId: draft.version.id, settlementTemplateVersionId: settlementTemplate.version.id,
-          code: rejectedUnitPriceCode, periodLabel: "2026-09",
-          settlementLines: [{
-            sourceType: "manual_adjustment", name: "非法负单价", quantity: "1", unitPriceCents: "-100",
-            amountCents: "10000", reason: "失败不应写入"
-          }]
-        })).rejects.toThrow(`POST ${settlementDraftPath}: 400`);
-        expect(await Promise.all([
-          prisma.settlementDraft.count({ where: { code: rejectedUnitPriceCode } }),
-          prisma.settlement.count({ where: { code: { in: [rejectedSettlementCode, rejectedUnitPriceCode] } } }),
-          prisma.approvalInstance.count({ where: { businessType: "settlement" } }),
-          prisma.businessEntrySubmissionSnapshot.count({
-            where: { sceneKey: { in: ["settlement_basic", "settlement_line"] } }
-          })
-        ])).toEqual([0, 0, rejectedSubmissionBaseline.approvals, rejectedSubmissionBaseline.snapshots]);
-        await request("POST", `${settlementDraftPath}/${rejectedQuantityDraft.id}/abandonment`, {
-          expectedRevision: rejectedQuantityDraft.revision, action: "delete_pristine_draft"
-        });
-        expect(await prisma.settlementDraft.count({
-          where: { id: rejectedQuantityDraft.id }
-        })).toBe(0);
-        expect(await prisma.settlementDraftLine.count({
-          where: { settlementDraftId: rejectedQuantityDraft.id }
-        })).toBe(0);
-        expect(await prisma.auditLog.count({
-          where: { businessId: rejectedQuantityDraft.id, action: "settlement.draft.delete" }
-        })).toBe(1);
-        const settlementCode = process.env.POL114_HTTP_SETTLEMENT_CODE ?? `POL114-ST-${randomUUID()}`;
-        const settlementDraft = await request<Identified & { revision: number }>("POST", settlementDraftPath, {
-          contractVersionId: draft.version.id, settlementTemplateVersionId: settlementTemplate.version.id,
-          code: settlementCode, periodLabel, periodEnd,
-          fieldReviewerUserId: roleUsers.get(fieldReviewerRole), fieldReviewerRoleKey: fieldReviewerRole,
-          settlementLines: [
-            { sourceType: "manual_adjustment", name: "合成现场签认金额", quantity: "2.50", amountCents: "10000", reason: "本期合成现场签认" },
-            { sourceType: "manual_adjustment", name: "合成零数量调整", quantity: "0", amountCents: "5000", reason: "原领域允许零数量" }
-          ]
-        });
-        const draftPath = `${settlementDraftPath}/${settlementDraft.id}`;
-        const settlementDraftDetail = await request<{
-          businessEntry?: { definition: BusinessEntrySceneDefinition; values: Record<string, unknown> };
-          businessEntryLines?: Array<{ lineKey: string; definition: BusinessEntrySceneDefinition; values: Record<string, unknown> }>;
-        }>("GET", draftPath);
-        expect(settlementDraftDetail.businessEntry?.definition).toMatchObject({
-          key: "settlement_basic", entityType: "settlement", version: 2,
-          fields: [
-            { key: "contractVersionId", label: "关联合同", type: "single_select" },
-            { key: "settlementTemplateVersionId", label: "结算模板", type: "single_select" },
-            { key: "code", label: "结算编号", type: "text" },
-            { key: "periodLabel", label: "结算期间", type: "text" },
-            { key: "periodEnd", label: "结算截止日", type: "date" },
-            { key: "isFinal", label: "最终结算", type: "boolean" },
-            { key: "finalDeclarationAccepted", label: "最终结算总体声明", type: "boolean" },
-            { key: "finalCumulativeAmountYuan", label: "审定累计结算金额", type: "money" },
-            { key: "fieldReviewerUserId", label: "现场复核人", type: "single_select" },
-            { key: "fieldReviewerRoleKey", label: "现场复核岗位", type: "single_select" }
-          ]
-        });
-        expect(settlementDraftDetail.businessEntry?.values).toMatchObject({
-          contractVersionId: draft.version.id,
-          settlementTemplateVersionId: settlementTemplate.version.id,
-          periodLabel,
-          periodEnd,
-          isFinal: false,
-          fieldReviewerUserId: roleUsers.get(fieldReviewerRole),
-          fieldReviewerRoleKey: fieldReviewerRole
-        });
-        expect(settlementDraftDetail.businessEntryLines).toEqual(expect.arrayContaining([
-          expect.objectContaining({
-            definition: expect.objectContaining({
-              key: "settlement_line", entityType: "settlement_line", version: 2,
-              fields: expect.arrayContaining([
-                expect.objectContaining({ key: "sourceType", label: "明细来源", type: "single_select" }),
-                expect.objectContaining({ key: "name", label: "明细名称", type: "text" }),
-                expect.objectContaining({ key: "quantity", label: "数量", type: "number", precision: 2,
-                  exactDecimalString: { sign: "nonnegative", maximumExclusive: "1000000000000000000" } }),
-                expect.objectContaining({ key: "amountYuan", label: "本期金额", type: "money" }),
-                expect.objectContaining({ key: "reason", label: "业务原因", type: "long_text" })
-              ])
-            }),
-            values: expect.objectContaining({
-              sourceType: "manual_adjustment",
-              name: "合成现场签认金额",
-              quantity: "2.5",
-              amountYuan: "100.00",
-              reason: "本期合成现场签认"
-            })
-          }),
-          expect.objectContaining({ values: expect.objectContaining({ name: "合成零数量调整", quantity: "0", amountYuan: "50.00" }) })
-        ]));
-        expect(settlementDraftDetail.businessEntryLines).toHaveLength(2);
-        const settlementLineKey = settlementDraftDetail.businessEntryLines?.[0]?.lineKey;
-        if (!settlementLineKey) throw new Error("公开结算草稿未返回明细标识");
-        const lineEvidence = await uploadSettlement("synthetic-line-evidence.pdf", "application/pdf", await pdf.save());
-        const firstAttached = await request<{ revision: number }>(
-          "POST",
-          `${draftPath}/lines/${encodeURIComponent(settlementLineKey)}/attachments`,
-          { fileId: lineEvidence.id, purpose: "现场签证单", expectedRevision: settlementDraft.revision }
-        );
-        const measurementEvidence = await uploadSettlement("synthetic-measurement-evidence.pdf", "application/pdf", await pdf.save());
-        const attached = await request<{ revision: number }>(
-          "POST",
-          `${draftPath}/lines/${encodeURIComponent(settlementLineKey)}/attachments`,
-          { fileId: measurementEvidence.id, purpose: "计量凭证", expectedRevision: firstAttached.revision }
-        );
-        const frozen = await request<Identified & { fileId: string }>("POST", `${draftPath}/frozen-document`, { expectedRevision: attached.revision });
-        const download = await request<{ downloadUrl: string }>("POST", `/files/${frozen.fileId}/download-ticket`, {
-          confirmationPassword: settlementApplicant.password, downloadReason: "合成签署扫描件", accessMode: "download"
-        });
-        const downloaded = await fetch(new URL(download.downloadUrl, baseUrl));
-        if (!downloaded.ok) throw new Error(`结算冻结件下载失败：${downloaded.status}`);
-        const signed = await uploadSettlement("synthetic-settlement-signed.pdf", "application/pdf", new Uint8Array(await downloaded.arrayBuffer()));
-        await request("POST", `${draftPath}/counterparty-signed-documents`, {
-          expectedRevision: attached.revision, frozenDocumentId: frozen.id, uploadedFileId: signed.id,
-          declaration: { pageOrderMatchesFrozenDocument: true, counterpartySignedAndDated: true, everyPageStamped: true, crossPageSealCompleted: true }
-        });
-        type SettlementSubmission = Identified & {
-          businessEntrySnapshot?: { sceneKey: string; values: Record<string, unknown> };
-          businessEntryLineSnapshots?: Array<{ sceneKey: string; target: { entityId: string }; values: Record<string, unknown> }>;
-          businessEntryLineAttachmentSnapshots?: Array<{ sceneKey: string; target: { entityId: string }; values: Record<string, unknown> }>;
-        };
-        const beforeFailedSubmission = {
-          settlements: await prisma.settlement.count({ where: { code: settlementCode } }),
-          formalAttachments: await prisma.settlementLineAttachment.count({ where: { settlementLineId: { not: null } } }),
-          purposeSnapshots: await prisma.businessEntrySubmissionSnapshot.count({
-            where: { sceneKey: "settlement_line_attachment_purpose" }
-          }),
-          approvals: await prisma.approvalInstance.count({ where: { businessType: "settlement" } })
-        };
-        settlementAttachmentSnapshotFailure = true;
-        await expect(request("POST", `${draftPath}/approval-submission`, { expectedRevision: attached.revision }))
-          .rejects.toThrow(`POST ${draftPath}/approval-submission: 500`);
-        await expect(Promise.all([
-          prisma.settlement.count({ where: { code: settlementCode } }),
-          prisma.settlementLineAttachment.count({ where: { settlementLineId: { not: null } } }),
-          prisma.businessEntrySubmissionSnapshot.count({ where: { sceneKey: "settlement_line_attachment_purpose" } }),
-          prisma.approvalInstance.count({ where: { businessType: "settlement" } })
-        ])).resolves.toEqual([
-          beforeFailedSubmission.settlements,
-          beforeFailedSubmission.formalAttachments,
-          beforeFailedSubmission.purposeSnapshots,
-          beforeFailedSubmission.approvals
-        ]);
-        expect(await request<Array<{ purpose: string }>>("GET", `${draftPath}/line-attachments`)).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({ purpose: "现场签证单" }),
-            expect.objectContaining({ purpose: "计量凭证" })
-          ])
-        );
-        const settlement = await request<SettlementSubmission>("POST", `${draftPath}/approval-submission`, { expectedRevision: attached.revision });
-        expect(settlement.businessEntrySnapshot).toMatchObject({
-          sceneKey: "settlement_basic", definitionVersion: 2,
-          values: {
-            contractVersionId: draft.version.id,
-            settlementTemplateVersionId: settlementTemplate.version.id,
-            periodLabel,
-            periodEnd,
-            isFinal: false,
-            fieldReviewerUserId: roleUsers.get(fieldReviewerRole),
-            fieldReviewerRoleKey: fieldReviewerRole
+        const signedPath = `/projects/${project.id}/signed-contract-settlements`;
+        const requestSigned = <T = unknown>(method: string, path: string, body?: unknown) =>
+          request<T>(method, path, body, undefined, signedBaseUrl!);
+        const contractSelection = { contractKind: "downstream", contractId: draft.contract.id };
+        const original = new Uint8Array(await pdf.save());
+        type SignedRecord = Identified & { revision: number; state: string; confirmationNo: string | null };
+        const signedNumber = process.env.POL114_HTTP_SETTLEMENT_CODE ?? `POL114-ST-${randomUUID()}`;
+        const registerSignedSettlement = async (number: string, amountYuan: string, returnedOnce: boolean) => {
+          await loginAs(roleUsers.get("contract_staff")!);
+          const file = await upload(`${number}.pdf`, "application/pdf", original, `${signedPath}/files`, signedBaseUrl);
+          const inputs = { ...contractSelection, number, amountYuan, fileIds: [file.id] };
+          const created = await requestSigned<SignedRecord>("POST", signedPath, inputs);
+          expect(created.state).toBe("draft");
+          const rowPath = `${signedPath}/${created.id}`;
+          let submitted = await requestSigned<SignedRecord>("POST", `${rowPath}/submission`, { revision: created.revision });
+          expect(submitted.state).toBe("pending_review");
+          await expect(requestSigned("POST", `${rowPath}/review`, {
+            revision: submitted.revision, decision: "confirm"
+          })).rejects.toThrow(`POST ${rowPath}/review: 403`);
+          await loginAs(roleUsers.get("contract_director")!);
+          if (returnedOnce) {
+            const returned = await requestSigned<SignedRecord>("POST", `${rowPath}/review`, {
+              revision: submitted.revision, decision: "return", reason: "合成复核退回核对原件"
+            });
+            expect(returned.state).toBe("returned");
+            await loginAs(roleUsers.get("contract_staff")!);
+            const resaved = await requestSigned<SignedRecord>("PATCH", rowPath, { ...inputs, revision: returned.revision });
+            expect(resaved.state).toBe("draft");
+            submitted = await requestSigned<SignedRecord>("POST", `${rowPath}/submission`, { revision: resaved.revision });
+            await loginAs(roleUsers.get("contract_director")!);
           }
+          const confirmed = await requestSigned<SignedRecord>("POST", `${rowPath}/review`, {
+            revision: submitted.revision, decision: "confirm"
+          });
+          expect(confirmed.state).toBe("confirmed");
+          const filePath = `${rowPath}/attachments/${file.id}`;
+          expect(await requestSigned("GET", filePath)).toMatchObject({ fileId: file.id, mimeType: "application/pdf" });
+          const ticket = await requestSigned<{ downloadUrl: string }>("POST", `${filePath}/download-ticket`, {
+            downloadReason: "核对合成结算已签原件"
+          });
+          const downloaded = await fetch(new URL(ticket.downloadUrl, signedBaseUrl), { headers: { authorization: `Bearer ${token}` } });
+          expect(downloaded.status).toBe(200);
+          expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(original);
+          return confirmed;
+        };
+        const firstSettlement = await registerSignedSettlement(signedNumber, "200.0000", true);
+        const settlement = await registerSignedSettlement(`${signedNumber}-OFFSET`, "-50.0000", false);
+        expect([firstSettlement.confirmationNo, settlement.confirmationNo]).toEqual(["1", "2"]);
+        const paymentBasisPath = `${signedPath}/payment-basis?${new URLSearchParams(contractSelection)}`;
+        expect(await requestSigned("GET", paymentBasisPath)).toMatchObject({
+          latestConfirmed: { id: settlement.id, amountYuan: "-50.0000" },
+          confirmedHistory: expect.arrayContaining([expect.objectContaining({ id: firstSettlement.id, amountYuan: "200.0000" })]),
+          confirmedYuan: "150.0000",
+          downstreamCapacity: { wholeCentLimit: "15000" }
         });
-        expect(settlement.businessEntryLineSnapshots).toEqual(expect.arrayContaining([
-          expect.objectContaining({
-            sceneKey: "settlement_line",
-            target: expect.objectContaining({ entityType: "settlement_line" }),
-            values: expect.objectContaining({
-              sourceType: "manual_adjustment",
-              name: "合成现场签认金额",
-              quantity: "2.5",
-              amountYuan: "100.00",
-              reason: "本期合成现场签认"
-            })
-          }),
-          expect.objectContaining({
-            sceneKey: "settlement_line",
-            values: expect.objectContaining({ name: "合成零数量调整", quantity: "0", amountYuan: "50.00" })
-          })
-        ]));
-        expect(settlement.businessEntryLineSnapshots).toHaveLength(2);
-        expect(settlement.businessEntryLineAttachmentSnapshots).toHaveLength(2);
-        expect(new Set(settlement.businessEntryLineAttachmentSnapshots?.map((snapshot) => snapshot.values.purpose)))
-          .toEqual(new Set(["现场签证单", "计量凭证"]));
-        expect(new Set(settlement.businessEntryLineAttachmentSnapshots?.map((snapshot) => snapshot.target.entityId)).size).toBe(2);
-        expect(settlement.businessEntryLineAttachmentSnapshots).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              sceneKey: "settlement_line_attachment_purpose",
-              target: expect.objectContaining({ entityType: "settlement_line_attachment" })
-            })
-          ])
-        );
-        const formalAttachmentFacts = await prisma.settlementLineAttachment.findMany({
-          where: { id: { in: settlement.businessEntryLineAttachmentSnapshots!.map((snapshot) => snapshot.target.entityId) } },
-          select: { id: true, purpose: true }
-        });
-        expect(new Map(formalAttachmentFacts.map((attachment) => [attachment.id, attachment.purpose])))
-          .toEqual(new Map(settlement.businessEntryLineAttachmentSnapshots!.map((snapshot) => [
-            snapshot.target.entityId,
-            snapshot.values.purpose as string
-          ])));
-        await expect(Promise.all([
-          prisma.settlement.count({ where: { code: settlementCode } }),
-          prisma.settlementLineAttachment.count({ where: {
-            settlementLineId: { in: settlement.businessEntryLineSnapshots!.map((snapshot) => snapshot.target.entityId) }
-          } }),
-          prisma.businessEntrySubmissionSnapshot.count({ where: {
-            sceneKey: "settlement_line_attachment_purpose",
-            entityId: { in: settlement.businessEntryLineAttachmentSnapshots!.map((snapshot) => snapshot.target.entityId) }
-          } }),
-          prisma.approvalInstance.count({ where: { businessType: "settlement", businessId: settlement.id } })
-        ])).resolves.toEqual([1, 2, 2, 1]);
-        const settlementDetail = await request<{ businessEntryHistory?: unknown[] }>("GET", `/settlements/${settlement.id}`);
-        expect(settlementDetail.businessEntryHistory).toEqual([
-          settlement.businessEntrySnapshot,
-          ...settlement.businessEntryLineSnapshots!,
-          ...settlement.businessEntryLineAttachmentSnapshots!
-        ]);
         if (entryMode === "aggregate") {
-          await runSettlementBrowserAcceptance(settlement.id, [
-            { name: "合成现场签认金额", amountYuan: "100.00", quantity: "2.5" },
-            { name: "合成零数量调整", amountYuan: "50.00", quantity: "0" }
-          ], ["现场签证单", "计量凭证"]);
+          await runSignedSettlementBrowserAcceptance(project.id, firstSettlement.id, signedNumber, "200.0000");
+          await runSignedSettlementBrowserAcceptance(project.id, settlement.id, `${signedNumber}-OFFSET`, "-50.0000");
         }
-        for (const role of settlementRoles) {
-          const identity = await loginAs(roleUsers.get(role)!);
-          const signature = new FormData();
-          signature.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), "synthetic-signature.png");
-          const response = await fetch(`${baseUrl}/me/signature/canvas`, { method: "POST", headers: { authorization: `Bearer ${token}` }, body: signature });
-          if (!response.ok) throw new Error(`合成结算签名上传失败：${response.status}`);
-          await request("POST", `/settlements/${settlement.id}/approval`, { decision: "approve", confirmationPassword: identity.password, selfReviewReason: "合成结算链验证" });
-        }
-        const archiveActor = await loginAs(roleUsers.get("contract_director")!);
-        await verifyApprovedPdf({ db: prisma, baseUrl, token, password: archiveActor.password,
-          businessType: "settlement", businessId: settlement.id,
-          roles: settlementRoles, label: `${contractTypeKey}-过程结算` });
-        await request("POST", `/settlements/${settlement.id}/signed-document-generation-retry`, {});
-        expect(await request("POST", `/settlements/${settlement.id}/archive-confirmation`, { confirmationPassword: archiveActor.password })).toMatchObject({ status: "effective" });
-        const sourceSettlementLineId = settlement.businessEntryLineSnapshots?.[0]?.target.entityId;
-        if (!sourceSettlementLineId) throw new Error("公开结算提交未返回可追溯明细");
-        await loginAs(roleUsers.get(applicantRole)!);
-        const offsetDraft = await request<Identified & { revision: number }>("POST", settlementDraftPath, {
-          contractVersionId: draft.version.id, settlementTemplateVersionId: settlementTemplate.version.id,
-          code: `POL114-ST-OFFSET-${randomUUID()}`, periodLabel: offsetPeriodEnd.slice(0, 7), periodEnd: offsetPeriodEnd,
-          isFinal: true, finalDeclarationAccepted: true,
-          fieldReviewerUserId: roleUsers.get(fieldReviewerRole), fieldReviewerRoleKey: fieldReviewerRole,
-          settlementLines: [
-            { sourceType: "manual_adjustment", name: "合成本期补充量", amountCents: "10000", reason: "本期合法正向调整" },
-            {
-              sourceType: "manual_adjustment", adjustmentKind: "over_settlement_offset", name: "合成超结冲减",
-              amountCents: "-5000", relatedSettlementLineId: sourceSettlementLineId,
-              overageReason: "合同清单调减", reason: "冲减前期超结"
-            }
-          ]
-        });
-        const offsetDraftPath = `${settlementDraftPath}/${offsetDraft.id}`;
-        const offsetFrozen = await request<Identified & { fileId: string }>(
-          "POST", `${offsetDraftPath}/frozen-document`, { expectedRevision: offsetDraft.revision }
-        );
-        const offsetDownload = await request<{ downloadUrl: string }>(
-          "POST", `/files/${offsetFrozen.fileId}/download-ticket`, {
-            confirmationPassword: settlementApplicant.password, downloadReason: "合成冲减签署扫描件", accessMode: "download"
-          }
-        );
-        const offsetDownloaded = await fetch(new URL(offsetDownload.downloadUrl, baseUrl));
-        if (!offsetDownloaded.ok) throw new Error(`结算冲减冻结件下载失败：${offsetDownloaded.status}`);
-        const offsetSigned = await uploadSettlement(
-          "synthetic-offset-signed.pdf", "application/pdf", new Uint8Array(await offsetDownloaded.arrayBuffer())
-        );
-        await request("POST", `${offsetDraftPath}/counterparty-signed-documents`, {
-          expectedRevision: offsetDraft.revision, frozenDocumentId: offsetFrozen.id, uploadedFileId: offsetSigned.id,
-          declaration: { pageOrderMatchesFrozenDocument: true, counterpartySignedAndDated: true, everyPageStamped: true, crossPageSealCompleted: true }
-        });
-        const offsetSettlement = await request<SettlementSubmission>(
-          "POST", `${offsetDraftPath}/approval-submission`, { expectedRevision: offsetDraft.revision }
-        );
-        expect(offsetSettlement.businessEntryLineSnapshots).toEqual(expect.arrayContaining([
-          expect.objectContaining({
-            sceneKey: "settlement_line",
-            values: expect.objectContaining({ name: "合成本期补充量", amountYuan: "100.00" })
-          }),
-          expect.objectContaining({
-            sceneKey: "settlement_line",
-            values: expect.objectContaining({
-              name: "合成超结冲减", amountYuan: "-50.00",
-              relatedSettlementLineId: sourceSettlementLineId, overageReason: "合同清单调减", reason: "冲减前期超结"
-            })
-          })
-        ]));
-        expect(offsetSettlement.businessEntryLineSnapshots).toHaveLength(2);
-        const offsetDetail = await request<{ businessEntryHistory?: Array<{ sceneKey: string; values: Record<string, unknown> }> }>(
-          "GET", `/settlements/${offsetSettlement.id}`
-        );
-        expect(offsetDetail.businessEntryHistory?.filter((snapshot) => snapshot.sceneKey === "settlement_line"))
-          .toEqual(offsetSettlement.businessEntryLineSnapshots);
-        if (entryMode === "aggregate") {
-          await runSettlementBrowserAcceptance(offsetSettlement.id, [
-            { name: "合成本期补充量", amountYuan: "100.00" },
-            { name: "合成超结冲减", amountYuan: "-50.00" }
-          ]);
-        }
-        for (const role of settlementRoles) {
-          const identity = await loginAs(roleUsers.get(role)!);
-          await request("POST", `/settlements/${offsetSettlement.id}/approval`, { decision: "approve", confirmationPassword: identity.password, selfReviewReason: "合成最终结算逐节点签批" });
-        }
-        const finalPdfActor = await loginAs(roleUsers.get("contract_director")!);
-        await verifyApprovedPdf({ db: prisma, baseUrl, token, password: finalPdfActor.password,
-          businessType: "settlement", businessId: offsetSettlement.id, roles: settlementRoles, label: `${contractTypeKey}-最终结算` });
         await loginAs(actorUserId);
         const paymentEntry = await request<{ businessEntry?: { definition: BusinessEntrySceneDefinition } }>("GET", `/payments/create-capability?projectId=${project.id}`);
         expect(paymentEntry.businessEntry?.definition).toMatchObject({
@@ -985,16 +687,20 @@ if (enabled) {
             expect.objectContaining({ key: "requestedAmountYuan", type: "money" })
           ])
         });
+        await expect(request("POST", "/payments", {
+          sourceType: "signed_settlement", signedSettlementId: firstSettlement.id,
+          code: `POL114-OUTDATED-${randomUUID()}`, requestedAmountCents: "10000"
+        })).rejects.toThrow("付款只可选择最近确认的一期已签结算");
         payment = await request<Identified & { businessEntrySnapshot?: BusinessEntryFrozenSnapshot }>("POST", "/payments", {
-          settlementId: settlement.id, code: `POL114-PAY-${randomUUID()}`, requestedAmountCents: "10000",
-          paymentMatter: "本期结算付款", amountCalculationExplanation: "按已归档生效结算申请100元"
+          sourceType: "signed_settlement", signedSettlementId: settlement.id, code: `POL114-PAY-${randomUUID()}`, requestedAmountCents: "10000",
+          paymentMatter: "本期结算付款", amountCalculationExplanation: "按已签结算累计可付金额申请100元"
         });
         expect(payment.businessEntrySnapshot).toMatchObject({
           sceneKey: "payment_request", target: { projectId: project.id, entityType: "payment_request", entityId: payment.id },
           values: expect.objectContaining({
-            code: expect.stringMatching(/^POL114-PAY-/), sourceType: "settlement", paymentSubjectType: "our_company",
+            code: expect.stringMatching(/^POL114-PAY-/), sourceType: "signed_settlement", paymentSubjectType: "our_company",
             settlementId: settlement.id, contractId: draft.contract.id, contractVersionId: draft.version.id,
-            paymentMatter: "本期结算付款", amountCalculationExplanation: "按已归档生效结算申请100元",
+            paymentMatter: "本期结算付款", amountCalculationExplanation: "按已签结算累计可付金额申请100元",
             requestedAmountYuan: "100.00"
           })
         });
@@ -1313,15 +1019,14 @@ if (enabled) {
     await runContractCase("aggregate", "generic_contract", "direct");
   }, 60_000);
 
+  const signedBrowserTimeout = process.env.RUN_POL114_BROWSER === "1"
+    ? 60_000 + 2 * (85_000 + 30_000) + 10_000 : 60_000;
   for (const entryMode of ["aggregate", "legacy", "legacy-ownerless"] as const) {
-    // Each Playwright invocation owns its global deadline and worker/server cleanup.
-    // The ordinary HTTP modes and each Playwright case retain their original limits.
-    const timeoutMs = process.env.RUN_POL114_BROWSER === "1" && entryMode === "aggregate"
-      ? 60_000 + 2 * (85_000 + 30_000) + 10_000 : 60_000;
-    it.each([entryMode])("合同现役提交与旧入口退出：%s", mode => runContractCase(mode), timeoutMs);
+    it.each([entryMode])("合同现役提交与旧入口退出：%s", mode => runContractCase(mode),
+      entryMode === "aggregate" ? signedBrowserTimeout : 60_000);
   }
   (process.env.RUN_POL114_SETTLEMENT_FINANCE_HTTP_PG16 === "1" ? it.each(["equipment_rental", "labor_subcontract", "professional_subcontract"]) : it.skip.each(["equipment_rental", "labor_subcontract", "professional_subcontract"]))("V6 合同结算付款完整链：%s", async kind => {
     await runContractCase("aggregate", kind);
-  }, 60_000);
+  }, signedBrowserTimeout);
 
 });

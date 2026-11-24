@@ -5,14 +5,17 @@ import type {
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
-export const SETTLEMENT_FIELD_REVIEWER_ROLE_KEYS = [
-  "material_staff",
-  "engineering_foreman",
-  "engineering_tech"
-] as const;
+import {
+  SETTLEMENT_FIELD_REVIEWER_ROLE_KEYS,
+  type SettlementFieldReviewerRoleKey,
+  type SettlementLineDraftPayload
+} from "./settlement-drafts.api";
 
-export type SettlementFieldReviewerRoleKey =
-  (typeof SETTLEMENT_FIELD_REVIEWER_ROLE_KEYS)[number];
+export {
+  SETTLEMENT_FIELD_REVIEWER_ROLE_KEYS,
+  type SettlementFieldReviewerRoleKey,
+  type SettlementLineDraftPayload
+} from "./settlement-drafts.api";
 
 export function isSettlementFieldReviewerRoleAllowed(
   value: unknown
@@ -31,27 +34,6 @@ export interface SettlementParticipantOptionReadModel {
 export interface SettlementParticipantOptionsReadModel {
   route: "material_mechanical" | "labor_professional";
   options: SettlementParticipantOptionReadModel[];
-}
-
-export interface SettlementLineDraftPayload {
-  sourceType: "contract_bill_row" | "visa_change" | "manual_adjustment";
-  adjustmentKind?: "ordinary" | "retrospective_price_difference" | "over_settlement_offset";
-  lineKey?: string;
-  contractBillRowId?: string;
-  sourceItemType?: string;
-  occurredOn?: string;
-  name?: string;
-  description?: string;
-  unit?: string;
-  quantity?: string;
-  unitPriceCents?: string;
-  amountCents?: string;
-  pricingBasis?: string;
-  overageReason?: string;
-  relatedSettlementLineId?: string;
-  reason?: string;
-  remark?: string;
-  sortOrder?: number;
 }
 
 export interface SettlementCanonicalPreviewLineReadModel {

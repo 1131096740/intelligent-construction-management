@@ -10,18 +10,18 @@
 | Web API 请求 | 已扫描 180 条 |
 | 实际 Nest route manifest | 已通过 `app.init()` 读取，共 879 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
-| route-usage 候选退出 | 已读取 54 条合同专项候选；物理删除授权固定为否 |
+| route-usage 候选退出 | 已读取 55 条合同专项候选；物理删除授权固定为否 |
 
 ## 分类汇总
 
 | 分类 | 数量 |
 | --- | ---: |
-| matched | 133 |
+| matched | 132 |
 | frontend_without_backend | 0 |
 | backend_without_frontend | 83 |
 | backend_internal_only | 0 |
 | legacy_candidate | 0 |
-| exit_candidate | 54 |
+| exit_candidate | 55 |
 
 ## 不存在的页面 API wrapper
 
@@ -216,7 +216,7 @@
 | GET | `/contracts/ledger-export` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/contracts/lifecycle-ledger` | fetchContractLifecycleLedger | apps/web-admin/src/pages/contracts/ContractListPage.vue | matched | 保留 | 否 | — |
 | GET | `/contracts/payment-create-options` | fetchPaymentContractOptions | apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue | matched | 保留 | 否 | — |
-| GET | `/contracts/settlement-create-options` | fetchSettlementContractOptions | apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue | matched | 保留 | 否 | — |
+| GET | `/contracts/settlement-create-options` | fetchSettlementContractOptions |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/contracts/workbench` | fetchContractWorkbenchLedger |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/draft-retention/controlled-entry` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/draft-retention/preview` | fetchDraftRetentionPreview | apps/web-admin/src/pages/settings/SettingsPage.vue | matched | 保留 | 否 | — |
@@ -291,7 +291,7 @@
 | GET | `/projects/:param/signed-contract-settlements/payment-basis` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/projects/contract-create-options` | fetchContractCreateProjects | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue | matched | 保留 | 否 | — |
 | GET | `/settlement-workbench/contract-versions/:param/import-template` | — |  | backend_without_frontend | 补入口 | 否 | — |
-| POST | `/settlement-workbench/contract-versions/:param/imports/preview` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/settlement-workbench/contract-versions/:param/imports/preview` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | GET | `/settlement-workbench/contract-versions/:param/participant-options` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/settlement-workbench/contract-versions/:param/preview` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/settlement-workbench/contract-versions/:param/source-lines` | — |  | backend_without_frontend | 补入口 | 否 | — |

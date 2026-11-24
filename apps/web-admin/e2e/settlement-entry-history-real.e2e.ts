@@ -12,7 +12,9 @@ const expectedAttachmentPurposes = JSON.parse(
   process.env.POL114_REAL_SETTLEMENT_ATTACHMENT_PURPOSES ?? "[]"
 ) as string[];
 
-test.describe("#114 real settlement exact financial history", () => {
+const signedId = process.env.POL114_SIGNED_SETTLEMENT_ID;
+
+if (!signedId) test.describe("#114 real settlement exact financial history", () => {
   test.skip(
     !settlementId || !phone || !password || expectedLines.length === 0,
     "requires the disposable PG16 public HTTP fixture"
@@ -93,4 +95,39 @@ test.describe("#114 real settlement exact financial history", () => {
     for (const snapshot of attachmentHistory) expect(bodyText).not.toContain(snapshot.target.entityId);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   });
+});
+
+if (signedId) test("reads the confirmed signed settlement, original and cumulative amount", async ({ page }) => {
+  const projectId = process.env.POL114_SIGNED_SETTLEMENT_PROJECT_ID!;
+  const number = process.env.POL114_SIGNED_SETTLEMENT_NUMBER!;
+  const amount = process.env.POL114_SIGNED_SETTLEMENT_AMOUNT!;
+  const api = process.env.POL114_SIGNED_SETTLEMENT_API!;
+  expect([projectId, phone, password, number, amount, api].every(Boolean)).toBeTruthy();
+  const path = `/api/projects/${encodeURIComponent(projectId)}/signed-contract-settlements`;
+  await page.route(url => url.pathname === path || url.pathname.startsWith(`${path}/`), async route => {
+    const url = new URL(route.request().url());
+    const response = await route.fetch({ url: new URL(url.pathname.slice(4) + url.search, api).href });
+    await route.fulfill({ response });
+  });
+  await page.goto("/login");
+  await page.getByPlaceholder("请输入手机号").fill(phone!);
+  await page.getByPlaceholder("请输入密码").fill(password!);
+  await page.getByRole("button", { name: "登录" }).click();
+  await expect.poll(() => decodeURI(new URL(page.url()).pathname)).toBe("/首页");
+
+  const rowsReceived = page.waitForResponse(response => response.request().method() === "GET" &&
+    new URL(response.url()).pathname === path);
+  await page.goto(`/结算工作台/已签登记?${new URLSearchParams({ projectId, settlementId: signedId })}`);
+  const list = await rowsReceived;
+  expect(list.ok()).toBeTruthy();
+  expect(await list.json()).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: signedId, number, amountYuan: amount, state: "confirmed" })
+  ]));
+  await expect(page.getByRole("heading", { name: "已签结算登记" })).toBeVisible();
+  await expect(page.getByText("已确认累计：150.0000 元", { exact: true })).toBeVisible();
+  await expect(page.locator(`input[value="${number}"]`)).toHaveValue(number);
+  await expect(page.getByText(`${number}.pdf`, { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "下载", exact: true })).toBeVisible();
+  expect(await page.locator("body").innerText()).not.toContain(signedId);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });

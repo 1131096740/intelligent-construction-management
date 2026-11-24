@@ -63,7 +63,7 @@
                 v-for="file in attachments"
                 :key="file.fileId"
               >
-                {{ file.originalName }}
+                <span>{{ file.originalName }}</span>
                 <t-button
                   v-if="isSavedAttachment(file.fileId) && selected?.canReadAttachments"
                   variant="text"

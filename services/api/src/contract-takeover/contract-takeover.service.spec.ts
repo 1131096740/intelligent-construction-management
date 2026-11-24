@@ -6164,12 +6164,32 @@ describe("ContractTakeoverService", () => {
   });
 
   it("summarizes post-confirmation verification facts after takeover", async () => {
+    const confirmedAt = new Date("2026-07-05T10:00:00.000Z");
+    const signedRecord = {
+      projectId: "project-1", contractId: "contract-1", contractKind: "downstream", state: "confirmed",
+      reviewedAt: new Date("2026-07-06T10:00:00.000Z"), confirmedContractSource: { sourceRecordId: "contract-version-1" }
+    };
+    const signedFixtures = [
+      signedRecord,
+      { ...signedRecord, state: "pending_review" },
+      { ...signedRecord, contractKind: "upward" },
+      { ...signedRecord, projectId: "another-project" },
+      { ...signedRecord, contractId: "another-contract" },
+      { ...signedRecord, confirmedContractSource: { sourceRecordId: "contract-version-2" } },
+      { ...signedRecord, reviewedAt: new Date("2026-07-04T10:00:00.000Z") }
+    ];
+    const signedFind = jest.fn(async ({ where }) => signedFixtures.filter((row) =>
+      row.state === where.state && row.contractKind === where.contractKind &&
+      row.projectId === where.OR[0].projectId && row.contractId === where.OR[0].contractId &&
+      row.reviewedAt >= where.OR[0].reviewedAt.gte &&
+      row.confirmedContractSource.sourceRecordId === where.OR[0].confirmedContractSource.equals
+    ));
     const prisma = {
       contractTakeover: {
         findMany: jest.fn().mockResolvedValue([
           takeoverRecord({
             takeoverStatus: "confirmed",
-            confirmedAt: new Date("2026-07-05T10:00:00.000Z")
+            confirmedAt
           })
         ])
       },
@@ -6207,6 +6227,7 @@ describe("ContractTakeoverService", () => {
           }
         ])
       },
+      signedContractSettlement: { findMany: signedFind },
       paymentRequest: {
         findMany: jest.fn().mockResolvedValue([
           { id: "payment-request-1", contractVersionId: "contract-version-1", status: "paid" }
@@ -6227,11 +6248,18 @@ describe("ContractTakeoverService", () => {
 
     const [row] = await service.list("project-1");
 
+    expect(signedFind).toHaveBeenCalledWith({
+      where: { state: "confirmed", contractKind: "downstream", OR: [{
+        projectId: "project-1", contractId: "contract-1", reviewedAt: { gte: confirmedAt },
+        confirmedContractSource: { path: ["sourceRecordId"], equals: "contract-version-1" }
+      }] },
+      select: { confirmedContractSource: true }
+    });
     expect(row.postConfirmationVerification).toEqual({
       statusLabel: "已形成闭环",
       summaryText:
         "已看到接管后的新结算、付款申请、实付凭证和财务入账，可作为试运行核验证据继续抽查审计记录。",
-      newSettlementCount: 1,
+      newSettlementCount: 2,
       paymentRequestCount: 1,
       paymentExecutionCount: 1,
       financeRecordCount: 1

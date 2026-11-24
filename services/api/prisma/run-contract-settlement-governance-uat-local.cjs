@@ -5,6 +5,7 @@ const net = require("node:net");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 const { createSignedChangeQualification } = require("./signed-change-qualification.cjs");
+const { createSignedSettlementQualification } = require("./signed-settlement-qualification.cjs");
 const {
   createCommandRuntime,
   createRunnerCleanup,
@@ -68,7 +69,8 @@ async function waitForApi(apiBaseUrl, apiProcess, apiOutput) {
 async function main() {
   const evidencePath = process.env.TRIAL_RUN_GOVERNANCE_EVIDENCE_PATH;
   assert(evidencePath, "必须设置 TRIAL_RUN_GOVERNANCE_EVIDENCE_PATH 以保留隔离 UAT 证据");
-  const [databasePort, apiPort, freezeApiPort, signedChangeApiPort] = await Promise.all([
+  const [databasePort, apiPort, freezeApiPort, signedChangeApiPort, signedSettlementApiPort] = await Promise.all([
+    freePort(),
     freePort(),
     freePort(),
     freePort(),
@@ -86,6 +88,8 @@ async function main() {
   const freezeApiBaseUrl = `http://127.0.0.1:${freezeApiPort}`;
   const signedChangeApiBaseUrl = `http://127.0.0.1:${signedChangeApiPort}`;
   const signedChange = createSignedChangeQualification(databaseUrl);
+  const signedSettlementApiBaseUrl = `http://127.0.0.1:${signedSettlementApiPort}`;
+  const signedSettlement = createSignedSettlementQualification(databaseUrl);
   const shaResult = await command("git", ["rev-parse", "HEAD"]);
   const candidateSha = shaResult.stdout.trim();
   assert(/^[0-9a-f]{40}$/.test(candidateSha), "无法读取当前 40 位候选 SHA");
@@ -110,6 +114,8 @@ async function main() {
     FILE_STORAGE_DRIVER: "local",
     FILE_STORAGE_ROOT: path.join(temporaryRoot, "storage", "private"),
     TRIAL_RUN_SIGNED_CHANGE_API_BASE_URL: signedChangeApiBaseUrl,
+    TRIAL_RUN_SIGNED_SETTLEMENT_API_BASE_URL: signedSettlementApiBaseUrl,
+    SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY: signedSettlement.ownedReadKey,
     SEED_PASSWORD: seedPassword,
     TRIAL_RUN_PASSWORD: trialPassword,
     TRIAL_RUN_ID: runId,
@@ -161,7 +167,7 @@ async function main() {
     await command(docker, [
       "exec", "-i", containerName, "psql", "-X", "-q", "-v", "ON_ERROR_STOP=1",
       "-U", "jiangkong", "-d", "jiangkong_governance_uat", "-f", "-"
-    ], { stdinText: ["BEGIN", ...signedChange.install, "COMMIT", ""].join(";\n") });
+    ], { stdinText: ["BEGIN", ...signedChange.install, ...signedSettlement.install, "COMMIT", ""].join(";\n") });
     console.log("合同结算治理 UAT 迁移完成");
     await command(process.execPath, [path.join(root, "services/api/prisma/seed.cjs")], { cwd: temporaryRoot, env: runtimeEnv });
     console.log("合同结算治理 UAT seed 完成");
@@ -197,6 +203,26 @@ async function main() {
       });
     }
     await waitForApi(signedChangeApiBaseUrl, signedChangeApiProcess, signedChangeApiOutput);
+    const signedSettlementApiOutput = [];
+    const signedSettlementApiProcess = commandRuntime.track(spawn(process.execPath, [path.join(root, "services/api/dist/main.js")], {
+      cwd: root,
+      env: {
+        ...runtimeEnv,
+        PORT: String(signedSettlementApiPort),
+        API_BASE_URL: signedSettlementApiBaseUrl,
+        DATABASE_URL: signedSettlement.databaseUrl,
+        SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY: signedSettlement.writeKey,
+        SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY: signedSettlement.ownedReadKey
+      },
+      stdio: ["ignore", "pipe", "pipe"]
+    }));
+    for (const stream of [signedSettlementApiProcess.stdout, signedSettlementApiProcess.stderr]) {
+      stream.on("data", (chunk) => {
+        signedSettlementApiOutput.push(String(chunk));
+        if (signedSettlementApiOutput.length > 200) signedSettlementApiOutput.shift();
+      });
+    }
+    await waitForApi(signedSettlementApiBaseUrl, signedSettlementApiProcess, signedSettlementApiOutput);
     const freezeApiOutput = [];
     const freezeApiProcess = commandRuntime.track(spawn(process.execPath, [path.join(root, "services/api/dist/main.js")], {
       cwd: root,

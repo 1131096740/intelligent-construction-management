@@ -1,10 +1,35 @@
 import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 import type { BusinessEntrySceneDefinition, DetailActionReadModel } from "@jiangkong/shared-domain";
-import type {
-  SettlementFieldReviewerRoleKey,
-  SettlementLineDraftPayload
-} from "./settlement-workbench.api";
+export const SETTLEMENT_FIELD_REVIEWER_ROLE_KEYS = [
+  "material_staff",
+  "engineering_foreman",
+  "engineering_tech"
+] as const;
+
+export type SettlementFieldReviewerRoleKey =
+  (typeof SETTLEMENT_FIELD_REVIEWER_ROLE_KEYS)[number];
+
+export interface SettlementLineDraftPayload {
+  sourceType: "contract_bill_row" | "visa_change" | "manual_adjustment";
+  adjustmentKind?: "ordinary" | "retrospective_price_difference" | "over_settlement_offset";
+  lineKey?: string;
+  contractBillRowId?: string;
+  sourceItemType?: string;
+  occurredOn?: string;
+  name?: string;
+  description?: string;
+  unit?: string;
+  quantity?: string;
+  unitPriceCents?: string;
+  amountCents?: string;
+  pricingBasis?: string;
+  overageReason?: string;
+  relatedSettlementLineId?: string;
+  reason?: string;
+  remark?: string;
+  sortOrder?: number;
+}
 
 export interface SaveSettlementDraftPayload {
   contractVersionId: string;

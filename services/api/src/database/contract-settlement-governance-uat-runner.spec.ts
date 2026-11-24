@@ -33,10 +33,10 @@ const trialRunVerifier = readFileSync(
   "utf8"
 );
 const settlementSignatureStart = trialRunVerifier.indexOf(
-  "async function prepareSettlementSignatures"
+  "async function preparePaymentSignatures"
 );
 const settlementSignatureEnd = trialRunVerifier.indexOf(
-  "\nasync function prepareGovernedSettlementDraft",
+  "\nasync function assertSeedDataReady",
   settlementSignatureStart
 );
 const settlementSignatureSource = trialRunVerifier.slice(
@@ -119,10 +119,10 @@ describe("contract settlement governance UAT runners", () => {
       "signed_supplement_9_99_percent",
       "signed_supplement_10_percent",
       "signed_supplement_10_01_percent",
-      "settlement_material_route",
-      "settlement_labor_route",
-      "settlement_single_page_signatures",
-      "settlement_multi_page_signatures",
+      "signed_settlement_material_confirmation",
+      "signed_settlement_labor_confirmation",
+      "signed_settlement_single_page_original",
+      "signed_settlement_multi_page_originals",
       "readonly_cross_domain_positive",
       "readonly_cross_domain_negative"
     ];

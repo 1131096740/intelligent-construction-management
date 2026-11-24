@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { START_LOCATION } from "vue-router";
+import { createMemoryHistory, createRouter, START_LOCATION } from "vue-router";
 import {
   BrowserHistoryScrollPositionRegistry,
   buildEncodedRouteRedirect,
@@ -28,6 +28,25 @@ import {
 } from "./route-records";
 
 describe("web admin routes", () => {
+  it("旧结算新建路由转到已签登记并保留带坐标的历史链接", async () => {
+    const legacy = childRoute("结算工作台/新建");
+    const component = { render: () => null };
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/结算工作台/新建", component, beforeEnter: legacy?.beforeEnter },
+        { path: "/结算工作台/已签登记", component },
+        { path: "/", component }
+      ]
+    });
+
+    await router.push("/结算工作台/新建");
+    expect(router.currentRoute.value.path).toBe("/结算工作台/已签登记");
+    await router.push({ path: "/结算工作台/新建", query: { project: "project-1", draftId: "draft-1" } });
+    expect(router.currentRoute.value.path).toBe("/结算工作台/新建");
+    expect(router.currentRoute.value.query).toEqual({ project: "project-1", draftId: "draft-1" });
+  });
+
   function browserWindowStub(position: number) {
     const addEventListener = vi.fn();
     const removeEventListener = vi.fn();
@@ -767,7 +786,7 @@ describe("web admin routes", () => {
 
   it("separates create workbenches from settlement and payment ledgers", () => {
     expect(String(childRoute("结算工作台")?.component)).toContain("SettlementListPage.vue");
-    expect(String(childRoute("结算工作台/新建")?.component)).toContain("SettlementWorkbenchPage.vue");
+    expect(String(childRoute("结算工作台/新建")?.component)).toContain("HistoricalSettlementDraftPage.vue");
     expect(String(childRoute("结算管理/:settlementId")?.component)).toContain("SettlementDetailPage.vue");
     expect(String(childRoute("付款工作台")?.component)).toContain("PaymentWorkbenchPage.vue");
     expect(String(childRoute("统一资金办理工作台")?.component)).toContain("FundsWorkbenchPage.vue");

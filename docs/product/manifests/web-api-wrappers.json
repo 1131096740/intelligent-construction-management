@@ -14,7 +14,7 @@
     "mainRequestBindingCount": 838,
     "ticketFollowupCount": 6,
     "requestEdgeCount": 796,
-    "productionConsumerCount": 677,
+    "productionConsumerCount": 655,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 436,
-    "reachableProductionModuleCount": 417
+    "productionModuleCount": 437,
+    "reachableProductionModuleCount": 406
   },
   "wrappers": [
     {
@@ -6759,9 +6759,7 @@
       "testConsumers": [
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
-      ],
+      "productionConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -6989,10 +6987,12 @@
         "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
         "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
         "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+        "apps/web-admin/src/pages/settlements/HistoricalSettlementDraftPage.vue",
+        "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
       ],
-      "unreachableConsumers": []
+      "unreachableConsumers": [
+        "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+      ]
     },
     {
       "name": "createProject",
@@ -9483,12 +9483,14 @@
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
         "apps/web-admin/src/pages/projects/ProjectOperatingTakeoverPage.vue",
         "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
-        "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
+        "apps/web-admin/src/pages/settlements/HistoricalSettlementDraftPage.vue",
         "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "unreachableConsumers": [
+        "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+      ]
     },
     {
       "name": "fetchSettlementActionCapability",
@@ -9544,10 +9546,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/core-flow-read.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "fetchSettlementDetail",
@@ -10175,10 +10177,12 @@
         "apps/web-admin/src/pages/contracts/workbench/ContractDocumentsSection.vue",
         "apps/web-admin/src/pages/general-procurement/GeneralProcurementDetailPage.vue",
         "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
-        "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
-        "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+        "apps/web-admin/src/pages/settlements/HistoricalSettlementDraftPage.vue",
+        "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue"
       ],
-      "unreachableConsumers": []
+      "unreachableConsumers": [
+        "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+      ]
     },
     {
       "name": "getSignatureTicket",
@@ -20491,7 +20495,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 668,
+          "sourceLine": 693,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts/:param/abandonment",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/abandonment",
@@ -20519,7 +20523,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 668,
+          "sourceLine": 693,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts/:param/lines/:param/attachments",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/lines/:param/attachments",
@@ -20536,10 +20540,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-drafts.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "createSettlementDraftRecord",
@@ -20549,7 +20553,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 668,
+          "sourceLine": 693,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts",
           "normalizedPath": "/projects/:param/settlement-drafts",
@@ -20566,10 +20570,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-drafts.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "executeSettlementDraftLifecycleAction",
@@ -20579,7 +20583,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 668,
+          "sourceLine": 693,
           "method": "GET",
           "path": "/projects/:param/settlement-drafts/:param",
           "normalizedPath": "/projects/:param/settlement-drafts/:param",
@@ -20596,7 +20600,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 668,
+          "sourceLine": 693,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts/:param/abandonment",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/abandonment",
@@ -20615,10 +20619,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-drafts.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "fetchSettlementDraftRecord",
@@ -20628,7 +20632,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 668,
+          "sourceLine": 693,
           "method": "GET",
           "path": "/projects/:param/settlement-drafts/:param",
           "normalizedPath": "/projects/:param/settlement-drafts/:param",
@@ -20646,10 +20650,12 @@
         "apps/web-admin/src/api/settlement-drafts.api.test.ts"
       ],
       "productionConsumers": [
+        "apps/web-admin/src/pages/settlements/HistoricalSettlementDraftPage.vue"
+      ],
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
         "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
-      ],
-      "unreachableConsumers": []
+      ]
     },
     {
       "name": "fetchSettlementFinalPreparation",
@@ -20659,7 +20665,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 668,
+          "sourceLine": 693,
           "method": "GET",
           "path": "/projects/:param/settlement-drafts/:param/final-preparation",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/final-preparation",
@@ -20673,11 +20679,11 @@
           ]
         }
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "testConsumers": [],
-      "unreachableConsumers": []
+      "productionConsumers": [],
+      "testConsumers": []
     },
     {
       "name": "fetchSettlementProjectCapability",
@@ -20687,7 +20693,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 668,
+          "sourceLine": 693,
           "method": "GET",
           "path": "/projects/:param/settlement-drafts/capability",
           "normalizedPath": "/projects/:param/settlement-drafts/capability",
@@ -20701,13 +20707,12 @@
           ]
         }
       ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
         "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
       ],
-      "testConsumers": [],
-      "unreachableConsumers": []
+      "productionConsumers": [],
+      "testConsumers": []
     },
     {
       "name": "generateSettlementFrozenDocument",
@@ -20717,7 +20722,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 668,
+          "sourceLine": 693,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts/:param/frozen-document",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/frozen-document",
@@ -20734,10 +20739,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-drafts.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "invalidateSettlementDraftLineAttachment",
@@ -20747,7 +20752,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 668,
+          "sourceLine": 693,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts/:param/line-attachments/:param/invalidation",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/line-attachments/:param/invalidation",
@@ -20764,10 +20769,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-drafts.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "linkSettlementCounterpartySignedDocument",
@@ -20777,7 +20782,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 668,
+          "sourceLine": 693,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts/:param/counterparty-signed-documents",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/counterparty-signed-documents",
@@ -20794,10 +20799,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-drafts.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "listSettlementDraftLineAttachments",
@@ -20807,7 +20812,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 668,
+          "sourceLine": 693,
           "method": "GET",
           "path": "/projects/:param/settlement-drafts/:param/line-attachments",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/line-attachments",
@@ -20825,9 +20830,11 @@
         "apps/web-admin/src/api/settlement-drafts.api.test.ts"
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+        "apps/web-admin/src/pages/settlements/HistoricalSettlementDraftPage.vue"
       ],
-      "unreachableConsumers": []
+      "unreachableConsumers": [
+        "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
+      ]
     },
     {
       "name": "listSettlementDraftRecords",
@@ -20837,7 +20844,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 668,
+          "sourceLine": 693,
           "method": "GET",
           "path": "/projects/:param/settlement-drafts",
           "normalizedPath": "/projects/:param/settlement-drafts",
@@ -20855,9 +20862,11 @@
         "apps/web-admin/src/api/settlement-drafts.api.test.ts"
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+        "apps/web-admin/src/pages/settlements/HistoricalSettlementDraftPage.vue"
       ],
-      "unreachableConsumers": []
+      "unreachableConsumers": [
+        "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
+      ]
     },
     {
       "name": "submitSettlementDraftRecord",
@@ -20867,7 +20876,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 668,
+          "sourceLine": 693,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts/:param/approval-submission",
           "normalizedPath": "/projects/:param/settlement-drafts/:param/approval-submission",
@@ -20884,10 +20893,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-drafts.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "updateSettlementDraftRecord",
@@ -20897,7 +20906,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 668,
+          "sourceLine": 693,
           "method": "PATCH",
           "path": "/projects/:param/settlement-drafts/:param",
           "normalizedPath": "/projects/:param/settlement-drafts/:param",
@@ -20914,10 +20923,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-drafts.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "uploadSettlementDraftPrivateFile",
@@ -20927,7 +20936,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 668,
+          "sourceLine": 693,
           "method": "POST",
           "path": "/projects/:param/settlement-drafts/files",
           "normalizedPath": "/projects/:param/settlement-drafts/files",
@@ -20941,12 +20950,12 @@
           ]
         }
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue",
         "apps/web-admin/src/pages/settlements/components/SettlementLineAttachmentPanel.vue"
       ],
-      "testConsumers": [],
-      "unreachableConsumers": []
+      "productionConsumers": [],
+      "testConsumers": []
     },
     {
       "name": "fetchSettlementRecovery",
@@ -21617,10 +21626,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-template.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "generateSettlementTemplatePreview",
@@ -21850,7 +21859,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 192,
+          "sourceLine": 174,
           "method": "POST",
           "path": "/settlement-workbench/projects/:param/imports/:param/apply",
           "normalizedPath": "/settlement-workbench/projects/:param/imports/:param/apply",
@@ -21866,10 +21875,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "downloadSettlementImportErrors",
@@ -21879,7 +21888,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 251,
+          "sourceLine": 233,
           "method": "GET",
           "path": "/settlement-workbench/projects/:param/imports/:param/errors.xlsx",
           "normalizedPath": "/settlement-workbench/projects/:param/imports/:param/errors.xlsx",
@@ -21896,10 +21905,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "downloadSettlementImportResult",
@@ -21909,7 +21918,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 251,
+          "sourceLine": 233,
           "method": "GET",
           "path": "/settlement-workbench/projects/:param/imports/:param/result.xlsx",
           "normalizedPath": "/settlement-workbench/projects/:param/imports/:param/result.xlsx",
@@ -21926,10 +21935,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "downloadSettlementImportTemplate",
@@ -21939,7 +21948,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 251,
+          "sourceLine": 233,
           "method": "GET",
           "path": "/settlement-workbench/contract-versions/:param/import-template",
           "normalizedPath": "/settlement-workbench/contract-versions/:param/import-template",
@@ -21956,10 +21965,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "fetchSettlementParticipantOptions",
@@ -21969,7 +21978,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 137,
+          "sourceLine": 119,
           "method": "GET",
           "path": "/settlement-workbench/contract-versions/:param/participant-options",
           "normalizedPath": "/settlement-workbench/contract-versions/:param/participant-options",
@@ -21985,10 +21994,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "fetchSettlementSourceLines",
@@ -21998,7 +22007,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 115,
+          "sourceLine": 97,
           "method": "GET",
           "path": "/settlement-workbench/contract-versions/:param/source-lines",
           "normalizedPath": "/settlement-workbench/contract-versions/:param/source-lines",
@@ -22014,10 +22023,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "isSettlementFieldReviewerRoleAllowed",
@@ -22039,7 +22048,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 176,
+          "sourceLine": 158,
           "method": "POST",
           "path": "/settlement-workbench/contract-versions/:param/imports/preview",
           "normalizedPath": "/settlement-workbench/contract-versions/:param/imports/preview",
@@ -22055,10 +22064,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "previewSettlementLines",
@@ -22068,7 +22077,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 149,
+          "sourceLine": 131,
           "method": "POST",
           "path": "/settlement-workbench/contract-versions/:param/preview",
           "normalizedPath": "/settlement-workbench/contract-versions/:param/preview",
@@ -22084,10 +22093,10 @@
       "testConsumers": [
         "apps/web-admin/src/api/settlement-workbench.api.test.ts"
       ],
-      "productionConsumers": [
+      "unreachableConsumers": [
         "apps/web-admin/src/pages/settlements/SettlementWorkbenchPage.vue"
       ],
-      "unreachableConsumers": []
+      "productionConsumers": []
     },
     {
       "name": "fetchSignedSettlementContracts",
@@ -24625,6 +24634,138 @@
       "wrapper": "updateActualPurchaseBatch",
       "classification": "unreferenced",
       "reason": "#403 返工的批次读/改适配器暂无生产消费者（批次面板只用创建/付款/更正/退款）；由 #405 合入集成分支时按既有退休登记机制显式登记，避免整站门禁把 #403 残留算作 #405 回归。"
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "copyAbandonedSettlementDraft",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+      "wrapper": "fetchSettlementContractOptions",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "wrapper": "attachSettlementDraftLineFile",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "wrapper": "createSettlementDraftRecord",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "wrapper": "executeSettlementDraftLifecycleAction",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "wrapper": "generateSettlementFrozenDocument",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "wrapper": "invalidateSettlementDraftLineAttachment",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "wrapper": "linkSettlementCounterpartySignedDocument",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "wrapper": "submitSettlementDraftRecord",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "wrapper": "updateSettlementDraftRecord",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "wrapper": "fetchSettlementFinalPreparation",
+      "classification": "unreachable_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "wrapper": "fetchSettlementProjectCapability",
+      "classification": "unreachable_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-drafts.api.ts",
+      "wrapper": "uploadSettlementDraftPrivateFile",
+      "classification": "unreachable_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-template.api.ts",
+      "wrapper": "fetchSettlementTemplateRecommendations",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
+      "wrapper": "applySettlementImport",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
+      "wrapper": "downloadSettlementImportErrors",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
+      "wrapper": "downloadSettlementImportResult",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
+      "wrapper": "downloadSettlementImportTemplate",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
+      "wrapper": "fetchSettlementParticipantOptions",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
+      "wrapper": "fetchSettlementSourceLines",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
+      "wrapper": "previewSettlementImport",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
+    },
+    {
+      "apiFile": "apps/web-admin/src/api/settlement-workbench.api.ts",
+      "wrapper": "previewSettlementLines",
+      "classification": "test_only",
+      "reason": "Issue #425 removes the old settlement editor from authenticated Web routes; historical test adapters stay available without a production consumer."
     }
   ],
   "authTransportExceptions": [

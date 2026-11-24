@@ -4,12 +4,14 @@ const { randomUUID } = require("node:crypto");
 const { PDFDocument } = require("pdf-lib");
 const { PrismaClient } = require("@prisma/client");
 const { coreFlowSeedData } = require("../dist/database/core-flow-seed-data");
+const { signedSettlementVerification } = require("./signed-settlement-verification.cjs");
 
 const env = { ...readEnvFile(path.resolve(__dirname, "..", ".env")), ...process.env };
 if (!process.env.DATABASE_URL && env.DATABASE_URL) process.env.DATABASE_URL = env.DATABASE_URL;
 const prisma = new PrismaClient();
 const baseUrl = env.API_BASE_URL || "http://127.0.0.1:3000";
 const signedChangeBaseUrl = env.TRIAL_RUN_SIGNED_CHANGE_API_BASE_URL || baseUrl;
+const signedSettlementBaseUrl = env.TRIAL_RUN_SIGNED_SETTLEMENT_API_BASE_URL || baseUrl;
 const initialPassword = process.env.SEED_PASSWORD || "Jgzg@2026";
 const password = process.env.TRIAL_RUN_PASSWORD || "Jgzg-UAT@2026";
 const runId = String(process.env.TRIAL_RUN_ID || "").replace(/[^0-9A-Za-z-]/g, "").slice(0, 48);
@@ -82,6 +84,7 @@ function guard() {
   const database = new URL(env.DATABASE_URL || "");
   assert(localHost(api.hostname), `UAT 拒绝非本机 API：${api.origin}`);
   assert(localHost(signedChangeApi.hostname), "UAT 拒绝非本机补充协议 API");
+  assert(localHost(new URL(signedSettlementBaseUrl).hostname), "UAT 拒绝非本机已签结算 API");
   assert(localHost(database.hostname), "UAT 拒绝非本机 PostgreSQL");
   assert(!/prod|production/i.test(database.pathname), "UAT 拒绝疑似生产数据库");
   assert(String(env.FILE_STORAGE_DRIVER || "local").toLowerCase() === "local", "UAT 必须使用 local 文件存储");
@@ -180,15 +183,6 @@ async function uploadCanvasSignature(token, name, buffer) {
   const text = await response.text();
   assert(response.ok, `上传 ${name} 失败 HTTP ${response.status}: ${text}`);
   return JSON.parse(text);
-}
-
-async function uploadExistingLocalFile(token, fileId, name) {
-  const file = await prisma.fileObject.findUnique({ where: { id: fileId } });
-  assert(file && file.storageStatus === "active", `未找到本地文件 ${fileId}`);
-  const privateRoot = path.resolve(env.FILE_STORAGE_ROOT || path.resolve(process.cwd(), "storage", "private"));
-  const absolutePath = path.resolve(privateRoot, file.objectKey);
-  assert(absolutePath.startsWith(`${privateRoot}${path.sep}`), "UAT 文件路径越界");
-  return uploadBuffer(token, name, fs.readFileSync(absolutePath), file.mimeType);
 }
 
 async function prepareSignatures(tokens) {
@@ -926,91 +920,38 @@ async function assertChangeBoundary(percentLabel, amountDeltaYuan, effectiveAmou
   evidence.set(`signed_supplement_${suffix}_percent`, [base.version.id, approved.id, fileId]);
 }
 
-async function createSettlementTemplate(tokens) {
-  const source = await uploadBuffer(tokens.contractStaff, `UAT-${runId}-settlement-template.xlsx`, Buffer.from("UAT"), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  const template = await prisma.settlementTemplate.create({
-    data: { name: `UAT结算模板-${runId}`, code: `UAT-JS-TPL-${runId}`, createdByUserId: users.contractStaff.id }
-  });
-  return prisma.settlementTemplateVersion.create({
-    data: {
-      settlementTemplateId: template.id,
-      versionNo: 1,
-      status: "published",
-      xlsxFileId: source.id,
-      compatibleContractTypeKeys: ["material_purchase", "equipment_rental", "labor_subcontract", "professional_subcontract"],
-      compatibleAmountRoles: [],
-      compatiblePricingModes: [],
-      columnSchema: {}, printRules: {}, evidenceRules: {}, anomalyRules: {},
-      publishedByUserId: users.contractStaff.id,
-      publishedAt: new Date()
-    }
-  });
-}
-
-function settlementLines(count) {
-  return Array.from({ length: count }, (_, index) => ({
-    sourceType: "manual_adjustment",
-    name: `UAT结算项-${index + 1}`,
-    unit: "项",
-    quantity: "1",
-    unitPriceCents: "100",
-    amountCents: "100",
-    reason: "UAT脱敏结算依据",
-    sortOrder: index + 1
-  }));
-}
-
-async function runSettlementScenario(caseId, contractFixture, reviewerRole, reviewerKey, lineCount, template, tokens) {
+async function runSettlementScenario(caseId, contractFixture, originalCase, pageCounts, tokens) {
   const effectiveContract = await prisma.contractVersion.findUnique({ where: { id: contractFixture.version.id } });
-  assert(
-    effectiveContract?.status === "effective" &&
-      effectiveContract.settlementMode === "settlement_required" &&
-      effectiveContract.settlementModeConfirmedAt,
-    `${caseId} 创建前合同结算方式状态异常：status=${effectiveContract?.status ?? "missing"}, mode=${effectiveContract?.settlementMode ?? "null"}, confirmedAt=${effectiveContract?.settlementModeConfirmedAt?.toISOString?.() ?? "null"}`
-  );
-  const draft = await request("POST", `/projects/${projectId}/settlement-drafts`, tokens.contractStaff, {
-    contractVersionId: contractFixture.version.id,
-    settlementTemplateVersionId: template.id,
-    code: `JS-UAT-${runId}-${caseId}`,
-    periodLabel: `UAT-${caseId}`,
-    fieldReviewerUserId: users[reviewerRole].id,
-    fieldReviewerRoleKey: reviewerKey,
-    settlementLines: settlementLines(lineCount)
-  });
-  const frozen = await request("POST", `/projects/${projectId}/settlement-drafts/${draft.id}/frozen-document`, tokens.contractStaff, {
-    expectedRevision: draft.revision
-  });
-  const signedUpload = await uploadExistingLocalFile(tokens.contractStaff, frozen.fileId, `UAT-${runId}-${caseId}-counterparty-signed.pdf`);
-  const signed = await request("POST", `/projects/${projectId}/settlement-drafts/${draft.id}/counterparty-signed-documents`, tokens.contractStaff, {
-    expectedRevision: draft.revision,
-    frozenDocumentId: frozen.id,
-    uploadedFileId: signedUpload.id,
-    declaration: {
-      pageOrderMatchesFrozenDocument: true,
-      counterpartySignedAndDated: true,
-      everyPageStamped: true,
-      crossPageSealCompleted: true
-    }
-  });
-  const settlement = await request("POST", `/projects/${projectId}/settlement-drafts/${draft.id}/approval-submission`, tokens.contractStaff, {
-    expectedRevision: draft.revision
-  });
-  assert(settlement.status === "approval_pending", `${caseId} 未进入审批`);
-  const instance = await prisma.approvalInstance.findFirst({
-    where: { businessType: "settlement", businessId: settlement.id, flowType: "settlement.approve" }
-  });
-  assert(instance, `${caseId} 未生成结算审批实例`);
-  const route = JSON.stringify(instance.frozenNodes);
-  if (reviewerKey === "material_staff") {
-    assert(route.includes("material_staff") && route.includes("material_director"), "材料结算路线缺少物资员或物资主管");
-  } else {
-    assert(route.includes(reviewerKey) && route.includes("engineering_director"), "劳务结算路线缺少现场复核人或项目总工");
+  assert(effectiveContract?.status === "effective" && effectiveContract.settlementMode === "settlement_required" &&
+    effectiveContract.settlementModeConfirmedAt, `${caseId} 缺少已生效且已确认结算方式的合同`);
+  const signed = signedSettlementVerification(signedSettlementBaseUrl, projectId);
+  const number = `JS-UAT-${runId}-${caseId}`;
+  const files = [];
+  for (const [index, pages] of pageCounts.entries()) {
+    files.push(await signed.upload(tokens.contractStaff, `${number}-${index + 1}.pdf`, pages));
   }
-  evidence.set(caseId, [draft.id, signed.id, settlement.id, instance.id]);
-  const signatureCase = lineCount > 1 ? "settlement_multi_page_signatures" : "settlement_single_page_signatures";
-  assert(lineCount === 1 ? frozen.pageCount === 1 : frozen.pageCount > 1, `${signatureCase} 页数不符`);
-  assert(signed.pageCount === frozen.pageCount, `${signatureCase} 乙方签章件与冻结版页数不一致`);
-  evidence.set(signatureCase, [frozen.id, frozen.fileId, signed.id, signedUpload.id]);
+  const amountYuan = "100.0000";
+  const input = {
+    contractKind: "downstream", contractId: contractFixture.contract.id, number,
+    amountYuan, fileIds: files.map(file => file.id)
+  };
+  const draft = await signed.request("POST", "", tokens.contractStaff, input);
+  assert(draft.state === "draft", `${caseId} 未保留已签结算草稿`);
+  const submitted = await signed.submit(draft, tokens.contractStaff);
+  await signed.request("POST", `/${submitted.id}/review`, tokens.contractStaff,
+    { revision: submitted.revision, decision: "confirm" }, 403);
+  const confirmed = await signed.confirm(submitted, tokens.contractDirector);
+  assert(confirmed.amountYuan === amountYuan && confirmed.reviewedByUserId === users.contractDirector.id &&
+    confirmed.confirmedContractSource?.sourceRecordId === contractFixture.version.id, `${caseId} 金额、复核角色或合同版本不匹配`);
+  const basis = await signed.request("GET", `/payment-basis?${new URLSearchParams({
+    contractKind: input.contractKind, contractId: input.contractId
+  })}`, tokens.contractStaff);
+  assert(basis.latestConfirmed?.id === confirmed.id && basis.confirmedYuan === amountYuan, `${caseId} 确认后未进入付款依据`);
+  for (const file of files) {
+    await signed.verifyOriginal(tokens.contractStaff, confirmed.id, file, "隔离 UAT 核对已签结算原件");
+  }
+  evidence.set(caseId, [confirmed.id, contractFixture.version.id, users.contractDirector.id]);
+  evidence.set(originalCase, [confirmed.id, ...files.map(file => file.id)]);
 }
 
 async function assertGenericDirectPayment(genericFixture, tokens) {
@@ -1042,7 +983,7 @@ async function assertGenericDirectPayment(genericFixture, tokens) {
   evidence.set("contract_generic", [genericFixture.contract.id, genericFixture.version.id, stage.id, payment.id, approved.id, fileId]);
 }
 
-async function assertReadonlyBoundaries(tokens) {
+async function assertReadonlyBoundaries(contractId, tokens) {
   await request("GET", "/contracts?limit=10", tokens.financeDirector);
   await request("GET", "/settlements?limit=10", tokens.financeDirector);
   await request("GET", "/company-entities/management", tokens.financeDirector);
@@ -1052,14 +993,12 @@ async function assertReadonlyBoundaries(tokens) {
     contractTypeKey: "material_purchase",
     businessTemplateVersionId: "forbidden"
   }, 403);
-  await request("POST", `/projects/${projectId}/settlement-drafts`, tokens.financeDirector, {
-    contractVersionId: "forbidden",
-    settlementTemplateVersionId: "forbidden",
-    code: `FORBIDDEN-${runId}`,
-    periodLabel: "forbidden",
-    settlementLines: settlementLines(1)
+  const signed = signedSettlementVerification(signedSettlementBaseUrl, projectId);
+  await signed.request("POST", "", tokens.financeDirector, {
+    contractKind: "downstream", contractId, number: `FORBIDDEN-${runId}`
   }, 403);
-  evidence.set("readonly_cross_domain_negative", [users.financeDirector.id, "HTTP-403-contract-create", "HTTP-403-settlement-create"]);
+  await request("POST", `/projects/${projectId}/settlement-drafts`, tokens.contractStaff, {}, 410);
+  evidence.set("readonly_cross_domain_negative", [users.financeDirector.id, "HTTP-403-contract-create", "HTTP-403-signed-settlement-create", "HTTP-410-retired-settlement-create"]);
 }
 
 function writeEvidence() {
@@ -1069,8 +1008,8 @@ function writeEvidence() {
     "contract_authorization_none_none", "contract_authorization_first_only",
     "contract_authorization_counterparty_only", "contract_authorization_both",
     "signed_supplement_9_99_percent", "signed_supplement_10_percent", "signed_supplement_10_01_percent",
-    "settlement_material_route", "settlement_labor_route",
-    "settlement_single_page_signatures", "settlement_multi_page_signatures",
+    "signed_settlement_material_confirmation", "signed_settlement_labor_confirmation",
+    "signed_settlement_single_page_original", "signed_settlement_multi_page_originals",
     "readonly_cross_domain_positive", "readonly_cross_domain_negative"
   ];
   const missing = required.filter((id) => !evidence.has(id));
@@ -1130,11 +1069,12 @@ async function main() {
   await assertChangeBoundary("10", "1000.0000", "11000.0000", shared, tokens);
   await assertChangeBoundary("10.01", "1001.0000", "11001.0000", shared, tokens);
   const laborEffective = await createEffectiveBoundaryBase("labor_subcontract", "labor-settlement", shared, tokens);
-  const template = await createSettlementTemplate(tokens);
-  await runSettlementScenario("settlement_material_route", fixtures.material_purchase, "materialStaff", "material_staff", 1, template, tokens);
-  await runSettlementScenario("settlement_labor_route", laborEffective, "engineeringForeman", "engineering_foreman", 70, template, tokens);
+  await runSettlementScenario("signed_settlement_material_confirmation", fixtures.material_purchase,
+    "signed_settlement_single_page_original", [1], tokens);
+  await runSettlementScenario("signed_settlement_labor_confirmation", laborEffective,
+    "signed_settlement_multi_page_originals", [2, 1], tokens);
   await assertGenericDirectPayment(fixtures.generic_contract, tokens);
-  await assertReadonlyBoundaries(tokens);
+  await assertReadonlyBoundaries(fixtures.material_purchase.contract.id, tokens);
   const output = writeEvidence();
   console.log(`合同结算治理隔离 UAT 已通过 21 项，证据：${output}`);
 }

@@ -8,8 +8,10 @@ const {
   assertLocalMoneyVerificationRuntime
 } = require("../dist/database/money-bigint-live-verification");
 const { Prisma, PrismaClient } = require("@prisma/client");
+const { signedSettlementVerification } = require("./signed-settlement-verification.cjs");
 
 const baseUrl = process.env.API_BASE_URL || "http://127.0.0.1:3000";
+const signedSettlementBaseUrl = process.env.CORE_FLOW_SIGNED_SETTLEMENT_API_BASE_URL || baseUrl;
 const prisma = new PrismaClient();
 
 // 与 prisma/seed.cjs 中 testPassword 一致；所有 seed 账号同一初始密码。
@@ -139,37 +141,6 @@ async function uploadPrivateFile(fileName, token) {
   }
 
   return response.json();
-}
-
-async function copyFrozenDocumentAsCounterpartySignedScan(frozenFileId, fileName, token) {
-  const ticket = await postJson(
-    `/files/${frozenFileId}/download-ticket`,
-    {
-      confirmationPassword: PASSWORD,
-      downloadReason: "一期闭环验证乙方签章扫描件归档",
-      accessMode: "download"
-    },
-    token
-  );
-  const download = await fetch(`${baseUrl}${ticket.downloadUrl}`);
-  if (!download.ok) {
-    throw new Error(`frozen settlement document download returned HTTP ${download.status}`);
-  }
-  const form = new FormData();
-  form.append(
-    "file",
-    new Blob([await download.arrayBuffer()], { type: "application/pdf" }),
-    fileName
-  );
-  const upload = await fetch(`${baseUrl}/files`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: form
-  });
-  if (!upload.ok) {
-    throw new Error(`counterparty signed scan upload returned HTTP ${upload.status}: ${await upload.text()}`);
-  }
-  return upload.json();
 }
 
 async function configureLocalCanvasSignature(token) {
@@ -303,9 +274,6 @@ async function seedDisposableContract(codeSuffix, amountCents = TARGET_CONTRACT_
   const contractId = randomUUID();
   const versionId = randomUUID();
   const termsId = randomUUID();
-  const settlementTemplateId = randomUUID();
-  const settlementTemplateVersionId = randomUUID();
-  const settlementTemplateFileId = randomUUID();
 
   await prisma.contract.create({
     data: {
@@ -314,7 +282,9 @@ async function seedDisposableContract(codeSuffix, amountCents = TARGET_CONTRACT_
       contractTypeKey: "material_purchase",
       code: `HT-P1-${codeSuffix}`,
       name: "一期闭环验证合同",
-      counterparty: "一期验证供应商"
+      counterparty: "一期验证供应商",
+      companyEntityId: coreFlowSeedData.companyEntity.id,
+      companyEntityName: coreFlowSeedData.companyEntity.name
     }
   });
 
@@ -326,6 +296,12 @@ async function seedDisposableContract(codeSuffix, amountCents = TARGET_CONTRACT_
       changeType: "original",
       status: "draft",
       amountCents: BigInt(amountCents),
+      signingSubjectType: "our_company",
+      companyEntityIdSnapshot: coreFlowSeedData.companyEntity.id,
+      companyEntityVersionId: coreFlowSeedData.companyEntityVersion.id,
+      companyEntityNameSnapshot: coreFlowSeedData.companyEntity.name,
+      companyEntityCreditCodeSnapshot: coreFlowSeedData.companyEntity.unifiedSocialCreditCode,
+      companyEntityRegisteredAddressSnapshot: coreFlowSeedData.companyEntity.registeredAddress,
       draftData: {},
       templateSnapshot: {},
       clauseSnapshot: {},
@@ -367,51 +343,10 @@ async function seedDisposableContract(codeSuffix, amountCents = TARGET_CONTRACT_
     }
   });
 
-  await prisma.settlementTemplate.create({
-    data: {
-      id: settlementTemplateId,
-      name: "一期闭环验证结算模板",
-      code: `core-flow-${codeSuffix}`,
-      createdByUserId: coreFlowSeedData.users.contractStaff.id
-    }
-  });
-
-  await prisma.fileObject.create({
-    data: {
-      id: settlementTemplateFileId,
-      bucket: "private-local",
-      objectKey: `core-flow/${codeSuffix}-settlement-template.xlsx`,
-      originalName: `一期闭环验证结算模板-${codeSuffix}.xlsx`,
-      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      sizeBytes: 1,
-      uploadedByUserId: coreFlowSeedData.users.contractStaff.id,
-      storageStatus: "active"
-    }
-  });
-
-  await prisma.settlementTemplateVersion.create({
-    data: {
-      id: settlementTemplateVersionId,
-      settlementTemplateId,
-      versionNo: 1,
-      status: "published",
-      xlsxFileId: settlementTemplateFileId,
-      compatibleContractTypeKeys: ["material_purchase"],
-      compatibleAmountRoles: [],
-      compatiblePricingModes: [],
-      columnSchema: {},
-      printRules: {},
-      evidenceRules: {},
-      anomalyRules: {},
-      publishedByUserId: coreFlowSeedData.users.contractStaff.id,
-      publishedAt: new Date()
-    }
-  });
-
-  return { contractId, versionId, termsId, settlementTemplateVersionId };
+  return { contractId, versionId, termsId };
 }
 
-async function verifyPhase1WriteLoop(tokens) {
+async function verifyPhase1WriteLoop(tokens, signed) {
   const codeSuffix = Date.now();
   const settlementAmountCents = TARGET_CONTRACT_CENTS;
   const payableAmountCents = TARGET_CONTRACT_CENTS;
@@ -465,7 +400,7 @@ async function verifyPhase1WriteLoop(tokens) {
 
   // 合同：草稿 → 提交(合同部) → 审批(董事长) → 用章(综合部主管) → 归档上传(合同部) → 归档确认(合同部主管) → 生效
   // 直接通过 Prisma 创建可处置合同行（POST /contracts 已替换为需要已发布模板的工作台接口）。
-  const { versionId: contractVersionId, settlementTemplateVersionId } = await seedDisposableContract(codeSuffix);
+  const { versionId: contractVersionId, contractId } = await seedDisposableContract(codeSuffix);
 
   await postJson(
     `/contract-workbench/${contractVersionId}/settlement-mode/confirm`,
@@ -514,106 +449,21 @@ async function verifyPhase1WriteLoop(tokens) {
   );
   assertEqual(contractVersion.status, "effective", "contract archive confirmation");
 
-  // 结算：工作台草稿 → 现场复核人 → 冻结结算单 → 乙方签章件 → 材料类审批流(物资员 → 物资主管 → 合同部主管 → 项目经理 → 财务总监)
-  // → 归档上传(合同部) → 归档确认(合同部主管) → 生效
-  const settlementDraft = await postJson(
-    `/projects/${coreFlowSeedData.project.id}/settlement-drafts`,
-    {
-      contractVersionId,
-      settlementTemplateVersionId,
-      code: `JS-P1-${codeSuffix}`,
-      periodLabel: "2026-06",
-      fieldReviewerUserId: "seed-user-material-staff",
-      fieldReviewerRoleKey: "material_staff",
-      settlementLines: [
-        {
-          sourceType: "manual_adjustment",
-          name: "一期闭环现场签认金额",
-          amountCents: settlementAmountCents,
-          reason: "本期现场签认"
-        }
-      ]
-    },
-    tokens.contractStaff
-  );
-  const frozenSettlementDocument = await postJson(
-    `/projects/${coreFlowSeedData.project.id}/settlement-drafts/${settlementDraft.id}/frozen-document`,
-    { expectedRevision: settlementDraft.revision },
-    tokens.contractStaff
-  );
-  const counterpartySignedScan = await copyFrozenDocumentAsCounterpartySignedScan(
-    frozenSettlementDocument.fileId,
-    `JS-P1-${codeSuffix}-counterparty-signed.pdf`,
-    tokens.contractStaff
-  );
-  await postJson(
-    `/projects/${coreFlowSeedData.project.id}/settlement-drafts/${settlementDraft.id}/counterparty-signed-documents`,
-    {
-      expectedRevision: settlementDraft.revision,
-      frozenDocumentId: frozenSettlementDocument.id,
-      uploadedFileId: counterpartySignedScan.id,
-      declaration: {
-        pageOrderMatchesFrozenDocument: true,
-        counterpartySignedAndDated: true,
-        everyPageStamped: true,
-        crossPageSealCompleted: true
-      }
-    },
-    tokens.contractStaff
-  );
-  let settlement = await postJson(
-    `/projects/${coreFlowSeedData.project.id}/settlement-drafts/${settlementDraft.id}/approval-submission`,
-    { expectedRevision: settlementDraft.revision },
-    tokens.contractStaff
-  );
-  assertEqual(settlement.status, "approval_pending", "settlement creation");
-  assertExactMoneyText(
-    settlement.amountCents,
-    settlementAmountCents,
-    "settlement amount API"
-  );
-  assertExactMoneyText(
-    settlement.payableAmountCents,
-    payableAmountCents,
-    "settlement payable amount API"
-  );
-
-  for (const token of [
-    tokens.materialStaff,
-    tokens.materialDirector,
-    tokens.contractDirector,
-    tokens.projectManager,
-    tokens.financeDirector
-  ]) {
-    settlement = await postJson(
-      `/settlements/${settlement.id}/approval`,
-      { decision: "approve" },
-      token
-    );
-  }
-  assertEqual(settlement.status, "pending_generation", "settlement approval");
-  const finalSignedDocument = await postJson(
-    `/settlements/${settlement.id}/signed-document-generation-retry`,
-    {},
-    tokens.contractDirector
-  );
-  if (!finalSignedDocument?.id) {
-    throw new Error("settlement final signed document generation returned no document id");
-  }
-  const pendingArchiveConfirmation = await prisma.settlement.findUnique({
-    where: { id: settlement.id }
+  const number = `JS-P1-${codeSuffix}`;
+  const original = await signed.upload(tokens.contractStaff, `${number}-signed.pdf`, 1);
+  const amountYuan = new Prisma.Decimal(settlementAmountCents).div(100).toFixed(4);
+  const draft = await signed.request("POST", "", tokens.contractStaff, {
+    contractKind: "downstream", contractId, number, amountYuan, fileIds: [original.id]
   });
-  assertEqual(
-    pendingArchiveConfirmation?.status,
-    "pending_archive_confirm",
-    "settlement final signed document generation"
-  );
-  settlement = await postJson(
-    `/settlements/${settlement.id}/archive-confirmation`,
-    { confirmationPassword: PASSWORD },
-    tokens.contractDirector
-  );
-  assertEqual(settlement.status, "effective", "settlement archive confirmation");
+  assertEqual(draft.state, "draft", "signed settlement draft");
+  const submitted = await signed.submit(draft, tokens.contractStaff);
+  const settlement = await signed.confirm(submitted, tokens.contractDirector);
+  assertEqual(settlement.amountYuan, amountYuan, "signed settlement amount API");
+  assertEqual(settlement.confirmedContractSource?.sourceRecordId, contractVersionId, "signed settlement version");
+  const paymentBasis = await signed.request("GET", `/payment-basis?contractKind=downstream&contractId=${encodeURIComponent(contractId)}`, tokens.contractStaff);
+  assertEqual(paymentBasis.latestConfirmed?.id, settlement.id, "signed settlement payment basis reference");
+  assertExactMoneyText(paymentBasis.downstreamCapacity.wholeCentLimit, payableAmountCents, "signed settlement payable API");
+  await signed.verifyOriginal(tokens.contractStaff, settlement.id, original, "本地金额验收核对已签原件");
 
   const invalidPaymentCodes = [];
   for (const invalidAmount of [2100000001, "1.5", "1e3", "-1"]) {
@@ -622,7 +472,8 @@ async function verifyPhase1WriteLoop(tokens) {
     await postJsonExpectFailure(
       "/payments",
       {
-        settlementId: settlement.id,
+        sourceType: "signed_settlement",
+        signedSettlementId: settlement.id,
         code: invalidCode,
         requestedAmountCents: invalidAmount
       },
@@ -639,15 +490,16 @@ async function verifyPhase1WriteLoop(tokens) {
   let payment = await postJson(
     "/payments",
     {
-      settlementId: settlement.id,
+      sourceType: "signed_settlement",
+      signedSettlementId: settlement.id,
       code: `FK-P1-${codeSuffix}`,
       requestedAmountCents: payableAmountCents
     },
     tokens.contractStaff
   );
   assertEqual(payment.status, "approval_pending", "payment request creation");
-  assertEqual(payment.sourceType, "settlement", "payment request settlement source");
-  assertEqual(payment.settlementId, settlement.id, "payment request settlement link");
+  assertEqual(payment.sourceType, "signed_settlement", "payment request settlement source");
+  assertEqual(payment.signedSettlementId, settlement.id, "payment request settlement link");
   assertExactMoneyText(
     payment.requestedAmountCents,
     payableAmountCents,
@@ -785,9 +637,9 @@ async function verifyPhase1WriteLoop(tokens) {
     "contract.seal.approve",
     "contract.archive.upload",
     "contract.archive.confirm",
-    "settlement.approval.approve",
-    "settlement.signed_document.generated",
-    "settlement.archive.confirm",
+    "settlement.signed_draft_saved",
+    "settlement.signed_submitted",
+    "settlement.signed_confirmed",
     "payment.approval.approve",
     "payment.execution.record",
     "payment.finance.record",
@@ -806,7 +658,7 @@ async function verifyPhase1WriteLoop(tokens) {
   }
 
   console.log(
-    `ok phase1 write loop ${contractVersionId} -> ${settlement.code} -> ${payment.code}`
+    `ok phase1 write loop ${contractVersionId} -> ${settlement.number} -> ${payment.code}`
   );
 }
 
@@ -817,12 +669,13 @@ async function main() {
     host: process.env.HOST ?? "",
     storageDriver: process.env.FILE_STORAGE_DRIVER ?? "local"
   });
+  const signed = signedSettlementVerification(signedSettlementBaseUrl, coreFlowSeedData.project.id);
   await assertSeedDataReady();
   const tokens = await loginAll();
   await verifyUnauthenticatedIsRejected();
   await verifyWrongRoleIsRejected(tokens);
   await verifySeedReadModels(tokens.contractStaff);
-  await verifyPhase1WriteLoop(tokens);
+  await verifyPhase1WriteLoop(tokens, signed);
 }
 
 main().catch((error) => {
