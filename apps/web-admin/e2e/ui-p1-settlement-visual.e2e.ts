@@ -17,6 +17,8 @@ const ledgerBody = {
   rows: [
     {
       id: "JS-UI-001",
+      settlementId: "JS-UI-001",
+      lifecycleKind: "formal_record",
       settlementNo: "JS-UI-001",
       contractNo: "HT-UI-001 · 科技园钢材采购",
       project: "科技园项目",
@@ -34,6 +36,8 @@ const ledgerBody = {
     },
     {
       id: "JS-UI-ARCHIVE",
+      settlementId: "JS-UI-ARCHIVE",
+      lifecycleKind: "formal_record",
       settlementNo: "JS-UI-ARCHIVE",
       contractNo: "HT-UI-003 · 产业园劳务合同",
       project: "产业园二期",
@@ -51,6 +55,8 @@ const ledgerBody = {
     },
     {
       id: "JS-UI-003",
+      settlementId: "JS-UI-003",
+      lifecycleKind: "formal_record",
       settlementNo: "JS-UI-003",
       contractNo: "HT-UI-004 · 临建设施采购",
       project: "科技园项目",
