@@ -1259,19 +1259,9 @@ describe("SpotProcurementReadService", () => {
     );
 
     expect(detail.receipt).toMatchObject({
-      openAfterActualPayment: true,
+      openAfterActualPayment: false,
       hasActualPayment: false,
-      blockedReason: null,
-      workflow: {
-        stage: "reset_unsubmitted_receipt",
-        stageLabel: "可重置未提交收货",
-        resetAction: {
-          key: "reset_receipt_draft",
-          enabled: true,
-          disabledReason: null,
-          expectedRevision: 3
-        }
-      }
+      blockedReason: "收货办理已退出，历史记录仍可查询"
     });
   });
 
@@ -1878,7 +1868,7 @@ describe("SpotProcurementReadService", () => {
         actualPaidAmountCents: "5000",
         remainingAmountCents: "7000"
       },
-      receipt: { openAfterActualPayment: true }
+      receipt: { openAfterActualPayment: false }
     });
     expect(procurementList.items[0]).toMatchObject({
       receiptWorkbench: {
@@ -2757,7 +2747,7 @@ describe("SpotProcurementReadService", () => {
       scope: "none",
       priority: 0,
       enabled: false,
-      hint: "当前无需办理付款；后续需复核收货"
+      hint: "当前无需办理付款；历史资料仍可查询"
     });
 
     expect(

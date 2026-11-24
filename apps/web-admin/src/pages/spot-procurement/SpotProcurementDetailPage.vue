@@ -1899,7 +1899,7 @@ onBeforeUnmount(() => {
         <t-tab-panel
           v-if="detail.currentVersion.requestProtocolVersion !== 2"
           value="receipt"
-          label="收货与发票"
+          label="历史收货与发票"
         />
       </t-tabs>
 
@@ -2132,17 +2132,18 @@ onBeforeUnmount(() => {
         v-else
         class="detail-panel"
       >
-        <header><h2>收货、少货与发票</h2><p>存在实际付款后开放收货；收货照片为必传，送货单可选。少货且已付款仅允许补货或由财务登记退款。</p></header>
+        <header><h2>历史收货与发票</h2><p>历史收货、差异和发票资料供核对。当前采购通过实际采购批次办理。</p></header>
         <t-alert
           theme="info"
-          title="当前收货状态"
+          title="历史收货状态"
           :message="receiptSummaryLabel(detail)"
         />
         <t-button
-          theme="primary"
+          v-if="!('label' in detail.receipt) && detail.receipt.available"
+          variant="outline"
           @click="router.push(`/零星采购收货/${detail.procurement.id}`)"
         >
-          进入收货确认
+          查看历史收货
         </t-button>
         <t-alert
           theme="info"

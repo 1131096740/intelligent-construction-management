@@ -1,14 +1,14 @@
 import { PrismaClient } from "@prisma/client";
 import type { ApprovalSmsService } from "../approval/approval-sms.service";
 import type { PrismaService } from "../database/prisma.service";
-import { MeService, type WorkItem } from "../me/me.service";
+import { MeService } from "../me/me.service";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
 import { SpotProcurementReceiptReviewNotificationService } from "./spot-procurement-receipt-review-notification.service";
 
 const databaseUrl = process.env.SPOT_RECEIPT_REVIEW_NOTICE_DATABASE_URL;
 const pgCase = databaseUrl ? test : test.skip;
 
-pgCase("真实收货修订待办原子入队，撤岗与办结同步消失，未知仅一次", async () => {
+pgCase("历史收货通知诊断保持原子证据，当前待办不再投影", async () => {
   const url = new URL(databaseUrl!);
   expect(url.hostname).toBe("127.0.0.1");
   expect(url.pathname).toBe("/jiangkong_contract_bill_batch_test");
@@ -69,14 +69,10 @@ pgCase("真实收货修订待办原子入队，撤岗与办结同步消失，未
     expect((await observer.spotProcurementReceipt.findUniqueOrThrow({ where: { id: receipt.id } })).status).toBe("draft");
     await submitCoordinates();
 
-    type Scopes = Array<{ projectId: string; roleKeys: string[] }>;
-    const me = new MeService(observer as PrismaService, {} as never, undefined, undefined, pilot) as unknown as {
-      loadProjectRoleScopes(userId: string): Promise<Scopes>;
-      spotReceiptReviewWorkItems(scopes: Scopes): Promise<WorkItem[]>;
-    };
-    const items = async (actor: string) => me.spotReceiptReviewWorkItems(await me.loadProjectRoleScopes(actor));
-    expect(await items(reviewer.id)).toEqual([expect.objectContaining({ businessId: receipt.id,
-      targetPath: `/零星采购收货/${procurement.id}`, currentNode: "物资主管复核收货" })]);
+    const me = new MeService(observer as PrismaService, {} as never, undefined, undefined, pilot);
+    const items = async (actor: string) => (await me.getWorkItems(actor)).queues.pending
+      .filter((item) => item.businessType === "receipt_review");
+    expect(await items(reviewer.id)).toEqual([]);
     expect(await items(outsider.id)).toEqual([]);
     await writer.projectMember.deleteMany({ where: { projectId: project.id, userId: revoked.id } });
     expect(await items(revoked.id)).toEqual([]);
@@ -94,7 +90,7 @@ pgCase("真实收货修订待办原子入队，撤岗与办结同步消失，未
     expect(await items(reviewer.id)).toEqual([]);
     process.stdout.write(JSON.stringify({ phase: "spot_receipt_notice_readback", observerSessions: 2,
       rollbackIntents: 0, committedIntents: 2, revokedCancelled: 1, mockSends: 1, replayMockSends: 0,
-      currentMeCount: 1, revokedMeCount: 0, outsiderMeCount: 0, reviewedMeCount: 0 }) + "\n");
+      currentMeCount: 0, revokedMeCount: 0, outsiderMeCount: 0, reviewedMeCount: 0 }) + "\n");
   } finally {
     await Promise.all([writer.$disconnect(), observer.$disconnect()]);
   }

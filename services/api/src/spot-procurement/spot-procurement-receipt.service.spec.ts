@@ -934,7 +934,7 @@ describe("SpotProcurementReceiptService workflow", () => {
       receipt: {
         id: "receipt-1",
         handler: { id: "handler-1", name: "张三" },
-        receiptOpen: true,
+        receiptOpen: false,
         firstActualPayment: {
           executionId: "execution-1",
           paidAt: "2026-07-18T09:00:00.000Z"
@@ -970,7 +970,7 @@ describe("SpotProcurementReceiptService workflow", () => {
     expect(harness.tx.user.findMany).toHaveBeenCalled();
   });
 
-  it("projects receipt actions from server-side actor, role and workflow facts", async () => {
+  it("retains only authorized historical finance and file actions", async () => {
     const handler = createHarness({
       actionProjectRoleKeys: ["material_staff"]
     });
@@ -982,16 +982,8 @@ describe("SpotProcurementReceiptService workflow", () => {
       handlerDetail.availableActions
         .filter((action) => action.enabled)
         .map((action) => action.key)
-    ).toEqual([
-      "delegate_receipt",
-      "edit_receipt",
-      "append_receipt_photo",
-      "remove_receipt_photo",
-      "reset_receipt_draft",
-      "submit_receipt",
-      "append_invoice"
-    ]);
-    expect(handlerDetail.removablePhotoIds).toEqual(["photo-1"]);
+    ).toEqual(["append_invoice"]);
+    expect(handlerDetail.removablePhotoIds).toEqual([]);
     expect(
       handlerDetail.availableActions.find(
         (action) => action.key === "append_invoice"
@@ -1029,13 +1021,7 @@ describe("SpotProcurementReceiptService workflow", () => {
       delegateDetail.availableActions
         .filter((action) => action.enabled)
         .map((action) => action.key)
-    ).toEqual([
-      "edit_receipt",
-      "append_receipt_photo",
-      "remove_receipt_photo",
-      "reset_receipt_draft",
-      "submit_receipt"
-    ]);
+    ).toEqual([]);
 
     const viewer = createHarness({
       actionProjectRoleKeys: ["employee"]
@@ -1053,7 +1039,7 @@ describe("SpotProcurementReceiptService workflow", () => {
     ["discrepancy", "discrepancy"],
     ["refund", "refund"],
     ["invoice fact", "invoice"]
-  ] as const)("does not advertise receipt draft reset after a %s fact", async (_label, resetBlocker) => {
+  ] as const)("omits retired draft reset for a receipt with a %s fact", async (_label, resetBlocker) => {
     const harness = createHarness({
       resetBlocker,
       actionProjectRoleKeys: ["material_staff"]
@@ -1068,7 +1054,7 @@ describe("SpotProcurementReceiptService workflow", () => {
       detail.availableActions.find(
         (action) => action.key === "reset_receipt_draft"
       )
-    ).toMatchObject({ enabled: false });
+    ).toBeUndefined();
   });
 
   it("keeps material review and project-finance refund actions mutually scoped", async () => {
@@ -1087,7 +1073,7 @@ describe("SpotProcurementReceiptService workflow", () => {
       reviewDetail.availableActions
         .filter((action) => action.enabled)
         .map((action) => action.key)
-    ).toEqual(["review_receipt"]);
+    ).toEqual([]);
 
     const finance = createHarness({
       receiptStatus: "reviewed",
@@ -1229,7 +1215,7 @@ describe("SpotProcurementReceiptService workflow", () => {
     ).resolves.toBeDefined();
   });
 
-  it("keeps receipt actions open before payment while exposing that no payment exists yet", async () => {
+  it("retains receipt history without reopening receipt activity before payment", async () => {
     const harness = createHarness({
       hasActualPayment: false,
       actionProjectRoleKeys: ["material_staff"]
@@ -1242,16 +1228,16 @@ describe("SpotProcurementReceiptService workflow", () => {
 
     expect(detail).toMatchObject({
       receipt: {
-        receiptOpen: true,
+        receiptOpen: false,
         firstActualPayment: null,
-        blockedReason: null
+        blockedReason: "收货办理已退出，历史记录仍可查询"
       }
     });
     expect(
       detail.availableActions.find(
         (action) => action.key === "edit_receipt"
       )
-    ).toMatchObject({ enabled: true });
+    ).toBeUndefined();
   });
 
   it("exposes only the current formally reviewed PDF pointer in the receipt snapshot", async () => {

@@ -105,7 +105,7 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
     items: [
       { label: "零星采购工作台", path: "/零星采购工作台", access: "spot_procurement_workbench" },
       { label: "零星材料付款工作台", path: "/零星材料付款工作台", access: "spot_material_payment_workbench" },
-      { label: "收货确认工作台", path: "/收货确认工作台", access: "receipt_confirmation_workbench" }
+      { label: "历史收货记录", path: "/收货确认工作台", access: "receipt_confirmation_workbench" }
     ]
   },
   {
@@ -558,7 +558,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
           import(
             "../pages/spot-procurement/SpotProcurementReceiptWorkbenchPage.vue"
           ),
-        meta: { title: "收货确认工作台" }
+        meta: { title: "历史收货记录" }
       },
       { path: "综合采购申请", component: () => import("../pages/general-procurement/GeneralProcurementWorkbenchPage.vue"), meta: { title: "综合采购申请" } },
       { path: "综合采购申请/:procurementId", component: () => import("../pages/general-procurement/GeneralProcurementDetailPage.vue"), meta: { title: "综合采购申请详情", activeNavigationPath: "/综合采购申请" } },
@@ -582,7 +582,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         component: () =>
           import("../pages/spot-procurement/SpotProcurementReceiptPage.vue"),
         meta: {
-          title: "零星采购收货详情",
+          title: "零星采购历史收货",
           activeNavigationPath: "/收货确认工作台"
         }
       },

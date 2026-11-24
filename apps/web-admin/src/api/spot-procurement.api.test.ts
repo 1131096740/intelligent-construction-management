@@ -28,8 +28,6 @@ import {
   recreateSpotProcurementPaymentDraft,
   refreshSpotProcurementReceiptPdf,
   requestSpotProcurementAbnormalTermination,
-  resetSpotProcurementReceiptDraft,
-  submitSpotProcurementReceipt,
   submitSpotProcurement,
   submitSpotProcurementPayment,
   updateSpotProcurementDraft,
@@ -133,16 +131,14 @@ describe("spot procurement API client", () => {
     ]);
   });
 
-  it("connects the final receipt read and submission routes", async () => {
+  it("reads historical receipt facts", async () => {
     await fetchSpotProcurementReceipt("procurement/1");
-    await submitSpotProcurementReceipt("procurement/1");
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
-      "/spot-procurements/procurement%2F1/receipt",
-      "/spot-procurements/procurement%2F1/receipt/submission"
+      "/spot-procurements/procurement%2F1/receipt"
     ]);
   });
 
-  it("connects semantic procurement, payment draft and receipt lifecycle routes with CAS", async () => {
+  it("connects semantic procurement and payment draft lifecycle routes with CAS", async () => {
     await abandonSpotProcurementDraft("procurement/1", {
       action: "abandon_application",
       reason: "现场需求取消"
@@ -152,13 +148,11 @@ describe("spot procurement API client", () => {
       reason: "付款对象需要重新确认"
     });
     await recreateSpotProcurementPaymentDraft("procurement/1");
-    await resetSpotProcurementReceiptDraft("procurement/1", 3);
 
     expect(mockApiFetch.mock.calls.map(([path]) => path)).toEqual([
       "/spot-procurements/procurement%2F1/abandonment",
       "/spot-procurement-payments/payment%2F1/abandonment",
-      "/spot-procurements/procurement%2F1/payment-drafts",
-      "/spot-procurements/procurement%2F1/receipt/draft-reset"
+      "/spot-procurements/procurement%2F1/payment-drafts"
     ]);
     expect(mockApiFetch.mock.calls.map(([, init]) => init?.body)).toEqual([
       JSON.stringify({ action: "abandon_application", reason: "现场需求取消" }),
@@ -166,12 +160,11 @@ describe("spot procurement API client", () => {
         expectedUpdatedAt: "2026-07-19T10:00:00.000Z",
         reason: "付款对象需要重新确认"
       }),
-      JSON.stringify({}),
-      JSON.stringify({ expectedRevision: 3 })
+      JSON.stringify({})
     ]);
   });
 
-  it("uses only replenishment or refund for real-form shortage handling", async () => {
+  it("confirms an existing historical discrepancy and preserves refund recording", async () => {
     const refund = {
       amountCents: "1200",
       receivedAt: "2026-07-18",
@@ -181,9 +174,7 @@ describe("spot procurement API client", () => {
     };
 
     await createSpotProcurementDiscrepancy("procurement/1", {
-      operation: "initiate",
-      resolutionType: "replenishment",
-      note: "商户承诺补货"
+      operation: "confirm"
     });
     await recordSpotProcurementRefund("procurement/1", refund);
 
@@ -193,9 +184,7 @@ describe("spot procurement API client", () => {
     ]);
     expect(mockApiFetch.mock.calls.map(([, init]) => init?.body)).toEqual([
       JSON.stringify({
-        operation: "initiate",
-        resolutionType: "replenishment",
-        note: "商户承诺补货"
+        operation: "confirm"
       }),
       JSON.stringify(refund)
     ]);

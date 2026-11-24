@@ -16,8 +16,7 @@ const receiptSummary=(row: SpotProcurementListItemReadModel) => row.receipt as S
 const receiptStatus=(row:SpotProcurementListItemReadModel)=>{
   if (row.status === "closed") return "已办结";
   const receipt = receiptSummary(row);
-  if (!receipt?.openAfterActualPayment) return "待实际付款";
-  return receipt.statusLabel ?? "待确认收货";
+  return receipt.statusLabel;
 };
 const paymentStatus=(row:SpotProcurementListItemReadModel)=>row.payment.statusLabel ?? "付款事实待读取";
 const money=(value:string|null)=>value===null?"待读取":`¥${centsTextToYuanText(value)}`;
@@ -56,20 +55,19 @@ const mobileRows = computed(() => tableRows.value.map((row) => ({
   id: row.id, title: row.materialSummary, code: row.code, meta: row.projectName,
   status: row.receiptStatus, amount: `已实付 ${row.actualPaidText}`,
   facts: [{ label: "批准数量", value: row.approvedQuantitySummary }, { label: "收货责任", value: row.receiptResponsible }, { label: "付款状态", value: row.paymentStatus }],
-  nextAction: row.status === "closed" ? "查看收货记录" : "查看收货与复核"
+  nextAction: "查看历史收货"
 })));
 onMounted(load);
 </script>
 <template>
   <section class="page">
     <BusinessPageHeader
-      title="收货确认工作台"
-      description="首笔实际付款后才开放收货；同一次最终收货可上传多张现场照片，不创建收货批次。"
+      title="历史收货记录"
+      description="查询已有收货记录及相关档案。"
     />
     <ProcurementBusinessNav />
     <BusinessTableToolbar
-      title="最终收货任务"
-      description="收货状态直接来自实际付款与收货复核事实，不再展示供应商或余额抵扣。"
+      title="收货档案"
     >
       <template #actions>
         <t-button
@@ -82,7 +80,7 @@ onMounted(load);
       </template>
       <label class="filter-field"><span>生命周期</span><t-select
         v-model="status"
-        :options="[{label:'全部收货记录',value:''},{label:'办理中',value:'approved_in_progress'},{label:'已办结',value:'closed'}]"
+        :options="[{label:'全部收货记录',value:''},{label:'尚未办结',value:'approved_in_progress'},{label:'已办结',value:'closed'}]"
         @change="load(1)"
       /></label>
     </BusinessTableToolbar><BusinessFeedback
@@ -103,7 +101,7 @@ onMounted(load);
           theme="primary"
           @click="router.push(`/零星采购收货/${row.id}`)"
         >
-          办理
+          查看
         </t-link>
       </template>
     </t-table>

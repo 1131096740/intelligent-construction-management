@@ -13,7 +13,6 @@ export type DutySmsDomain =
   | "payments"
   | "settlements"
   | "spot-procurement-payments"
-  | "spot-procurements"
   | "upward-contract-amount-revisions"
   | "upward-receipt-matches";
 
@@ -39,7 +38,6 @@ function path(domain: DutySmsDomain, id: string, dutyKey?: string) {
   if (domain === "payments") return `/payments/${resource}/approval/duty-sms`;
   if (domain === "settlements") return `/settlements/${resource}/duty-sms`;
   if (domain === "spot-procurement-payments") return `/spot-procurement-payments/${resource}/duty-sms`;
-  if (domain === "spot-procurements") return `/spot-procurements/${resource}/receipt/duty-sms`;
   if (domain === "upward-contract-amount-revisions") return `/upward-contract-amount-revisions/${resource}/duty-sms`;
   if (domain === "upward-receipt-matches") return `/upward-receipt-matches/${resource}/duty-sms`;
   throw new Error("短信待办业务类型无法核对");

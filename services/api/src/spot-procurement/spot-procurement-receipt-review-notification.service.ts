@@ -1,4 +1,4 @@
-import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { Prisma, type AuditLog } from "@prisma/client";
 import { approvalDutyTarget } from "../approval/approval-duty-sms-intent";
 import { auditDutyNoticeId, auditDutyNoticeStatus, dispatchAuditDutyNotices, retryFailedAuditDutyNotice, type AuditDutySmsMessage } from "../approval/audit-duty-notification-delivery";
@@ -13,19 +13,9 @@ const kind = "spot_receipt_review_duty_notification";
 const role = ["material_director"];
 
 @Injectable()
-export class SpotProcurementReceiptReviewNotificationService implements OnModuleInit, OnModuleDestroy {
-  private timer?: ReturnType<typeof setInterval>;
+export class SpotProcurementReceiptReviewNotificationService {
   private readonly logger = new Logger(SpotProcurementReceiptReviewNotificationService.name);
   constructor(private readonly prisma: PrismaService, private readonly sms: ApprovalSmsService, private readonly pilot: SpotProcurementPilotService) {}
-
-  onModuleInit() {
-    if (process.env.NODE_ENV === "test" || process.env.SKIP_DATABASE_CONNECT === "true" || !this.sms.available()) return;
-    this.timer = setInterval(() => { void this.afterCommit(); }, 60_000);
-    this.timer.unref();
-    void this.afterCommit();
-  }
-
-  onModuleDestroy() { if (this.timer) clearInterval(this.timer); }
 
   async queue(tx: Prisma.TransactionClient, procurementId: string, actorUserId: string) {
     const duty = await readSpotReceiptReviewDuty(tx, procurementId, this.pilot);

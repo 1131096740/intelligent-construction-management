@@ -81,16 +81,6 @@ const RECEIPT_PHOTO_APPENDABLE_STATUSES = new Set([
   ...RECEIPT_EDITABLE_STATUSES,
   "submitted"
 ]);
-const RECEIPT_CONFIRM_ROLES = new Set<RoleKey>([
-  "employee",
-  "material_staff",
-  "material_director",
-  "project_manager"
-]);
-const RECEIPT_HANDLER_ROLES = new Set<RoleKey>([
-  "material_staff",
-  "material_director"
-]);
 const INVOICE_APPEND_ROLES = new Set<RoleKey>(
   ACTION_REQUIRED_ROLES["spot_procurement.invoice.append"]
 );
@@ -535,12 +525,6 @@ export class SpotProcurementReceiptService {
             procurementId,
             receipt.procurementVersionId
           );
-        const receiptOpen =
-          procurement.status === "approved_in_progress" &&
-          version.status === "approved" &&
-          procurement.currentVersionId === version.id &&
-          receipt.procurementVersionId === version.id &&
-          receipt.lockedAt === null;
         const actorScope = await this.loadReceiptActionScope(
           tx,
           actorUserId,
@@ -571,57 +555,6 @@ export class SpotProcurementReceiptService {
               { id: "asc" }
             ]
           });
-        const [
-          resetReview,
-          resetPdfDocument,
-          resetDiscrepancy,
-          resetRefund,
-          resetInvoiceAllocation,
-          resetNoInvoiceConfirmation,
-          resetInvoiceException
-        ] = await Promise.all([
-          tx.spotProcurementReceiptReview.findFirst({
-            where: { receiptId: receipt.id },
-            select: { id: true }
-          }),
-          tx.pdfDocument.findFirst({
-            where: {
-              businessType: SPOT_PROCUREMENT_BUSINESS_TYPES.receipt,
-              businessId: receipt.id
-            },
-            select: { id: true }
-          }),
-          tx.spotProcurementDiscrepancy.findFirst({
-            where: { receiptId: receipt.id },
-            select: { id: true }
-          }),
-          tx.spotProcurementRefund.findFirst({
-            where: { procurementId },
-            select: { id: true }
-          }),
-          tx.invoiceAllocation.findFirst({
-            where: { receiptId: receipt.id },
-            select: { id: true }
-          }),
-          tx.noInvoiceConfirmation.findFirst({
-            where: { receiptId: receipt.id },
-            select: { id: true }
-          }),
-          tx.invoiceExceptionConfirmation.findFirst({
-            where: { receiptId: receipt.id },
-            select: { id: true }
-          })
-        ]);
-        const hasResetFormalFact = Boolean(
-          resetReview ||
-            resetPdfDocument ||
-            resetDiscrepancy ||
-            resetRefund ||
-            resetInvoiceAllocation ||
-            resetNoInvoiceConfirmation ||
-            resetInvoiceException
-        );
-
         const userIds = [
           receipt.handlerUserId,
           receipt.submittedByUserId,
@@ -660,26 +593,10 @@ export class SpotProcurementReceiptService {
           version,
           receipt,
           revision,
-          delegation,
           latestReview,
           discrepancy,
-          firstActualPayment,
-          photos,
-          hasResetFormalFact
+          firstActualPayment
         });
-        const removablePhotoIds = availableActions.some(
-          (action) => action.key === "remove_receipt_photo" && action.enabled
-        )
-          ? photos
-              .filter(
-                (photo) =>
-                  photo.receiptRevisionNo === receipt.currentRevisionNo &&
-                  photo.lockedAt === null &&
-                  photo.lockedAtFirstSubmission === false
-              )
-              .map((photo) => photo.id)
-          : [];
-
         return {
           receipt: {
             id: receipt.id,
@@ -691,16 +608,14 @@ export class SpotProcurementReceiptService {
             procurementVersionStatus: version.status,
             status: receipt.status,
             currentRevisionNo: receipt.currentRevisionNo,
-            receiptOpen,
+            receiptOpen: false,
             firstActualPayment: firstActualPayment
               ? {
                   executionId: firstActualPayment.id,
                   paidAt: firstActualPayment.paidAt.toISOString()
                 }
               : null,
-            blockedReason: receiptOpen
-              ? null
-              : "收货已锁定或采购版本不可办理",
+            blockedReason: "收货办理已退出，历史记录仍可查询",
             handler: {
               id: receipt.handlerUserId,
               name:
@@ -815,7 +730,7 @@ export class SpotProcurementReceiptService {
                 nextStep: null
               },
           availableActions,
-          removablePhotoIds
+          removablePhotoIds: []
         };
       },
       {
@@ -944,7 +859,6 @@ export class SpotProcurementReceiptService {
       submittedByUserId: string | null;
       submissionDelegationId: string | null;
     };
-    delegation: { delegatorUserId: string; delegateUserId: string; scope: string; revokedAt: Date | null } | null;
     latestReview: {
       id: string;
       decision: string;
@@ -954,13 +868,6 @@ export class SpotProcurementReceiptService {
     } | undefined;
     discrepancy: { status: string } | null;
     firstActualPayment: { id: string; paymentId: string; paidAt: Date } | null;
-    photos: Array<{
-      id: string;
-      receiptRevisionNo: number;
-      lockedAt: Date | null;
-      lockedAtFirstSubmission: boolean;
-    }>;
-    hasResetFormalFact: boolean;
   }): DetailActionReadModel[] {
     const action = (
       key: string,
@@ -985,40 +892,10 @@ export class SpotProcurementReceiptService {
       input.receipt.procurementVersionId === input.version.id &&
       input.revision.procurementVersionId === input.version.id &&
       input.receipt.lockedAt === null;
-    const hasConfirmRole = actorScope.effectiveRoleKeys.some((role) =>
-      RECEIPT_CONFIRM_ROLES.has(role)
-    );
-    const isHandler = input.actorUserId === input.receipt.handlerUserId;
-    const isActiveDelegate = Boolean(
-      input.delegation &&
-      input.delegation.revokedAt === null &&
-      input.delegation.scope === "receipt_confirmation" &&
-      input.delegation.delegatorUserId === input.receipt.handlerUserId &&
-      input.delegation.delegateUserId === input.actorUserId &&
-      actorScope.hasProjectMembership
-    );
-    const canConfirm =
-      actorScope.active &&
-      hasConfirmRole &&
-      (isHandler || isActiveDelegate);
-    const editable =
-      businessOpen &&
-      canConfirm &&
-      RECEIPT_EDITABLE_STATUSES.has(input.receipt.status) &&
-      input.revision.submittedAt === null;
-    const photoAppendable =
-      businessOpen &&
-      canConfirm &&
-      RECEIPT_PHOTO_APPENDABLE_STATUSES.has(input.receipt.status);
     const isMaterialDirector =
       actorScope.active &&
       actorScope.effectiveRoleKeys.includes("material_director");
-    const isCurrentHandler =
-      actorScope.active &&
-      isHandler &&
-      actorScope.effectiveRoleKeys.some((role) =>
-        RECEIPT_HANDLER_ROLES.has(role)
-      );
+    const isHandler = input.actorUserId === input.receipt.handlerUserId;
     const isProjectFinanceStaff =
       actorScope.active &&
       actorScope.effectiveRoleKeys.includes("finance_staff") &&
@@ -1059,33 +936,7 @@ export class SpotProcurementReceiptService {
       input.revision.procurementVersionId === input.version.id &&
       hasSubmissionCoordinates &&
       hasCurrentApprovedReview;
-    const removablePhotoIds = editable
-      ? input.photos.filter(
-          (photo) =>
-            photo.receiptRevisionNo === input.receipt.currentRevisionNo &&
-            photo.lockedAt === null &&
-            photo.lockedAtFirstSubmission === false
-        )
-      : [];
-    const canResetDraft =
-      businessOpen &&
-      canConfirm &&
-      input.receipt.status === "draft" &&
-      input.receipt.firstSubmittedAt === null &&
-      input.receipt.submittedAt === null &&
-      input.revision.submittedAt === null &&
-      !input.hasResetFormalFact;
-
     return [
-      action("delegate_receipt", "委托收货办理", "normal", editable && isHandler, "仅当前采购经办人可在收货草稿阶段委托"),
-      action("edit_receipt", "编辑收货草稿", "normal", editable, "仅当前采购经办人或有效受托人可编辑收货草稿"),
-      action("append_receipt_photo", "上传收货照片", "normal", photoAppendable, "仅当前采购经办人或有效受托人可上传收货照片"),
-      action("remove_receipt_photo", "删除收货草稿照片", "danger", removablePhotoIds.length > 0, "只有当前收货草稿中未锁定的照片可以删除"),
-      action("reset_receipt_draft", "重置收货草稿", "danger", canResetDraft, "只能由当前采购经办人或有效受托人重置从未提交的收货草稿"),
-      action("submit_receipt", "提交最终收货", "primary", editable, "仅当前采购经办人或有效受托人可提交最终收货"),
-      action("review_receipt", "复核最终收货", "primary", businessOpen && isMaterialDirector && input.receipt.status === "submitted", "仅本项目物资主管可在待复核阶段办理"),
-      action("revoke_receipt_review", "补货后重新确认收货", "danger", businessOpen && isMaterialDirector && input.receipt.status === "reviewed" && input.latestReview?.decision === "approved", "仅本项目物资主管可撤销当前有效复核"),
-      action("initiate_discrepancy", "发起少货处理", "primary", businessOpen && isCurrentHandler && input.receipt.status === "reviewed" && !input.discrepancy, "仅当前采购经办人可对已复核收货发起少货处理"),
       action("confirm_discrepancy", "确认少货事实", "primary", businessOpen && isMaterialDirector && input.discrepancy?.status === "pending_resolution", "仅本项目物资主管可确认待处理少货事实"),
       action("record_refund", "登记退款", "primary", businessOpen && isProjectFinanceStaff && input.discrepancy?.status === "awaiting_refund", "仅本项目财务人员可登记待退款事实"),
       action("append_invoice", "追加整单发票", "normal", canAppendInvoice, "仅采购经办人或财务人员可在实际付款后追加发票", "spot_procurement.invoice.append"),

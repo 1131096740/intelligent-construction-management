@@ -7,7 +7,6 @@ import {
 } from "./work-item-action-group";
 import { approvalDutyTarget } from "../approval/approval-duty-sms-intent";
 import { SpotProcurementPilotService } from "../spot-procurement/spot-procurement-pilot.service";
-import { readSpotReceiptReviewDuty } from "../spot-procurement/spot-procurement-receipt-review-duty";
 import { IndependentApprovalProgressService } from "../approval/independent-approval-progress.service";
 import { isPureExpenseReimbursement, projectIncidentalExpenseWhere, pureExpenseReimbursementWhere, resolveExpenseParallelDutyIdentity, supportsExpenseParallelApproval } from "../expense-claim/expense-claim-parallel-approval";
 import { expenseClaimFundingDuty, expenseFundingFacets } from "../expense-claim/expense-claim-funding-duty";
@@ -799,7 +798,6 @@ export class MeService {
     const contractDraftProjectIds = this.projectIdsFor(scopes, ["contract.create", "contract.submit"]);
     return [
       ...(await spotPurchaseWorkItems(this.prisma as Prisma.TransactionClient, userId, this.projectIdsFor(scopes, ["spot_procurement.create"]))),
-      ...(await this.spotReceiptReviewWorkItems(scopes)),
       ...(await generalRequestWorkItems(this.prisma as Prisma.TransactionClient, new ProjectVisibilityService(this.prisma), userId, "procurement")),
       ...(await contractHandlingWorkItems(this.prisma as Prisma.TransactionClient,userId,scopes,projectNameById)),
       ...(await companyTransferWorkItems(this.prisma as Prisma.TransactionClient, userId, new ProjectVisibilityService(this.prisma))),
@@ -2055,31 +2053,6 @@ export class MeService {
       targetPath: `/付款管理/${payment.code}`,
       tone: "warning"
     }));
-  }
-
-  private async spotReceiptReviewWorkItems(scopes: ProjectRoleScope[]): Promise<WorkItem[]> {
-    const pilot = this.spotPilot;
-    if (!pilot) return [];
-    const projectIds = this.projectIdsFor(scopes, ["spot_procurement.receipt.review"]).filter(id => pilot.isEnabled(id));
-    if (!projectIds.length) return [];
-    const receipts = await this.prisma.spotProcurementReceipt.findMany({
-      where: { projectId: { in: projectIds }, status: "submitted", invalidatedAt: null },
-      orderBy: [{ submittedAt: "desc" }, { id: "asc" }], select: { procurementId: true }
-    });
-    const items: WorkItem[] = [];
-    for (const candidate of receipts) {
-      const duty = await readSpotReceiptReviewDuty(this.prisma, candidate.procurementId, pilot);
-      if (!duty || !projectIds.includes(duty.receipt.projectId)) continue;
-      items.push({
-        id: `spot-receipt-review:${duty.receipt.id}:${duty.receipt.currentRevisionNo}`, type: "procurement",
-        businessType: "receipt_review", businessId: duty.receipt.id, businessCode: duty.procurement.code,
-        projectId: duty.receipt.projectId, projectName: duty.project.name, title: "零星采购收货复核",
-        amountText: this.amountText(duty.receipt.actualCostCents), currentNode: "物资主管复核收货",
-        stayedText: this.stayedText(duty.submittedAt), nextAction: "复核收货",
-        [workItemNoticeAt]: duty.submittedAt, targetPath: approvalDutyTarget("spotReceipt", duty.procurement.id), tone: "warning"
-      });
-    }
-    return items;
   }
 
   private async expenseFundingWorkItems(scopes: ProjectRoleScope[], names: ReadonlyMap<string, string>): Promise<WorkItem[]> {
