@@ -25,6 +25,11 @@
     "candidate": "eeca6404316cb5a86ba058edbdf2aae4aace2d0b308a0dc1a6018debb5fc5374"
   },
   {
+    "path": "apps/web-admin/e2e/detail-route-switch-regression.e2e.ts",
+    "expected": "4a74ab839e106a0684fd867141255c719a94520672c0216e68b3a888737a3f79",
+    "candidate": "6f33e4d6b377fe3ce134aab9f81fb627b87e9675ebe5b72f0b5f475fb7d6c8a2"
+  },
+  {
     "path": "apps/web-admin/e2e/draft-lifecycle-governance.e2e.ts",
     "expected": "6841c564fde5421c5029e8a53892a4b3520cf0d439020df627120150e1b9ab80",
     "candidate": "c2b2b811591157935768e4de2c68bd65483eaf7e37ecbc0911e329efa697682f"
@@ -55,9 +60,24 @@
     "candidate": "18b95383dede2061e82a48a2b84e49449e81a75db86e98e1a41f3417919223f2"
   },
   {
+    "path": "apps/web-admin/e2e/real-role-browser-uat.e2e.ts",
+    "expected": "15ccad850e29f63979a29e8c5f12ad08d8a4f4c8f70c8e518b313347846e3c63",
+    "candidate": "5eab9e766d3c23f603a98079134c59a3f8e3a2c422bab383e723e2f0a525682d"
+  },
+  {
     "path": "apps/web-admin/e2e/responsive-layout-foundation.e2e.ts",
     "expected": "b3e69dffa5ec659f7b2c0b8db17502a0871da2b236e9637bcc7a2b34f1f5285e",
     "candidate": "2fd28d0210106ddb8435b91ed704b729f13a78216b3f02d7101a1b5f9c5f00f5"
+  },
+  {
+    "path": "apps/web-admin/e2e/settlement-approval-withdrawal.fixture.ts",
+    "expected": "8db446e3692a53a1d08407442e9d8eebc06c54400f9b8204ccd98e21274cead3",
+    "candidate": "eac70675cef06d4ffcf7646b11ed7b5f9bcbd42b8a399bed5244feee2ebe07e0"
+  },
+  {
+    "path": "apps/web-admin/e2e/settlement-approval-withdrawal.spec.ts",
+    "expected": "40c586998b2cd668b17dff04f0af3672fa3eda1f4aa6ce10e5fe2c0461993c39",
+    "candidate": "5f5757a51c260034336b2f60293822cf26ed092f3eace1f37f3e496519c48fe1"
   },
   {
     "path": "apps/web-admin/e2e/settlement-entry-history-real.e2e.ts",
@@ -67,7 +87,7 @@
   {
     "path": "apps/web-admin/e2e/settlement-signature-governance.e2e.ts",
     "expected": "7a2adb1e3d4f821d6c0ce47ae253ee7c0ae1ed0a63f2492e1b3b46fe4526f207",
-    "candidate": "d4929e2913c5da12e9d9f625cd85f1dc87e8e7110f7ee0d814dd9dbe2f38b3a0"
+    "candidate": "9ac4cfb9fab93cb1dd55643003d8ecc21affb61fe70b5c8245245ce7c19f3c0c"
   },
   {
     "path": "apps/web-admin/e2e/settlement-workbench.e2e.ts",
@@ -127,12 +147,12 @@
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.test.ts",
     "expected": "33395aaa091223d42dd2e7cd1ddcb2a5d80af7277189ec688d8d0e1eabfc5469",
-    "candidate": "c0776be83dddf7205f2e1a8a58f8a1f0e71ceabf53d3c9b15322799666d63aa7"
+    "candidate": "bd8853c4734bfdc407dc4ddc218105ee4fffe1a92a8a30e0b2c2b7936127cef0"
   },
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.ts",
     "expected": "c83128b15dbd395bae3875c5994c11e54b13ec426b6959b3e677371bb49a303f",
-    "candidate": "688585814072d67726b9841138d612b8d338cc9e827214d8067a1a83a1a7a859"
+    "candidate": "1a77982c400a28d85ddb3a9368156d0cfa55feb59d7a6e04767940644169b722"
   },
   {
     "path": "apps/web-admin/src/api/duty-sms.api.test.ts",
@@ -243,6 +263,11 @@
     "path": "apps/web-admin/src/components/files/PrivatePdfActions.vue",
     "expected": "4d2caae348f5023f22eac6f82f9ddfb220d6d266cd9adeb2b76b1534bcbd5f05",
     "candidate": "4825e7920628cd70120cab3fb62a58f1464d6977bd754ebcd4eb882820b28c44"
+  },
+  {
+    "path": "apps/web-admin/src/lib/settlement-approval-result.ts",
+    "expected": "2fe6ce2b1eae8ffc991f6d6f157240855e7fc2724057d0e5e1b6fbc0a9346273",
+    "candidate": null
   },
   {
     "path": "apps/web-admin/src/pages/approval-center/ApprovalCenterPage.vue",
@@ -477,7 +502,7 @@
   {
     "path": "apps/web-admin/src/pages/settlements/SettlementDetailPage.vue",
     "expected": "90b13a09184663c2c3238b454640b3d19d0f188341d827188e7d587a4d399710",
-    "candidate": "4d598f3992114903b50ceee5bf896c3245eb85bfaa5ef419aaac3957b7ba2e62"
+    "candidate": "9b845e78b39821cdb7187266d46ca8eef6a84a24949948f5b8f8893d943ebb85"
   },
   {
     "path": "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
@@ -490,9 +515,29 @@
     "candidate": "0672dd1f79990ca8ab59e6c914e06532d1e52d898fd294699cd52bba3e8f5bd4"
   },
   {
+    "path": "apps/web-admin/src/pages/settlements/settlement-approval-withdrawal-action.structure.test.ts",
+    "expected": "c58e1c9ac18188927a0a417fb2dc95f11392907830456d755c10acec2393f251",
+    "candidate": "24155a6be0d9e478e647fc934383a5fe3df45aca417de59a7b0d81d3157d91e2"
+  },
+  {
+    "path": "apps/web-admin/src/pages/settlements/settlement-approval-withdrawal-action.test.ts",
+    "expected": "3e00f971d5cb58701b9355930b60db54e103ca217e0be7a7fec08e6d948d7dc5",
+    "candidate": null
+  },
+  {
+    "path": "apps/web-admin/src/pages/settlements/settlement-approval-withdrawal-api.test.ts",
+    "expected": "6b512a0d8e0ed20fe4dc2c26cc6495308704a059a7c9715ce56addb346715a8b",
+    "candidate": null
+  },
+  {
     "path": "apps/web-admin/src/pages/settlements/settlement-capability-gates.structure.test.ts",
     "expected": "2f3fe343753a129270425fae9fbad2d46a8b1c5418a428c70b2797114f4007b9",
-    "candidate": "a64efd9357337a27e39f42eb7e0242602a462fe28f3331a3644492e775b3f02d"
+    "candidate": "4bd267ac0d44824f7e78ab3d88b6f2a3ef3dd18cc3efe2a9b5e75db42b336b9c"
+  },
+  {
+    "path": "apps/web-admin/src/pages/settlements/settlement-detail.config.test.ts",
+    "expected": "1f02d3d68e20e4b58cb466eb417143b709356b005de15bc09fa421b136b050fe",
+    "candidate": "02c9f5692721f302bb290fc618f353d4424fd584ccfecf97a2f1d876f52d7e3e"
   },
   {
     "path": "apps/web-admin/src/pages/settlements/settlement-list.config.test.ts",
@@ -647,12 +692,12 @@
   {
     "path": "services/api/prisma/run-contract-settlement-governance-uat.cjs",
     "expected": "a595ea24a3bccd972bbf6aa14a879e0ba54710ef09f37c8615426cd959fcb392",
-    "candidate": "af74f04adc8002c8b360d13fc377c361142cbe9cd0b2a82d90481642ad537241"
+    "candidate": "1265580c094c700708adff71725f955be5960e7b717a2ca0f41c489987924798"
   },
   {
     "path": "services/api/prisma/run-contract-settlement-governance-uat.test.cjs",
     "expected": "850b01fd3ec8f394c9dec15a84756a45cb0c0527ebe7774c2418225ec639faa4",
-    "candidate": "aab4f53cb552e0a64628660f7b0ea1e66ae51148a2eb8a41366004f2722217f2"
+    "candidate": "da3597fe351688d7721f73e743dbeef76fead4669849388df8a8114f1859f2e8"
   },
   {
     "path": "services/api/prisma/run-database-dynamic-gate-local.cjs",
@@ -673,6 +718,11 @@
     "path": "services/api/prisma/run-money-bigint-local.cjs",
     "expected": "a49a6a2d9a5e3599a52e83a4c9cb3757493683fafcf4fda733fbaa5cec574df6",
     "candidate": "8284166bf346d12b72d3c7a6a5382aa48a3d60cf34fbbf751cf327c0021495f6"
+  },
+  {
+    "path": "services/api/prisma/run-real-role-browser-uat.cjs",
+    "expected": "65a99e4359fda53ea79c25f9b67aa8e4e59d439b4cfdb736cbea0f82acf9e8fe",
+    "candidate": "f996b2057367b60d6dd8f7151d634f30b952667ee5489df39821c23b8f05a453"
   },
   {
     "path": "services/api/prisma/schema.prisma",
@@ -762,12 +812,17 @@
   {
     "path": "services/api/src/approval/approval-progress.service.spec.ts",
     "expected": "f7a810593df5fa3cae91c8233d34840cc757bbac405586353394f3aaa19b32fe",
-    "candidate": "906745e4ff1d19d8270b9ac0024255b6e4d1a1a50e8e577ee5f80a3185422c9f"
+    "candidate": "ed3fd05a1b8744468c766a6164c63b52c657104a5f17a6fb975c3f11ca0e93a5"
   },
   {
     "path": "services/api/src/approval/approval-progress.service.ts",
     "expected": "7db2f18e02d05e265173db1a012e2055d82f5db1a8a8543b45d7a95e2a5e6ff0",
-    "candidate": "4c43f00d90487fae9da36f09eef20b2a92878ce2caa0c6b21d1f493393231fc9"
+    "candidate": "09f892c0b8c512cbb4bce9cc58a3f91cda783e91333316560f3e37189e1462c3"
+  },
+  {
+    "path": "services/api/src/approval/approval-reminder-business-intent.ts",
+    "expected": "a7e0bac2d26a43998aa086c957201967c533137eca354398f6eae6baa5b88aa7",
+    "candidate": "4471dba2f721e9f92aea430275c6ab80c4bde73ea3be014f6c3cd09108ff6862"
   },
   {
     "path": "services/api/src/approval/approval-review-identity.spec.ts",
@@ -1102,7 +1157,7 @@
   {
     "path": "services/api/src/database/contract-business-entry-http.spec.ts",
     "expected": "e4475a9bfb2a08fecaca0ca6f89d2e631b0355e6c58a4f2418dc612651ef73d9",
-    "candidate": "239414dc339ddd2540fc6495c86eace36d7c60d9cd896436720edab0a66b04cf"
+    "candidate": "530935849d1e2b78675379d485cdc60721cfddea062d92443f707f01c2cbbd6f"
   },
   {
     "path": "services/api/src/database/contract-lifecycle-route.spec.ts",
@@ -1380,12 +1435,12 @@
   {
     "path": "services/api/src/me/me.service.spec.ts",
     "expected": "682eeebac883267ff89882c2b63b8853bdb88d4163dd8527da496f8c85e6d755",
-    "candidate": "93a3a83af894f41620e1ab0f19889e454f0da9acf582a5a2d42637f50651967c"
+    "candidate": "245fc49df691ebcc38440983d96cdb0dfad6033d895f7f4a7462d5eb05395fd5"
   },
   {
     "path": "services/api/src/me/me.service.ts",
     "expected": "439db3745de0160d9db7dc5819bdf2f73c2ac0c595d8f8b5250e83d54aba5b25",
-    "candidate": "ed8b0d61abaa529ccb2220b19f67a55fb206b5c091ebb7783c9c4b4a6d659cbf"
+    "candidate": "6185b2b58ad6df3e54cb1590b76e7db383f9dcc8de642c2e2a7fd51204c39a76"
   },
   {
     "path": "services/api/src/necessary-expense-reserve/necessary-expense-reserve-file-access.spec.ts",
@@ -1635,12 +1690,17 @@
   {
     "path": "services/api/src/retired-write-entry/retired-write-entry-route.spec.ts",
     "expected": "3ff2d3c20db799331acfee70ac32cfc18c5c8bb7e73b3218730cc2edac6e6640",
-    "candidate": "8cf2b6bdb3428f54a86b6fd83ac9a8b359137c0dc173c9ee35e00441e0f95af6"
+    "candidate": "f5bf743c02e19a71ce4a2a0868ed1c0659bcdb3b27f787fe2cdba757b2338225"
   },
   {
     "path": "services/api/src/retired-write-entry/retired-write-entry.guard.ts",
     "expected": "958e7639f5740b4e08af17be0a7040d69863f29d37c2ed185839dacd20c3c329",
-    "candidate": "e018ff7278c189e7b8c086dbee565dac4f20174cecd3692a97dd3a5a6b5c9c64"
+    "candidate": "82dcd090d63c9884bab2a26dbf4f1673b7a7749aad33da64bb96a69d018f7ea2"
+  },
+  {
+    "path": "services/api/src/settlement/settlement-approval-withdrawal.spec.ts",
+    "expected": "85bf07cc4209405ca9c3a42cdb3ede55b45e63e8610a6b47a2b1f6c129bc058f",
+    "candidate": "080d8b865839db392fc9fd8ecd83154c78bc095ada69945c2dffd5865d55f115"
   },
   {
     "path": "services/api/src/settlement/settlement-draft.controller.ts",
@@ -1655,12 +1715,12 @@
   {
     "path": "services/api/src/settlement/settlement-read.service.spec.ts",
     "expected": "e78569a1377c627c9e98be5ec6d0a874b8570864e1c6302c5eea31b01a5bf205",
-    "candidate": "38c9cdf00859fae2ccad461427ceeb401d70b29c4bf14f1fd4102102b5a01011"
+    "candidate": "39f9a5625e5b6d8c22409bf3ffa99eda5c656a3b4e253e43bbb7dbbe6b032213"
   },
   {
     "path": "services/api/src/settlement/settlement-read.service.ts",
     "expected": "13ff4f8dec3663bbe8cbe9e20a0c701c667c3e0c95283123ae58a1e15a05d460",
-    "candidate": "38d705837c868a05c2553278f54c0649fc298c5449c0ff2a6c5c875829ff6426"
+    "candidate": "1ec3eb4b0f901dffb83cb03d202a4b7bb263c26b1e29be6643e29a637b573ecc"
   },
   {
     "path": "services/api/src/settlement/settlement.controller.spec.ts",
