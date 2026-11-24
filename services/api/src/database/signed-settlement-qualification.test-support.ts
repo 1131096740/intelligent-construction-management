@@ -38,6 +38,19 @@ export async function openSignedSettlementQualification(owner: PrismaService, da
   process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY = writeKey;
   if (ownedReadKey) process.env.SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY = ownedReadKey;
   const runtime = new PrismaService({ datasourceUrl: runtimeUrl });
+  let lastQueryFailure: string | undefined;
+  runtime.$use(async (_params, next) => {
+    try { return await next(_params); }
+    catch (error) {
+      lastQueryFailure = safeFailure("QUERY", error).message;
+      throw error;
+    }
+  });
+  function takeQueryFailure() {
+    const observed = lastQueryFailure;
+    lastQueryFailure = undefined;
+    return observed;
+  }
   let app: INestApplication | undefined;
   async function close() {
     if (previousWriteKey === undefined) delete process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY;
@@ -68,7 +81,7 @@ export async function openSignedSettlementQualification(owner: PrismaService, da
     app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
     app.useGlobalPipes(createApiValidationPipe());
     await app.listen(0, "127.0.0.1");
-    return { baseUrl: await app.getUrl(), close };
+    return { baseUrl: await app.getUrl(), close, takeQueryFailure };
   } catch (error) {
     try { await close(); }
     catch (cleanupError) { throw safeFailure("CLEANUP", cleanupError); }

@@ -128,6 +128,13 @@ if (enabled) {
     finally { await app?.close(); }
   });
 
+  function signedSettlementFailure(status: number, value: unknown) {
+    const code = (value as { code?: string } | null)?.code;
+    const allowed = code && ["OPERATIONAL_WRITE_FREEZE_ACTIVE", "OPERATIONAL_WRITE_FREEZE_ROUTE_UNCLASSIFIED", "OLD_WRITE_ENTRY_RETIRED"].includes(code)
+      ? code : "UNCLASSIFIED";
+    return `POL114_SIGNED_SETTLEMENT_HTTP_${status}_${allowed} ${signedSettlementQualification?.takeQueryFailure() ?? ""}`;
+  }
+
   async function runContractCase(entryMode: "aggregate" | "legacy" | "legacy-ownerless", typeOverride?: string, paymentMode?: "direct") {
     // Each case owns its identity, even if Jest eventually aborts an earlier case.
     let token = "";
@@ -142,7 +149,10 @@ if (enabled) {
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
       });
       const value = await response.json() as T;
-      if (!response.ok) throw new Error(`${method} ${path}: ${response.status} ${JSON.stringify(value)}`);
+      if (!response.ok) {
+        const diagnostic = target !== baseUrl ? signedSettlementFailure(response.status, value) : JSON.stringify(value);
+        throw new Error(`${method} ${path}: ${response.status} ${diagnostic}`);
+      }
       return value;
     }
 
@@ -153,7 +163,10 @@ if (enabled) {
         method: "POST", headers: { authorization: `Bearer ${token}` }, body: form
       });
       const result = await response.json() as Identified;
-      if (!response.ok) throw new Error(`上传失败：${JSON.stringify(result)}`);
+      if (!response.ok) {
+        const diagnostic = target !== baseUrl ? signedSettlementFailure(response.status, result) : JSON.stringify(result);
+        throw new Error(`上传失败 HTTP ${response.status}: ${diagnostic}`);
+      }
       return result;
     }
 

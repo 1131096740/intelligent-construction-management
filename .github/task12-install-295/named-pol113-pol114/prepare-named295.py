@@ -105,9 +105,10 @@ for name, pin in pins['runtime'].items():
         signedChangeFailure:traces.filter(value=>typeof value==="string").map(value=>
           /\bPOL114_SIGNED_CHANGE_(?:BOOT_(?:P[0-9]{4}|EADDRINUSE|EACCES|ECONNREFUSED|UNCLASSIFIED)|HTTP_[1-5][0-9]{2}_(?:OLD_WRITE_ENTRY_RETIRED|OPERATIONAL_WRITE_FREEZE_ROUTE_UNCLASSIFIED|OPERATIONAL_WRITE_FREEZE_ACTIVE|UNCLASSIFIED))\b/u.exec(value)?.[0]
         ).find(Boolean),
-        signedSettlementFailure:traces.filter(value=>typeof value==="string").map(value=>
-          /\bPOL114_SIGNED_SETTLEMENT_(?:PROVISION|SESSION_PRIVILEGES|SESSION|BOOT|CLEANUP)_(?:[0-9A-Z]{5}|EADDRINUSE|EACCES|ECONNREFUSED|UNCLASSIFIED)\b/u.exec(value)?.[0]
-        ).find(Boolean),
+        signedSettlementFailure:traces.flatMap(value=>typeof value==="string"
+          ? [...value.matchAll(/\bPOL114_SIGNED_SETTLEMENT_(?:(?:PROVISION|SESSION_PRIVILEGES|SESSION|BOOT|CLEANUP|QUERY)_(?:[0-9A-Z]{5}|EADDRINUSE|EACCES|ECONNREFUSED|UNCLASSIFIED)|HTTP_[1-5][0-9]{2}_(?:OPERATIONAL_WRITE_FREEZE_ACTIVE|OPERATIONAL_WRITE_FREEZE_ROUTE_UNCLASSIFIED|OLD_WRITE_ENTRY_RETIRED|UNCLASSIFIED))\b/gu)].map(match=>match[0])
+          : []
+        ).slice(0,3),
         sqlstates:[...new Set(traces.flatMap(value=>typeof value==="string"
           ? [...value.matchAll(/(?:SQLSTATE\s+|Raw query failed\. Code:\s*`|SqlState\(E)([A-Z0-9]{5})\b/gu)].map(match=>match[1])
           : []))].slice(0,4),
@@ -164,8 +165,8 @@ for name,pin in pins['workspace'].items():
         if current320 and name == 'services/api/src/database/contract-business-entry-http.spec.ts':
             # Keep the archived 295 fixture and pin the current signed-settlement and supplement HTTP fixture.
             pin = {**pin,
-                   'base': '3cd46c877d3dc84bd693c6442e2841a91d1263df27bfebd448e10c8fcd174c13',
-                   'result': 'd9298daa94f14e6525d32f8e5389a663f80a6ab1dd1d2a2644a92c7b0897caeb',
+                   'base': '239414dc339ddd2540fc6495c86eace36d7c60d9cd896436720edab0a66b04cf',
+                   'result': 'a119e81d826014c39e30c56633528b482c5a326a469e16425c795b9d9e3b1d12',
                    'file': 'patches/contract-business-entry-signed-settlement-current329.spec.ts.gz'}
         write(path,overlay(material,pin))
 
