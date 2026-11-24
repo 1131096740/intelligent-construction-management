@@ -47,6 +47,12 @@ for name in names:
 
 lane_plan = archive.parents[1] / 'company-proxy'
 lane_pins = json.loads((lane_plan / 'assembly-pins.json').read_text())
+if options:
+    # The 329 expense fixture sends the required parallel duty coordinates.
+    lane_pins['expense.spec.ts'].update(
+        base='c66c7725bc05c63a01d0ccf1e1a21f44bab0068f5dd9d9d68698e7f8f18fa53d',
+        result='60226141cad6ab8404ba012f62da7aa65d0a096668a8252e6373ce46caf15464',
+    )
 for name in ('runner.cjs','handover.spec.ts','company.spec.ts','expense.spec.ts','task410-owned-test-database.ts'):
     pin = lane_pins[name]
     dest = pin['destination'].removeprefix('workspace/')
