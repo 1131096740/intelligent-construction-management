@@ -9,20 +9,20 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 487,
-    "pageActionCount": 112,
+    "registeredActionCount": 486,
+    "pageActionCount": 111,
     "backgroundActionCount": 375,
     "reachableVueFileCount": 241,
     "routeRootCount": 80,
     "totalVueFileCount": 254,
     "parsedVueFileCount": 254,
     "reachableProductionModuleCount": 417,
-    "templateEventDirectiveCount": 1652,
+    "templateEventDirectiveCount": 1649,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 477,
-    "candidateProductionMutationConsumerCount": 477,
-    "acceptedProductionMutationConsumerCount": 477,
-    "productionMutationConsumerPairCount": 477,
+    "coveredProductionMutationConsumerCount": 476,
+    "candidateProductionMutationConsumerCount": 476,
+    "acceptedProductionMutationConsumerCount": 476,
+    "productionMutationConsumerPairCount": 476,
     "blockerCount": 0
   },
   "evidence": {
@@ -2331,7 +2331,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6186,
+              "sourceLine": 5789,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2377,7 +2377,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6186,
+              "sourceLine": 5789,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3525,7 +3525,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6186,
+              "sourceLine": 5789,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3569,7 +3569,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6186,
+              "sourceLine": 5789,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5132,7 +5132,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6186,
+              "sourceLine": 5789,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5176,7 +5176,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6186,
+              "sourceLine": 5789,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6238,7 +6238,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6186,
+              "sourceLine": 5789,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6284,7 +6284,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6186,
+              "sourceLine": 5789,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7526,7 +7526,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6186,
+              "sourceLine": 5789,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7570,7 +7570,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6186,
+              "sourceLine": 5789,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -16276,7 +16276,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6186,
+              "sourceLine": 5789,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -16320,7 +16320,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6186,
+              "sourceLine": 5789,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17917,7 +17917,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6186,
+              "sourceLine": 5789,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17961,7 +17961,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6186,
+              "sourceLine": 5789,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -21158,7 +21158,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6186,
+              "sourceLine": 5789,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -21202,7 +21202,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 6186,
+              "sourceLine": 5789,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -23361,7 +23361,7 @@
         "event": "confirm",
         "handler": "confirmProjectExpenseExecution",
         "kind": "event",
-        "sourceLine": 154,
+        "sourceLine": 157,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -23498,7 +23498,7 @@
         "event": "confirm",
         "handler": "confirmProjectExpenseFinance",
         "kind": "event",
-        "sourceLine": 205,
+        "sourceLine": 208,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -23650,107 +23650,6 @@
       ]
     },
     {
-      "id": "project-expense.receipt-confirm-local-status",
-      "usage": "page_action",
-      "routePaths": [
-        "/项目支出/:projectId/:expenseRequestId"
-      ],
-      "ownerRoutePaths": [
-        "/项目支出/:projectId/:expenseRequestId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
-      "trigger": {
-        "element": "sensitive-action-dialog",
-        "event": "confirm",
-        "handler": "confirmProjectExpenseReceipt",
-        "kind": "event",
-        "sourceLine": 248,
-        "sourceColumn": 8
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "projectExpenseWithdrawalCapability.availableActions",
-        "key": "confirm_receipt",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "confirmProjectExpenseReceiptWithPreflight",
-          "method": "GET",
-          "path": "/projects/:param/expense-requests/:param/approval-detail",
-          "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
-          "bodyKind": "none",
-          "nestRoute": {
-            "method": "GET",
-            "path": "/projects/:projectId/expense-requests/:expenseRequestId/approval-detail",
-            "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
-            "controller": "ProjectExpenseController",
-            "handler": "getApprovalDetail",
-            "sourceFile": "services/api/src/project-expense/project-expense.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "authenticated_only",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": null
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "confirmProjectExpenseReceipt",
-              "confirmProjectExpenseReceiptWithPreflight"
-            ]
-          },
-          "ticketFollowups": []
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "confirmProjectExpenseReceiptWithPreflight",
-          "method": "POST",
-          "path": "/projects/:param/expense-requests/:param/receipt-confirmation",
-          "normalizedKey": "POST /projects/:param/expense-requests/:param/receipt-confirmation",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/projects/:projectId/expense-requests/:expenseRequestId/receipt-confirmation",
-            "normalizedKey": "POST /projects/:param/expense-requests/:param/receipt-confirmation",
-            "controller": "ProjectExpenseController",
-            "handler": "confirmPurchaseReceipt",
-            "sourceFile": "services/api/src/project-expense/project-expense.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "project_expense.receipt_confirm"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "confirmProjectExpenseReceipt",
-              "confirmProjectExpenseReceiptWithPreflight"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
       "id": "project-expense.review-approve",
       "usage": "page_action",
       "routePaths": [
@@ -23765,7 +23664,7 @@
         "event": "confirm",
         "handler": "confirmProjectExpenseReviewApprove",
         "kind": "event",
-        "sourceLine": 328,
+        "sourceLine": 288,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -23830,7 +23729,7 @@
         "event": "confirm",
         "handler": "confirmProjectExpenseReviewReject",
         "kind": "event",
-        "sourceLine": 342,
+        "sourceLine": 302,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -23895,7 +23794,7 @@
         "event": "call",
         "handler": "voidProjectExpenseRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 2343,
+        "sourceLine": 1973,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -23960,7 +23859,7 @@
         "event": "confirm",
         "handler": "confirmProjectExpenseWithdrawal",
         "kind": "event",
-        "sourceLine": 89,
+        "sourceLine": 92,
         "sourceColumn": 8
       },
       "semantic": "business_write",

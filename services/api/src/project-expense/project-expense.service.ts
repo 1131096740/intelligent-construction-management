@@ -627,20 +627,6 @@ export class ProjectExpenseService {
     const financeContext = financeEnabled
       ? { expectedExpenseUpdatedAt: expense.updatedAt.toISOString() }
       : null;
-    const receiptEnabled =
-      expense.expenseType === "spot_purchase" &&
-      isExpenseApplicant &&
-      financeRoleAccess.actorActive &&
-      financeRoleAccess.canConfirmReceipt &&
-      expense.purchaseExecutedAt instanceof Date &&
-      !(expense.receiptConfirmedAt instanceof Date) &&
-      PROJECT_EXPENSE_RECEIPT_CONFIRMABLE_STATUSES.has(
-        expense.status
-      ) &&
-      expense.updatedAt instanceof Date;
-    const receiptContext = receiptEnabled
-      ? { expectedExpenseUpdatedAt: expense.updatedAt.toISOString() }
-      : null;
     const ended = ["withdrawn", "rejected", "voided"].includes(expense.status);
     const availableActions: DetailActionReadModel[] = [];
     const blockedReasons: string[] = [];
@@ -680,20 +666,6 @@ export class ProjectExpenseService {
           kind: "primary",
           roleKeys: actorRoleKeys,
           requiredAction: "project_expense.finance_record",
-          enabled: true,
-          requiresPassword: true,
-          skipRoleCheck: true
-        })
-      );
-    }
-    if (receiptEnabled) {
-      availableActions.push(
-        detailAction({
-          key: "confirm_receipt",
-          label: "历史收货确认",
-          kind: "primary",
-          roleKeys: actorRoleKeys,
-          requiredAction: "project_expense.receipt_confirm",
           enabled: true,
           requiresPassword: true,
           skipRoleCheck: true
@@ -826,7 +798,7 @@ export class ProjectExpenseService {
       reviewApprovalContext,
       executionContext,
       financeContext,
-      receiptContext
+      receiptContext: null
     };
   }
 

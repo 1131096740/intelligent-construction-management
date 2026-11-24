@@ -8,10 +8,10 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 473,
+    "activeBusinessActionCount": 472,
     "technicalActionCount": 10,
-    "activeBindingCount": 572,
-    "retiredWriteEntryCount": 78,
+    "activeBindingCount": 570,
+    "retiredWriteEntryCount": 79,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
@@ -5040,23 +5040,6 @@
       "causalVerified": true
     },
     {
-      "id": "project-expense.receipt-confirm-local-status",
-      "status": "unified_candidate",
-      "usage": "page_action",
-      "routePaths": [
-        "/项目支出/:projectId/:expenseRequestId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
-      "capabilityKind": "detail_action",
-      "bindingKeys": [
-        "GET /projects/:param/expense-requests/:param/approval-detail",
-        "POST /projects/:param/expense-requests/:param/receipt-confirmation"
-      ],
-      "bindingCount": 2,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
       "id": "project-expense.review-approve",
       "status": "unified_candidate",
       "usage": "page_action",
@@ -8273,6 +8256,13 @@
       "path": "/projects/:projectId/contract-takeovers/:takeoverId/confirmation",
       "controller": "ContractTakeoverController",
       "handler": "confirm",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/expense-requests/:expenseRequestId/receipt-confirmation",
+      "controller": "ProjectExpenseController",
+      "handler": "confirmPurchaseReceipt",
       "status": "gone"
     },
     {

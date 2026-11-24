@@ -4,24 +4,24 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 879,
-    "classificationOverrideCount": 234,
-    "derivedProductionPageCount": 645,
-    "classificationOverrideSha256": "e5bca7e12b8f29322664da1c2721176179ec533a09edf2dd5f9bfdc4c2624b5d",
+    "classificationOverrideCount": 235,
+    "derivedProductionPageCount": 644,
+    "classificationOverrideSha256": "7446141d30dbe4e979f9b3261af2fd732b0b14469f95ea8c27333f82ee7b652c",
     "consumerSurfaceOverrideSha256": "9a7fe70cf05a352bafa35410ffc5de999596c0ba4f0d5d5cb44ede45a5623836",
     "usageCounts": {
-      "page": 664,
+      "page": 663,
       "external_takeover": 70,
-      "exit_candidate": 91,
+      "exit_candidate": 92,
       "internal_task": 54,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 716,
+      "web_api_wrapper": 715,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 3,
       "operator_endpoint": 51,
-      "none": 102
+      "none": 103
     }
   },
   "overrides": [
@@ -1428,6 +1428,12 @@
       "path": "/expense-claims",
       "usage": "internal_task",
       "reason": "expense_claim_list_has_no_page_consumer_web_uses_ledger_and_create_endpoints_retire_pending_425"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/expense-requests/:expenseRequestId/receipt-confirmation",
+      "usage": "exit_candidate",
+      "reason": "issue_425_project_expense_receipt_confirmation_retired_preserve_historical_reads"
     }
   ],
   "consumerSurfaceOverrides": [

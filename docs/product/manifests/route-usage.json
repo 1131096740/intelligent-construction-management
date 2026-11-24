@@ -13,29 +13,29 @@
     "routeCount": 879,
     "exactRouteCount": 879,
     "normalizedRouteCount": 879,
-    "classificationOverrideCount": 234,
+    "classificationOverrideCount": 235,
     "consumerSurfaceOverrideCount": 56,
-    "classificationOverrideSha256": "e5bca7e12b8f29322664da1c2721176179ec533a09edf2dd5f9bfdc4c2624b5d",
+    "classificationOverrideSha256": "7446141d30dbe4e979f9b3261af2fd732b0b14469f95ea8c27333f82ee7b652c",
     "consumerSurfaceOverrideSha256": "9a7fe70cf05a352bafa35410ffc5de999596c0ba4f0d5d5cb44ede45a5623836",
-    "derivedProductionPageCount": 645,
-    "pageRouteCount": 664,
+    "derivedProductionPageCount": 644,
+    "pageRouteCount": 663,
     "externalTakeoverCount": 70,
-    "exitCandidateCount": 91,
+    "exitCandidateCount": 92,
     "internalTaskCount": 54,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 716,
+      "web_api_wrapper": 715,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 3,
       "operator_endpoint": 51,
-      "none": 102
+      "none": 103
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 716,
+    "productionWrapperRouteCount": 715,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -4998,7 +4998,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 6186,
+            "sourceLine": 5789,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
@@ -9825,16 +9825,6 @@
       "consumerSurface": "web_api_wrapper",
       "consumerEvidence": {
         "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "confirmProjectExpenseReceiptWithPreflight",
-            "method": "GET",
-            "normalizedPath": "/projects/:param/expense-requests/:param/approval-detail",
-            "normalizedKey": "GET /projects/:param/expense-requests/:param/approval-detail",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
-            ]
-          },
           {
             "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
             "wrapper": "fetchProjectExpenseApprovalDetail",
@@ -29506,29 +29496,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_project_expense_receipt_confirmation_retired_preserve_historical_reads",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "confirmProjectExpenseReceiptWithPreflight",
-            "method": "POST",
-            "normalizedPath": "/projects/:param/expense-requests/:param/receipt-confirmation",
-            "normalizedKey": "POST /projects/:param/expense-requests/:param/receipt-confirmation",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
