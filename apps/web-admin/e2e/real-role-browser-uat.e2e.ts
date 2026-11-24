@@ -12,6 +12,7 @@ type RoleCase = {
 const initialPassword = process.env.REAL_ROLE_PASSWORD;
 const evidencePath = process.env.REAL_BROWSER_EVIDENCE_PATH;
 const freezeApiBaseUrl = process.env.REAL_FREEZE_API_BASE_URL;
+const signedSettlementApiBaseUrl = process.env.REAL_SIGNED_SETTLEMENT_API_BASE_URL;
 const selfArchiveContractIdsRaw = process.env.REAL_BROWSER_SELF_ARCHIVE_CONTRACT_IDS;
 let selfArchiveContractIds: Record<string, unknown> = {};
 try {
@@ -74,6 +75,7 @@ function assertRuntimeConfiguration() {
   expect(freezeApiBaseUrl, "REAL_FREEZE_API_BASE_URL 必须由隔离 UAT runner 注入").toMatch(
     /^http:\/\/(?:127\.0\.0\.1|localhost):[0-9]+$/u
   );
+  expect(signedSettlementApiBaseUrl, "已签结算复核须使用隔离本机 API").toMatch(/^http:\/\/(?:127\.0\.0\.1|localhost):[0-9]+$/u);
   for (const browser of ["chromium", "webkit"]) {
     expect(signedSettlementReviewFixtures[browser], `缺少 ${browser} 已签结算复核夹具`).toMatchObject({
       projectId: expect.any(String), settlementId: expect.any(String), revision: expect.any(Number)
@@ -130,7 +132,7 @@ async function login(page: Page, account: RoleCase) {
   await expect(page.getByText("建工智管").first()).toBeVisible();
 }
 
-async function rawRequest(page: Page, role: string, method: string, path: string, body?: unknown) {
+async function rawRequest(page: Page, role: string, method: string, path: string, body?: unknown, origin?: string) {
   const auth = await page.evaluate(() => {
     const raw = window.localStorage.getItem("jiangkong-web-admin-auth");
     if (!raw) return null;
@@ -140,7 +142,7 @@ async function rawRequest(page: Page, role: string, method: string, path: string
       return null;
     }
   });
-  const response = await page.request.fetch(`/api${path}`, {
+  const response = await page.request.fetch(origin ? origin + path : `/api${path}`, {
     method,
     headers: {
       ...(auth?.accessToken ? { Authorization: `Bearer ${auth.accessToken}` } : {}),
@@ -236,7 +238,8 @@ test.describe("RC-06 real API-backed four-role browser acceptance", () => {
     await captureApiResponses(reviewerPage, reviewer.key);
     await login(reviewerPage, reviewer);
     const currentPath = `/projects/${encodeURIComponent(projectId)}/signed-contract-settlements/${encodeURIComponent(settlementId)}/review`;
-    const staleReview = await rawRequest(reviewerPage, reviewer.key, "POST", currentPath, { revision, decision: "confirm" });
+    const staleReview = await rawRequest(reviewerPage, reviewer.key, "POST", currentPath,
+      { revision, decision: "confirm" }, signedSettlementApiBaseUrl);
     expect(staleReview.status()).toBe(409);
     await reviewerContext.close();
     await context.close();

@@ -146,6 +146,8 @@ async function main() {
     runId,
     candidateSha
   });
+  const signedSettlementApiBaseUrl = process.env.TRIAL_RUN_SIGNED_SETTLEMENT_API_BASE_URL || apiBaseUrl;
+  assert(/^http:\/\/(127\.0\.0\.1|localhost):[0-9]+$/.test(signedSettlementApiBaseUrl), "真实岗位浏览器 UAT 已签结算只允许本机 API");
   const signedSettlementReviewFixtures = resolveSignedSettlementReviewFixtures({ governanceEvidencePath, runId, candidateSha });
   const freezeApiBaseUrl = process.env.REAL_FREEZE_API_BASE_URL || "";
   assert(/^http:\/\/(127\.0\.0\.1|localhost):[0-9]+$/.test(freezeApiBaseUrl), "真实岗位浏览器 UAT 缺少本机写冻结 API");
@@ -157,6 +159,7 @@ async function main() {
       env: {
         ...process.env,
         REAL_API_BASE_URL: apiBaseUrl,
+        REAL_SIGNED_SETTLEMENT_API_BASE_URL: signedSettlementApiBaseUrl,
         REAL_FREEZE_API_BASE_URL: freezeApiBaseUrl,
         REAL_ROLE_PASSWORD: password,
         REAL_BROWSER_CANDIDATE_SHA: candidateSha,
