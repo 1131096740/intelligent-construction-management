@@ -13,6 +13,16 @@ fi
 root=$(git rev-parse --show-toplevel)
 plan=$(cd "$(dirname "$0")" && pwd -P)
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-contract-adjacent.XXXXXXXX")
+source "$plan/local-build-images.sh"
+qualification_image_scope
+predecessor_worktree=
+cleanup() {
+  qualification_image_cleanup
+  if [[ -n $predecessor_worktree ]]; then
+    git -C "$root" worktree remove "$predecessor_worktree"
+  fi
+}
+trap cleanup EXIT
 bash "$plan/prepare.sh" "$root" "$sha" "$work/source" ${mode_args[@]+"${mode_args[@]}"}
 profile=browser
 case "$lane" in pol115-workbench|onboarding|procurement) profile=mobile ;; line-a) profile=api ;; esac
@@ -37,7 +47,7 @@ case "$lane" in
       predecessor=$4
       git -C "$root" merge-base --is-ancestor "$predecessor" "$sha"
       git -C "$root" worktree add --detach "$work/predecessor" "$predecessor"
-      trap 'git -C "$root" worktree remove "$work/predecessor"' EXIT
+      predecessor_worktree="$work/predecessor"
       bash "$plan/prepare.sh" "$work/predecessor" "$predecessor" "$work/predecessor-source"
       bash "$plan/build.sh" "$work/predecessor-source" "$predecessor" browser "$work/predecessor-browser"
       bash "$plan/pol275/run-pol275.sh" "$work/predecessor" "$work/predecessor-source" "$predecessor" "$work/predecessor-browser" collision
@@ -48,7 +58,9 @@ case "$lane" in
     context_sha=$(cat "$work/warm/context.sha256")
     docker build --platform linux/amd64 --target pol275-warm \
       --file "$work/warm/Dockerfile" --iidfile "$work/warm/image.id" \
-      --build-arg "CI_SOURCE_SHA=$sha" --build-arg "CONTEXT_SHA256=$context_sha" "$work/warm/context"
+      --label "org.jiangkong.contract-finance.source-sha=$sha" \
+      --label "org.jiangkong.contract-finance.context-sha256=$context_sha" \
+      --label "org.jiangkong.local-run=$JG_QUALIFICATION_LOCAL_RUN" "$work/warm/context"
     bash "$plan/pol275/run-pol275.sh" "$root" "$work/source" "$sha" "$work/warm" warm ${mode_args[@]+"${mode_args[@]}"}
     ;;
   onboarding) bash "$plan/onboarding/run-onboarding295.sh" "$root" "$work/source" "$sha" "$work/browser" ${mode_args[@]+"${mode_args[@]}"} ;;

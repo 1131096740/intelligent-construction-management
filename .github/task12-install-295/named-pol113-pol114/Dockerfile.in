@@ -6,15 +6,24 @@ ENV COREPACK_HOME=/opt/corepack
 COPY --chmod=0644 checkout.cjs installer.cjs exact-source.json install-only.cjs source-seal.txt source-admission.json /qualification/
 COPY source/ ./
 RUN corepack enable pnpm && corepack prepare pnpm@9.15.9 --activate  && pnpm --filter @jiangkong/api... install --frozen-lockfile
+WORKDIR /qualification/workspace
+COPY workspace/package.json workspace/pnpm-lock.yaml workspace/pnpm-workspace.yaml ./
+COPY workspace/packages/shared-domain/package.json packages/shared-domain/
+COPY workspace/services/api/package.json services/api/
+COPY workspace/apps/web-admin/package.json apps/web-admin/
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/jg-playwright
+RUN apt-get update && apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc fonts-noto-cjk \
+ && pnpm --filter @jiangkong/api... --filter @jiangkong/web-admin... install --frozen-lockfile \
+ && pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit
 @RUNTIME_COPY@
 RUN install -d -m 0755 /qualification/named292
 COPY --chmod=0644 named292/successor.cjs named292/scope.json named292/tree-proof.json named292/successor.sql /qualification/named292/
 COPY source/ /qualification/named-source/
 COPY named-authority-modules/ /qualification/named-source/services/api/prisma/
-WORKDIR /qualification/workspace
 COPY workspace/ ./
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/jg-playwright
-RUN apt-get update && apt-get install --yes --no-install-recommends libreoffice-writer libreoffice-calc fonts-noto-cjk  && pnpm --filter @jiangkong/api... --filter @jiangkong/web-admin... install --frozen-lockfile  && pnpm --filter @jiangkong/shared-domain build  && pnpm --filter @jiangkong/api exec prisma generate  && pnpm --filter @jiangkong/web-admin exec playwright install --with-deps chromium webkit  && pnpm --filter @jiangkong/web-admin exec node scripts/verify-linux-webkit-runtime.cjs
+RUN pnpm --filter @jiangkong/shared-domain build \
+ && pnpm --filter @jiangkong/api exec prisma generate \
+ && pnpm --filter @jiangkong/web-admin exec node scripts/verify-linux-webkit-runtime.cjs
 ARG JG_NAMED_BUILD_POL114=0
 RUN case "$JG_NAMED_BUILD_POL114" in 0) ;; 1) COREPACK_ENABLE_NETWORK=0 NODE_OPTIONS=--max-old-space-size=4096 pnpm --filter @jiangkong/api build && node /qualification/preflight-layout-dist.cjs /qualification/workspace ;; *) exit 64 ;; esac
 ARG JG_NAMED_CANDIDATE_SHA

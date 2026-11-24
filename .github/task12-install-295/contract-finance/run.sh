@@ -7,12 +7,22 @@ sha=$1
 root=$(git rev-parse --show-toplevel)
 plan=$(cd "$(dirname "$0")" && pwd -P)
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-contract-finance.XXXXXXXX")
+source "$plan/local-build-images.sh"
+qualification_image_scope
+predecessor_worktree=
+cleanup() {
+  qualification_image_cleanup
+  if [[ -n $predecessor_worktree ]]; then
+    git -C "$root" worktree remove "$predecessor_worktree"
+  fi
+}
+trap cleanup EXIT
 
 if [[ $# == 3 ]]; then
   predecessor=$3
   git -C "$root" merge-base --is-ancestor "$predecessor" "$sha"
   git -C "$root" worktree add --detach "$work/predecessor" "$predecessor"
-  trap 'git -C "$root" worktree remove "$work/predecessor"' EXIT
+  predecessor_worktree="$work/predecessor"
 
   bash "$plan/prepare.sh" "$root" "$sha" "$work/source" --current-320
   bash "$plan/prepare.sh" "$work/predecessor" "$predecessor" "$work/predecessor-source"

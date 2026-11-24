@@ -31,8 +31,9 @@ assert not any(p.is_symlink() for p in paths)
 assert [{'path':p.relative_to(root).as_posix(),'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in paths if p.is_file()]==json.loads(payload)
 PY
 awk '
+  BEGIN {print "ARG JG_CONTRACT_FINANCE_TOOLS=deps"}
   /^FROM postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d$/ {
-    print $0 " AS contract-finance-api"; count++; next
+    print $0 " AS contract-finance-loader"; count++; next
   }
   {print}
   END {if (count != 1) exit 1}

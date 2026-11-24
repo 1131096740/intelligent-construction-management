@@ -7,6 +7,9 @@ sha=$1
 root=$(git rev-parse --show-toplevel)
 plan=$(cd "$(dirname "$0")" && pwd -P)
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-remaining-dynamic.XXXXXXXX")
+source "$plan/local-build-images.sh"
+qualification_image_scope
+trap qualification_image_cleanup EXIT
 
 bash "$plan/prepare.sh" "$root" "$sha" "$work/source" "${@:2}"
 bash "$plan/build.sh" "$work/source" "$sha" browser "$work/browser"

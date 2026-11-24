@@ -23,10 +23,14 @@ JS
 if pgrep -x postgres >/dev/null; then exit 65; fi
 mkdir "$evidence"
 evidence=$(cd "$evidence" && pwd -P)
+source "$(dirname "$0")/../contract-finance/local-build-images.sh"
+qualification_image_scope
+trap qualification_image_cleanup EXIT
 seal=$(shasum -a 256 "$generated/context.sha256" | cut -d' ' -f1)
 build_pol114=0
 [[ $mode != pol114 ]] || build_pol114=1
 docker build --platform linux/amd64 --iidfile "$evidence/image.id" \
+  --label "org.jiangkong.local-run=$JG_QUALIFICATION_LOCAL_RUN" \
   --build-arg "JG_NAMED_BUILD_POL114=$build_pol114" --build-arg "JG_NAMED_CANDIDATE_SHA=$ref" \
   --build-arg "JG_NAMED_CONTEXT_SHA=$seal" "$generated/context"
 image=$(cat "$evidence/image.id")
