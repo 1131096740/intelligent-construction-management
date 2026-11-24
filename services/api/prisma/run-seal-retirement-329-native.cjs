@@ -8,7 +8,7 @@ const net = require("node:net");
 const path = require("node:path");
 const os = require("node:os");
 const controls = require("./local-staged-migration-controls.cjs");
-const { createLocalTailQualification } = require("./local-staged-tail-qualification.cjs");
+const { createLocalTailQualification, localTailFailureDiagnostic } = require("./local-staged-tail-qualification.cjs");
 
 const api = path.resolve(__dirname, "..");
 const root = path.resolve(api, "../..");
@@ -216,8 +216,14 @@ async function main(args) {
       // Some tools return connection strings and fixture secrets on failure.
       // Each command's projection is limited to its status and business stage.
       const diagnostic = result.stdout?.match(/SEAL_329_NATIVE_FAILURE (\{[^\n]{1,500}\})/u)?.[1];
-      const databaseCode = result.stderr?.match(/(?:Error: |SQL state: )(P[0-9]{4}|[0-9A-Z]{5})\b/u)?.[1];
-      firstFailure ??= { stage: phase, exit: result.status, signal: result.signal ?? undefined, databaseCode, ...(diagnostic ? { diagnostic: JSON.parse(diagnostic) } : {}) };
+      const errorText = result.stderr ?? "";
+      const prismaCode = errorText.match(/(?:Error: |^)(P[0-9]{4})\b/mu)?.[1];
+      const sqlState = (errorText.match(/Database error code:\s*([0-9A-Z]{5})\b/u) ??
+        errorText.match(/^(?:psql:.*?: )?ERROR:\s+([0-9A-Z]{5}):/mu))?.[1];
+      const reportedMigration = errorText.match(/Migration name:\s*(\d{14}_[a-z0-9_]{1,140})\b/u)?.[1];
+      const migration = source.ledger.some(row => row.name === reportedMigration) ? reportedMigration : undefined;
+      firstFailure ??= { stage: phase, exit: result.status, signal: result.signal ?? undefined, prismaCode, sqlState, migration,
+        ...(diagnostic ? { diagnostic: JSON.parse(diagnostic) } : {}) };
       throw new Error("NATIVE_329_COMMAND");
     }
     return result.stdout;
@@ -312,7 +318,9 @@ async function main(args) {
     receipt.status = "PASSED";
   } catch (error) {
     receipt.status = "FAILED";
-    receipt.firstFailure = firstFailure ?? { stage: phase, code: typeof error.code === "string" && /^[A-Z0-9_]{1,50}$/u.test(error.code) ? error.code : "CHECK_FAILED" };
+    const tail = localTailFailureDiagnostic(error);
+    receipt.firstFailure = firstFailure ?? { stage: phase, code: typeof error.code === "string" && /^[A-Z0-9_]{1,50}$/u.test(error.code) ? error.code : "CHECK_FAILED",
+      ...(tail ? { tail } : {}) };
   } finally {
     try {
       if (startAttempted && fs.existsSync(path.join(data, "postmaster.pid"))) {
