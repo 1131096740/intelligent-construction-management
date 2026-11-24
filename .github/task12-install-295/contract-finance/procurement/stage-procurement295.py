@@ -137,6 +137,44 @@ if current320:
         if text.count(anchor) != 1:
             raise ValueError('PROCUREMENT_320_PROJECT_READ_ANCHOR')
         text = text.replace(anchor, reads)
+        spec = out / 'workspace/services/api/src/database/project-business-scope-http-postgres.spec.ts'
+        fixture = spec.read_text()
+        reviewers = {
+            '  let financeDirector: Actor;': '  let financeDirector: Actor;\n  let contractDirector: Actor;',
+            '    await person("contract_director", [null]);':
+                '    contractDirector = await person("contract_director", [null]);',
+            'materialDirector, financeDirector, employee]) {':
+                'materialDirector, financeDirector, contractDirector, employee]) {',
+            'for (const actor of [financeDirector, chairman]) {':
+                'for (const actor of [financeDirector, contractDirector, chairman]) {',
+        }
+        for old, new in reviewers.items():
+            if fixture.count(old) != 1:
+                raise ValueError('PROCUREMENT_320_PROJECT_APPROVAL_REVIEWER_ANCHOR')
+            fixture = fixture.replace(old, new)
+        signature = '  async function advanceInput() {'
+        coordinates = '''  function paymentApprovalCoordinates(context: Record<string, unknown>) {
+    const { expectedPaymentUpdatedAt, expectedApprovalInstanceId, expectedNodeIndex, expectedApprovalUpdatedAt } = context;
+    return { expectedPaymentUpdatedAt, expectedApprovalInstanceId, expectedNodeIndex, expectedApprovalUpdatedAt };
+  }
+
+'''
+        if fixture.count(signature) != 1:
+            raise ValueError('PROCUREMENT_320_PROJECT_APPROVAL_HELPER_ANCHOR')
+        fixture = fixture.replace(signature, coordinates + signature)
+        start = fixture.index('  it("普通付款继承合同项目，错误全局项目经理或其他项目经理都不能代批"')
+        end = fixture.index('  it("公司级合同经办可选所有启用项目，项目经办只可选所属项目"', start)
+        payment_case = fixture[start:end]
+        context_uses = {
+            'firstView': 2, 'managerView': 1, 'view': 1, 'directorView': 1,
+            'selfView': 2, 'pendingView': 2, 'delegatedView': 1,
+        }
+        for detail, expected in context_uses.items():
+            spread = f'...{detail}.body.reviewApprovalContext'
+            if payment_case.count(spread) != expected:
+                raise ValueError('PROCUREMENT_320_PROJECT_APPROVAL_COORDINATES_ANCHOR')
+            payment_case = payment_case.replace(spread, f'...paymentApprovalCoordinates({detail}.body.reviewApprovalContext)')
+        write(spec, (fixture[:start] + payment_case + fixture[end:]).encode())
     if lane == 'general16':
         anchor = '  await ownerSql("ROLE_SETUP",roleSetup("procurement",database,password));'
         reads = r'''  const originalSetup=roleSetup("procurement",database,password);
