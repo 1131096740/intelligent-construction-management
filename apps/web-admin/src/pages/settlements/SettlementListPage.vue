@@ -2,7 +2,7 @@
   <section class="settlement-page">
     <BusinessPageHeader
       title="结算工作台"
-      description="统一查看结算台账、当前草稿和办理事项；结算生效仍以审批和归档确认事实为准。"
+      description="查看结算台账、历史草稿和待处理事项。"
     >
       <template #actions>
         <t-button
@@ -40,7 +40,7 @@
       <t-tab-panel
         v-if="canManageSettlements"
         value="my_drafts"
-        :label="`我的草稿 ${lifecycleSummary.my_drafts}`"
+        :label="`历史草稿 ${lifecycleSummary.my_drafts}`"
       />
       <t-tab-panel
         v-if="canManageSettlements"
@@ -239,10 +239,10 @@
       <EmptyBusinessState
         v-else-if="!errorMessage"
         title="当前条件下暂无结算记录"
-        :description="canManageSettlements
-          ? '可以调整筛选条件；如需发起新结算，请选择“新建结算”。'
+        :description="canRegisterSignedSettlement
+          ? '可以调整筛选条件；如需登记新结算，请选择“已签结算登记”。'
           : '可以调整筛选条件，或刷新后再次查看当前权限范围内的结算记录。'"
-        :actions="canManageSettlements ? [{ label: '新建结算', to: '/结算工作台/新建' }] : []"
+        :actions="canRegisterSignedSettlement ? [{ label: '已签结算登记', to: '/结算工作台/已签登记' }] : []"
       />
 
       <footer class="ledger-footer">

@@ -67,9 +67,9 @@ describe("settlement capability gates", () => {
     expect(workbenchPage).toContain("fetchSettlementProjectCapability");
   });
 
-  it("rechecks copy and line attachment actions against the project capability", () => {
-    expect(listPage).toContain("copySettlementDraftWithCapability");
-    expect(listPage).toContain('"copy_abandoned_draft"');
+  it("removes ledger copying while preserving historical editor capability checks", () => {
+    expect(listPage).not.toContain("copySettlementDraftWithCapability");
+    expect(listPage).not.toContain('"copy_abandoned_draft"');
     expect(lineAttachmentPanel).toContain("attachSettlementLineFileWithCapability");
     expect(lineAttachmentPanel).toContain('"attach_line_file"');
     expect(lineAttachmentPanel).toContain("invalidateSettlementLineAttachmentWithCapability");
