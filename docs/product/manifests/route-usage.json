@@ -13,29 +13,29 @@
     "routeCount": 879,
     "exactRouteCount": 879,
     "normalizedRouteCount": 879,
-    "classificationOverrideCount": 254,
-    "consumerSurfaceOverrideCount": 57,
-    "classificationOverrideSha256": "664a5215f04d3e44b490e2e3760fde4ba0cf7d03d52eb9dea0ee6dc0ddfe0adc",
-    "consumerSurfaceOverrideSha256": "babfba79d5a19194cbea430bb6e03c6cd7adf4508a4a44121c8a4f651ab5d19f",
-    "derivedProductionPageCount": 625,
-    "pageRouteCount": 644,
+    "classificationOverrideCount": 262,
+    "consumerSurfaceOverrideCount": 58,
+    "classificationOverrideSha256": "b7954471df47f0ea849cdfba1b91444d78b62b8c928c49a046d7e049b5d6af6b",
+    "consumerSurfaceOverrideSha256": "8ff2b87dd9f8ac991d63775dd8eff49190c4d322769362420cc6cc3ec2f68e78",
+    "derivedProductionPageCount": 617,
+    "pageRouteCount": 636,
     "externalTakeoverCount": 70,
-    "exitCandidateCount": 110,
-    "internalTaskCount": 55,
+    "exitCandidateCount": 117,
+    "internalTaskCount": 56,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 696,
+      "web_api_wrapper": 688,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 2,
-      "operator_endpoint": 53,
-      "none": 121
+      "operator_endpoint": 54,
+      "none": 128
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 696,
+    "productionWrapperRouteCount": 688,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -4728,26 +4728,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_historical_employee_loan_repayment_capability_read",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-            "wrapper": "fetchExpenseClaimRepaymentActionCapability",
-            "method": "GET",
-            "normalizedPath": "/expense-claims/:param/repayments/:param/capability",
-            "normalizedKey": "GET /expense-claims/:param/repayments/:param/capability",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_425_historical_employee_loan_repayment_capability_read"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -21553,29 +21542,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-            "wrapper": "uploadExpenseClaimLoanDisbursementVoucherFile",
-            "method": "POST",
-            "normalizedPath": "/expense-claims/:param/disbursement-voucher-file-uploads",
-            "normalizedKey": "POST /expense-claims/:param/disbursement-voucher-file-uploads",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -21594,29 +21572,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-            "wrapper": "recordExpenseClaimLoanDisbursement",
-            "method": "POST",
-            "normalizedPath": "/expense-claims/:param/disbursements",
-            "normalizedKey": "POST /expense-claims/:param/disbursements",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -21758,29 +21725,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-            "wrapper": "generateExpenseClaimFinalDisbursementPdf",
-            "method": "POST",
-            "normalizedPath": "/expense-claims/:param/final-disbursement-pdf",
-            "normalizedKey": "POST /expense-claims/:param/final-disbursement-pdf",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -21967,29 +21923,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-            "wrapper": "uploadExpenseClaimLoanRepaymentVoucherFile",
-            "method": "POST",
-            "normalizedPath": "/expense-claims/:param/repayment-voucher-file-uploads",
-            "normalizedKey": "POST /expense-claims/:param/repayment-voucher-file-uploads",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -22008,29 +21953,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-            "wrapper": "recordExpenseClaimLoanRepayment",
-            "method": "POST",
-            "normalizedPath": "/expense-claims/:param/repayments",
-            "normalizedKey": "POST /expense-claims/:param/repayments",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -22049,29 +21983,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-            "wrapper": "confirmExpenseClaimLoanRepayment",
-            "method": "POST",
-            "normalizedPath": "/expense-claims/:param/repayments/:param/confirmation",
-            "normalizedKey": "POST /expense-claims/:param/repayments/:param/confirmation",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -22090,29 +22013,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_employee_loan_cash_writes_retired_preserve_historical_reads",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/expense-claim.api.ts",
-            "wrapper": "reverseExpenseClaimLoanRepayment",
-            "method": "POST",
-            "normalizedPath": "/expense-claims/:param/repayments/:param/reversal",
-            "normalizedKey": "POST /expense-claims/:param/repayments/:param/reversal",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
