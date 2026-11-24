@@ -2,7 +2,7 @@
 
 ## 2026-11-24 #382 集成与 #424 验收接续
 
-GitHub 的 45 项中 41 项已关闭，开放项为 #424 至 #427，按依赖继续。#424 的 #393、#407、#418、#423 四个前置均已关闭。草稿 PR #428 的远端头 `e183106d` 对应 [CI 45286191016](https://github.com/1131096740/intelligent-construction-management/actions/runs/45286191016)，终态 50 项通过、6 项失败。失败项为综合采购、费用收货、公司代付原债更正、Line A、剩余动态分片及发布汇总。上一候选 `619b4b44c` 的 [CI 45283155969](https://github.com/1131096740/intelligent-construction-management/actions/runs/45283155969) 终态 47 项通过、9 项失败。
+GitHub 的 45 项中 41 项已关闭，开放项为 #424 至 #427，按依赖继续。#424 的 #393、#407、#418、#423 四个前置均已关闭。草稿 PR #428 的远端头 `b689df80` 对应 [CI 45294751072](https://github.com/1131096740/intelligent-construction-management/actions/runs/45294751072)，Line A 已通过，综合采购及 #410 已失败，其余分片继续。上一候选 `e183106d` 的 [CI 45286191016](https://github.com/1131096740/intelligent-construction-management/actions/runs/45286191016) 终态 50 项通过、6 项失败。
 
 费用收货分片的 329 备料摘要与已固定原用例的实际补丁结果不符。隔离候选 `d29e8e96` 仅同步该摘要，三项费用备料逐字节核对通过，原收货用例内容不变。正式隔离入口的应用用例 1/1、历史有效数据迁移和七项历史拒绝检查均通过。前两段核对前后 329 条迁移与 B7，三段资源已清理。修订已合入本地 `b0e52ff9`，随历史接管和 Line A 提交复验。[精确费用收货回执](/private/tmp/jg382-expense-receipt-runtime.HwpKozi0/exact.log)。
 
@@ -41,6 +41,10 @@ POL114 合同版式浏览器夹具 `231144a10` 改用现行预览及下载入口
 远端 `619b4b44c` 的 PostgreSQL 留存检查通过，随后同一分片在启动项目资金用例时退出。集成提交 `4409931fa` 修复暂存文件的挂载权限，隔离 Linux 容器确认 `postgres` 用户可读取修订后的三个只读文件。精确候选 `555a2f57a` 用正式入口通过项目资金可用额度并发 1/1 和 `generic-batch` 13 套 56/56。两段均核对前后 329 条迁移、B7 及资源清理。远端 `e183106d` 已通过留存与项目资金，后续 `takeover-task1` 未观测到并发屏障，完整分片仍失败。[远端分片](https://github.com/1131096740/intelligent-construction-management/actions/runs/45286191016/job/138083011128) · [本地项目资金回执](/private/tmp/jg382-owner-mount-runtime.sFZ52FVM/jg-remaining-project-funding.Asnu0nMi/receipt.json) · [批次回执](/private/tmp/jg382-owner-mount-runtime.sFZ52FVM/jg-remaining-generic-batch.ixJvR0Q7/receipt.json)。
 
 #410 以 `555a2f57a` 的完整 329 安装复现履约成本来源拒绝安装器所有者读取。精确独立候选 `1d09ae4c` 保留完整比对，两个用例均进入已核验 TLS 与角色的受限连接，后续原债更正只读例程拒绝执行。独立 `443beba6` 加入该隔离例程的临时执行权限与撤销核验，精确镜像的定向诊断显示两条比对均继续到业主结算来源读取才被拒绝。两轮 329 隔离资源均已清理，未扩大该表权限，#410 完整分片仍失败。[原首错回执](/private/tmp/jg382-task410-diagnostic.yVrjmFP9/jg-finance-company-proxy-repayment.mIL6pUDC/receipt.json) · [后续精确诊断](/private/tmp/jg382-task410-plan-runtime.YCPVCwUT/narrow.log)。
+
+#410 独立候选 `4fb32494` 为完整台账比对使用单独的临时只读 TLS 角色，保持原测试角色不能直读业主结算表。两条用例进入新连接的台账比对后仍失败，回执仅给出调用点，具体失败原因仍待定位。329 环境已清理，未合入草稿。[只读角色复验](/private/tmp/jg382-task410-reader-runtime.W3ase1sW/exact.log)。
+
+综合采购在 `b689df80` 的 329 精确应用与诊断叠加层上复现 11 通过、5 失败。业务启动后确认 `ActualPurchaseBatch` 及 `PaymentExecutionRefund` 读取拒绝。独立候选 `5e518aae` 限定采购列表及费用实付相关读取列，未增加表级读写权限，综合采购及项目采购备料通过。仅叠加该夹具的原始完整用例已启动，结果待收。[权限诊断回执](/private/tmp/jg382-general-procurement-runtime.zoTehRW6/diagnostic.log)。
 
 Line A 精确候选 `f5f6430be` 在隔离 PostgreSQL 16 完整安装 329 条迁移，原 HTTP 用例 12 项全通过，零跳过。覆盖补充协议复核、已签结算及付款依据、履约三职责与并发付款唯一占用。前后账本和 B7 一致，临时角色及见证已清理。当前已和 `58a8f801` 的历史接管重放修复一并合入本地，各自执行源码与实跑候选一致。[Line A 精确回执](docs/progress/2026-11-24-line-a-329.md)。
 
