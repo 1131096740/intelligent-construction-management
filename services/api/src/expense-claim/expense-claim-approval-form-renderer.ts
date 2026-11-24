@@ -33,18 +33,21 @@ export type ExpenseClaimApprovalFormInput = {
     receiptCount: number;
     amountCents: bigint;
   }>;
-  approvals: Array<{
-    name: string;
-    position: string;
-    comment: string;
-    signedAt: Date;
-    signature: Buffer | null;
-  }>;
+  approvals: ExpenseApprovalRow[];
+  incomplete?: boolean;
   watermark?: string[];
 };
 
+type ExpenseApprovalRow = {
+  name: string;
+  position: string;
+  comment: string;
+  signedAt: Date;
+  signature: Buffer | null;
+} | { position: string; pending: true };
+
 /**
- * 费用报销、借款审批完成版的固定 A5 横向原件。
+ * 费用审批单使用固定 A5 横向版式。
  *
  * 该渲染器只接受已冻结的业务快照和审批签名快照；付款/归档后续版本由
  * 对应领域服务另行追加，绝不覆盖此审批完成版。
@@ -65,7 +68,7 @@ export async function renderExpenseClaimApprovalForm(
   const detailLines = input.claimType === "reimbursement" ? input.lines : [];
   const firstPageLines = detailLines;
 
-  doc.fontSize(17).text(title, margin, 16, { width: contentWidth, align: "center" });
+  doc.fontSize(17).text(input.incomplete ? `${title}（审批未完成）` : title, margin, 16, { width: contentWidth, align: "center" });
   let y = 44;
   y = row(doc, margin, y, [78, contentWidth - 78], 24, ["使用单位", input.companyName]);
   y = row(doc, margin, y, [64, 210, 64, contentWidth - 338], 24, [
@@ -129,9 +132,9 @@ export async function renderExpenseClaimApprovalForm(
   }
 
   y += 3;
-  y = drawApprovalRows(doc, margin, y, contentWidth, input.approvals);
+  y = drawApprovalRows(doc, margin, y, contentWidth, input.approvals, input.incomplete === true);
   doc.fontSize(7.5).text(
-    "最终审批通过后留存",
+    input.incomplete ? "仅供查看办理进度" : "最终审批通过后留存",
     margin,
     Math.min(y + 4, doc.page.height - 18),
     { width: contentWidth }
@@ -214,25 +217,31 @@ function drawCells(doc: PDFKit.PDFDocument, startX: number, y: number, widths: n
 }
 
 function drawApprovalRows(doc: PDFKit.PDFDocument, startX: number, startY: number, width: number,
-  approvals: ExpenseClaimApprovalFormInput["approvals"]) {
-  if (!approvals.length || approvals.some(approval => !approval.signature || !approval.name.trim())) {
+  approvals: ExpenseApprovalRow[], incomplete: boolean) {
+  if (!approvals.length || approvals.some(approval =>
+    "pending" in approval ? !incomplete : !approval.signature || !approval.name.trim()
+  )) {
     throw new BadRequestException("实际签批记录或手写签名不完整，不能生成正式审批单");
   }
   const widths = [78, 98, width - 292, 116];
   const header = ["审批岗位", "审批人/时间", "审批意见", "手写签名"];
   let y = row(doc, startX, startY, widths, 18, header, true);
   for (const approval of approvals) {
-    const cells = [approval.position, `${approval.name}\n${approvalDateTime(approval.signedAt)}`, approval.comment, ""];
+    const cells = "pending" in approval
+      ? [approval.position, "", "", ""]
+      : [approval.position, `${approval.name}\n${approvalDateTime(approval.signedAt)}`, approval.comment, ""];
     const layout = fitRow(doc, widths, cells, 34, 8);
     if (y + layout.height > doc.page.height - 25) {
       y = ensureSpace(doc, y, layout.height + 18);
       y = row(doc, startX, y, widths, 18, header, true);
     }
     drawCells(doc, startX, y, widths, layout.height, cells, layout.fontSize);
-    try {
-      doc.image(approval.signature!, startX + width - 112, y + 4, { fit: [108, Math.min(42, layout.height - 8)], align: "center", valign: "center" });
-    } catch {
-      throw new BadRequestException("审批签名图片无法解码，不能生成正式审批单");
+    if (!("pending" in approval)) {
+      try {
+        doc.image(approval.signature!, startX + width - 112, y + 4, { fit: [108, Math.min(42, layout.height - 8)], align: "center", valign: "center" });
+      } catch {
+        throw new BadRequestException("审批签名图片无法解码，不能生成审批单");
+      }
     }
     y += layout.height;
   }

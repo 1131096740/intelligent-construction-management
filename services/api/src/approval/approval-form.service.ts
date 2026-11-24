@@ -2,6 +2,7 @@ import { isPendingLegacyContractCutover, readLegacyContractSignature } from "../
 import { isDeepStrictEqual } from "node:util";
 import { contractPendingApprovalSnapshot } from "../contract/contract-parallel-duty-access";
 import { hasVersionedApprovalNodes, isParallelApprovalRound } from "./parallel-approval-protocol";
+import { ApprovalProgressService } from "./approval-progress.service";
 import { approvalDate as formatDate, approvalDateTime as formatDateTime } from "./approval-date";
 import { drawApprovalTable as drawTable } from "./approval-pdf-table";
 import { additionalApprovalFacts, ADDITIONAL_APPROVAL_TITLES } from "./approval-business-facts";
@@ -12,6 +13,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  NotFoundException,
   Optional
 } from "@nestjs/common";
 import { Prisma, type ApprovalInstance } from "@prisma/client";
@@ -235,7 +237,34 @@ interface RenderInput {
     createdAt: Date;
   }>;
   watermark?: string[];
-  expenseClaim?: Omit<ExpenseClaimApprovalFormInput, "code" | "companyName" | "applicantName" | "watermark">;
+  expenseClaim?: Omit<ExpenseClaimApprovalFormInput, "code" | "companyName" | "applicantName" | "incomplete" | "watermark">;
+}
+
+function expenseApprovalRows(
+  nodes: FrozenNode[],
+  logs: RenderInput["logs"],
+  incomplete: boolean
+): ExpenseClaimApprovalFormInput["approvals"] {
+  const approvals = logs.filter(log => log.actionKey === "approve");
+  const signed = (log: RenderInput["logs"][number]) => ({
+    name: log.name,
+    position: log.position,
+    comment: [log.relationship, log.comment].filter(Boolean).join("；"),
+    signedAt: log.createdAt,
+    signature: log.signature
+  });
+  if (!incomplete) return approvals.map(signed);
+
+  return nodes.flatMap<ExpenseClaimApprovalFormInput["approvals"][number]>(node => {
+    if (node.mode === "all") {
+      return node.roleKeys.map(role => {
+        const log = approvals.find(approval => approval.approvedRoleKey === role);
+        return log ? signed(log) : { position: roleLabel(role), pending: true as const };
+      });
+    }
+    const log = approvals.find(approval => node.roleKeys.some(role => role === approval.approvedRoleKey));
+    return [log ? signed(log) : { position: node.name, pending: true }];
+  });
 }
 
 interface ProjectPaymentApprovalRowsInput {
@@ -556,7 +585,9 @@ export class ApprovalFormService {
     @Optional()
     private readonly auth?: AuthService,
     @Optional()
-    private readonly spotAccess?: SpotProcurementAccessService
+    private readonly spotAccess?: SpotProcurementAccessService,
+    @Optional()
+    private readonly approvalProgress?: ApprovalProgressService
   ) {}
 
   async downloadAvailability(businessType: string, businessId: string, actorUserId: string) {
@@ -568,14 +599,12 @@ export class ApprovalFormService {
       if (!instance) return { available: false };
       const pendingContract = businessType === "contract_version" && instance.status === "in_progress";
       // 新并联机制允许办理中下载当前轮审批单；旧串联在途材料维持原规则。
-      // 报销审批单渲染器要求全部签批，办理中不生成半成品；其余并联流程按职责留空。
       const pendingParallelRound = !pendingContract && !SPOT_PROCUREMENT_APPROVAL_TYPES.has(businessType) &&
-        businessType !== "expense_claim" &&
         APPROVAL_ROUND_ACTIVE_STATUSES.has(instance.status) && isParallelApprovalRound(instance.frozenNodes);
       if (SPOT_PROCUREMENT_APPROVAL_TYPES.has(businessType)) {
         if (!this.spotAccess || await this.spotAccess.resolveBusinessDownloadAccess(businessType, businessId, actorUserId) !== "allowed") return { available: false };
       } else if (pendingParallelRound) {
-        await this.files.assertCanViewApprovalFlow(businessType, businessId, actorUserId);
+        await this.assertCanViewPendingParallelRound(this.prisma, this.files, instance, actorUserId);
       } else await this.files.assertCanDownloadApprovalFormByBusiness(businessType, businessId, actorUserId);
       if (pendingContract) {
         const snapshot = await this.pendingContractRound(businessId, instance);
@@ -591,7 +620,8 @@ export class ApprovalFormService {
       await additionalApprovalFacts(this.prisma, businessType, businessId, logs, instance.id);
       return incomplete ? { available: true, incomplete: true } : { available: true };
     } catch (error) {
-      if (error instanceof BadRequestException || error instanceof ForbiddenException || error instanceof ConflictException) return { available: false };
+      if (error instanceof BadRequestException || error instanceof ForbiddenException || error instanceof ConflictException ||
+          (businessType === "expense_claim" && error instanceof NotFoundException)) return { available: false };
       throw error;
     }
   }
@@ -1113,7 +1143,7 @@ export class ApprovalFormService {
       where: { businessType, businessId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }]
     });
     const pendingParallelRound = currentInstance && businessType !== "contract_version" &&
-      !SPOT_PROCUREMENT_APPROVAL_TYPES.has(businessType) && businessType !== "expense_claim" &&
+      !SPOT_PROCUREMENT_APPROVAL_TYPES.has(businessType) &&
       APPROVAL_ROUND_ACTIVE_STATUSES.has(currentInstance.status) &&
       isParallelApprovalRound(currentInstance.frozenNodes);
     if (businessType === "contract_version") {
@@ -1131,7 +1161,7 @@ export class ApprovalFormService {
         throw new ForbiddenException("当前账号无权下载该零星采购审批单");
       }
     } else if (pendingParallelRound) {
-      await this.files.assertCanViewApprovalFlow(businessType, businessId, downloaderUserId);
+      await this.assertCanViewPendingParallelRound(this.prisma, this.files, currentInstance, downloaderUserId);
     } else {
       await this.files.assertCanDownloadApprovalFormByBusiness(
         businessType,
@@ -1300,6 +1330,22 @@ export class ApprovalFormService {
     await this.audit.record(prisma, { actorUserId: downloaderUserId, action: "approval.form.download", businessType, businessId,
       metadata: { approvalInstanceId: instance.id, businessCode: input.businessCode, downloadReason, incomplete: true } });
     return { buffer, fileName: `审批未完成-${approvalFileName(input)}` };
+  }
+
+  private async assertCanViewPendingParallelRound(
+    prisma: PrismaService, files: FileService, instance: ApprovalInstance, actorUserId: string
+  ) {
+    if (instance.businessType !== "expense_claim") {
+      return files.assertCanViewApprovalFlow(instance.businessType, instance.businessId, actorUserId);
+    }
+    const claim = await prisma.expenseClaim.findUnique({
+      where: { id: instance.businessId },
+      select: { status: true, voidedAt: true, approvalInstanceId: true }
+    });
+    if (!this.approvalProgress || claim?.status !== "approval_pending" || claim.voidedAt || claim.approvalInstanceId !== instance.id) {
+      throw new NotFoundException("当前费用审批单不存在或已失效");
+    }
+    await this.approvalProgress.detail(instance.id, actorUserId, true);
   }
 
   /**
@@ -1494,6 +1540,7 @@ export class ApprovalFormService {
       };
     });
 
+    const nodes = instance.frozenNodes as unknown as FrozenNode[];
     return {
       approvalActionSetHash,
       incompleteContract: Boolean(pendingContract),
@@ -1508,20 +1555,12 @@ export class ApprovalFormService {
       businessCode,
       applicantName,
       summary,
-      nodes: instance.frozenNodes as unknown as FrozenNode[],
+      nodes,
       logs: renderedLogs,
       ...(expenseClaim ? {
         expenseClaim: {
           ...expenseClaim,
-          approvals: renderedLogs
-            .filter((log) => log.actionKey === "approve")
-            .map((log) => ({
-              name: log.name,
-              position: log.position,
-              comment: [log.relationship, log.comment].filter(Boolean).join("；"),
-              signedAt: log.createdAt,
-              signature: log.signature
-            }))
+          approvals: expenseApprovalRows(nodes, renderedLogs, evidenceStatus === "approval_pending")
         }
       } : {})
     };
@@ -1954,6 +1993,7 @@ export class ApprovalFormService {
         code: input.businessCode,
         companyName: input.companyName,
         applicantName: input.applicantName,
+        incomplete: input.incompleteRound,
         watermark: input.watermark
       });
     }

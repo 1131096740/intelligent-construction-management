@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { PDFDocument } from "pdf-lib";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { markFormalApprovalPdf } from "./approval-pdf-watermark";
 import {
   ApprovalFormService,
@@ -3336,23 +3336,76 @@ it("并联办理中的非合同流程可下载当前轮审批单：已签显示�
   }));
 });
 
-it("费用报销办理中不开放半成品审批单，保持完成版全部签批语义", async () => {
+it("并联费用办理中按原职责留空、保留已签证据并只对当前轮授权", async () => {
   const instance = { id: "expense-round-1", businessType: "expense_claim", businessId: "claim-1", status: "in_progress",
     applicantUserId: "user-applicant", currentNodeIndex: 0, updatedAt: new Date("2026-11-05T00:00:00Z"), frozenNodes: [
       { name: "综合部主管", mode: "any", roleKeys: ["comprehensive_director"], protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: [] },
-      { name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: ["project_manager"] }
+      { name: "项目经理", mode: "any", roleKeys: ["project_manager"], protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: ["project_manager"] },
+      { name: "总经理/董事长", mode: "any", roleKeys: ["general_manager", "chairman"], protocolVersion: 1, executionMode: "parallel", approvedRoleKeys: [] }
     ] };
+  const log = { id: "expense-log-1", action: "approve", actorUserId: "manager", approvedRoleKey: "project_manager",
+    signatureFileIdSnapshot: "current-signature", signatureVersionIdSnapshot: "signature-version-1",
+    signatureSha256Snapshot: createHash("sha256").update(PNG_1X1).digest("hex"), metadata: { approverName: "项目经理原签批人甲" },
+    comment: "原签批意见", createdAt: new Date("2026-11-05T01:00:00Z") };
+  const claim = { code: "BX-1", claimType: "reimbursement", status: "approval_pending", approvalInstanceId: instance.id,
+    voidedAt: null, reason: "隔离申请", requestedAmountCents: 100n, loanOffsetAmountCents: 0n, companyPayableAmountCents: 100n };
+  const prisma = buildPrisma({
+    approvalInstance: { findFirst: jest.fn(async () => instance) },
+    approvalActionLog: { findMany: jest.fn(async () => [log]), findFirst: jest.fn(async () => log) },
+    expenseClaim: { findUnique: jest.fn(async () => claim) },
+    expenseClaimLine: { findMany: jest.fn(async () => []) }
+  });
+  const files = {
+    assertCanDownloadApprovalFormByBusiness: jest.fn(async () => { throw new BadRequestException("当前业务尚未完成审批，暂不能下载审批单"); }),
+    getFileBuffer: jest.fn(async () => ({ buffer: PNG_1X1 }))
+  };
+  const audit = { record: jest.fn() };
+  const progress = { detail: jest.fn(async (_id: string, actorId: string) => {
+    if (actorId !== "pending-approver") throw new NotFoundException("审批流程不存在或无权查看");
+  }) };
+  const service = new ApprovalFormService(prisma as never, files as never, audit as never,
+    { confirmPassword: async () => ({}) } as never, undefined, progress as never);
+
+  await expect(service.downloadAvailability("expense_claim", "claim-1", "pending-approver"))
+    .resolves.toEqual({ available: true, incomplete: true });
+  const result = await service.renderForDownload("expense_claim", "claim-1", "pending-approver", "password", "查看办理进度");
+  expect(result.fileName).toContain("审批未完成");
+  expect(await PDFDocument.load(result.buffer)).toBeDefined();
+  const rendered = pdfPublicTextItems(result.buffer).map(item => item.text).join("\n");
+  expect(rendered).toContain("费用报销单（审批未完成）");
+  expect(rendered).toContain("总经理/董事长");
+  expect(rendered).toContain("原签批意见");
+  expect(rendered.indexOf("综合部主管")).toBeLessThan(rendered.indexOf("项目经理原签批人甲"));
+  expect(rendered.indexOf("项目经理原签批人甲")).toBeLessThan(rendered.indexOf("总经理/董事长"));
+  expect(files.getFileBuffer.mock.calls).toEqual([["current-signature"]]);
+  expect(prisma.pdfDocument.findFirst).not.toHaveBeenCalled();
+  expect(progress.detail).toHaveBeenCalledWith(instance.id, "pending-approver", true);
+  expect(audit.record).toHaveBeenCalledWith(prisma, expect.objectContaining({
+    action: "approval.form.download", metadata: expect.objectContaining({ approvalInstanceId: instance.id, incomplete: true })
+  }));
+
+  await expect(service.downloadAvailability("expense_claim", "claim-1", "unrelated")).resolves.toEqual({ available: false });
+  await expect(service.renderForDownload("expense_claim", "claim-1", "unrelated", "password", "查看办理进度"))
+    .rejects.toThrow(NotFoundException);
+  claim.approvalInstanceId = "new-round";
+  await expect(service.downloadAvailability("expense_claim", "claim-1", "pending-approver")).resolves.toEqual({ available: false });
+  await expect(service.renderForDownload("expense_claim", "claim-1", "pending-approver", "password", "查看办理进度"))
+    .rejects.toThrow(NotFoundException);
+  expect(audit.record).toHaveBeenCalledTimes(1);
+});
+
+it("旧串联费用办理中保持正式审批单下载边界", async () => {
+  const instance = { id: "expense-round-1", businessType: "expense_claim", businessId: "claim-1", status: "in_progress",
+    frozenNodes: [{ name: "项目经理", mode: "any", roleKeys: ["project_manager"] }] };
   const prisma = buildPrisma({ approvalInstance: { findFirst: jest.fn(async () => instance) } });
   const files = {
-    assertCanViewApprovalFlow: jest.fn(async () => undefined),
     assertCanDownloadApprovalFormByBusiness: jest.fn(async () => { throw new BadRequestException("当前业务尚未完成审批，暂不能下载审批单"); })
   };
-  const service = new ApprovalFormService(prisma as never, files as never, { record: jest.fn() } as never,
-    { confirmPassword: async () => ({}) } as never);
+  const progress = { detail: jest.fn() };
+  const service = new ApprovalFormService(prisma as never, files as never, undefined, undefined, undefined, progress as never);
 
-  await expect(service.downloadAvailability("expense_claim", "claim-1", "user-applicant"))
-    .resolves.toEqual({ available: false });
-  expect(files.assertCanViewApprovalFlow).not.toHaveBeenCalled();
+  await expect(service.downloadAvailability("expense_claim", "claim-1", "user-applicant")).resolves.toEqual({ available: false });
+  expect(progress.detail).not.toHaveBeenCalled();
 });
 
 it("并联最终审批单按职责冻结逆序签字，个人签名后来变化不改已有签字", async () => {
