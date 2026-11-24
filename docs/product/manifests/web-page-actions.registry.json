@@ -3268,31 +3268,6 @@
       ]
     },
     {
-      "id": "project-expense.receipt-confirm-local-status",
-      "usage": "page_action",
-      "routePaths": [
-        "/项目支出/:projectId/:expenseRequestId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/projects/ProjectExpenseApprovalDetailPage.vue",
-      "trigger": {
-        "element": "sensitive-action-dialog",
-        "event": "confirm",
-        "handler": "confirmProjectExpenseReceipt"
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "projectExpenseWithdrawalCapability.availableActions",
-        "key": "confirm_receipt"
-      },
-      "wrappers": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "name": "confirmProjectExpenseReceiptWithPreflight"
-        }
-      ]
-    },
-    {
       "id": "project-expense.review-approve",
       "usage": "page_action",
       "routePaths": [

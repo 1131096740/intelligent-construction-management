@@ -727,7 +727,7 @@ describe("ProjectExpenseService", () => {
     "paid",
     "payment_blocked"
   ] as const)(
-    "历史零星采购申请人在 %s 发布唯一 confirm_receipt 和父记录 CAS",
+    "历史零星采购申请人在 %s 可以读取详情且没有收货写动作",
     async (status) => {
       const { service } = approvalDetailFixture({
         actorRoleKeys: ["material_staff"],
@@ -748,76 +748,36 @@ describe("ProjectExpenseService", () => {
 
       expect(detail.receiptConfirmedAt).toBeNull();
       expect(detail.receiptConfirmationIdempotencyKey).toBeNull();
-      expect(detail.receiptContext).toEqual({
-        expectedExpenseUpdatedAt: "2026-07-20T08:00:00.000Z"
-      });
-      expect(
-        detail.availableActions.filter(
-          (action) => action.key === "confirm_receipt"
-        )
-      ).toEqual([
-        expect.objectContaining({
-          key: "confirm_receipt",
-          enabled: true,
-          requiredAction: "project_expense.receipt_confirm",
-          requiresPassword: true
-        })
-      ]);
-    }
-  );
-
-  it.each([
-    [
-      "non applicant",
-      {
-        applicantUserId: "other-1",
-        actorRoleKeys: ["project_manager"]
-      }
-    ],
-    ["inactive actor", { actorActive: false }],
-    ["wrong current-project role", { actorRoleKeys: ["finance_staff"] }],
-    ["unexecuted purchase", { purchaseExecutedAt: null }],
-    ["wrong type", { expenseType: "reimbursement" }],
-    ["terminal status", { status: "voided" }],
-    [
-      "already confirmed",
-      {
-        receiptConfirmedAt: new Date("2026-07-20T08:30:00.000Z"),
-        receiptConfirmedByUserId: "material-1",
-        receiptConfirmationIdempotencyKey:
-          "7b5e5a60-4f7c-46b7-8f57-6ebd71573af4",
-        receiptConfirmationNote: "数量无误"
-      }
-    ]
-  ] as const)(
-    "历史零星采购收货 capability 失败关闭: %s",
-    async (_label, overrides) => {
-      const { service } = approvalDetailFixture({
-        actorRoleKeys: ["material_staff"],
-        applicantUserId: "material-1",
-        actorUserId: "material-1",
-        status: "approved_pending_payment",
-        approvedAmountCents: 50_000n,
-        paidAmountCents: 0n,
-        expenseType: "spot_purchase",
-        purchaseExecutedAt: new Date("2026-07-20T07:00:00.000Z"),
-        ...overrides
-      });
-
-      const detail = await service.getApprovalDetail(
-        "project-1",
-        "expense-1",
-        "material-1"
-      );
-
       expect(detail.receiptContext).toBeNull();
-      expect(
-        detail.availableActions.some(
-          (action) => action.key === "confirm_receipt"
-        )
-      ).toBe(false);
+      expect(detail.availableActions).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ key: "confirm_receipt" })])
+      );
     }
   );
+
+  it("historical project expense details still expose confirmed receipt facts", async () => {
+    const { service } = approvalDetailFixture({
+      actorRoleKeys: ["material_staff"],
+      applicantUserId: "material-1",
+      actorUserId: "material-1",
+      expenseType: "spot_purchase",
+      purchaseExecutedAt: new Date("2026-07-20T07:00:00.000Z"),
+      receiptConfirmedAt: new Date("2026-07-20T08:30:00.000Z"),
+      receiptConfirmedByUserId: "material-1",
+      receiptConfirmationIdempotencyKey: "7b5e5a60-4f7c-46b7-8f57-6ebd71573af4",
+      receiptConfirmationNote: "数量无误"
+    });
+
+    const detail = await service.getApprovalDetail("project-1", "expense-1", "material-1");
+
+    expect(detail).toMatchObject({
+      receiptConfirmedAt: "2026-07-20T08:30:00.000Z",
+      receiptConfirmedByUserId: "material-1",
+      receiptConfirmationIdempotencyKey: "7b5e5a60-4f7c-46b7-8f57-6ebd71573af4",
+      receiptConfirmationNote: "数量无误",
+      receiptContext: null
+    });
+  });
 
   it("申请人无审批岗位仍可读非审批中详情且动作安全禁用", async () => {
     const { service, prisma } = approvalDetailFixture({
