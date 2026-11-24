@@ -747,12 +747,12 @@
   {
     "path": "services/api/src/approval/approval-form.service.spec.ts",
     "expected": "5f42c450c0515fb809ea0fcfbf259c27281edc30da0c2e645a8e5c825e650c6a",
-    "candidate": "3dcd82391d2873464f7497bd2607e4f35276be6b283d82cdc225a52fcaec2f70"
+    "candidate": "a8fa5d45781c5b5e77e2c357ac6f5c1a64d9271a261ee8f3078b4abcbc96ecce"
   },
   {
     "path": "services/api/src/approval/approval-form.service.ts",
     "expected": "031b17311e634ad97b838f71dd155734def4b2a2f3c307bf347e644427a6dedd",
-    "candidate": "3e3d0e78286cc902483a96abc88d72b63674eb8e3d51c33675ea2827532c3bea"
+    "candidate": "12c0bd1f26bbbcb4e706d97bfd254589b762c4c8ff20f445ddded7ffe4997127"
   },
   {
     "path": "services/api/src/approval/approval-progress.controller.ts",
@@ -762,12 +762,12 @@
   {
     "path": "services/api/src/approval/approval-progress.service.spec.ts",
     "expected": "f7a810593df5fa3cae91c8233d34840cc757bbac405586353394f3aaa19b32fe",
-    "candidate": "2141f50aceafa97e92a4e08aef0c5b6525615ceb67bfe55da01b0684da8e4c2c"
+    "candidate": "906745e4ff1d19d8270b9ac0024255b6e4d1a1a50e8e577ee5f80a3185422c9f"
   },
   {
     "path": "services/api/src/approval/approval-progress.service.ts",
     "expected": "7db2f18e02d05e265173db1a012e2055d82f5db1a8a8543b45d7a95e2a5e6ff0",
-    "candidate": "5c4e13217c093b8b7f2ce67d5632034eb8d70168c5f73960c8e630c3f61dc8a9"
+    "candidate": "4c43f00d90487fae9da36f09eef20b2a92878ce2caa0c6b21d1f493393231fc9"
   },
   {
     "path": "services/api/src/approval/approval-review-identity.spec.ts",
@@ -1135,7 +1135,7 @@
       "general16": "58901077599d29a5db83e55e0619048ec044317abf7519c3292639b0ab4add36",
       "project11": "0692b080530be247e2b06be7ab599eedd5fa99f49ae1eec7fd87f9a2c4b84128"
     },
-    "candidate": "cb6a4cd4e4569c277e4a1f879cff069aad1e53213f6a3cd1ef46b2da5b27bea8"
+    "candidate": "279ef184405df6b6cf28136971b962de1f2288da784c1a467941224551eb766f"
   },
   {
     "path": "services/api/src/database/project-roster-http-postgres.spec.ts",
@@ -1380,12 +1380,12 @@
   {
     "path": "services/api/src/me/me.service.spec.ts",
     "expected": "682eeebac883267ff89882c2b63b8853bdb88d4163dd8527da496f8c85e6d755",
-    "candidate": "a2839b8656e22c93a91373ebcd40e33edf09bc1a67051e9d2c9c202140757d9b"
+    "candidate": "93a3a83af894f41620e1ab0f19889e454f0da9acf582a5a2d42637f50651967c"
   },
   {
     "path": "services/api/src/me/me.service.ts",
     "expected": "439db3745de0160d9db7dc5819bdf2f73c2ac0c595d8f8b5250e83d54aba5b25",
-    "candidate": "30c0ac50e2bec8376a76e605738e74af62d7ef2b83dfed6872e34bd60bd807d1"
+    "candidate": "ed8b0d61abaa529ccb2220b19f67a55fb206b5c091ebb7783c9c4b4a6d659cbf"
   },
   {
     "path": "services/api/src/necessary-expense-reserve/necessary-expense-reserve-file-access.spec.ts",
@@ -1568,14 +1568,19 @@
     "candidate": "be0388b20207260eb176e64d4e88678978d667f84d564f5bfbf5d1352d86d841"
   },
   {
+    "path": "services/api/src/project-expense/project-expense.controller.ts",
+    "expected": "e201ef9c8b3eaa793bf48484bcef6cc84aca4e60ce1814ab773c9d13bcdb9a29",
+    "candidate": "e6a3a9b850fdbfba651ae60ce951eb58f09c30a6fcf6ef65029fda8a317ac0c2"
+  },
+  {
     "path": "services/api/src/project-expense/project-expense.service.spec.ts",
     "expected": "3b90bcc7889c695d1c32c684d16882076fbbc8ac13838d0fe6bb2dcb95f6df53",
-    "candidate": "359bd387747767add4ec2a292d5376939e6265052a7a78cb5cbf7bde102d4850"
+    "candidate": "667c88cd3bb0f6e28f1ddc969d49355f4a3cad27570211fa6e718cd245713f6e"
   },
   {
     "path": "services/api/src/project-expense/project-expense.service.ts",
     "expected": "4cdf97e895f13bd7b32d48ac786a7d7e13f65d4023f673e134604165602174fa",
-    "candidate": "d1a30cb18c4f6409cad2f4de8f6f1afc216f0bd97c0199a56a0432602f2b79ae"
+    "candidate": "73e9b5dfeb12011238353e8c6ebe20b3b009136bb4c1d85e857654561bced0ee"
   },
   {
     "path": "services/api/src/project-fund-dispute/project-fund-dispute-file-access.spec.ts",
