@@ -9,20 +9,20 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 486,
+    "registeredActionCount": 476,
     "pageActionCount": 111,
-    "backgroundActionCount": 375,
+    "backgroundActionCount": 365,
     "reachableVueFileCount": 241,
     "routeRootCount": 80,
     "totalVueFileCount": 254,
     "parsedVueFileCount": 254,
     "reachableProductionModuleCount": 417,
-    "templateEventDirectiveCount": 1649,
+    "templateEventDirectiveCount": 1639,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 476,
-    "candidateProductionMutationConsumerCount": 476,
-    "acceptedProductionMutationConsumerCount": 476,
-    "productionMutationConsumerPairCount": 476,
+    "coveredProductionMutationConsumerCount": 467,
+    "candidateProductionMutationConsumerCount": 467,
+    "acceptedProductionMutationConsumerCount": 467,
+    "productionMutationConsumerPairCount": 467,
     "blockerCount": 0
   },
   "evidence": {
@@ -11059,8 +11059,7 @@
         "/费用与报销/:claimId",
         "/资金余额复核/:registrationId",
         "/资金账户",
-        "/零星材料付款/:paymentId",
-        "/零星采购收货/:procurementId"
+        "/零星材料付款/:paymentId"
       ],
       "ownerRoutePaths": [
         "/付款管理",
@@ -11078,7 +11077,6 @@
         "/资金执行案件",
         "/资金账户",
         "/零星材料付款/:paymentId",
-        "/零星采购收货/:procurementId",
         "/项目经营"
       ],
       "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
@@ -11482,42 +11480,6 @@
             "isPublic": false,
             "requiredPositions": [],
             "requiredProjectAction": "spot_procurement.payment.execute"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "retry",
-              "retryDutySms"
-            ]
-          },
-          "ticketFollowups": []
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
-          "wrapper": "retryDutySms",
-          "method": "POST",
-          "path": "/spot-procurements/:param/receipt/duty-sms/retry",
-          "normalizedKey": "POST /spot-procurements/:param/receipt/duty-sms/retry",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/spot-procurements/:procurementId/receipt/duty-sms/retry",
-            "normalizedKey": "POST /spot-procurements/:param/receipt/duty-sms/retry",
-            "controller": "SpotProcurementReceiptController",
-            "handler": "retryDutySms",
-            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "spot_procurement.receipt.review"
           },
           "productionConsumers": [
             "apps/web-admin/src/components/DutySmsStatusPanel.vue"
@@ -32087,71 +32049,6 @@
       ]
     },
     {
-      "id": "spot-procurement-receipt.delegate",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "ownerRoutePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "createSpotProcurementReceiptDelegationWithCapability",
-        "kind": "background_call",
-        "sourceLine": 506,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "capability.availableActions",
-        "key": "delegate_receipt",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "createSpotProcurementReceiptDelegation",
-          "method": "POST",
-          "path": "/spot-procurements/:param/receipt/delegations",
-          "normalizedKey": "POST /spot-procurements/:param/receipt/delegations",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/spot-procurements/:procurementId/receipt/delegations",
-            "normalizedKey": "POST /spot-procurements/:param/receipt/delegations",
-            "controller": "SpotProcurementReceiptController",
-            "handler": "createDelegation",
-            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "spot_procurement.receipt.confirm"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "createSpotProcurementReceiptDelegationWithCapability",
-              "createSpotProcurementReceiptDelegation"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
       "id": "spot-procurement-receipt.discrepancy.confirm",
       "usage": "background",
       "routePaths": [
@@ -32166,7 +32063,7 @@
         "event": "call",
         "handler": "confirmSpotProcurementDiscrepancyWithCapability",
         "kind": "background_call",
-        "sourceLine": 608,
+        "sourceLine": 336,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -32217,201 +32114,6 @@
       ]
     },
     {
-      "id": "spot-procurement-receipt.discrepancy.initiate",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "ownerRoutePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "initiateSpotProcurementDiscrepancyWithCapability",
-        "kind": "background_call",
-        "sourceLine": 590,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "capability.availableActions",
-        "key": "initiate_discrepancy",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "createSpotProcurementDiscrepancy",
-          "method": "POST",
-          "path": "/spot-procurements/:param/discrepancy",
-          "normalizedKey": "POST /spot-procurements/:param/discrepancy",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/spot-procurements/:procurementId/discrepancy",
-            "normalizedKey": "POST /spot-procurements/:param/discrepancy",
-            "controller": "SpotProcurementController",
-            "handler": "createOrConfirmDiscrepancy",
-            "sourceFile": "services/api/src/spot-procurement/spot-procurement.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "spot_procurement.discrepancy.create"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "initiateSpotProcurementDiscrepancyWithCapability",
-              "createSpotProcurementDiscrepancy"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "spot-procurement-receipt.draft.reset",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "ownerRoutePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "resetSpotProcurementReceiptDraftWithCapability",
-        "kind": "background_call",
-        "sourceLine": 523,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "capability.availableActions",
-        "key": "reset_receipt_draft",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "resetSpotProcurementReceiptDraft",
-          "method": "POST",
-          "path": "/spot-procurements/:param/receipt/draft-reset",
-          "normalizedKey": "POST /spot-procurements/:param/receipt/draft-reset",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/spot-procurements/:procurementId/receipt/draft-reset",
-            "normalizedKey": "POST /spot-procurements/:param/receipt/draft-reset",
-            "controller": "SpotProcurementReceiptController",
-            "handler": "resetDraft",
-            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "spot_procurement.receipt.confirm"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "resetSpotProcurementReceiptDraftWithCapability",
-              "resetSpotProcurementReceiptDraft"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "spot-procurement-receipt.draft.update",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "ownerRoutePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "updateSpotProcurementReceiptDraftWithCapability",
-        "kind": "background_call",
-        "sourceLine": 462,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "capability.availableActions",
-        "key": "edit_receipt",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "updateSpotProcurementReceiptDraft",
-          "method": "PATCH",
-          "path": "/spot-procurements/:param/receipt/draft",
-          "normalizedKey": "PATCH /spot-procurements/:param/receipt/draft",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "PATCH",
-            "path": "/spot-procurements/:procurementId/receipt/draft",
-            "normalizedKey": "PATCH /spot-procurements/:param/receipt/draft",
-            "controller": "SpotProcurementReceiptController",
-            "handler": "updateDraft",
-            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "spot_procurement.receipt.confirm"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "updateSpotProcurementReceiptDraftWithCapability",
-              "updateSpotProcurementReceiptDraft"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
       "id": "spot-procurement-receipt.invoice-file.upload",
       "usage": "background",
       "routePaths": [
@@ -32426,7 +32128,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementInvoiceFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 677,
+        "sourceLine": 387,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -32477,201 +32179,6 @@
       ]
     },
     {
-      "id": "spot-procurement-receipt.photo-file.upload",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "ownerRoutePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "uploadSpotProcurementReceiptPhotoWithCapability",
-        "kind": "background_call",
-        "sourceLine": 640,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "capability.availableActions",
-        "key": "append_receipt_photo",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "uploadSpotProcurementReceiptPhotoFile",
-          "method": "POST",
-          "path": "/spot-procurements/:param/receipt-photo-file-uploads",
-          "normalizedKey": "POST /spot-procurements/:param/receipt-photo-file-uploads",
-          "bodyKind": "form_data",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/spot-procurements/:procurementId/receipt-photo-file-uploads",
-            "normalizedKey": "POST /spot-procurements/:param/receipt-photo-file-uploads",
-            "controller": "SpotProcurementReceiptController",
-            "handler": "uploadReceiptPhotoFile",
-            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "spot_procurement.receipt.confirm"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "uploadSpotProcurementReceiptPhotoWithCapability",
-              "uploadSpotProcurementReceiptPhotoFile"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "spot-procurement-receipt.photo.attach",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "ownerRoutePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "attachSpotProcurementReceiptPhotoWithCapability",
-        "kind": "background_call",
-        "sourceLine": 476,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "capability.availableActions",
-        "key": "append_receipt_photo",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "attachSpotProcurementReceiptPhoto",
-          "method": "POST",
-          "path": "/spot-procurements/:param/receipt/photos",
-          "normalizedKey": "POST /spot-procurements/:param/receipt/photos",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/spot-procurements/:procurementId/receipt/photos",
-            "normalizedKey": "POST /spot-procurements/:param/receipt/photos",
-            "controller": "SpotProcurementReceiptController",
-            "handler": "attachPhoto",
-            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "spot_procurement.receipt.confirm"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "attachSpotProcurementReceiptPhotoWithCapability",
-              "attachSpotProcurementReceiptPhoto"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "spot-procurement-receipt.photo.remove",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "ownerRoutePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "deleteSpotProcurementReceiptPhotoWithCapability",
-        "kind": "background_call",
-        "sourceLine": 490,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "capability.availableActions",
-        "key": "remove_receipt_photo",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "deleteSpotProcurementReceiptPhoto",
-          "method": "DELETE",
-          "path": "/spot-procurements/:param/receipt/photos/:param",
-          "normalizedKey": "DELETE /spot-procurements/:param/receipt/photos/:param",
-          "bodyKind": "none",
-          "nestRoute": {
-            "method": "DELETE",
-            "path": "/spot-procurements/:procurementId/receipt/photos/:photoId",
-            "normalizedKey": "DELETE /spot-procurements/:param/receipt/photos/:param",
-            "controller": "SpotProcurementReceiptController",
-            "handler": "deleteDraftPhoto",
-            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "spot_procurement.receipt.confirm"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "deleteSpotProcurementReceiptPhotoWithCapability",
-              "deleteSpotProcurementReceiptPhoto"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
       "id": "spot-procurement-receipt.refund-voucher.upload",
       "usage": "background",
       "routePaths": [
@@ -32686,7 +32193,7 @@
         "event": "call",
         "handler": "uploadSpotProcurementRefundVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 658,
+        "sourceLine": 368,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -32751,7 +32258,7 @@
         "event": "call",
         "handler": "recordSpotProcurementRefundWithCapability",
         "kind": "background_call",
-        "sourceLine": 626,
+        "sourceLine": 354,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -32802,201 +32309,6 @@
       ]
     },
     {
-      "id": "spot-procurement-receipt.review",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "ownerRoutePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "reviewSpotProcurementReceiptWithCapability",
-        "kind": "background_call",
-        "sourceLine": 540,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "capability.availableActions",
-        "key": "review_receipt",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "reviewSpotProcurementReceipt",
-          "method": "POST",
-          "path": "/spot-procurements/:param/receipt/review",
-          "normalizedKey": "POST /spot-procurements/:param/receipt/review",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/spot-procurements/:procurementId/receipt/review",
-            "normalizedKey": "POST /spot-procurements/:param/receipt/review",
-            "controller": "SpotProcurementReceiptController",
-            "handler": "review",
-            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "spot_procurement.receipt.review"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "reviewSpotProcurementReceiptWithCapability",
-              "reviewSpotProcurementReceipt"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "spot-procurement-receipt.review.revoke",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "ownerRoutePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "revokeSpotProcurementReceiptReviewWithCapability",
-        "kind": "background_call",
-        "sourceLine": 554,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "capability.availableActions",
-        "key": "revoke_receipt_review",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "revokeSpotProcurementReceiptReview",
-          "method": "POST",
-          "path": "/spot-procurements/:param/receipt/review-revocation",
-          "normalizedKey": "POST /spot-procurements/:param/receipt/review-revocation",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/spot-procurements/:procurementId/receipt/review-revocation",
-            "normalizedKey": "POST /spot-procurements/:param/receipt/review-revocation",
-            "controller": "SpotProcurementReceiptController",
-            "handler": "revokeReview",
-            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "spot_procurement.receipt.review_revoke"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "revokeSpotProcurementReceiptReviewWithCapability",
-              "revokeSpotProcurementReceiptReview"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "spot-procurement-receipt.submit",
-      "usage": "background",
-      "routePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "ownerRoutePaths": [
-        "/零星采购收货/:procurementId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "submitSpotProcurementReceiptWithCapability",
-        "kind": "background_call",
-        "sourceLine": 568,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "detail_action",
-        "source": "capability.availableActions",
-        "key": "submit_receipt",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "submitSpotProcurementReceipt",
-          "method": "POST",
-          "path": "/spot-procurements/:param/receipt/submission",
-          "normalizedKey": "POST /spot-procurements/:param/receipt/submission",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/spot-procurements/:procurementId/receipt/submission",
-            "normalizedKey": "POST /spot-procurements/:param/receipt/submission",
-            "controller": "SpotProcurementReceiptController",
-            "handler": "submit",
-            "sourceFile": "services/api/src/spot-procurement/spot-procurement-receipt.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "project_action",
-            "isPublic": false,
-            "requiredPositions": [],
-            "requiredProjectAction": "spot_procurement.receipt.confirm"
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "submitSpotProcurementReceiptWithCapability",
-              "submitSpotProcurementReceipt"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
       "id": "spot-procurement.abnormal-termination-confirm",
       "usage": "page_action",
       "routePaths": [
@@ -33011,7 +32323,7 @@
         "event": "confirm",
         "handler": "confirmAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 2387,
+        "sourceLine": 2388,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -33076,7 +32388,7 @@
         "event": "confirm",
         "handler": "requestAbnormalTerminationAction",
         "kind": "event",
-        "sourceLine": 2374,
+        "sourceLine": 2375,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -33665,7 +32977,7 @@
         "event": "click",
         "handler": "appendInvoice",
         "kind": "event",
-        "sourceLine": 1467,
+        "sourceLine": 1035,
         "sourceColumn": 14
       },
       "semantic": "business_write",
@@ -33802,7 +33114,7 @@
         "event": "confirm",
         "handler": "invalidateInvoice",
         "kind": "event",
-        "sourceLine": 1501,
+        "sourceLine": 1069,
         "sourceColumn": 8
       },
       "semantic": "business_write",
@@ -33932,7 +33244,7 @@
         "event": "confirm",
         "handler": "refreshReceiptPdf",
         "kind": "event",
-        "sourceLine": 1409,
+        "sourceLine": 977,
         "sourceColumn": 12
       },
       "semantic": "business_write",
@@ -33997,7 +33309,7 @@
         "event": "confirm",
         "handler": "confirmReviewApprove",
         "kind": "event",
-        "sourceLine": 2286,
+        "sourceLine": 2287,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -34063,7 +33375,7 @@
         "event": "confirm",
         "handler": "confirmReviewReject",
         "kind": "event",
-        "sourceLine": 2306,
+        "sourceLine": 2307,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -34129,7 +33441,7 @@
         "event": "confirm",
         "handler": "confirmReviewReturn",
         "kind": "event",
-        "sourceLine": 2326,
+        "sourceLine": 2327,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -34390,7 +33702,7 @@
         "event": "confirm",
         "handler": "confirmWithdrawal",
         "kind": "event",
-        "sourceLine": 2346,
+        "sourceLine": 2347,
         "sourceColumn": 6
       },
       "semantic": "business_write",

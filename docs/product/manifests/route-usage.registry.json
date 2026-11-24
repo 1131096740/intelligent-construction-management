@@ -4,24 +4,24 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 879,
-    "classificationOverrideCount": 235,
-    "derivedProductionPageCount": 644,
-    "classificationOverrideSha256": "7446141d30dbe4e979f9b3261af2fd732b0b14469f95ea8c27333f82ee7b652c",
-    "consumerSurfaceOverrideSha256": "9a7fe70cf05a352bafa35410ffc5de999596c0ba4f0d5d5cb44ede45a5623836",
+    "classificationOverrideCount": 246,
+    "derivedProductionPageCount": 633,
+    "classificationOverrideSha256": "441cafa0256178d62de02ab2c1ed594faa0bc4bea4bda336ffc443aec70697cd",
+    "consumerSurfaceOverrideSha256": "eaa3db2c343253d0a5740ba7fdf578d44149bf0327ebadadf081b861f42ccc76",
     "usageCounts": {
-      "page": 663,
+      "page": 652,
       "external_takeover": 70,
-      "exit_candidate": 92,
-      "internal_task": 54,
+      "exit_candidate": 102,
+      "internal_task": 55,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 715,
+      "web_api_wrapper": 704,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 3,
-      "operator_endpoint": 51,
-      "none": 103
+      "operator_endpoint": 52,
+      "none": 113
     }
   },
   "overrides": [
@@ -1434,6 +1434,72 @@
       "path": "/projects/:projectId/expense-requests/:expenseRequestId/receipt-confirmation",
       "usage": "exit_candidate",
       "reason": "issue_425_project_expense_receipt_confirmation_retired_preserve_historical_reads"
+    },
+    {
+      "method": "DELETE",
+      "path": "/spot-procurements/:procurementId/receipt/photos/:photoId",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "GET",
+      "path": "/spot-procurements/:procurementId/receipt/duty-sms",
+      "usage": "internal_task",
+      "reason": "issue_425_historical_receipt_notification_audit_read"
+    },
+    {
+      "method": "PATCH",
+      "path": "/spot-procurements/:procurementId/receipt/draft",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt-photo-file-uploads",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/delegations",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/draft-reset",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/duty-sms/retry",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/photos",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/review",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/review-revocation",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
+    },
+    {
+      "method": "POST",
+      "path": "/spot-procurements/:procurementId/receipt/submission",
+      "usage": "exit_candidate",
+      "reason": "issue_425_retired_spot_procurement_receipt_write"
     }
   ],
   "consumerSurfaceOverrides": [
@@ -1788,6 +1854,12 @@
       "path": "/expense-claims",
       "consumerSurface": "operator_endpoint",
       "reason": "internal_list_without_page_consumer_served_via_operator_tooling_until_425"
+    },
+    {
+      "method": "GET",
+      "path": "/spot-procurements/:procurementId/receipt/duty-sms",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_historical_receipt_notification_audit_read"
     }
   ]
 }

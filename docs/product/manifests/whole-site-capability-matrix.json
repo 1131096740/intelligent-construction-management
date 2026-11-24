@@ -22,17 +22,17 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "e5d40e9424df4e0ded6ebe875b9d6bbdf9f45a39af7f3fe5e5a917440c36dc35",
+      "sha256": "acb5e521d5bfbb60599ca332643f1621cf431e2f5dd050886ab6bf143cb618d2",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
-        "exportedFunctionCount": 806,
-        "transportWrapperCount": 785,
+        "exportedFunctionCount": 797,
+        "transportWrapperCount": 776,
         "pureExportCount": 21,
-        "mainRequestBindingCount": 858,
+        "mainRequestBindingCount": 847,
         "ticketFollowupCount": 6,
-        "requestEdgeCount": 814,
-        "productionConsumerCount": 694,
+        "requestEdgeCount": 805,
+        "productionConsumerCount": 685,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,51 +42,51 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "e5643f9466eb9bb9aa2d8a54d9a955a9584aa21cf5801f08bde8babdb47a3c2d",
+      "sha256": "e6107acf766d50860d6be949038f28a5dec0d0592f08c91563cd4b50b3594fa8",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 486,
+        "registeredActionCount": 476,
         "pageActionCount": 111,
-        "backgroundActionCount": 375,
+        "backgroundActionCount": 365,
         "reachableVueFileCount": 241,
         "routeRootCount": 80,
         "totalVueFileCount": 254,
         "parsedVueFileCount": 254,
         "reachableProductionModuleCount": 417,
-        "templateEventDirectiveCount": 1649,
+        "templateEventDirectiveCount": 1639,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 476,
-        "candidateProductionMutationConsumerCount": 476,
-        "acceptedProductionMutationConsumerCount": 476,
-        "productionMutationConsumerPairCount": 476,
+        "coveredProductionMutationConsumerCount": 467,
+        "candidateProductionMutationConsumerCount": 467,
+        "acceptedProductionMutationConsumerCount": 467,
+        "productionMutationConsumerPairCount": 467,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "a7c329a3b24ba9ea13f0e91c46c28accb8dbd9434c100501b013052f7d6242b2",
+      "sha256": "b807c5e2bdf2ff7ef443d35377115f0e3e1e7b5d89bcfe794cfba8e9899b4005",
       "status": "ready",
       "summary": {
         "routeCount": 879,
         "exactRouteCount": 879,
         "normalizedRouteCount": 879,
-        "classificationOverrideCount": 235,
-        "consumerSurfaceOverrideCount": 56,
-        "classificationOverrideSha256": "7446141d30dbe4e979f9b3261af2fd732b0b14469f95ea8c27333f82ee7b652c",
-        "consumerSurfaceOverrideSha256": "9a7fe70cf05a352bafa35410ffc5de999596c0ba4f0d5d5cb44ede45a5623836",
-        "derivedProductionPageCount": 644,
-        "pageRouteCount": 663,
+        "classificationOverrideCount": 246,
+        "consumerSurfaceOverrideCount": 57,
+        "classificationOverrideSha256": "441cafa0256178d62de02ab2c1ed594faa0bc4bea4bda336ffc443aec70697cd",
+        "consumerSurfaceOverrideSha256": "eaa3db2c343253d0a5740ba7fdf578d44149bf0327ebadadf081b861f42ccc76",
+        "derivedProductionPageCount": 633,
+        "pageRouteCount": 652,
         "externalTakeoverCount": 70,
-        "exitCandidateCount": 92,
-        "internalTaskCount": 54,
+        "exitCandidateCount": 102,
+        "internalTaskCount": 55,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 715,
+          "web_api_wrapper": 704,
           "auth_store": 5,
           "signed_ticket_delivery": 2,
           "machine_probe": 3,
-          "operator_endpoint": 51,
-          "none": 103
+          "operator_endpoint": 52,
+          "none": 113
         },
         "blockerCount": 0
       }
@@ -94,22 +94,22 @@
   },
   "summary": {
     "routeCount": 879,
-    "pageRouteCount": 663,
+    "pageRouteCount": 652,
     "externalTakeoverRouteCount": 70,
-    "exitCandidateRouteCount": 92,
-    "internalTaskRouteCount": 54,
+    "exitCandidateRouteCount": 102,
+    "internalTaskRouteCount": 55,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 858,
+    "mainRequestBindingCount": 847,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 486,
-    "actionBindingCount": 586,
-    "acceptedActionBindingCount": 539,
+    "registeredActionCount": 476,
+    "actionBindingCount": 575,
+    "acceptedActionBindingCount": 528,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 476,
-    "coveredProductionMutationConsumerPairCount": 476,
+    "productionMutationConsumerPairCount": 467,
+    "coveredProductionMutationConsumerPairCount": 467,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -568,52 +568,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "deleteSpotProcurementReceiptPhoto",
-          "method": "DELETE",
-          "path": "/spot-procurements/:param/receipt/photos/:param",
-          "normalizedKey": "DELETE /spot-procurements/:param/receipt/photos/:param",
-          "bodyKind": "none",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "testConsumers": []
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "spot-procurement-receipt.photo.remove",
-          "bindingIndex": 0,
-          "identity": "spot-procurement-receipt.photo.remove\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000deleteSpotProcurementReceiptPhoto\u0000DELETE\u0000DELETE /spot-procurements/:param/receipt/photos/:param\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "capability.availableActions",
-            "key": "remove_receipt_photo",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "deleteSpotProcurementReceiptPhoto",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -14775,24 +14735,9 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
-          "wrapper": "fetchDutySms",
-          "method": "GET",
-          "path": "/spot-procurements/:param/receipt/duty-sms",
-          "normalizedKey": "GET /spot-procurements/:param/receipt/duty-sms",
-          "bodyKind": "none",
-          "productionConsumers": [
-            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/duty-sms.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
       "authTransports": [],
       "actions": [],
       "mutationCoverage": "not_applicable",
@@ -17857,52 +17802,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "updateSpotProcurementReceiptDraft",
-          "method": "PATCH",
-          "path": "/spot-procurements/:param/receipt/draft",
-          "normalizedKey": "PATCH /spot-procurements/:param/receipt/draft",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "testConsumers": []
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "spot-procurement-receipt.draft.update",
-          "bindingIndex": 0,
-          "identity": "spot-procurement-receipt.draft.update\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000updateSpotProcurementReceiptDraft\u0000PATCH\u0000PATCH /spot-procurements/:param/receipt/draft\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "capability.availableActions",
-            "key": "edit_receipt",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "updateSpotProcurementReceiptDraft",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -49825,32 +49730,6 @@
           "causalVerified": true,
           "accepted": true,
           "blockerCodes": []
-        },
-        {
-          "actionId": "spot-procurement-receipt.discrepancy.initiate",
-          "bindingIndex": 0,
-          "identity": "spot-procurement-receipt.discrepancy.initiate\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000createSpotProcurementDiscrepancy\u0000POST\u0000POST /spot-procurements/:param/discrepancy\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "capability.availableActions",
-            "key": "initiate_discrepancy",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "createSpotProcurementDiscrepancy",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
         }
       ],
       "mutationCoverage": "covered",
@@ -50279,52 +50158,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "uploadSpotProcurementReceiptPhotoFile",
-          "method": "POST",
-          "path": "/spot-procurements/:param/receipt-photo-file-uploads",
-          "normalizedKey": "POST /spot-procurements/:param/receipt-photo-file-uploads",
-          "bodyKind": "form_data",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "testConsumers": []
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "spot-procurement-receipt.photo-file.upload",
-          "bindingIndex": 0,
-          "identity": "spot-procurement-receipt.photo-file.upload\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000uploadSpotProcurementReceiptPhotoFile\u0000POST\u0000POST /spot-procurements/:param/receipt-photo-file-uploads\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "capability.availableActions",
-            "key": "append_receipt_photo",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "uploadSpotProcurementReceiptPhotoFile",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -50346,52 +50185,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "createSpotProcurementReceiptDelegation",
-          "method": "POST",
-          "path": "/spot-procurements/:param/receipt/delegations",
-          "normalizedKey": "POST /spot-procurements/:param/receipt/delegations",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "testConsumers": []
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "spot-procurement-receipt.delegate",
-          "bindingIndex": 0,
-          "identity": "spot-procurement-receipt.delegate\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000createSpotProcurementReceiptDelegation\u0000POST\u0000POST /spot-procurements/:param/receipt/delegations\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "capability.availableActions",
-            "key": "delegate_receipt",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "createSpotProcurementReceiptDelegation",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -50413,54 +50212,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "resetSpotProcurementReceiptDraft",
-          "method": "POST",
-          "path": "/spot-procurements/:param/receipt/draft-reset",
-          "normalizedKey": "POST /spot-procurements/:param/receipt/draft-reset",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/spot-procurement.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "spot-procurement-receipt.draft.reset",
-          "bindingIndex": 0,
-          "identity": "spot-procurement-receipt.draft.reset\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000resetSpotProcurementReceiptDraft\u0000POST\u0000POST /spot-procurements/:param/receipt/draft-reset\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "capability.availableActions",
-            "key": "reset_receipt_draft",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "resetSpotProcurementReceiptDraft",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -50482,53 +50239,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
-          "wrapper": "retryDutySms",
-          "method": "POST",
-          "path": "/spot-procurements/:param/receipt/duty-sms/retry",
-          "normalizedKey": "POST /spot-procurements/:param/receipt/duty-sms/retry",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/duty-sms.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "duty-sms.retry",
-          "bindingIndex": 11,
-          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /spot-procurements/:param/receipt/duty-sms/retry\u000011",
-          "usage": "page_action",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
-          "capability": {
-            "kind": "server_boolean",
-            "source": "notice.canRetry",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
-          "wrapper": "retryDutySms",
-          "productionConsumers": [
-            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -50619,52 +50335,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "attachSpotProcurementReceiptPhoto",
-          "method": "POST",
-          "path": "/spot-procurements/:param/receipt/photos",
-          "normalizedKey": "POST /spot-procurements/:param/receipt/photos",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "testConsumers": []
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "spot-procurement-receipt.photo.attach",
-          "bindingIndex": 0,
-          "identity": "spot-procurement-receipt.photo.attach\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000attachSpotProcurementReceiptPhoto\u0000POST\u0000POST /spot-procurements/:param/receipt/photos\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "capability.availableActions",
-            "key": "append_receipt_photo",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "attachSpotProcurementReceiptPhoto",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -50686,52 +50362,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "revokeSpotProcurementReceiptReview",
-          "method": "POST",
-          "path": "/spot-procurements/:param/receipt/review-revocation",
-          "normalizedKey": "POST /spot-procurements/:param/receipt/review-revocation",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "testConsumers": []
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "spot-procurement-receipt.review.revoke",
-          "bindingIndex": 0,
-          "identity": "spot-procurement-receipt.review.revoke\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000revokeSpotProcurementReceiptReview\u0000POST\u0000POST /spot-procurements/:param/receipt/review-revocation\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "capability.availableActions",
-            "key": "revoke_receipt_review",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "revokeSpotProcurementReceiptReview",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -50753,52 +50389,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "reviewSpotProcurementReceipt",
-          "method": "POST",
-          "path": "/spot-procurements/:param/receipt/review",
-          "normalizedKey": "POST /spot-procurements/:param/receipt/review",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "testConsumers": []
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "spot-procurement-receipt.review",
-          "bindingIndex": 0,
-          "identity": "spot-procurement-receipt.review\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000reviewSpotProcurementReceipt\u0000POST\u0000POST /spot-procurements/:param/receipt/review\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "capability.availableActions",
-            "key": "review_receipt",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "reviewSpotProcurementReceipt",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -50820,54 +50416,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "submitSpotProcurementReceipt",
-          "method": "POST",
-          "path": "/spot-procurements/:param/receipt/submission",
-          "normalizedKey": "POST /spot-procurements/:param/receipt/submission",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/spot-procurement.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "spot-procurement-receipt.submit",
-          "bindingIndex": 0,
-          "identity": "spot-procurement-receipt.submit\u0000apps/web-admin/src/api/spot-procurement.api.ts\u0000submitSpotProcurementReceipt\u0000POST\u0000POST /spot-procurements/:param/receipt/submission\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "capability.availableActions",
-            "key": "submit_receipt",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/spot-procurement.api.ts",
-          "wrapper": "submitSpotProcurementReceipt",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -51731,8 +51285,8 @@
       "actions": [
         {
           "actionId": "duty-sms.retry",
-          "bindingIndex": 12,
-          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /upward-contract-amount-revisions/:param/duty-sms/retry\u000012",
+          "bindingIndex": 11,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /upward-contract-amount-revisions/:param/duty-sms/retry\u000011",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
@@ -51931,8 +51485,8 @@
       "actions": [
         {
           "actionId": "duty-sms.retry",
-          "bindingIndex": 13,
-          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /upward-receipt-matches/:param/duty-sms/retry\u000013",
+          "bindingIndex": 12,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /upward-receipt-matches/:param/duty-sms/retry\u000012",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",

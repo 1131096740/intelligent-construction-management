@@ -7,31 +7,31 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `0227dbadedb7c9b2c24d91e769749093ac6afa276034dbccef0b5988dd9ca853` |
-| webApiWrappers | ready | `e5d40e9424df4e0ded6ebe875b9d6bbdf9f45a39af7f3fe5e5a917440c36dc35` |
-| webPageActions | ready | `e5643f9466eb9bb9aa2d8a54d9a955a9584aa21cf5801f08bde8babdb47a3c2d` |
-| routeUsage | ready | `a7c329a3b24ba9ea13f0e91c46c28accb8dbd9434c100501b013052f7d6242b2` |
+| webApiWrappers | ready | `acb5e521d5bfbb60599ca332643f1621cf431e2f5dd050886ab6bf143cb618d2` |
+| webPageActions | ready | `e6107acf766d50860d6be949038f28a5dec0d0592f08c91563cd4b50b3594fa8` |
+| routeUsage | ready | `b807c5e2bdf2ff7ef443d35377115f0e3e1e7b5d89bcfe794cfba8e9899b4005` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 879 |
-| pageRouteCount | 663 |
+| pageRouteCount | 652 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 92 |
-| internalTaskRouteCount | 54 |
+| exitCandidateRouteCount | 102 |
+| internalTaskRouteCount | 55 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 858 |
+| mainRequestBindingCount | 847 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 486 |
-| actionBindingCount | 586 |
-| acceptedActionBindingCount | 539 |
+| registeredActionCount | 476 |
+| actionBindingCount | 575 |
+| acceptedActionBindingCount | 528 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 476 |
-| coveredProductionMutationConsumerPairCount | 476 |
+| productionMutationConsumerPairCount | 467 |
+| coveredProductionMutationConsumerPairCount | 467 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -46,7 +46,7 @@
 | DELETE | /contract-versions/:toContractVersionId/bill-transitions | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#discardContractBillTransitions | contract-bill-transition.discard | covered | — |
 | DELETE | /contract-workbench/:contractVersionId/parties/:partySnapshotId | exit_candidate | none | — | — | not_applicable | — |
 | DELETE | /projects/:projectId/participating-companies/:participantId | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#removeProjectParticipatingCompany | project-operating-profile.remove-participating-company | covered | — |
-| DELETE | /spot-procurements/:procurementId/receipt/photos/:photoId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#deleteSpotProcurementReceiptPhoto | spot-procurement-receipt.photo.remove | covered | — |
+| DELETE | /spot-procurements/:procurementId/receipt/photos/:photoId | exit_candidate | none | — | — | not_applicable | — |
 | GET | /account-security/options | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#fetchAccountOptions | — | not_applicable | — |
 | GET | /actual-purchase-batches/:batchId | internal_task | operator_endpoint | apps/web-admin/src/api/actual-purchase-batch.api.ts#fetchActualPurchaseBatch | — | not_applicable | — |
 | GET | /actual-purchase-batches | page | web_api_wrapper | apps/web-admin/src/api/actual-purchase-batch.api.ts#listActualPurchaseBatches | — | not_applicable | — |
@@ -334,7 +334,7 @@
 | GET | /spot-procurement-payments/:paymentId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementInvoiceAppend<br>apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPaymentDetail<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementPaymentReviewAction<br>apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementRefundForPayment<br>apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementRefundVoucherForPayment | spot-procurement-payment.refund.record<br>spot-procurement-payment.refund.record<br>spot-procurement.invoice-append | not_applicable | — |
 | GET | /spot-procurement-payments | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementPayments | — | not_applicable | — |
 | GET | /spot-procurements/:procurementId/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/multi-duty-sms.api.ts#fetchMultiDutySms | — | not_applicable | — |
-| GET | /spot-procurements/:procurementId/receipt/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
+| GET | /spot-procurements/:procurementId/receipt/duty-sms | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /spot-procurements/:procurementId/receipt | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementInvoiceAppend<br>apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementReceipt | spot-procurement.invoice-append | not_applicable | — |
 | GET | /spot-procurements/:procurementId | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementDetail<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementReviewAction<br>apps/web-admin/src/api/spot-procurement.api.ts#prepareSpotProcurementWithdrawalAction | — | not_applicable | — |
 | GET | /spot-procurements/application-text-suggestions | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#fetchSpotProcurementApplicationTextSuggestions | — | not_applicable | — |
@@ -389,7 +389,7 @@
 | PATCH | /spot-procurement-payments/:paymentId/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementPaymentDraft | spot-procurement-payment.draft.update | covered | — |
 | PATCH | /spot-procurement-payments/:paymentId/payer | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementPaymentPayer | spot-procurement-payment.payer.update | covered | — |
 | PATCH | /spot-procurements/:procurementId/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementDraft | spot-procurement.create-draft.update<br>spot-procurement.draft.update | covered | — |
-| PATCH | /spot-procurements/:procurementId/receipt/draft | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#updateSpotProcurementReceiptDraft | spot-procurement-receipt.draft.update | covered | — |
+| PATCH | /spot-procurements/:procurementId/receipt/draft | exit_candidate | none | — | — | not_applicable | — |
 | PATCH | /vat-rate-options/:optionId | exit_candidate | none | — | — | not_applicable | — |
 | POST | /account-security/applications/:id/reset-password | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#resetEmployeePassword | employee.admin-reset | covered | — |
 | POST | /account-security/phone-change-sms | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#sendPhoneChangeSms | employee.phone-change-sms | covered | — |
@@ -866,7 +866,7 @@
 | POST | /spot-procurements/:procurementId/abnormal-termination | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#requestSpotProcurementAbnormalTermination | spot-procurement.abnormal-termination-request | covered | — |
 | POST | /spot-procurements/:procurementId/approval-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementWithdrawalAction | spot-procurement.withdraw | covered | — |
 | POST | /spot-procurements/:procurementId/approval | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#executeSpotProcurementReviewAction | spot-procurement.review-approve<br>spot-procurement.review-reject<br>spot-procurement.review-return-to-applicant | covered | — |
-| POST | /spot-procurements/:procurementId/discrepancy | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementDiscrepancy | spot-procurement-receipt.discrepancy.confirm<br>spot-procurement-receipt.discrepancy.initiate | covered | — |
+| POST | /spot-procurements/:procurementId/discrepancy | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementDiscrepancy | spot-procurement-receipt.discrepancy.confirm | covered | — |
 | POST | /spot-procurements/:procurementId/draft-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementDraftFile | spot-procurement.draft-file.upload | covered | — |
 | POST | /spot-procurements/:procurementId/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/multi-duty-sms.api.ts#retryMultiDutySms | multi-duty-sms.retry | covered | — |
 | POST | /spot-procurements/:procurementId/invoice-exceptions/:exceptionId/review | exit_candidate | none | — | — | not_applicable | — |
@@ -876,15 +876,15 @@
 | POST | /spot-procurements/:procurementId/no-invoice-confirmations/:confirmationId/review | exit_candidate | none | — | — | not_applicable | — |
 | POST | /spot-procurements/:procurementId/no-invoice-confirmations | exit_candidate | none | — | — | not_applicable | — |
 | POST | /spot-procurements/:procurementId/payment-drafts | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#recreateSpotProcurementPaymentDraft | spot-procurement.payment-draft.recreate | covered | — |
-| POST | /spot-procurements/:procurementId/receipt-photo-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementReceiptPhotoFile | spot-procurement-receipt.photo-file.upload | covered | — |
-| POST | /spot-procurements/:procurementId/receipt/delegations | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#createSpotProcurementReceiptDelegation | spot-procurement-receipt.delegate | covered | — |
-| POST | /spot-procurements/:procurementId/receipt/draft-reset | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#resetSpotProcurementReceiptDraft | spot-procurement-receipt.draft.reset | covered | — |
-| POST | /spot-procurements/:procurementId/receipt/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
+| POST | /spot-procurements/:procurementId/receipt-photo-file-uploads | exit_candidate | none | — | — | not_applicable | — |
+| POST | /spot-procurements/:procurementId/receipt/delegations | exit_candidate | none | — | — | not_applicable | — |
+| POST | /spot-procurements/:procurementId/receipt/draft-reset | exit_candidate | none | — | — | not_applicable | — |
+| POST | /spot-procurements/:procurementId/receipt/duty-sms/retry | exit_candidate | none | — | — | not_applicable | — |
 | POST | /spot-procurements/:procurementId/receipt/pdf-refresh | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#refreshSpotProcurementReceiptPdf | spot-procurement.receipt-pdf-refresh | covered | — |
-| POST | /spot-procurements/:procurementId/receipt/photos | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#attachSpotProcurementReceiptPhoto | spot-procurement-receipt.photo.attach | covered | — |
-| POST | /spot-procurements/:procurementId/receipt/review-revocation | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#revokeSpotProcurementReceiptReview | spot-procurement-receipt.review.revoke | covered | — |
-| POST | /spot-procurements/:procurementId/receipt/review | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#reviewSpotProcurementReceipt | spot-procurement-receipt.review | covered | — |
-| POST | /spot-procurements/:procurementId/receipt/submission | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#submitSpotProcurementReceipt | spot-procurement-receipt.submit | covered | — |
+| POST | /spot-procurements/:procurementId/receipt/photos | exit_candidate | none | — | — | not_applicable | — |
+| POST | /spot-procurements/:procurementId/receipt/review-revocation | exit_candidate | none | — | — | not_applicable | — |
+| POST | /spot-procurements/:procurementId/receipt/review | exit_candidate | none | — | — | not_applicable | — |
+| POST | /spot-procurements/:procurementId/receipt/submission | exit_candidate | none | — | — | not_applicable | — |
 | POST | /spot-procurements/:procurementId/refund-voucher-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementRefundVoucherFile<br>apps/web-admin/src/api/spot-procurement.api.ts#uploadSpotProcurementRefundVoucherForPayment | spot-procurement-payment.refund.record<br>spot-procurement-receipt.refund-voucher.upload | covered | — |
 | POST | /spot-procurements/:procurementId/refunds | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementRefund<br>apps/web-admin/src/api/spot-procurement.api.ts#recordSpotProcurementRefundForPayment | spot-procurement-payment.refund.record<br>spot-procurement-receipt.refund.record | covered | — |
 | POST | /spot-procurements/:procurementId/submission | page | web_api_wrapper | apps/web-admin/src/api/spot-procurement.api.ts#submitSpotProcurement | spot-procurement.submit | covered | — |

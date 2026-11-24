@@ -40,6 +40,11 @@
     "candidate": "2fd28d0210106ddb8435b91ed704b729f13a78216b3f02d7101a1b5f9c5f00f5"
   },
   {
+    "path": "apps/web-admin/e2e/spot-procurement-workbenches.e2e.ts",
+    "expected": "6309ac5b274915f79c0f6e29d62b2a0d9214cdc74cf8496a9858d4737fdbc9cb",
+    "candidate": "696d615c4d53116533c0db25a469ec09eb9195f489ddc3ddc55d2cc5503e7a3e"
+  },
+  {
     "path": "apps/web-admin/e2e/v61-business-recovery.e2e.ts",
     "expected": "11637381f5e71c07ecb7aca3354af84fef600e3c37777a4bf308f151ddba2e8a",
     "candidate": "3be54c61f488b66ebb7461066c012b4912c8d3af3b4050650eaf8a23c3ffcbbe"
@@ -85,6 +90,16 @@
     "candidate": "1065eb43979e30333591288fca00280a787dba09cfd89c46143fdd9bc52a00a5"
   },
   {
+    "path": "apps/web-admin/src/api/duty-sms.api.test.ts",
+    "expected": "a9d75e4e49e201b9ff08a753d34e83e040ed223b5c39ccc86ba3eb2adf36ca46",
+    "candidate": "5e66f9e3bbd32c423aefb90dd0b8ec94f17dfd19ce827bcb9acc9dc377c3426d"
+  },
+  {
+    "path": "apps/web-admin/src/api/duty-sms.api.ts",
+    "expected": "7b77c055ee37e8fdfe7ec3f6104fce413f05a7dfa7627f36f9b7427803ac3350",
+    "candidate": "df30cd333ff623de5a99317f948dc259e7c63f3d5f0141bf3ffa15c4b697ed37"
+  },
+  {
     "path": "apps/web-admin/src/api/expense-claim.api.test.ts",
     "expected": "d3c78098151ae16e134c78be27d2ccc0157d97ec36e3ddfab181eae68a45b6b6",
     "candidate": "2bb51729b63a73c5fbfda0390a84becb777fd0fee694675225205a89c919feac"
@@ -100,9 +115,14 @@
     "candidate": "507ac1283995606b34720ea01e449853ebd243668f0e6a1ab5f5d6bb9827f6b9"
   },
   {
+    "path": "apps/web-admin/src/api/spot-procurement.api.test.ts",
+    "expected": "bb2712b27b9e8f170a9bed09c7407e2b528e05e496b9a6cf5fd86486e9fc805d",
+    "candidate": "f6e82996bf2f2525d8963586d3ce7f7d2b1493c08b5741ede723a77fec2de2c3"
+  },
+  {
     "path": "apps/web-admin/src/api/spot-procurement.api.ts",
     "expected": "20f440ecebd19cecc5022d18fb0d215930ebbb5c8a7ad1e71b2ec2b0046ccd75",
-    "candidate": "497d08af6d9115fc187113d04bd443dee84dd70570ea21d8a846209a24506465"
+    "candidate": "b5fa1c99f02297dee07ff725e18059847519a867987a9a66f91c12c0fa431145"
   },
   {
     "path": "apps/web-admin/src/app/AdminLayout.vue",
@@ -112,7 +132,7 @@
   {
     "path": "apps/web-admin/src/app/business-navigation.ts",
     "expected": "ca6ea80236b16d82c21de6175f2920bcd7fde3578ea65b229cffe76796a1e01a",
-    "candidate": "4ea416da20302dbd1924fc8f2e135f44d591bb5e81abe0b86e7816f2586b0194"
+    "candidate": "29a5d0b4da6947b01d61af2c5f3ec2a0501bc324dfef50b47d4abe85440e9f49"
   },
   {
     "path": "apps/web-admin/src/app/navigation-work-item-badges.test.ts",
@@ -345,6 +365,16 @@
     "candidate": "c047b18c10d2464ec0e28a3e669050b6e3a29c9f719854bbb6474728dc20ce28"
   },
   {
+    "path": "apps/web-admin/src/pages/projects/project-expense-receipt-action.test.ts",
+    "expected": "a10b3a80bd136ed9fb94fabdb436dcef11e9b0438f92083e6acc978ea073f432",
+    "candidate": null
+  },
+  {
+    "path": "apps/web-admin/src/pages/projects/project-expense-receipt-page-action.test.ts",
+    "expected": "841ef3f494b0ec0d391327a7653ab94410fc96238d87533275fe78830f6240c6",
+    "candidate": null
+  },
+  {
     "path": "apps/web-admin/src/pages/projects/project-operating-overview.structure.test.ts",
     "expected": "20f3a4986501b193e47f9138a15c228bd23e4b2dd441c46122e13b7586f963c3",
     "candidate": "b6f89fefe7a0976074725972b75116fbe18e4598f12f229acc02cc4c85ca4016"
@@ -377,7 +407,7 @@
   {
     "path": "apps/web-admin/src/pages/spot-procurement/SpotProcurementDetailPage.vue",
     "expected": "5bcf5d38242174a9c45c174204be153eea5ddbaf3f9a19be4d6741ff55da2fa1",
-    "candidate": "9ba7039edd24e4121c26bb37e8b8f6dfe29d3caf58f0f70cf79d7eefcb0eae31"
+    "candidate": "0d48359e7b3e2508aecc874d4d2cac491784d45c1637cb7bd433d99edf8ea0c2"
   },
   {
     "path": "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentDetailPage.vue",
@@ -385,24 +415,49 @@
     "candidate": "69057e0ec46406a49eeaf97032b2610ac25f09b95ff6cb70def25f24add5dcde"
   },
   {
+    "path": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptPage.vue",
+    "expected": "1ff25037a69116bc6a557d9943d884f00a65781917254c1c8d7db65fe038e51e",
+    "candidate": "850670c3deacdbef795ae8f74f48652e28fecd74d9aadbc75752d5b549dcb1ed"
+  },
+  {
+    "path": "apps/web-admin/src/pages/spot-procurement/SpotProcurementReceiptWorkbenchPage.vue",
+    "expected": "a991151941dc29d7424eca87616890855d930e9cd0077f8731e11d844ae088e9",
+    "candidate": "39e780925faa2d465b65198091488496470ec0edc8eb011e2b19fdd113aa3e22"
+  },
+  {
     "path": "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue",
     "expected": "b39180b0f37a54de0edd172cf6521183930bada012397d9d5e0580e3909b1ecc",
     "candidate": "bfd006edf2194af5fcc75272bf508cd9bcf3a4ec63a20b8c380ebc4df7f7798f"
   },
   {
+    "path": "apps/web-admin/src/pages/spot-procurement/components/ProcurementBusinessNav.vue",
+    "expected": "5bbbb0d088b33be7aa4505b6b26939be1e075dd8b88b060183a7cab07a528b52",
+    "candidate": "201a12a4923793b406adb41b87e031ba4019d7215c1059062ff4d3b62e59878c"
+  },
+  {
+    "path": "apps/web-admin/src/pages/spot-procurement/components/ReceiptPhotoUploader.vue",
+    "expected": "6a0d85dce454350a86c0890dea2cdb876642cf1094b09ea336c0e370fbc5ebb9",
+    "candidate": "ee6cb420a0f2388b4da5810563eb4190857c6ddf60a7973034647966396a519a"
+  },
+  {
     "path": "apps/web-admin/src/pages/spot-procurement/spot-procurement-pages.test.ts",
     "expected": "94b564bfb20af9d2cb2248a31902392679b63e435627499c6b9cc34b064ea392",
-    "candidate": "1e0522a2606863650628740a8b7cee25d14964490eb92224731ff462cc797970"
+    "candidate": "95b603d42cb559d4a05ca0c8f7002a084f90298af0e7a3d2bfbabb2817fadbcc"
+  },
+  {
+    "path": "apps/web-admin/src/pages/spot-procurement/spot-procurement-stage-d-capability-gates.structure.test.ts",
+    "expected": "cacdbad32fbea8e943e26a2fda65d69a1d44ff248b5d6041bc9db212308b3f1c",
+    "candidate": "15b52faa932bf4dada79971d78a6be35f31da01c4105708cf4bb1db3f57a10ad"
   },
   {
     "path": "apps/web-admin/src/routes/index.test.ts",
     "expected": "344b6667a827fbd0bdf2c6e60a5595b91a5f98039170576a4f232f9c18171d46",
-    "candidate": "8e8febc23c4909196f0e1e7a970bb45c9625b5f86886789407048c2f3d519faa"
+    "candidate": "28397d24a833a48b0bb004e05fa3273c13a6c126b42f455373f3a7a645e0cb08"
   },
   {
     "path": "apps/web-admin/src/routes/route-records.ts",
     "expected": "7d9b2c95aef23eeb0bb20244914b77d25d4069f91b3459624a4217e3c41a1e66",
-    "candidate": "f4d27dc9a7a1769ff97f853fd866419d1135b3458d748defaeedede614d30fcf"
+    "candidate": "43303e995bee26520b355b3ff8b7a12ff2c90201008b47b8652ed04a390fdb07"
   },
   {
     "path": "package.json",
@@ -1135,7 +1190,7 @@
   {
     "path": "services/api/src/me/me.service.ts",
     "expected": "439db3745de0160d9db7dc5819bdf2f73c2ac0c595d8f8b5250e83d54aba5b25",
-    "candidate": "8e0122dfea1d845bd99e9a0c2dd253f6109e063a68177aac5e12621cdbed3404"
+    "candidate": "3af5613ba3f6a6443316733b82fcec9838f1f8fefb0369a29e7c4a1df47473ff"
   },
   {
     "path": "services/api/src/necessary-expense-reserve/necessary-expense-reserve-file-access.spec.ts",
@@ -1368,6 +1423,11 @@
     "candidate": "e34c2249bfd7ea82468b283952b54a17c2494d94d102f7a9598e307d34d1aa77"
   },
   {
+    "path": "services/api/src/retired-write-entry/retired-write-entry.guard.ts",
+    "expected": "958e7639f5740b4e08af17be0a7040d69863f29d37c2ed185839dacd20c3c329",
+    "candidate": "72590472d5c840ede08429ac3e51850c5992636431d82159268c3dab8976338b"
+  },
+  {
     "path": "services/api/src/settlement/settlement-operating-source.adapter.ts",
     "expected": "6e1134b08b50c90f557439bc2387a4de6e079e0ed8b2bce95554155bcfd6ed72",
     "candidate": "dd0e87ff0d394665609d4e5639b263e5221f6a8601a51132bf5c8d625a67dd00"
@@ -1425,27 +1485,52 @@
   {
     "path": "services/api/src/spot-procurement/spot-procurement-payment.service.spec.ts",
     "expected": "7cccd52705e5445f257d186477b57fc0e9351ada02a6ca342d0459b64c1e9210",
-    "candidate": "5cead934447b4fd8af75d2a0cb2f8b39063ab1d8e97ea450d6337850e28ab8d1"
+    "candidate": "14fb51699c365d1d2d0cd330a0558f77c33c03e1add88b2592994489b869e4da"
   },
   {
     "path": "services/api/src/spot-procurement/spot-procurement-payment.service.ts",
     "expected": "76a821443d942f49a6c942c3948c86619312391fcd40560c452ca4ef947aa39e",
-    "candidate": "d9ca6efab5730398307185e775c733816fc07b53648334647b181a2e495e32d0"
+    "candidate": "192f8572f1ba32e0efe1a46b1e6779d53ac8a0529017c76903381d5eec85a038"
   },
   {
     "path": "services/api/src/spot-procurement/spot-procurement-read.service.spec.ts",
     "expected": "c96674c3c1f3acd158168b471952df1dcbc4a4b27b9bc24299395f6ce101e8f1",
-    "candidate": "8410d4be5d42b5faa7d2688dea3e50e38660eeb10ac2518d92e1cbdefd950dad"
+    "candidate": "03c5239cd42b0b3e9a35367e77364b7a6baeee019972d3631d15a83b58516218"
   },
   {
     "path": "services/api/src/spot-procurement/spot-procurement-read.service.ts",
     "expected": "8913742e257ce1a8627987d475b5370f521db05e4d414ed3ed42214ae77e4649",
-    "candidate": "28fd91836995a3a18c32c46c8c0a9e9fd04b07a8771e37dd0dac1987cd3cea5d"
+    "candidate": "3dad83048fbabf289b6d0eaebfdd6f2d0453bb2f24d794e33f129ffb182fd727"
+  },
+  {
+    "path": "services/api/src/spot-procurement/spot-procurement-receipt-review-notification.pg.diagnostic.spec.ts",
+    "expected": "2f0bfa0afe5ded8e2d1c440e4df307fad4e7684a95a77fecf063b01f2f9f3c4d",
+    "candidate": "3a59209203e31e77f82852f103b27c2c7d7c00954668524f817e146ee89285b1"
+  },
+  {
+    "path": "services/api/src/spot-procurement/spot-procurement-receipt-review-notification.service.ts",
+    "expected": "3ea852f69175ecffcf71487ebf9da97250b6b1c381cc3d834989985d3351e4d1",
+    "candidate": "5d4da42b12213f88823ab5a1ea84b21bf5caf096b16d39eaa1c106009da3dfd8"
+  },
+  {
+    "path": "services/api/src/spot-procurement/spot-procurement-receipt.controller.spec.ts",
+    "expected": "9bd8b01c56ac1e58d1d226b1d417b21b3de764fd4cbb7ba2a13ea07d283b3fad",
+    "candidate": "77d664a83a8ba1714dcb52ecb0ba154898e9a72faa0169d0264edab5a499f643"
+  },
+  {
+    "path": "services/api/src/spot-procurement/spot-procurement-receipt.service.spec.ts",
+    "expected": "d9abd32de328990c8ebbf3a7a8586eac04dd08f709b0dcff9351edd59eb06808",
+    "candidate": "8b45e62a82fd6c5c5de9347a7624c7c375880a2456ce164498caa54525f5ac8f"
+  },
+  {
+    "path": "services/api/src/spot-procurement/spot-procurement-receipt.service.ts",
+    "expected": "e296e70a6e4a963dab206e9d69b6634452d322dd950bf589e65c778e3878253a",
+    "candidate": "8e671df82903900e65fbaac50d4dc17c3c86a980caa4fe19740203332b63126a"
   },
   {
     "path": "services/api/src/spot-procurement/spot-procurement.controller.ts",
     "expected": "3c83af45a36b88f30ee54e8aacc9024ea803e74c37d639efa92f13663d0c25cb",
-    "candidate": "2d7ad9e423ce9460e6c7c128924355515d5e26dcf972c5f329ff4b82d5c8117f"
+    "candidate": "623165d478637cf57c16ece83e9b1273e22f25d84f42783733bab4ea85108822"
   },
   {
     "path": "services/api/src/spot-procurement/spot-procurement.module.ts",
