@@ -83,7 +83,21 @@ export async function verifySignedSettlementRoundedPayment(
     openingTreatment: "not_included", openingReason: "付款未含期初", openingEvidence: "隔离合成证据", confirmationPassword: password,
     sourceAllocations: [{ sourceBatchId: opening.sources[0].id, amountCents: "10001" }]
   };
-  const execution = await call(finance, `${path}/registrations`, registration) as { id: string };
+  let execution: { id: string };
+  try {
+    execution = await call(finance, `${path}/registrations`, registration) as { id: string };
+  } catch (error) {
+    const fact = await owner.paymentExecution.findUnique({
+      where: { idempotencyKey: registration.idempotencyKey }, select: { id: true }
+    });
+    const payment = await owner.paymentRequest.findUniqueOrThrow({
+      where: { id: paymentRequestId }, select: { status: true, paidAmountCents: true }
+    });
+    throw new Error(
+      `四位结算实付未确认（实付事实：${Boolean(fact)}，付款状态：${payment.status}，累计已付：${payment.paidAmountCents} 分）`,
+      { cause: error }
+    );
+  }
   expect(await call(finance, `/payment-executions/results/${registration.idempotencyKey}`)).toMatchObject({
     status: "recorded", execution: { executionId: execution.id, amountCents: "10001" }
   });
