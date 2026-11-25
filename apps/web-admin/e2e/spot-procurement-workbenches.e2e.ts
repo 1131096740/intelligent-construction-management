@@ -1264,7 +1264,7 @@ test("records two controlled executions from the frozen channel and refreshes se
       await expect(page.getByText("部分已付", { exact: true }).first()).toBeVisible();
       await expect(page.locator(".payment-composition-card__facts > div").filter({ hasText: "剩余待付" })
         .getByText("¥2,200.00", { exact: true })).toBeVisible();
-      await page.getByRole("tab", { name: "当前办理", exact: true }).click();
+      await page.locator(".t-tabs").getByText("当前办理", { exact: true }).click();
       await expect(page.getByRole("button", { name: "登记实际付款", exact: true })).toBeVisible();
     }
   }

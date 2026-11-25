@@ -767,7 +767,7 @@ test("locates a rejected decimal cell and saves corrected input as a fresh confi
   const exported = await request.get(`${path}/bills/main/export`, { headers });
   expect(exported.status()).toBe(200);
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(await exported.body());
+  await workbook.xlsx.load(new Uint8Array(await exported.body()).buffer);
   const sheet = workbook.getWorksheet("合同清单");
   expect(sheet?.getCell("F2").value).toBe(bill.rows[0].unitPrice);
   expect(sheet?.getCell("H2").value).toBe(bill.rows[0].taxInclusiveAmountYuan);
