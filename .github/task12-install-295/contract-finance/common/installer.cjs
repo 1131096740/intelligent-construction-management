@@ -1466,6 +1466,11 @@ module.exports.withCombined331PaymentRemainderForRestore = (receipt,prepare295,c
     && material && typeof material==='object','PAYMENT_REMAINDER_331_RESTORE_ARGUMENTS');
   return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,true,{...readForward320(material,331),prepare295});
 };
+module.exports.withCombined332UpwardArchiveForRestore = (receipt,prepare295,consume,material) => {
+  need(typeof prepare295==='function' && typeof consume==='function'
+    && material && typeof material==='object','UPWARD_ARCHIVE_332_RESTORE_ARGUMENTS');
+  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,true,{...readForward320(material,332),prepare295});
+};
 module.exports.withCombined331RetainedCleanup=(receipt,consume,material)=>
   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,331),'cleanup');
 module.exports.withCombined331MultiWitnessForProfile=(receipt,consume,material)=>
