@@ -55,6 +55,11 @@
     "candidate": "b8e70196543602fbb671a11ba8289690db557413eb41e1090b18986cfd357ea5"
   },
   {
+    "path": "apps/web-admin/e2e/payable-settlement.e2e.ts",
+    "expected": "a97500ef62ca2f31be28391f9ee2e37cbb160b0f9e6e33751af6eb9e54ecd9bf",
+    "candidate": "c43d7215509d95ea6502ff127eab476352cbad07b79479e13d8751b6dc8d23ba"
+  },
+  {
     "path": "apps/web-admin/e2e/pol115-expense-real.e2e.ts",
     "expected": "85a955c7bf9cd87ac702b6c3d9921b0a8d4c6d7f00455155d0eb0e20deda98b4",
     "candidate": "18b95383dede2061e82a48a2b84e49449e81a75db86e98e1a41f3417919223f2"
@@ -178,6 +183,16 @@
     "path": "apps/web-admin/src/api/general-procurement.api.ts",
     "expected": "81ae9def679abbd832e1bf125729cecd48333024c28712d2c8848711a6f31e45",
     "candidate": "507ac1283995606b34720ea01e449853ebd243668f0e6a1ab5f5d6bb9827f6b9"
+  },
+  {
+    "path": "apps/web-admin/src/api/payable-settlement.api.test.ts",
+    "expected": "a3d856bbb47364a92e3493d2614a2de524926a7552c8688ab29001026f34c5ad",
+    "candidate": "825931db29d89cb7b0e6893b9e1c919ddac552d3d03a74bb46d89251f6bf1544"
+  },
+  {
+    "path": "apps/web-admin/src/api/payable-settlement.api.ts",
+    "expected": "6d643a5b0cf9ac99dc76316b438f8167979b9e4602553927018496332f26e11d",
+    "candidate": "ac238783f8be596a123bb93115044184d4c8e91baa05789ef635ce1748e755a1"
   },
   {
     "path": "apps/web-admin/src/api/settlement-drafts.api.ts",
@@ -428,6 +443,16 @@
     "path": "apps/web-admin/src/pages/home/home.config.ts",
     "expected": "9af35855418eecba9521e90580657564214dfdfc5492ae4b764ab66f9ce7693b",
     "candidate": "b38f47dfe727c1cc6bc7754350ec9c6b11aad04f94f42899b1fb6e480c52c928"
+  },
+  {
+    "path": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
+    "expected": "9cfb2fb0a0d5dfa5e1186f35d0349d0a170ac21fe1097a1b001d3665a0cf64ff",
+    "candidate": "966983c8b09d9aadfc99747b5346fc50e1ca0e39e7b6b6a962bef9d83a5a42bf"
+  },
+  {
+    "path": "apps/web-admin/src/pages/payable-settlements/payable-settlement-workbench.structure.test.ts",
+    "expected": "7c56d9664c61e358f0c0d49b43a65eaa120f38fd96d53a5fbe98fdec305b6c13",
+    "candidate": "a5c9768ff7ef83260a4685a06ff43e52cad5fa8cd584d86d408b293f7ccab349"
   },
   {
     "path": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
@@ -1185,6 +1210,11 @@
     "candidate": "604b76192f84144ea28498090c09891fd36929a08da72e99a181ce5fa1e1e027"
   },
   {
+    "path": "services/api/src/database/payable-settlement-concurrency.spec.ts",
+    "expected": "84e6b408a89ecb417db3f5c781cf55c60825a1d8557f542e4a6b84adb96719f2",
+    "candidate": "189ced1c5be9d482ff2b4558da5a342bb790b4245bc907f98639f6e6f9e35393"
+  },
+  {
     "path": "services/api/src/database/project-business-scope-http-postgres.spec.ts",
     "expected": {
       "general16": "58901077599d29a5db83e55e0619048ec044317abf7519c3292639b0ab4add36",
@@ -1506,6 +1536,16 @@
     "path": "services/api/src/organization/organization-management-policy.ts",
     "expected": "992c999cb8b544bb09eb224880a674f139f1996e36ce645c75ca89aa28ed9e31",
     "candidate": "5af7622faaa3e42580b7b5f5aad18a5a11c12be69666097b7fc7499da2dfcb99"
+  },
+  {
+    "path": "services/api/src/payable-registry/payable-registry.service.spec.ts",
+    "expected": "339278210813251ac2c5396e94859d33262459361c4b5e22543a26bdb93e1b0b",
+    "candidate": "959489989da7a1904d9f2ad898ca9c3bcacda922a53decc407e6e3e2edf09c89"
+  },
+  {
+    "path": "services/api/src/payable-registry/payable-registry.service.ts",
+    "expected": "4bb30c92fe1959653dd43047fb7c001f202720ea733e91d27ea4420c4ae54ff6",
+    "candidate": "63866337821e6aeb0918653bc72707d81c2a7c6b9288d60dbcd4f511ed33e1b1"
   },
   {
     "path": "services/api/src/payment/dto/assign-payment-approval.dto.ts",
