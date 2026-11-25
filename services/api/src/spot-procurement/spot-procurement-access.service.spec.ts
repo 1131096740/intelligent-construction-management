@@ -105,6 +105,7 @@ type AccessFixture = {
     paymentExecutionId: string;
     fileId: string;
   }>;
+  paymentArchiveFiles?: Array<{ fileId: string; archiveId: string }>;
   discrepancies?: Array<{
     id: string;
     projectId?: string;
@@ -221,13 +222,29 @@ function buildPrisma(fixture: AccessFixture = {}) {
       )
     },
     $queryRaw: jest.fn(async (statement: Prisma.Sql) => {
-      const sql = statement.sql.trim();
+      const sql = statement.sql.trim().replace(/\s+/gu, " ");
       if (sql.startsWith('SELECT d."id", d."fromUserId", d."toUserId" FROM "ApprovalDelegation" d')) return [];
-      if (sql !== 'SELECT "versionId" FROM public."SpotProcurementAttachment" WHERE "fileId" = ?'
-        || statement.values.length !== 1) throw new Error("unexpected attachment binding read");
-      return (fixture.attachments ?? []).filter(row => row.fileId === statement.values[0])
-        .map(({ versionId }) => ({ versionId }));
+      const [fileId] = statement.values;
+      if (statement.values.length !== 1) throw new Error("unexpected attachment binding read");
+      switch (sql) {
+        case 'SELECT "versionId" FROM public."SpotProcurementAttachment" WHERE "fileId" = ?':
+          return (fixture.attachments ?? []).filter(row => row.fileId === fileId).map(({ versionId }) => ({ versionId }));
+        case 'SELECT "paymentId", "executedByUserId", "voidedAt" FROM public."SpotProcurementPaymentExecution" WHERE "voucherFileId" = ?':
+          return (fixture.executions ?? []).filter(row => row.voucherFileId === fileId)
+            .map(({ paymentId, executedByUserId, voidedAt }) => ({ paymentId, executedByUserId, voidedAt }));
+        case 'SELECT "paymentId", "uploadedByUserId", "invalidatedByUserId" FROM public."SpotProcurementPaymentInvoice" WHERE "fileId" = ?':
+          return (fixture.paymentInvoices ?? []).filter(row => row.fileId === fileId)
+            .map(({ paymentId, uploadedByUserId, invalidatedByUserId }) => ({ paymentId, uploadedByUserId, invalidatedByUserId }));
+        case 'SELECT "paymentExecutionId" FROM public."SpotProcurementPaymentExecutionVoucher" WHERE "fileId" = ?':
+          return (fixture.executionVouchers ?? []).filter(row => row.fileId === fileId)
+            .map(({ paymentExecutionId }) => ({ paymentExecutionId }));
+        case 'SELECT "archiveId" FROM public."SpotProcurementPaymentArchiveFile" WHERE "fileId" = ?':
+          return (fixture.paymentArchiveFiles ?? []).filter(row => row.fileId === fileId).map(({ archiveId }) => ({ archiveId }));
+        default:
+          throw new Error("unexpected attachment binding read");
+      }
     }),
+    spotProcurementPaymentArchiveFile: { findMany: jest.fn() },
     spotProcurementPayment: {
       findUnique: jest.fn(({ where }: { where: { id: string } }) =>
         Promise.resolve(fixture.payments?.find((row) => row.id === where.id) ?? null)
@@ -744,9 +761,11 @@ describe("SpotProcurementAccessService", () => {
     await expect(service.resolveFileDownloadAccess("ordinary-file", "user-1")).resolves.toBe(
       "not_spot"
     );
-    const [statement] = prisma.$queryRaw.mock.calls[0];
-    expect(statement.values).toEqual(["ordinary-file"]);
-    expect(statement.sql).not.toContain('"id"');
+    for (const [statement] of prisma.$queryRaw.mock.calls) {
+      expect(statement.values).toEqual(["ordinary-file"]);
+      expect(statement.sql).not.toContain('"id"');
+    }
+    expect(prisma.$queryRaw.mock.calls).toHaveLength(5);
   });
 
   it.each([

@@ -791,7 +791,7 @@ export class SpotProcurementAccessService {
       invoiceExceptionBindings
     ] =
       await Promise.all([
-        // Prisma's model read also projects the primary key. The ordinary file reader only needs the two binding columns.
+        // Keep file-binding reads within their filter and result columns. Prisma model reads also project primary keys.
         client.$queryRaw<Array<{ versionId: string }>>(Prisma.sql`
           SELECT "versionId" FROM public."SpotProcurementAttachment" WHERE "fileId" = ${fileId}
         `),
@@ -809,18 +809,14 @@ export class SpotProcurementAccessService {
             handlerUserId: true
           }
         }),
-        client.spotProcurementPaymentExecution.findMany({
-          where: { voucherFileId: fileId },
-          select: { paymentId: true, executedByUserId: true, voidedAt: true }
-        }),
-        client.spotProcurementPaymentInvoice.findMany({
-          where: { fileId },
-          select: {
-            paymentId: true,
-            uploadedByUserId: true,
-            invalidatedByUserId: true
-          }
-        }),
+        client.$queryRaw<Array<{ paymentId: string; executedByUserId: string; voidedAt: Date | null }>>(Prisma.sql`
+          SELECT "paymentId", "executedByUserId", "voidedAt"
+          FROM public."SpotProcurementPaymentExecution" WHERE "voucherFileId" = ${fileId}
+        `),
+        client.$queryRaw<Array<{ paymentId: string; uploadedByUserId: string; invalidatedByUserId: string | null }>>(Prisma.sql`
+          SELECT "paymentId", "uploadedByUserId", "invalidatedByUserId"
+          FROM public."SpotProcurementPaymentInvoice" WHERE "fileId" = ${fileId}
+        `),
         client.spotProcurementRefund.findMany({
           where: { voucherFileId: fileId },
           select: {
@@ -895,10 +891,9 @@ export class SpotProcurementAccessService {
         })
       ]);
     const executionVoucherBindings =
-      await client.spotProcurementPaymentExecutionVoucher.findMany({
-        where: { fileId },
-        select: { paymentExecutionId: true }
-      });
+      await client.$queryRaw<Array<{ paymentExecutionId: string }>>(Prisma.sql`
+        SELECT "paymentExecutionId" FROM public."SpotProcurementPaymentExecutionVoucher" WHERE "fileId" = ${fileId}
+      `);
     const executionVoucherIds = executionVoucherBindings.map(
       (binding) => binding.paymentExecutionId
     );
@@ -917,10 +912,9 @@ export class SpotProcurementAccessService {
       };
     };
     const archiveFileBindings = archiveFileModel.spotProcurementPaymentArchiveFile
-      ? await archiveFileModel.spotProcurementPaymentArchiveFile.findMany({
-          where: { fileId },
-          select: { archiveId: true }
-        })
+      ? await client.$queryRaw<Array<{ archiveId: string }>>(Prisma.sql`
+          SELECT "archiveId" FROM public."SpotProcurementPaymentArchiveFile" WHERE "fileId" = ${fileId}
+        `)
       : [];
     const archivePaymentBindings =
       archiveFileBindings.length && archiveFileModel.spotProcurementPaymentArchive

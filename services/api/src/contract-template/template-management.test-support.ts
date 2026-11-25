@@ -455,10 +455,23 @@ export class TemplateSyntheticStore {
     $queryRaw: async (queryInput: Prisma.Sql | TemplateStringsArray, ...bindings: unknown[]): Promise<Row[]> => {
       const query = "strings" in queryInput ? queryInput : Prisma.sql(queryInput, ...bindings);
       const text = query.strings.join("?").replace(/\s+/gu, " ").trim();
-      if (text === 'SELECT "versionId" FROM public."SpotProcurementAttachment" WHERE "fileId" = ?') {
+      const spotFileReads = [
+        ['SELECT "versionId" FROM public."SpotProcurementAttachment" WHERE "fileId" = ?', "spotProcurementAttachment", "fileId", ["versionId"]],
+        ['SELECT "paymentId", "executedByUserId", "voidedAt" FROM public."SpotProcurementPaymentExecution" WHERE "voucherFileId" = ?',
+          "spotProcurementPaymentExecution", "voucherFileId", ["paymentId", "executedByUserId", "voidedAt"]],
+        ['SELECT "paymentId", "uploadedByUserId", "invalidatedByUserId" FROM public."SpotProcurementPaymentInvoice" WHERE "fileId" = ?',
+          "spotProcurementPaymentInvoice", "fileId", ["paymentId", "uploadedByUserId", "invalidatedByUserId"]],
+        ['SELECT "paymentExecutionId" FROM public."SpotProcurementPaymentExecutionVoucher" WHERE "fileId" = ?',
+          "spotProcurementPaymentExecutionVoucher", "fileId", ["paymentExecutionId"]],
+        ['SELECT "archiveId" FROM public."SpotProcurementPaymentArchiveFile" WHERE "fileId" = ?',
+          "spotProcurementPaymentArchiveFile", "fileId", ["archiveId"]]
+      ] as const;
+      const spotFileRead = spotFileReads.find(([statement]) => text === statement);
+      if (spotFileRead) {
         if (query.values.length !== 1 || typeof query.values[0] !== "string") throw new Error("合成采购附件只接受固定文件坐标");
-        const rows = await this.table("spotProcurementAttachment").findMany({ where: { fileId: query.values[0] } });
-        return rows.map(({ versionId }) => ({ versionId }));
+        const [, model, filter, columns] = spotFileRead;
+        const rows = await this.table(model).findMany({ where: { [filter]: query.values[0] } });
+        return rows.map(row => Object.fromEntries(columns.map(column => [column, row[column]])));
       }
       if (text.startsWith("/* contract_upward_archive_projection_probe_v2 */")) return [{ status: "absent", projectionOid: null, closureOid: null }];
       if (text === 'UPDATE public."ContractVersion" SET "originalSignedNumber" = ? WHERE "id" = ? AND "contractId" = ? RETURNING "id", "originalSignedNumber"') {
