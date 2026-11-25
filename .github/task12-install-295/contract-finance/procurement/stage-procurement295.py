@@ -381,11 +381,13 @@ if forward:
             raise ValueError('PROCUREMENT_329_GENERAL_FAILURE_OBSERVATION_ANCHOR')
         text = text.replace(failure_anchor, observation)
         if count == 331:
-            supplement_anchor = '      reportSha256:createHash("sha256").update(report).digest("hex")};'
-            if text.count(supplement_anchor) != 1:
+            a05_anchor = '  runtime.searchParams.set("connection_limit","2");'
+            if text.count(a05_anchor) != 1:
                 raise ValueError('PROCUREMENT_331_A05_ANCHOR')
-            text = text.replace(supplement_anchor, supplement_anchor + r'''
-    if(process.env.JG_PROCUREMENT_A05==="1"){
+            text = text.replace(a05_anchor, a05_anchor + r'''
+  if(process.env.JG_PROCUREMENT_A05==="1"){
+    receipt.stages.push("PROCUREMENT_A05_ORGANIZATION_AUTHORITY");
+    try{
       const api="/qualification/workspace/services/api";
       const roots=path.join(api,"test-support");
       const reportFile=path.join(workDir,"procurement-a05.json");
@@ -402,7 +404,16 @@ if forward:
         frame:/task426-a05-general-procurement[.]http[.]pg[.]spec[.]ts:(\d{1,5}):(\d{1,4})/u.exec(assertion)?.slice(1),
         roleRemovalPreview:/A05_ROLE_REMOVAL_PREVIEW ([1-5][0-9]{2}) (\d{1,4}|-) ([a-z_,]{1,250}|-)/u.exec(assertion)?.slice(1)};
       condition(result.status===0&&report?.numTotalTests===1&&report?.numPassedTests===1,"PROCUREMENT_331_A05_JEST");
-    }''')
+    }finally{
+      await ownerSql("ROLE_TEARDOWN",roleTeardown("procurement",database));
+    }
+    return;
+  }''')
+            normal_result = 'receipt.status="GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1_331_PASSED";'
+            if text.count(normal_result) != 1:
+                raise ValueError('PROCUREMENT_331_A05_RESULT_ANCHOR')
+            text = text.replace(normal_result, 'receipt.status=process.env.JG_PROCUREMENT_A05==="1"'
+                '?"PROCUREMENT_A05_331_PASSED":"GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1_331_PASSED";')
     write(consumer,text.encode())
 for name in ['owner-observation.cjs', *(
     ['project-scope-http-report.cjs', 'project-scope-browser-report.cjs', 'project-scope-browser-pins.json']

@@ -102,11 +102,13 @@ docker run "${args[@]}" --entrypoint node "$image" /qualification/procurement-en
   > "$work/receipt.json" 2> "$work/private.stderr" || status=$?
 [[ ! -s "$work/receipt.json" ]] || cat "$work/receipt.json"
 (( status == 0 )) || exit "$status"
-node - "$work/receipt.json" "$sha" "$lane" "$count" "$profile" "$prepared/source.json" <<'JS'
-const [file,sha,lane,count,profile,source]=process.argv.slice(2);
+node - "$work/receipt.json" "$sha" "$lane" "$count" "$profile" "$prepared/source.json" "${7-}" <<'JS'
+const [file,sha,lane,count,profile,source,option]=process.argv.slice(2);
 const r=require(file);
-const expected=lane==='general16'?'GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1_'+count+'_PASSED':'PROJECT_SCOPE_ORIGINAL_11_'+count+'_PASSED';
-if(r.status!==expected||r.sourceSha!==sha)process.exit(1);
+const a05=option==='--a05';
+const expected=a05?'PROCUREMENT_A05_331_PASSED':
+  lane==='general16'?'GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1_'+count+'_PASSED':'PROJECT_SCOPE_ORIGINAL_11_'+count+'_PASSED';
+if(r.status!==expected||r.sourceSha!==sha||(a05&&r.approvalA05?.passed!==1))process.exit(1);
 if(profile) {
   require(profile).assertInstallation(r,require(source));
   if(r.multiWitnessCatalogAfterBusiness!==true)process.exit(1);
