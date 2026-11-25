@@ -1,26 +1,30 @@
 import { type PrismaClient } from "@prisma/client";
+import { setTimeout as delay } from "node:timers/promises";
 
-export async function withDeferredPaymentCommitFailure(
+export async function withDeferredPaymentCommitFault(
   owner: PrismaClient,
   requestKey: string,
+  fault: "reject" | "disconnect",
   verify: (assertFaultReached: () => Promise<void>) => Promise<void>,
 ) {
   await owner.$transaction(async tx => {
     await tx.$executeRaw`CREATE SCHEMA jg426_commit_fault`;
-    await tx.$executeRaw`CREATE TABLE jg426_commit_fault.target (request_key text PRIMARY KEY)`;
-    await tx.$executeRaw`INSERT INTO jg426_commit_fault.target (request_key) VALUES (${requestKey})`;
+    await tx.$executeRaw`CREATE TABLE jg426_commit_fault.target (request_key text PRIMARY KEY, disconnect boolean NOT NULL)`;
+    await tx.$executeRaw`INSERT INTO jg426_commit_fault.target (request_key, disconnect) VALUES (${requestKey}, ${fault === "disconnect"})`;
     await tx.$executeRaw`CREATE SEQUENCE jg426_commit_fault.witness`;
     await tx.$executeRaw`
       CREATE FUNCTION jg426_commit_fault.reject_commit() RETURNS trigger
       LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+      DECLARE interrupt_session boolean;
       BEGIN
-        IF EXISTS (
-          SELECT 1 FROM public."PaymentExecution" execution
-          JOIN jg426_commit_fault.target target ON target.request_key = execution."idempotencyKey"
-          WHERE execution."id" = NEW."executionId"
-        ) THEN
+        SELECT target.disconnect INTO interrupt_session
+        FROM public."PaymentExecution" execution
+        JOIN jg426_commit_fault.target target ON target.request_key = execution."idempotencyKey"
+        WHERE execution."id" = NEW."executionId";
+        IF FOUND THEN
           -- Sequence changes survive rollback and witness that the deferred check ran.
           PERFORM pg_catalog.nextval('jg426_commit_fault.witness'::regclass);
+          IF interrupt_session THEN PERFORM pg_catalog.pg_advisory_xact_lock(426, 16); END IF;
           RAISE EXCEPTION '隔离验收强制推迟到提交阶段的数据库拒绝' USING ERRCODE = '23514';
         END IF;
         RETURN NULL;
@@ -49,4 +53,45 @@ export async function withDeferredPaymentCommitFailure(
       await tx.$executeRaw`DROP SCHEMA jg426_commit_fault`;
     });
   }
+}
+
+export async function disconnectIsolatedPaymentCommit<T>(owner: PrismaClient, register: () => Promise<T>): Promise<T> {
+  let response: Promise<{ value: T } | { error: unknown }> | undefined;
+  await owner.$transaction(async tx => {
+    // The archived isolated runner supplies these identities. The advisory
+    // lock ties the signal to this one request inside PostgreSQL COMMIT.
+    const [identity] = await tx.$queryRaw<Array<{ safe: boolean }>>`
+      SELECT current_database() = 'jiangkong_payment_execution_concurrency'
+        AND current_user = 'jg_task01_owner'
+        AND current_setting('jg.task398_run_id', true) = ${process.env.TASK398_RUN_ID} AS safe`;
+    expect(identity?.safe).toBe(true);
+    await tx.$executeRaw`SET LOCAL stats_fetch_consistency = 'none'`;
+    await tx.$executeRaw`SELECT pg_catalog.pg_advisory_xact_lock(426, 16)`;
+    response = register().then(value => ({ value }), error => ({ error }));
+
+    const deadline = Date.now() + 8_000;
+    do {
+      const [match, extra] = await tx.$queryRaw<Array<{ pid: number }>>`
+        SELECT activity.pid
+        FROM pg_catalog.pg_stat_activity activity
+        JOIN pg_catalog.pg_locks waiting ON waiting.pid = activity.pid
+        WHERE activity.datname = current_database() AND activity.usename = 'jg_task01_runtime'
+          AND activity.application_name = 'jg398_runtime' AND activity.query ~ '^COMMIT;?$'
+          AND activity.state = 'active' AND activity.wait_event = 'advisory'
+          AND waiting.locktype = 'advisory' AND waiting.classid = 426 AND waiting.objid = 16
+          AND waiting.objsubid = 2 AND NOT waiting.granted`;
+      expect(extra).toBeUndefined();
+      if (match) {
+        const [signal] = await tx.$queryRaw<Array<{ disconnected: boolean }>>`
+          SELECT pg_catalog.pg_terminate_backend(${match.pid}::integer, 1500::bigint) AS disconnected`;
+        expect(signal?.disconnected).toBe(true);
+        return;
+      }
+      await delay(20);
+    } while (Date.now() < deadline);
+    throw new Error("未观察到独占测试付款停在数据库提交阶段");
+  }, { timeout: 12_000 });
+  const result = await response!;
+  if ("error" in result) throw result.error;
+  return result.value;
 }
