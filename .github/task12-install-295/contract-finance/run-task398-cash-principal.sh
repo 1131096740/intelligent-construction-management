@@ -15,10 +15,11 @@ scope=$5
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const count=source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
+  if(count===332) require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
   console.log(count);
-' "$prepared/source.json" "$sha")
+' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs")
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -37,10 +38,14 @@ if (( count >= 330 )); then
   [[ $(runner_sha) == feb96f723d58b7108add5b193c710fc61f1f3280469d7e3766dbfdcf3fdd7b6d ]] || exit 65
   patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-principal-330.patch"
   [[ $(runner_sha) == df3fb0d359512f3a85ebb907b4c7b71fa72034b2c2ed2f5ee4b479c03db1ebbb ]] || exit 65
-  if [[ $count == 331 ]]; then
+  if (( count >= 331 )); then
     patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-principal-331.patch"
     [[ $(runner_sha) == 6dacd1f230b28d13a76dc42e510affe8230f4fa8c87339624d1a4993814afb74 ]] || exit 65
   fi
+fi
+if [[ $count == 332 ]]; then
+  patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-principal-332.patch"
+  [[ $(runner_sha) == 1d46ecbe7796b613e996fe8652d7147f68147ae6f43adb53c1c37d902f675471 ]] || exit 65
 fi
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
@@ -53,7 +58,8 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003600_fund_balance_notice_lock/migration.sql,dst=/qualification/terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
-  --mount "type=bind,src=$plan/task398-cash-principal-entry.cjs,dst=/qualification/task398-cash-principal-entry.cjs,readonly")
+  --mount "type=bind,src=$plan/task398-cash-principal-entry.cjs,dst=/qualification/task398-cash-principal-entry.cjs,readonly"
+  --mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done

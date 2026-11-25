@@ -4,7 +4,7 @@ umask 077
 
 [[ $# == 2 || ( $# == 3 && ( $3 == --current-320 || $3 == --text-direct-330 ) && $2 != pol275 ) ||
   ( $# == 3 && $3 == --payment-remainder-331 && $2 != pol275 ) ||
-  ( $# == 3 && $3 == --upward-archive-332 && ( $2 == line-a || $2 == pol115-workbench || $2 == onboarding || $2 == procurement ) ) ||
+  ( $# == 3 && $3 == --upward-archive-332 && ( $2 == line-a || $2 == pol115-workbench || $2 == onboarding || $2 == procurement || $2 == cash-handover || $2 == principal-return ) ) ||
   ( $# == 4 && $2 == pol275 && ( $3 == --current-320 || $3 == --text-direct-330 || $3 == --payment-remainder-331 ) && $4 =~ ^[a-f0-9]{40}$ ) ]] || exit 64
 sha=$1
 lane=$2
