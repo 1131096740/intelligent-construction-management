@@ -15,6 +15,11 @@
     "candidate": "912c105a15d35cbbb1952db4d45d10b3156d3d3062e6cfc342b15c0925a1daa2"
   },
   {
+    "path": "apps/web-admin/src/pages/contracts/contract-workbench-canvas.structure.test.ts",
+    "expected": "eeb9153ff2b8fcf00c13c6d5ae633dde6484cca08376c1abe7e049aacc72795b",
+    "candidate": "6c80ab450ca263858c3dfffc020cd01c6102a51c99e4168e928d8009c3651a6d"
+  },
+  {
     "path": "apps/web-admin/src/pages/contracts/workbench/ContractPricingSection.vue",
     "expected": "0f22c2b44c7ac27a78f6ca6790065a561fc2b03b70d97cc9d5ce42e2f7dbcbc6",
     "candidate": "a4f1f2d5c893725fea01fb2d6fc4952dd320331e88b394bc78b024f256b204f0"

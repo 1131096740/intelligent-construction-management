@@ -2,6 +2,7 @@
   "apps/web-admin/e2e/contract-grid-http.e2e.ts": "f296e48b4afbe2b74438a8ba8d6dbc418c20be77f98feeb96edee7e62ccfa760",
   "apps/web-admin/e2e/helpers/contract-grid-synthetic-server.cjs": "31e39fc8b1400f5635a97b22281a1e5b58784297f9a19a1bf3b45c66c593a15e",
   "apps/web-admin/src/api/core-flow-read.api.ts": "912c105a15d35cbbb1952db4d45d10b3156d3d3062e6cfc342b15c0925a1daa2",
+  "apps/web-admin/src/pages/contracts/contract-workbench-canvas.structure.test.ts": "6c80ab450ca263858c3dfffc020cd01c6102a51c99e4168e928d8009c3651a6d",
   "apps/web-admin/src/pages/contracts/workbench/ContractPricingSection.vue": "a4f1f2d5c893725fea01fb2d6fc4952dd320331e88b394bc78b024f256b204f0",
   "apps/web-admin/src/pages/payments/PaymentDetailPage.vue": "623a31dec13fbf30df0e031854f2f6befd8a0a9c296790c8c7fc02dcd208eb8e",
   "services/api/prisma/database-dynamic-gate-manifest.json": "b2a444f14a3cd2be34e47a9f44203d88d40d18b5aab16e0700f4e558d36fcaa0",
