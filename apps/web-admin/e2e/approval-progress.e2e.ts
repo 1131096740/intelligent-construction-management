@@ -67,11 +67,14 @@ async function setup(page: Page, onRemind: (route: Route, body: ReminderRequest,
       if (route.request().method() === "GET") return route.fulfill({ json: { notice: null } });
     }
     if (url.pathname === "/api/me/work-items") return route.fulfill({ json: { generatedAt: "2026-10-27T01:00:00Z", visibleProjectCount: 1, queues: { pending: [], blocked: [], started: [], drafts: [] }, queueMeta: {}, approvalCenter: { pendingApproval: [], startedByMe: [], handledByMe: [], delegatedToMe: [], overdueReminder: [] } } });
+    if (pathname === `/api/approval-forms/${state.flow.businessType}/${state.flow.businessId}/capability`) {
+      return route.fulfill({ json: { available: false } });
+    }
     if (url.pathname === "/api/projects") return route.fulfill({ json: [{ id: "project", code: "LOCAL", name: "虚构项目" }] });
     state.unexpected.push(url.pathname);
     return route.fulfill({ status: 404, json: { message: "未配置的本地测试请求" } });
   });
-  await page.goto("/审批中心");
+  await page.goto("/审批中心?view=participated");
   await expect(page.getByRole("heading", { name: "审批中心", exact: true })).toBeVisible();
   if (options.openPanel !== false) await page.getByRole("button", { name: "查看完整进度与短信催办" }).click();
   return state;
@@ -251,7 +254,7 @@ test("离开相关流程页后中止未完成的分页请求", async ({ page }) 
     await page.getByText("待我审批 0", { exact: true }).click();
     release();
     await aborted;
-    await expect(page.getByText("当前没有需要你处理的审批节点。", { exact: true })).toBeVisible();
+    await expect(page.getByText("当前没有需要你处理的审批。", { exact: true })).toBeVisible();
     expect(cursors).toEqual([null, "waiting-page"]);
   } finally { release(); }
 });
@@ -349,7 +352,8 @@ test("并联待办短信按本人、职责和轮次分别显示，退回后只�
     currentNodeName: "流程已结束", pendingRecipients: [], canRemind: false,
     nodes: state.flow.nodes.map(node => ({ ...node, status: "已结束", pending: [] }))
   };
-  await page.getByRole("button", { name: "刷新进度" }).click();
+  await page.getByRole("button", { name: "刷新相关流程" }).click();
+  await page.getByRole("button", { name: "查看完整进度与短信催办" }).click();
   const correction = page.getByRole("region", { name: "退回修改短信", exact: true });
   await expect(correction.getByText("发送失败", { exact: true })).toBeVisible();
   await expect(finance).toHaveCount(0);
