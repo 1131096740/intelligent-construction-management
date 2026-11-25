@@ -12,7 +12,7 @@
   {
     "path": "services/api/src/contract-template/template-management.test-support.ts",
     "expected": "a456d498881dddabcfbf987fa46ce69fb9b3f9c3e41f39d3ec7fc9758da5852f",
-    "candidate": "e407d448a0031442d5b4e2306b8bed59bf85ee3a44e97be49d94b3320df16ed5"
+    "candidate": "f994b50127e7111f069aca028a34ad2e07dc6f1447ca0fdbc265afff68c1ce1e"
   },
   {
     "path": "services/api/src/contract/contract-direct-outside-operating-executor-qualification.ts",
@@ -55,13 +55,18 @@
     "candidate": "7fd73c7e91985e51ec269bb31a7acf1674d3958ad04ed67612eab7c695dc4c31"
   },
   {
+    "path": "services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts",
+    "expected": "47b5f78892b32c5a64aa0308a03c079eff4551a2806eb8416a210c31c7d1325c",
+    "candidate": "8a513c8821a077cdc251826e051ab3bb09dcb4bdf8e172dda10e85bfe1de5e69"
+  },
+  {
     "path": "services/api/src/spot-procurement/spot-procurement-access.service.spec.ts",
     "expected": "4b39e2a90b52ca8b5c81ba08336cf86d5e5aba9c2071df59a562d17ae934a602",
-    "candidate": "c91350d9082fa465c4bbd3571ec119375c33f70a0294ada20b006ff89b67b627"
+    "candidate": "2cd5d59494c94b3127f65d80c3cb6ded1dbd4fd6946629966a44c92c1ac2ff74"
   },
   {
     "path": "services/api/src/spot-procurement/spot-procurement-access.service.ts",
     "expected": "cc0b83829977687ee812966ca232ee885362fc257d5e824adbeb0b9a7b9e6c9d",
-    "candidate": "d304f142d01a8aaa2b6accc0509b843f62ad651dd9509c09cfe5130ff56526bb"
+    "candidate": "7b04681b38f7e02c673164c66ee8e8d5454c678600fd4311d31a5676678a18f3"
   }
 ]
