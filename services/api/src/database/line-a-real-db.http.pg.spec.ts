@@ -617,24 +617,41 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     });
   });
 
-  it("serializes two concurrent payment submissions under the contract lock so only one consumes the balance (A13/PAY-03)", async () => {
+  it("allows only one 40 yuan concurrent application after 50 of 90 has been paid (A13/PAY-03)", async () => {
+    const signedSettlementId = "linea-e-signed-90";
     await seedConfirmedSignedSettlement({
-      id: "linea-e-signed-100", contractId: ids.contractE, versionId: ids.versionE,
-      number: "JS-E-100", amountYuan: "100.0000", confirmationNo: 1n, reviewedAt: new Date()
+      id: signedSettlementId, contractId: ids.contractE, versionId: ids.versionE,
+      number: "JS-E-90", amountYuan: "90.0000", confirmationNo: 1n, reviewedAt: new Date()
+    });
+    const previouslyPaid = await owner.paymentRequest.create({ data: {
+      id: "linea-e-paid-50", projectId: ids.project, settlementId: null,
+      signedSettlementId, signedSettlementConfirmationNo: 1n,
+      signedSettlementConfirmedYuan: "90.0000", signedSettlementContractConfirmedYuan: "90.0000",
+      signedSettlementOccupiedCents: 0n, signedSettlementBasisAt: new Date(),
+      sourceType: "signed_settlement", contractId: ids.contractE, contractVersionId: ids.versionE,
+      paymentTermsVersionId: "linea-terms-e", code: "LINEA-FK-E-PAID-50",
+      status: "paid", requestedAmountCents: 5_000n, approvedAmountCents: 5_000n,
+      paidAmountCents: 5_000n, paymentSubjectType: "our_company"
+    } });
+    const readBasis = () => owner.$transaction(tx => loadSignedSettlementPaymentBasis(tx as never, ids.contractE));
+    expect(await readBasis()).toMatchObject({
+      confirmedCents: 9_000n, remainingCents: 4_000n, occupiedCents: 5_000n, outstandingCents: 0n
     });
 
-    const [first, second] = await Promise.all([
-      callRaw("staff", "/payments", { sourceType: "signed_settlement", signedSettlementId: "linea-e-signed-100", code: "LINEA-FK-E-CONCURRENT-1", requestedAmountCents: "6000" }),
-      callRaw("staff", "/payments", { sourceType: "signed_settlement", signedSettlementId: "linea-e-signed-100", code: "LINEA-FK-E-CONCURRENT-2", requestedAmountCents: "6000" })
-    ]);
-    expect([first.status, second.status].sort()).toEqual([201, 400]);
-    const created = await owner.paymentRequest.findMany({ where: { contractId: ids.contractE } });
+    const applications = await Promise.all(["LINEA-FK-E-CONCURRENT-1", "LINEA-FK-E-CONCURRENT-2"].map(code =>
+      callRaw("staff", "/payments", { sourceType: "signed_settlement", signedSettlementId, code, requestedAmountCents: "4000" })
+    ));
+    expect(applications.map(result => result.status).sort()).toEqual([201, 400]);
+    expect(applications.find(result => result.status === 400)?.body.message).toContain("合同已签结算累计可付金额不足");
+    const created = await owner.paymentRequest.findMany({
+      where: { contractId: ids.contractE, id: { not: previouslyPaid.id } }
+    });
     expect(created).toHaveLength(1);
-    expect(created[0]).toMatchObject({ requestedAmountCents: 6_000n, status: "approval_pending" });
-    const basis = await owner.$transaction(tx => loadSignedSettlementPaymentBasis(tx as never, ids.contractE));
-    expect(basis.remainingCents).toBe(4_000n);
-    expect(basis.outstandingCents).toBe(6_000n);
-    expect(basis.suspended).toBe(false);
+    expect(created[0]).toMatchObject({ requestedAmountCents: 4_000n, status: "approval_pending" });
+    expect(await owner.paymentRequest.findUniqueOrThrow({ where: { id: previouslyPaid.id } })).toEqual(previouslyPaid);
+    expect(await readBasis()).toMatchObject({
+      confirmedCents: 9_000n, remainingCents: 0n, occupiedCents: 9_000n, outstandingCents: 4_000n, suspended: false
+    });
   });
 
   it("pauses all unpaid applications after a negative settlement and auto-releases when a later positive settlement restores the balance (PAY-04/PAY-05/A14)", async () => {
