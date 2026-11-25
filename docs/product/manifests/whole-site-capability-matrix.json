@@ -14,7 +14,7 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "4586872d7c3b6a4230fc81386f0126414247bdd09ee7ca56f88bc4899c482ff8",
+      "sha256": "d0da392bdd1ee71871c969fe9f69249731c46eca2c3c822f31f3ee91996bf44e",
       "status": "ready",
       "summary": {
         "routeCount": 880
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "e51721afcc60ea7a4776b9994181090deabcdba1d21cf6ca4a56d5fb6dca94ba",
+      "sha256": "ae54b5e4c42defd2bf60e345f9e816802e0c43247602181ee8b09f324a598756",
       "status": "ready",
       "summary": {
         "registeredActionCount": 435,
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "dfe4dd95fc3f13b46c44a8857417194f75d078d454c9d48d4bb406f5a1b172ef",
+      "sha256": "489a1a7917064d6c7c26fb66946ef20f7aa06ee21a1e2f1bc5aef12546467bff",
       "status": "ready",
       "summary": {
         "routeCount": 880,
@@ -35672,7 +35672,7 @@
     {
       "route": {
         "method": "POST",
-        "path": "/payments/:paymentId/remainder-withdrawal",
+        "path": "/payments/:paymentRequestId/remainder-withdrawal",
         "normalizedKey": "POST /payments/:param/remainder-withdrawal",
         "controller": "PaymentController",
         "handler": "withdrawRemainder",

@@ -682,11 +682,15 @@ export class PermissionGuard implements CanActivate {
     }
 
     const paymentId = request.params?.paymentId;
-    if (paymentId) {
+    const paymentRequestId = request.params?.paymentRequestId;
+    if (paymentId && !paymentRequestId) {
       const spotProjectId = await this.spotAccess.findPaymentProjectId(paymentId);
       if (spotProjectId) return spotProjectId;
+    }
+    const paymentReference = paymentRequestId ?? paymentId;
+    if (paymentReference) {
       const payment = await this.prisma.paymentRequest.findFirst({
-        where: { OR: [{ id: paymentId }, { code: paymentId }] },
+        where: { OR: [{ id: paymentReference }, { code: paymentReference }] },
         select: { projectId: true }
       });
 

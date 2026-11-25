@@ -158,14 +158,14 @@ export class PaymentController {
     return this.payments.reviseAndSubmit(paymentId, user.id, body);
   }
 
-  @Post(":paymentId/remainder-withdrawal")
+  @Post(":paymentRequestId/remainder-withdrawal")
   @RequireProjectRole("payment.create")
   withdrawRemainder(
-    @Param("paymentId") paymentId: string,
+    @Param("paymentRequestId") paymentRequestId: string,
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: WithdrawPaymentRemainderDto
   ) {
-    return this.payments.withdrawRemainder(paymentId, user.id, body);
+    return this.payments.withdrawRemainder(paymentRequestId, user.id, body);
   }
 
   @Post(":paymentId/approval-transfer")

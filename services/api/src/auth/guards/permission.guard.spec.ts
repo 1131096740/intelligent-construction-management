@@ -1978,6 +1978,27 @@ describe("PermissionGuard", () => {
     });
   });
 
+  it("binds a contract payment remainder action directly to the payment request project", async () => {
+    const spot = { findPaymentProjectId: jest.fn() };
+    const prisma = {
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([{ positionKey: "comprehensive_director" }]) },
+      paymentRequest: { findFirst: jest.fn().mockResolvedValue({ projectId: "project-a" }) }
+    };
+    const guard = new PermissionGuard(
+      { getAllAndOverride: jest.fn().mockReturnValueOnce(undefined).mockReturnValueOnce("payment.create") } as never,
+      prisma as never,
+      spot as never
+    );
+
+    await expect(guard.canActivate(contextWithRequest({
+      user: { id: "user-1" }, params: { paymentRequestId: "pay-1" }, body: { projectId: "project-b" }
+    }))).resolves.toBe(true);
+    expect(spot.findPaymentProjectId).not.toHaveBeenCalled();
+    expect(prisma.projectMember.findMany).toHaveBeenCalledWith({ where: { userId: "user-1", projectId: "project-a" } });
+  });
+
   it("resolves project roles from body contractVersionId for contract advance payment creation", async () => {
     const prisma = {
       userPosition: {

@@ -6,10 +6,10 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `4586872d7c3b6a4230fc81386f0126414247bdd09ee7ca56f88bc4899c482ff8` |
+| nestRoutes | ready | `d0da392bdd1ee71871c969fe9f69249731c46eca2c3c822f31f3ee91996bf44e` |
 | webApiWrappers | ready | `c1d14c9f7084f6d71246b16b227a36e2d9855e0040bd3de4239d4d089a88a2e0` |
-| webPageActions | ready | `e51721afcc60ea7a4776b9994181090deabcdba1d21cf6ca4a56d5fb6dca94ba` |
-| routeUsage | ready | `dfe4dd95fc3f13b46c44a8857417194f75d078d454c9d48d4bb406f5a1b172ef` |
+| webPageActions | ready | `ae54b5e4c42defd2bf60e345f9e816802e0c43247602181ee8b09f324a598756` |
+| routeUsage | ready | `489a1a7917064d6c7c26fb66946ef20f7aa06ee21a1e2f1bc5aef12546467bff` |
 
 ## 汇总
 
@@ -671,7 +671,7 @@
 | POST | /payments/:paymentId/pdf-archive-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPaymentPdfArchivePrivateFile | payment-detail.pdf-archive | covered | — |
 | POST | /payments/:paymentId/pdf-archive | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentPdfArchive | payment-detail.pdf-archive | covered | — |
 | POST | /payments/:paymentId/pdf-generation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#generatePaymentPdfArchive | payment-detail.pdf-generation | covered | — |
-| POST | /payments/:paymentId/remainder-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawPaymentRemainder | payment-detail.withdraw-remainder | covered | — |
+| POST | /payments/:paymentRequestId/remainder-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawPaymentRemainder | payment-detail.withdraw-remainder | covered | — |
 | POST | /payments/:paymentId/revision-submission | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviseAndSubmitPaymentRequest | payment-detail.revise-and-submit | covered | — |
 | POST | /payments | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPaymentRequest | payment-request.create-local-form | covered | — |
 | POST | /project-fund-disputes/drafts | page | web_api_wrapper | apps/web-admin/src/api/project-fund-dispute.api.ts#saveProjectFundDisputeDraft | project-fund-dispute.draft.save | covered | — |

@@ -20886,7 +20886,7 @@
           "bodyKind": "json",
           "nestRoute": {
             "method": "POST",
-            "path": "/payments/:paymentId/remainder-withdrawal",
+            "path": "/payments/:paymentRequestId/remainder-withdrawal",
             "normalizedKey": "POST /payments/:param/remainder-withdrawal",
             "controller": "PaymentController",
             "handler": "withdrawRemainder",

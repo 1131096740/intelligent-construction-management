@@ -26047,47 +26047,6 @@
     },
     {
       "method": "POST",
-      "path": "/payments/:paymentId/remainder-withdrawal",
-      "normalizedKey": "POST /payments/:param/remainder-withdrawal",
-      "controller": "PaymentController",
-      "handler": "withdrawRemainder",
-      "sourceFile": "services/api/src/payment/payment.controller.ts",
-      "authorizationScope": "guard_metadata_only",
-      "authentication": "authenticated",
-      "guardAuthorization": "project_action",
-      "isPublic": false,
-      "requiredPositions": [],
-      "requiredProjectAction": "payment.create",
-      "authorizationCombination": null,
-      "contractCutoverSurface": false,
-      "contractCutoverLegacyWrite": false,
-      "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
-      "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "withdrawPaymentRemainder",
-            "method": "POST",
-            "normalizedPath": "/payments/:param/remainder-withdrawal",
-            "normalizedKey": "POST /payments/:param/remainder-withdrawal",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
-            ]
-          }
-        ],
-        "authStore": [],
-        "ticketFollowups": [],
-        "manualSurfaceReason": null
-      },
-      "deletionAuthorized": false,
-      "exitCandidateSemantics": null
-    },
-    {
-      "method": "POST",
       "path": "/payments/:paymentId/revision-submission",
       "normalizedKey": "POST /payments/:param/revision-submission",
       "controller": "PaymentController",
@@ -26115,6 +26074,47 @@
             "method": "POST",
             "normalizedPath": "/payments/:param/revision-submission",
             "normalizedKey": "POST /payments/:param/revision-submission",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/payments/:paymentRequestId/remainder-withdrawal",
+      "normalizedKey": "POST /payments/:param/remainder-withdrawal",
+      "controller": "PaymentController",
+      "handler": "withdrawRemainder",
+      "sourceFile": "services/api/src/payment/payment.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "payment.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "withdrawPaymentRemainder",
+            "method": "POST",
+            "normalizedPath": "/payments/:param/remainder-withdrawal",
+            "normalizedKey": "POST /payments/:param/remainder-withdrawal",
             "productionConsumers": [
               "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
             ]
