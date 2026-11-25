@@ -18,7 +18,7 @@ workspace="$prepared/prepared/context/workspace"
 node - "$prepared/source.json" "$sha" "$prior/remaining-special.json" "$historical" "$workspace" "$common/multi-witness.cjs" <<'JS'
 const [sourceFile,sha,profilesFile,prior,workspace,terminalFile]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
-const count=source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
+const count=source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
 if(source.sourceSha!==sha||source.migrationCount!==count||
   (count!==295?source.predecessor.ledgerSha256:source.ledgerSha256)!==terminal.final)process.exit(65);
 const pins=require(profilesFile).profile.mounts;

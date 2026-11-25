@@ -15,7 +15,7 @@ scope=direct-capacity
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const expected=source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const expected=source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==expected)process.exit(1);
   console.log(expected);
 ' "$prepared/source.json" "$sha")
@@ -31,13 +31,13 @@ runner="$archive/remaining-direct-capacity.cjs"
 original="$prepared/prepared/context/workspace/services/api/src/database/direct-payment-capacity-concurrency.spec.ts"
 archived_sha=735b7c13cafc6a54930d9c6d862fb0fe4d04467329cc5f7fce83436ca0612f31
 original_sha=de31ee9d13952de4b0a03e239e490703bc2787662bdb7f167f0a39b1535e0f6d
-if [[ $count == 330 ]]; then
+if (( count >= 330 )); then
   original_sha=a29c42e5969183edbf80cb0677db37f45efe11cedc1704b1826af95da0be92c7
 fi
 printf '%s  %s\n' "$archived_sha" "$fixture" "$original_sha" "$original" |
   shasum -a 256 -c >/dev/null
 
-if [[ $count == 330 ]]; then
+if (( count >= 330 )); then
   expected=7cfdc723eda2e728e82d58a8890d320a34b1be6d7745652058b32e10927eeddc
   printf '%s  %s\n' d4fcf288002d404e86b7782ac6d9ce5c9795facf8cf2d8e424d3d02f33c521b9 "$runner" |
     shasum -a 256 -c >/dev/null

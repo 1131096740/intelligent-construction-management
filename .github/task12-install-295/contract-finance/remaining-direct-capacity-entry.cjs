@@ -2,15 +2,16 @@
 
 const assert=require('node:assert/strict');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder}=require('./installer.cjs');
 const {final,digest}=require('./multi-witness.cjs');
 const {consume}=require('./remaining-direct-capacity.cjs');
 
 const root='/qualification';
 const source=require('./contract-finance-source.json');
+const paymentRemainder=source.mode==='payment-remainder-331';
 const textDirect=source.mode==='text-direct-330';
-const current=textDirect||source.mode==='current-320';
-const count=textDirect?330:current?329:295;
+const current=paymentRemainder||textDirect||source.mode==='current-320';
+const count=paymentRemainder?331:textDirect?330:current?329:295;
 const receipt={schemaVersion:1,purpose:'REMAINING_DIRECT_CAPACITY_'+count,
   sourceSha:source.sourceSha,stages:['INPUTS'],status:'STOPPED'};
 
@@ -27,13 +28,18 @@ async function main(){
   receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   const verify=context=>consume(context,receipt);
   if(current){
-    const installCurrent=textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
+    const installCurrent=paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
     await installCurrent(receipt,verify,{
       sourceTree:source.sourceTree,migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails
     });
     assert.equal(receipt.forward320.sourceTree,source.sourceTree);
     assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
     assert.equal(receipt.forward320.sameBaseB7,true);
+    if(paymentRemainder){
+      assert.deepEqual(receipt.paymentRemainderPredecessor,{
+        count:330,ledgerSha256:source.predecessor330.ledgerSha256,sameIdentity:true,sameBaseB7:true
+      });
+    }
   } else {
     await withCombined295MultiWitness(receipt,verify);
   }
