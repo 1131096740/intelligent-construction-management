@@ -7,12 +7,13 @@ umask 077
   ( $# == 3 && $3 == --upward-archive-332 && ( $2 == line-a || $2 == pol115-workbench || $2 == onboarding || $2 == procurement || $2 == cash-handover || $2 == principal-return ||
     $2 == settlement || $2 == template || $2 == draft || $2 == v7 || $2 == invoice || $2 == pol279 || $2 == pol280 || $2 == company-proxy || $2 == expense-execution || $2 == expense-finance || $2 == expense-receipt || $2 == payment-execution ||
     $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts || $2 == pol109 || $2 == task398-standard || $2 == task398-ledger-loss || $2 == browser-partial || $2 == browser-completion || $2 == pfq || $2 == cash-transfer || $2 == project-advance ) ) ||
+  ( $# == 3 && $2 == historical-takeover-a28 && $3 == --historical-settlement-334 ) ||
   ( $# == 4 && $2 == pol275 && ( $3 == --current-320 || $3 == --text-direct-330 || $3 == --payment-remainder-331 || $3 == --upward-archive-332 ) && $4 =~ ^[a-f0-9]{40}$ ) ]] || exit 64
 sha=$1
 lane=$2
 mode_args=()
 if (( $# >= 3 )); then
-  case "$lane" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|cash-handover|principal-return|payment-execution|task398-standard|task398-ledger-loss|expense-execution|expense-finance|expense-receipt|company-proxy|onboarding|procurement|pfq|browser-partial|browser-completion|pol115-workbench|pol275|line-a|cash-transfer|project-advance) mode_args=("$3") ;; *) exit 64;; esac
+  case "$lane" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|cash-handover|principal-return|payment-execution|task398-standard|task398-ledger-loss|expense-execution|expense-finance|expense-receipt|company-proxy|onboarding|procurement|pfq|browser-partial|browser-completion|pol115-workbench|pol275|line-a|cash-transfer|project-advance|historical-takeover-a28) mode_args=("$3") ;; *) exit 64;; esac
 fi
 if [[ ${3:-} == --text-direct-330 ]]; then
   case "$lane" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|line-a|onboarding|procurement|task398-standard|task398-ledger-loss|cash-handover|principal-return|pol115-workbench|company-proxy|payment-execution|browser-partial|browser-completion|expense-execution|expense-finance|expense-receipt|pfq|pol275) ;; *) exit 64;; esac
@@ -23,6 +24,7 @@ if [[ ${3:-} == --payment-remainder-331 ]]; then
     *) exit 64 ;;
   esac
 fi
+if [[ $lane == historical-takeover-a28 && ${3:-} != --historical-settlement-334 ]]; then exit 64; fi
 if [[ ( $lane == cash-transfer || $lane == project-advance ) && ${3:-} != --upward-archive-332 ]]; then exit 64; fi
 if [[ $lane == task398-ledger-loss && ${3:-} != --text-direct-330 && ${3:-} != --payment-remainder-331 && ${3:-} != --upward-archive-332 ]]; then exit 64; fi
 root=$(git rev-parse --show-toplevel)
@@ -43,10 +45,10 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 bash "$plan/prepare.sh" "$root" "$sha" "$work/source" ${mode_args[@]+"${mode_args[@]}"}
 profile=browser
-case "$lane" in pol115-workbench|onboarding|procurement) profile=mobile ;; line-a) profile=api ;; esac
+case "$lane" in pol115-workbench|onboarding|procurement) profile=mobile ;; line-a|historical-takeover-a28) profile=api ;; esac
 bash "$plan/build.sh" "$work/source" "$sha" "$profile" "$work/browser"
 case "$lane" in
-  line-a) bash "$plan/run-line-a.sh" "$work/source" "$sha" "$work/browser" ;;
+  line-a|historical-takeover-a28) bash "$plan/run-line-a.sh" "$work/source" "$sha" "$work/browser" ;;
   task398-ledger-loss)
     variant=ledger-loss-330
     case "$3" in
