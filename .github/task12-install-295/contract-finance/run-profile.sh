@@ -15,12 +15,13 @@ historical="$prior/remaining-special/profile"
 finance="$root/.github/task12-install-295/contract-finance"
 common="$finance/common"
 workspace="$prepared/prepared/context/workspace"
-node - "$prepared/source.json" "$sha" "$prior/remaining-special.json" "$historical" "$workspace" "$common/multi-witness.cjs" <<'JS'
-const [sourceFile,sha,profilesFile,prior,workspace,terminalFile]=process.argv.slice(2);
+node - "$prepared/source.json" "$sha" "$prior/remaining-special.json" "$historical" "$workspace" "$common/multi-witness.cjs" "$plan/upward-archive-332-profile.cjs" <<'JS'
+const [sourceFile,sha,profilesFile,prior,workspace,terminalFile,upwardProfile]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
-const count=source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
+const count=source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
 if(source.sourceSha!==sha||source.migrationCount!==count||
   (count!==295?source.predecessor.ledgerSha256:source.ledgerSha256)!==terminal.final)process.exit(65);
+if(count===332) require(upwardProfile).assertSource(source,sha,terminal.final);
 const pins=require(profilesFile).profile.mounts;
 const fs=require('node:fs'),assert=require('node:assert/strict'),{createHash}=require('node:crypto');
 const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -49,6 +50,7 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
   --mount "type=bind,src=$plan/profile-entry.cjs,dst=/qualification/profile-entry.cjs,readonly"
+  --mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly"
   --mount "type=bind,src=$plan/profile-history.cjs,dst=/qualification/profile-history.cjs,readonly"
   --mount "type=bind,src=$common/installer.cjs,dst=/qualification/installer.cjs,readonly")
 for file in remaining-retained.cjs fixtures.json project-profile-original-seed.sql; do

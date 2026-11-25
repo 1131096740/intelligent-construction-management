@@ -2,14 +2,15 @@
 
 const assert=require('node:assert/strict');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitnessForProfile,withCombined320MultiWitnessForProfile,withCombined330MultiWitnessForProfile,withCombined331MultiWitnessForProfile}=require('./installer.cjs');
+const {withCombined295MultiWitnessForProfile,withCombined320MultiWitnessForProfile,withCombined330MultiWitnessForProfile,withCombined331MultiWitnessForProfile,withCombined332MultiWitnessForProfile}=require('./installer.cjs');
 const {final,digest}=require('./multi-witness.cjs');
 const {runRetained,verifyInputs}=require('./remaining-retained.cjs');
 const source=require('./contract-finance-source.json');
+const upwardArchive=source.mode==='upward-archive-332';
 const paymentRemainder=source.mode==='payment-remainder-331';
 const textDirect=source.mode==='text-direct-330';
-const current=paymentRemainder||textDirect||source.mode==='current-320';
-const count=paymentRemainder?331:textDirect?330:current?329:295;
+const current=upwardArchive||paymentRemainder||textDirect||source.mode==='current-320';
+const count=upwardArchive?332:paymentRemainder?331:textDirect?330:current?329:295;
 const root='/qualification';
 const lane='profile';
 const receipt={schemaVersion:1,purpose:'REMAINING_PROFILE_WARM_EXACT_'+count,lane,sourceSha:source.sourceSha,
@@ -33,10 +34,11 @@ async function main(){
   const rows=verifyInputs(lane);
   assert.equal(rows.length,1);
   assert.equal(rows[0].pending,2);
+  if(upwardArchive) require('./upward-archive-332-profile.cjs').assertSource(source,source.sourceSha,final);
   receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   const consume=context=>runRetained(context,receipt,lane);
   if(current){
-    const installCurrent=paymentRemainder?withCombined331MultiWitnessForProfile:textDirect?withCombined330MultiWitnessForProfile:withCombined320MultiWitnessForProfile;
+    const installCurrent=upwardArchive?withCombined332MultiWitnessForProfile:paymentRemainder?withCombined331MultiWitnessForProfile:textDirect?withCombined330MultiWitnessForProfile:withCombined320MultiWitnessForProfile;
     await installCurrent(receipt,consume,{sourceTree:source.sourceTree,
       migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails});
     assert.equal(receipt.forward320.count,count);
@@ -44,6 +46,7 @@ async function main(){
     assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
     assert.equal(receipt.forward320.sameIdentity,true);
     assert.equal(receipt.forward320.sameBaseB7,true);
+    if(upwardArchive) require('./upward-archive-332-profile.cjs').assertInstallation(receipt,source);
     if(paymentRemainder){
       assert.deepEqual(receipt.paymentRemainderPredecessor,{
         count:330,ledgerSha256:source.predecessor330.ledgerSha256,sameIdentity:true,sameBaseB7:true
