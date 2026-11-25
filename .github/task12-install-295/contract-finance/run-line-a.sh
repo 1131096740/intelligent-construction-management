@@ -13,7 +13,8 @@ source="$prepared/source.json"
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.mode!=="current-320"||source.migrationCount!==329||source.sourceSha!==process.argv[2])process.exit(65);
+  const count=source.mode==="current-320"?329:source.mode==="text-direct-330"?330:null;
+  if(!count||source.migrationCount!==count||source.sourceSha!==process.argv[2])process.exit(65);
 ' "$source" "$sha"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
@@ -45,5 +46,7 @@ docker run "${args[@]}" --entrypoint node "$image" /qualification/line-a-entry.c
 (( exit_code == 0 )) || exit "$exit_code"
 node -e '
   const proof=require(process.argv[1]);
-  if(proof.status!=="LINE_A_EXACT_329_PASSED"||proof.sourceSha!==process.argv[2])process.exit(65);
-' "$work/receipt.json" "$sha"
+  const source=require(process.argv[3]);
+  const expected=source.mode==="text-direct-330"?"LINE_A_TEXT_DIRECT_330_PASSED":"LINE_A_EXACT_329_PASSED";
+  if(proof.status!==expected||proof.sourceSha!==process.argv[2])process.exit(65);
+' "$work/receipt.json" "$sha" "$source"

@@ -809,29 +809,41 @@ statement_timeout='60s'
       enter('INSTALL_320_CONTRACT_DETAIL_READERS');
       need(purpose===exactMultiWitness295 && qualifiedLedger.length===295,'FORWARD_320_REQUIRES_295');
       const {tails,sourceTree,sql:tailSources}=forward320;
-      for (const [index,row] of tails.entries()) {
-        const source=tailSources[index];
-        const migrationDir=path.join(folder,'migrations',row.name);
-        fs.mkdirSync(migrationDir,{mode:0o700});
-        fs.writeFileSync(path.join(migrationDir,'migration.sql'),source,{flag:'wx',mode:0o600});
+      const terminalIndex = tails.length - 1;
+      let current;
+      const batches = forward320.textDirect ? [tails.slice(0, terminalIndex), tails.slice(terminalIndex)] : [tails];
+      for (const batch of batches) {
+        for (const row of batch) {
+          const index = tails.indexOf(row);
+          const source=tailSources[index];
+          const migrationDir=path.join(folder,'migrations',row.name);
+          fs.mkdirSync(migrationDir,{mode:0o700});
+          fs.writeFileSync(path.join(migrationDir,'migration.sql'),source,{flag:'wx',mode:0o600});
+        }
+        qualifiedLedger=[...qualifiedLedger,...batch.map(row=>({...row,finished:true,rolledBack:false}))];
+        try {
+          await command(process.execPath,[cli,'migrate','deploy','--schema',path.join(folder,'schema.prisma')],
+            {timeoutMs:180000,extra:{DATABASE_URL:endpoint.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,
+              PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});
+        } catch(error) {
+          receipt.forwardFailedLedger=await jsonSql(`SELECT coalesce(jsonb_agg(jsonb_build_object(
+            'name',migration_name,'checksum',checksum,'finished',finished_at IS NOT NULL,
+            'rolledBack',rolled_back_at IS NOT NULL,
+            'sqlstate',substring(logs FROM 'Database error code: ([0-9A-Z]{5})')
+          )), '[]'::jsonb) FROM public._prisma_migrations
+          WHERE migration_name IN (${batch.map(row=>"'"+row.name+"'").join(',')});`);
+          throw error;
+        }
+        current=await jsonSql(control.inspectSql());
+        need(equal(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
+          .every(key=>current[key]===roleIdentity[key]),'FORWARD_320_LEDGER_IDENTITY');
+        if (forward320.textDirect && current.ledger.length===329) {
+          const digest=hash(JSON.stringify(current.ledger));
+          need(digest==='3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2' &&
+            equal(await jsonSql(finalSql),final),'TEXT_DIRECT_329_PREDECESSOR_CONTINUITY');
+          receipt.textDirectPredecessor={count:329,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true};
+        }
       }
-      qualifiedLedger=[...qualifiedLedger,...tails.map(row=>({...row,finished:true,rolledBack:false}))];
-      try {
-        await command(process.execPath,[cli,'migrate','deploy','--schema',path.join(folder,'schema.prisma')],
-          {timeoutMs:180000,extra:{DATABASE_URL:endpoint.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,
-            PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});
-      } catch(error) {
-        receipt.forwardFailedLedger=await jsonSql(`SELECT coalesce(jsonb_agg(jsonb_build_object(
-          'name',migration_name,'checksum',checksum,'finished',finished_at IS NOT NULL,
-          'rolledBack',rolled_back_at IS NOT NULL,
-          'sqlstate',substring(logs FROM 'Database error code: ([0-9A-Z]{5})')
-        )), '[]'::jsonb) FROM public._prisma_migrations
-        WHERE migration_name IN (${tails.map(row=>"'"+row.name+"'").join(',')});`);
-        throw error;
-      }
-      const current=await jsonSql(control.inspectSql());
-      need(equal(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
-        .every(key=>current[key]===roleIdentity[key]),'FORWARD_320_LEDGER_IDENTITY');
       receipt.forward320={count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
       receipt.forward320.fileGuards=await jsonSql(`SELECT coalesce(jsonb_agg(jsonb_build_object(
         'name',t.tgname,'enabled',t.tgenabled='O','function',p.proname,'definer',p.prosecdef,'sha256',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')
@@ -1323,10 +1335,15 @@ module.exports.withCombined295MultiWitnessForRestore = (receipt,consume) =>
   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,true);
 
 
-function readForward320({sourceTree,migrations,tails}) {
+function readForward320({sourceTree,migrations,tails},textDirect=false) {
   need(typeof sourceTree==='string' && /^[0-9a-f]{40}$/u.test(sourceTree) &&
     typeof migrations==='string' && path.isAbsolute(migrations) &&
-    Array.isArray(tails) && tails.length===34,'FORWARD_320_SOURCE');
+    Array.isArray(tails) && tails.length===(textDirect?35:34),'FORWARD_320_SOURCE');
+  if(textDirect) {
+    need(tails.at(-1)?.name==='20261128000000_text_agreement_direct_payment' &&
+      tails.at(-1)?.sha256==='3ee02122366db483384492a88fcc1c33e5e42d70835560241f0a41fc76098f14',
+      'TEXT_DIRECT_330_TERMINAL');
+  }
   let previous='20261119003900';
   const rows=tails.map(row => {
     const match=row && typeof row.name==='string' ? /^(\d{14})_[a-z0-9_]+$/u.exec(row.name) : null;
@@ -1339,7 +1356,7 @@ function readForward320({sourceTree,migrations,tails}) {
     need(hash(bytes)===row.sha256,'FORWARD_320_TAIL_DIGEST');
     return bytes;
   });
-  return {sourceTree,tails:rows,sql};
+  return {sourceTree,tails:rows,sql,textDirect};
 }
 
 module.exports.withCombined320ContractPayment = (receipt,consume,material) => {
@@ -1348,6 +1365,11 @@ module.exports.withCombined320ContractPayment = (receipt,consume,material) => {
   return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,forward320);
 };
 
+
+module.exports.withCombined330TextAgreement = (receipt,consume,material) => {
+  need(typeof consume==='function' && material && typeof material==='object','TEXT_DIRECT_330_ARGUMENTS');
+  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,true));
+};
 
 module.exports.withCombined320ContractPaymentForRestore = (receipt,prepare295,consume,material) => {
   need(typeof prepare295==='function' && typeof consume==='function'
