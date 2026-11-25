@@ -2,12 +2,12 @@
   {
     "path": "apps/web-admin/e2e/contract-grid-http.e2e.ts",
     "expected": "73121ea29fa725a68ab593bc4c1b6c07117db05b8046f4f780b033679f53a44f",
-    "candidate": "b0cdee652f41b0d4ae613ed85777353cad2e4a3f3715afabb64c054d30c3486b"
+    "candidate": "de2127954687bc7d63bc5686aca9fe1f6ef38510adaa7908557c813d0ef0a5c7"
   },
   {
     "path": "apps/web-admin/e2e/expense-claim-workbench.e2e.ts",
     "expected": "8c0e7d588456b25fe7e78b35255377292ac2ff7505d21cb28aff9a63571f22f3",
-    "candidate": "688ae01b3a6699c5ca715991fb4f0a25200b4ac9668a209c5c579a13f84396dd"
+    "candidate": "16f803d7fe2eed8757679d348dadc00b54a2ea450a5c3ba689d287c05fa9f261"
   },
   {
     "path": "apps/web-admin/e2e/flow-detail-responsive.e2e.ts",
@@ -37,7 +37,7 @@
   {
     "path": "apps/web-admin/e2e/payment-workbench.e2e.ts",
     "expected": "529fe0fda777cd0927b0be7c968726da1de0d5c76cfef0102843d1cc4d4c7d36",
-    "candidate": "9d82e1d8d227967a6ecfd66b9aa2a975e8194ba56c853065eafc04421e65aed6"
+    "candidate": "060074a49449f95e07879e93217ea0c6f66d1325a12e5b859c7705afb1534a80"
   },
   {
     "path": "apps/web-admin/e2e/pol113-project-profile-real.e2e.ts",
@@ -48,6 +48,11 @@
     "path": "apps/web-admin/e2e/responsive-layout-foundation.e2e.ts",
     "expected": "b3e69dffa5ec659f7b2c0b8db17502a0871da2b236e9637bcc7a2b34f1f5285e",
     "candidate": "f6b96ff83bb111e85639a54a9d5d265cb5599083c03e2de43935a3b54e836750"
+  },
+  {
+    "path": "apps/web-admin/e2e/spot-procurement-workbenches.e2e.ts",
+    "expected": "6309ac5b274915f79c0f6e29d62b2a0d9214cdc74cf8496a9858d4737fdbc9cb",
+    "candidate": "e2428ca36f08d7dc5871380d47885e39ab2a97891bbb24126489f10d0aff51f9"
   },
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.ts",
