@@ -8,15 +8,16 @@ const paymentRemainder=source.mode==='payment-remainder-331';
 const count=paymentRemainder?331:textDirect?330:current320?329:295;
 const standard=process.argv[2]===`standard-${count}`;
 const ledgerLoss=process.argv[2]===`ledger-loss-${count}`;
-assert.ok(process.argv.length===2||(process.argv.length===3&&(textDirect||paymentRemainder)&&(standard||ledgerLoss)));
-const textFinance=(textDirect||paymentRemainder)&&!standard&&!ledgerLoss;
+const competition=paymentRemainder&&process.argv[2]==='competition-331';
+assert.ok(process.argv.length===2||(process.argv.length===3&&(textDirect||paymentRemainder)&&(standard||ledgerLoss||competition)));
+const textFinance=(textDirect||paymentRemainder)&&!standard&&!ledgerLoss&&!competition;
 const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder} = require('./installer.cjs');
 const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run-task398-shared-standard-local.cjs');
 
-const receipt = {schemaVersion:1,sourceSha,purpose:textFinance?`TASK425_TEXT_DIRECT_FINANCE_${count}`:ledgerLoss?`TASK398_LEDGER_LOSS_EXACT_${count}`:'TASK398_STANDARD_EXACT_'+count,business:'NOT_ENTERED',stages:[]};
+const receipt = {schemaVersion:1,sourceSha,purpose:textFinance?`TASK425_TEXT_DIRECT_FINANCE_${count}`:ledgerLoss?`TASK398_LEDGER_LOSS_EXACT_${count}`:competition?'TASK398_COMPETITION_EXACT_331':'TASK398_STANDARD_EXACT_'+count,business:'NOT_ENTERED',stages:[]};
 async function run(){
   assert.equal(source.migrationCount,count);
-  const consume=context=>runTask398Owned282Voucher(context,textFinance?`text-direct-${count}`:ledgerLoss?`ledger-loss-${count}`:'standard-'+count,receipt);
+  const consume=context=>runTask398Owned282Voucher(context,textFinance?`text-direct-${count}`:ledgerLoss?`ledger-loss-${count}`:competition?'competition-331':'standard-'+count,receipt);
   if(current320||textDirect||paymentRemainder){
     assert.equal(source.predecessor.ledgerSha256,require('./multi-witness.cjs').final);
     const install=paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;

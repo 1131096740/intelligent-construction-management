@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == standard-330 || $5 == standard-331 || $5 == ledger-loss-330 || $5 == ledger-loss-331 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == standard-330 || $5 == standard-331 || $5 == ledger-loss-330 || $5 == ledger-loss-331 || $5 == competition-331 ) ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -27,6 +27,10 @@ elif [[ ${5-} == ledger-loss-330 || ${5-} == ledger-loss-331 ]]; then
   [[ $5 == "ledger-loss-$count" ]] || exit 64
   variant_args=("$5")
   purpose=TASK398_LEDGER_LOSS_EXACT_$count
+elif [[ ${5-} == competition-331 ]]; then
+  [[ $count == 331 ]] || exit 64
+  variant_args=("$5")
+  purpose=TASK398_COMPETITION_EXACT_331
 elif [[ $count == 330 || $count == 331 ]]; then
   purpose=TASK425_TEXT_DIRECT_FINANCE_$count
 fi
@@ -65,6 +69,14 @@ if [[ $count == 330 || $count == 331 ]]; then
   elif [[ $count == 331 ]]; then
     patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-standard-331.patch"
     [[ $(runner_sha) == a53edcb4f8dd60c88ee74f784d9eb1e5d04296e2c024a74680f1f38f84e92f33 ]] || exit 65
+    if [[ ${5-} == competition-331 ]]; then
+      spec="$work/services/api/src/database/task16-shared-standard.http.pg.spec.ts"
+      [[ $(sha256sum "$spec" | cut -d' ' -f1) == e70aa4d7364f7232f694881bb96fce88bfa57a89bd24fc6f527b4d85dfa6b901 ]] || exit 65
+      patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-competition-runner-331.patch"
+      patch --batch --forward --fuzz=0 --silent "$spec" < "$plan/task398-competition-spec-331.patch"
+      [[ $(runner_sha) == bc73cdda637bc241c4f421afb4807b4035666f83e301ac60cfe8f591d4f3567a ]] || exit 65
+      [[ $(sha256sum "$spec" | cut -d' ' -f1) == ae9e20d37f17846fa64fe0223d7d7bdcfac9f1315fa687216b71d8fd411dddd5 ]] || exit 65
+    fi
   fi
 fi
 

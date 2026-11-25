@@ -1,0 +1,23 @@
+--- original
++++ revised
+@@ -368,0 +369,5 @@
++   if(standard290.purpose==="TASK398_COMPETITION_EXACT_331"){
++    if(output.split(/\r?\n/u).filter(line=>line.trim()==="TASK398_COMPETITION_SHARED_RECEIPT").length!==1)
++     throw Error("TASK398_COMPETITION_EVIDENCE");
++    standard290.competition={http:[201,409],paidCents:"6000",remainingCents:"4000",bothQueues:true,voucherReadback:true};
++   }
+@@ -543 +548 @@
+- const modes=new Map([["text-direct-331",["--text-direct-finance"]],["standard-331",[]],["text-direct-330",["--text-direct-finance"]],["standard-330",[]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["competition-331",["--overpay-real"]],["text-direct-331",["--text-direct-finance"]],["standard-331",[]],["text-direct-330",["--text-direct-finance"]],["standard-330",[]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+@@ -546 +551,2 @@
+- const current331=mode==="text-direct-331"||mode==="standard-331";
++ const competition=mode==="competition-331";
++ const current331=mode==="text-direct-331"||mode==="standard-331"||competition;
+@@ -549 +555 @@
+- const current330=textDirect||standard;
++ const current330=textDirect||standard||competition;
+@@ -550,0 +557 @@
++ if(competition&&receipt?.purpose!=="TASK398_COMPETITION_EXACT_331")throw Error("TASK398_COMPETITION_SCOPE");
+@@ -619 +626 @@
+-  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:standard||standard320||standard295||mode==="standard-290"?receipt:undefined,
++  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:competition||standard||standard320||standard295||mode==="standard-290"?receipt:undefined,

@@ -1,0 +1,36 @@
+--- original
++++ revised
+@@ -616,0 +617,33 @@
++    const expectSharedQueues=async()=>{
++     for(const token of [finance,keeper]){
++      const items=await json("/payment-executions/work-items","GET",undefined,token);
++      expect(items).toMatchObject({status:200,body:{items:expect.arrayContaining([
++       expect.objectContaining({paymentId:plan.ids.payment,paidAmountCents:"6000",remainingAmountCents:"4000"})
++      ])}});
++      const me=await observedMeRequest(()=>json("/me/work-items","GET",undefined,token),++meWindowIndex);
++      expect(me).toMatchObject({status:200,body:{queues:{pending:expect.arrayContaining([
++       expect.objectContaining({type:"payment_execution",businessId:plan.ids.payment})
++      ])}}});
++     }
++    };
++    await expectSharedQueues();
++    expect(await getResult(winner.key,winnerChoice.token)).toMatchObject({status:200,body:{execution:{voucherPending:true}}});
++    const voucher=new FormData();
++    voucher.append("file",new Blob([png],{type:"image/png"}),"voucher.png");
++    voucher.append("idempotencyKey",randomUUID());
++    const uploaded=await fetch(`${origin}/payment-executions/${executionId}/voucher-file-uploads`,{
++     method:"POST",headers:{authorization:`Bearer ${winnerChoice.token}`},body:voucher
++    });
++    expect(uploaded.status).toBe(201);
++    const file=await uploaded.json();
++    expect(await json(`/payment-executions/${executionId}/voucher`,"POST",{fileId:file.id},winnerChoice.token)).toMatchObject({status:201});
++    const ticket=await json(`/payment-executions/${executionId}/voucher-ticket`,"GET",undefined,winnerChoice.token);
++    expect(ticket.status).toBe(200);
++    const download=await fetch(new URL(ticket.body.downloadUrl,origin));
++    expect(download.status).toBe(200);
++    expect(Buffer.from(await download.arrayBuffer())).toEqual(png);
++    expect(await getResult(winner.key,winnerChoice.token)).toMatchObject({status:200,body:{execution:{voucherPending:false}}});
++    await expectSharedQueues();
++    expect(await observeRace()).toEqual(recorded);
++    expect(await json("/fund-accounts","GET",undefined,finance)).toEqual(accounts);
++    console.info("TASK398_COMPETITION_SHARED_RECEIPT");
