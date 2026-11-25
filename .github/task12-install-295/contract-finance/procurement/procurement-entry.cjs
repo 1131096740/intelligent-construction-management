@@ -10,11 +10,14 @@ try {
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
   const current320=process.argv[2]==='--current-320';
   const textDirect330=process.argv[2]==='--text-direct-330';
-  const forward=current320||textDirect330;
+  const paymentRemainder331=process.argv[2]==='--payment-remainder-331';
+  const forward=current320||textDirect330||paymentRemainder331;
   assert.equal(process.argv.length,forward?3:2);
-  const count=textDirect330?330:current320?329:295;
+  const count=paymentRemainder331?331:textDirect330?330:current320?329:295;
   assert.equal(source.migrationCount,count);
-  if(textDirect330) {
+  if(paymentRemainder331) {
+    require('./payment-remainder-331-profile.cjs').assertSource(source,source.sourceSha,multi.final);
+  } else if(textDirect330) {
     require('./text-direct-330-profile.cjs').assertSource(source,source.sourceSha,multi.final);
   } else if(current320) {
     assert.equal(source.mode,'current-320');

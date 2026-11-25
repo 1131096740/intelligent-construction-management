@@ -2,8 +2,9 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 ) ) ||
-  ( $# == 7 && $6 == --text-direct-330 && $7 == --host-only ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && $6 == --current-320 ) ||
+  ( ( $# == 6 || ( $# == 7 && $7 == --host-only ) ) &&
+    ( $6 == --text-direct-330 || $6 == --payment-remainder-331 ) ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -14,23 +15,29 @@ stage_args=()
 case ${6-} in
   --current-320) mode_args=(--current-320); stage_args=("${mode_args[@]}"); count=329 ;;
   --text-direct-330) mode_args=(--text-direct-330); stage_args=("${mode_args[@]}" "$prepared/source.json"); count=330 ;;
+  --payment-remainder-331) mode_args=(--payment-remainder-331); stage_args=("${mode_args[@]}" "$prepared/source.json"); count=331 ;;
 esac
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 finance="$root/.github/task12-install-295/contract-finance"
 common="$finance/common"
 workspace="$prepared/prepared/context/workspace"
-node - "$prepared/source.json" "$sha" "$lane" "$finance" "$count" <<'JS'
-const [sourceFile,sha,lane,finance,count]=process.argv.slice(2);
+profile=
+case $count in
+  330) profile="$finance/text-direct-330-profile.cjs" ;;
+  331) profile="$finance/payment-remainder-331-profile.cjs" ;;
+esac
+node - "$prepared/source.json" "$sha" "$lane" "$finance" "$count" "$profile" <<'JS'
+const [sourceFile,sha,lane,finance,count,profile]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(finance+'/common/multi-witness.cjs');
 if(source.sourceSha!==sha||source.migrationCount!==Number(count)||!['general16','project11'].includes(lane))process.exit(65);
-if(count==='330') {
-  require(finance+'/text-direct-330-profile.cjs').assertSource(source,sha,terminal.final);
+if(profile) {
+  require(profile).assertSource(source,sha,terminal.final);
 } else if(count==='329') {
   if(source.mode!=='current-320'||source.predecessor.ledgerSha256!==terminal.final)process.exit(65);
 } else if(source.ledgerSha256!==terminal.final)process.exit(65);
 JS
-if [[ $count == 330 ]]; then
+if [[ -n $profile ]]; then
   [[ -z $(git -C "$root" status --porcelain --untracked-files=all -- "$plan" "$common/installer.cjs") ]] || exit 65
 fi
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-procurement-$lane.XXXXXXXX")
@@ -38,14 +45,14 @@ python3 "$plan/stage-procurement295.py" "$lane" "$root" "$workspace" "$work/runt
 
 if [[ ${7-} == --host-only ]]; then
   for file in "$work/runtime/"*.cjs; do node --check "$file"; done
-  node - "$work" "$sha" "$lane" <<'JS'
-const [work,sourceSha,lane]=process.argv.slice(2);
+  node - "$work" "$sha" "$lane" "$count" <<'JS'
+const [work,sourceSha,lane,count]=process.argv.slice(2);
 const {readFileSync,writeFileSync,readdirSync}=require('node:fs');
 const {createHash}=require('node:crypto');
 const dir=work+'/runtime';
 const hash=file=>createHash('sha256').update(readFileSync(dir+'/'+file)).digest('hex');
 const files=readdirSync(dir,{withFileTypes:true}).filter(file=>file.isFile()).map(({name})=>name);
-const receipt={status:'PROCUREMENT_330_HOST_INPUTS_VERIFIED',sourceSha,lane,cases:lane==='general16'?16:11,
+const receipt={status:'PROCUREMENT_'+count+'_HOST_INPUTS_VERIFIED',sourceSha,lane,cases:lane==='general16'?16:11,
   stagedInputs:Object.fromEntries(files.sort().map(file=>[file,hash(file)])),database:'NOT_STARTED'};
 writeFileSync(work+'/host-receipt.json',JSON.stringify(receipt,null,2)+'\n',{flag:'wx',mode:0o600});
 console.log(JSON.stringify({receipt:work+'/host-receipt.json',...receipt}));
@@ -68,8 +75,8 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
   --mount "type=bind,src=$plan/procurement-entry.cjs,dst=/qualification/procurement-entry.cjs,readonly")
-if [[ $count == 330 ]]; then
-  args+=(--mount "type=bind,src=$finance/text-direct-330-profile.cjs,dst=/qualification/text-direct-330-profile.cjs,readonly")
+if [[ -n $profile ]]; then
+  args+=(--mount "type=bind,src=$profile,dst=/qualification/${profile##*/},readonly")
 fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
@@ -91,13 +98,13 @@ docker run "${args[@]}" --entrypoint node "$image" /qualification/procurement-en
   > "$work/receipt.json" 2> "$work/private.stderr" || status=$?
 [[ ! -s "$work/receipt.json" ]] || cat "$work/receipt.json"
 (( status == 0 )) || exit "$status"
-node - "$work/receipt.json" "$sha" "$lane" "$count" "$finance" "$prepared/source.json" <<'JS'
-const [file,sha,lane,count,finance,source]=process.argv.slice(2);
+node - "$work/receipt.json" "$sha" "$lane" "$count" "$profile" "$prepared/source.json" <<'JS'
+const [file,sha,lane,count,profile,source]=process.argv.slice(2);
 const r=require(file);
 const expected=lane==='general16'?'GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1_'+count+'_PASSED':'PROJECT_SCOPE_ORIGINAL_11_'+count+'_PASSED';
 if(r.status!==expected||r.sourceSha!==sha)process.exit(1);
-if(count==='330') {
-  require(finance+'/text-direct-330-profile.cjs').assertInstallation(r,require(source));
+if(profile) {
+  require(profile).assertInstallation(r,require(source));
   if(r.multiWitnessCatalogAfterBusiness!==true)process.exit(1);
 }
 JS

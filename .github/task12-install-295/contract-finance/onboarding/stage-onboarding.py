@@ -16,8 +16,9 @@ source_record=json.loads(source.read_text())
 count=source_record['migrationCount']
 mode=source_record.get('mode')
 text_direct=mode=='text-direct-330'
-forward=mode in ('current-320','text-direct-330')
-if count!=(330 if text_direct else 329 if forward else 295):
+payment_remainder=mode=='payment-remainder-331'
+forward=mode in ('current-320','text-direct-330','payment-remainder-331')
+if count!={'payment-remainder-331':331,'text-direct-330':330,'current-320':329}.get(mode,295):
     raise SystemExit('ONBOARDING_SOURCE_LEDGER')
 application_tree=source_record['sourceTree'] if forward else '67644d9465a0ab4ee80ede099139d9c129d66f14'
 if forward:
@@ -26,8 +27,14 @@ if forward:
         raise SystemExit('ONBOARDING_320_SOURCE_TREE')
 old=json.loads(gzip.decompress((archive/'workspace-inputs.json.gz').read_bytes()))
 expected_drift=json.loads((plan/f'onboarding-{329 if forward else 295}-source-drift.json').read_text())
-if text_direct:
+if text_direct or payment_remainder:
     expected_drift.update(json.loads((plan/'onboarding-330-source-drift.json').read_text()))
+additional={}
+if payment_remainder:
+    remainder_drift=json.loads((plan/'onboarding-331-source-drift.json').read_text())
+    expected_drift.update({name:digest for name,digest in remainder_drift.items() if name in old['files']})
+    # The 331 profile also pins reviewed files absent from the sealed inventory.
+    additional={name:digest for name,digest in remainder_drift.items() if name not in old['files']}
 actual={}
 changes={}
 absent=[]
@@ -43,6 +50,11 @@ for name, previous in old['files'].items():
         changes[name]=digest
 if changes!=expected_drift:
     raise SystemExit('ONBOARDING_295_SOURCE_INPUT_DELTA '+str(sorted(changes.keys()^expected_drift.keys() | {k for k in changes.keys()&expected_drift.keys() if changes[k]!=expected_drift[k]})))
+for name,want in additional.items():
+    file=workspace/name
+    if not file.is_file() or file.is_symlink() or hashlib.sha256(file.read_bytes()).hexdigest()!=want:
+        raise SystemExit('ONBOARDING_331_ADDITIONAL_SOURCE_PIN '+name)
+    actual[name]=want
 with tarfile.open(archive/'lanes.tar.gz') as sealed:
     for row in sealed:
         rel=PurePosixPath(row.name)
@@ -135,7 +147,10 @@ else:
     (out/'lanes.json').write_bytes((archive/'lanes.json').read_bytes())
 installer=out/'installer.cjs'
 installer.write_bytes((common/'installer.cjs').read_bytes())
-if text_direct:
+if text_direct or payment_remainder:
+    profile_name,installer_method=(('payment-remainder-331-profile.cjs','withCombined331PaymentRemainder')
+                                   if payment_remainder else
+                                   ('text-direct-330-profile.cjs','withCombined330TextAgreement'))
     role_patch, marker, old_entry = (plan/'installer-onboarding.patch').read_bytes().rpartition(b'\n@@ -1388,3 ')
     if not marker or old_entry.count(b'module.exports.withInstalled295Onboarding')!=1:
         raise SystemExit('ONBOARDING_330_INSTALLER_ENTRY_ANCHOR')
@@ -145,7 +160,7 @@ if text_direct:
         script.write("""
 module.exports.withInstalled295Onboarding = receipt => {
   const source=require('./contract-finance-source.json');
-  const profile=require('./text-direct-330-profile.cjs');
+  const profile=require('./PROFILE_NAME');
   profile.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
   const consume=async context=>{
     profile.assertInstallation(receipt,source);
@@ -156,11 +171,11 @@ module.exports.withInstalled295Onboarding = receipt => {
     await verify();
     receipt.sameInstancePostConsume=true;
   };
-  return module.exports.withCombined330TextAgreement(receipt,consume,{
+  return module.exports.INSTALLER_METHOD(receipt,consume,{
     sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
   });
 };
-""")
+""".replace('PROFILE_NAME',profile_name).replace('INSTALLER_METHOD',installer_method))
 else:
     subprocess.run(['patch','--batch','--forward','--fuzz=0','--silent',str(installer),str(plan/'installer-onboarding.patch')],check=True)
 subprocess.run(['node','--check',str(installer)],check=True)

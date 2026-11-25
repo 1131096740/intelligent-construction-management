@@ -6,9 +6,11 @@ const old=process.argv[4];
 const source=process.argv[6] ? require(process.argv[6]) : null;
 const current320=source?.mode==='current-320';
 const textDirect330=source?.mode==='text-direct-330';
-const forward=current320||textDirect330;
-const profile330=textDirect330?require('../text-direct-330-profile.cjs'):undefined;
-const count=textDirect330?330:current320?329:295;
+const paymentRemainder331=source?.mode==='payment-remainder-331';
+const forward=current320||textDirect330||paymentRemainder331;
+const profile=paymentRemainder331?require('../payment-remainder-331-profile.cjs'):
+  textDirect330?require('../text-direct-330-profile.cjs'):undefined;
+const count=paymentRemainder331?331:textDirect330?330:current320?329:295;
 const scopes=require(path.join(old,'lanes.json'));
 const {lanes}=require(path.join(old,'pins.json'));
 const scope={tree:'67644d9465a0ab4ee80ede099139d9c129d66f14',expectedLedgerSha256:'b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d'};
@@ -31,9 +33,9 @@ function verifyLane(lane,receipt) {
   assert.equal(receipt.releaseTree,scope.tree);
   assert.equal(receipt.installOnly295.count,295);
   assert.equal(receipt.installOnly295.ledgerSha256,scope.expectedLedgerSha256);
-  if(textDirect330) {
-    profile330.assertSource(source,process.argv[5],scope.expectedLedgerSha256);
-    profile330.assertInstallation(receipt,source);
+  if(profile) {
+    profile.assertSource(source,process.argv[5],scope.expectedLedgerSha256);
+    profile.assertInstallation(receipt,source);
     assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);
   }
   if(forward){

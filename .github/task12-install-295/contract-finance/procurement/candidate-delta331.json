@@ -1,0 +1,72 @@
+[
+  {
+    "path": "apps/web-admin/src/api/core-flow-read.api.ts",
+    "expected": "c83128b15dbd395bae3875c5994c11e54b13ec426b6959b3e677371bb49a303f",
+    "candidate": "912c105a15d35cbbb1952db4d45d10b3156d3d3062e6cfc342b15c0925a1daa2"
+  },
+  {
+    "path": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+    "expected": "e59191cb43679ab0564d1fd0ebc1f13b2db9f2163e7ebb62e03a08f9195ab715",
+    "candidate": "623a31dec13fbf30df0e031854f2f6befd8a0a9c296790c8c7fc02dcd208eb8e"
+  },
+  {
+    "path": "services/api/prisma/database-dynamic-gate-manifest.json",
+    "expected": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
+    "candidate": "b2a444f14a3cd2be34e47a9f44203d88d40d18b5aab16e0700f4e558d36fcaa0"
+  },
+  {
+    "path": "services/api/prisma/schema.prisma",
+    "expected": "8154b5a52bee19a0a105ea949f2fb272f6876f7c92fbf1e0b57b0104d93b87be",
+    "candidate": "bf8b928aa96efab0190163b1fefc9a3807ae1851466d6dadd2881e99ac748cd3"
+  },
+  {
+    "path": "services/api/src/auth/guards/permission.guard.spec.ts",
+    "expected": "55a3f0503efcc1ad1282636fccbea839c3ba2e952e3cea59c3313f36414c6eaa",
+    "candidate": "fe875ba9595dcfa52bacf37a5b4e0c266947b4108800548a2742cfce2355d40c"
+  },
+  {
+    "path": "services/api/src/auth/guards/permission.guard.ts",
+    "expected": "8ccc2c3808ddd45837ed115202395a4f87dcc51aa4e015f4590b4f97e40021f1",
+    "candidate": "df71d511cf467d0ff93124590b4e71d6ee951d527d089f934879a3033c4b8655"
+  },
+  {
+    "path": "services/api/src/me/me.service.ts",
+    "expected": "439db3745de0160d9db7dc5819bdf2f73c2ac0c595d8f8b5250e83d54aba5b25",
+    "candidate": "1f31e938cc1e120cab49cb6c2758360266defc6969c959691453f23764c02781"
+  },
+  {
+    "path": "services/api/src/payment/payment-read.service.ts",
+    "expected": "7d2378c22ec148759df4848beb7ddc684537735390815d112eb4cda3170d9197",
+    "candidate": "7dd6c207314a70ed0e540c0e893cc1102abeb1d74385362a877eb344ff90c15b"
+  },
+  {
+    "path": "services/api/src/payment/payment-request.service.spec.ts",
+    "expected": "174e0354c964991e970bcb232a2a2e160eab3e93e7c5f167b0d2488b49e13393",
+    "candidate": "4ccfa66cac417d3594008af2e40881febeafdc31fa572b913bbfc901864e5ed8"
+  },
+  {
+    "path": "services/api/src/payment/payment-request.service.ts",
+    "expected": "0a283f62d03fc5f22fe776d1a9da00b9becf80a2cdff44808fa1d944f96fd74f",
+    "candidate": "2cd565f08f1edc7f950cc556ca4af13754de65e1e3a0877bd861be327b0b89a1"
+  },
+  {
+    "path": "services/api/src/payment/payment.controller.ts",
+    "expected": "f07f64ef4776f6d22fdf015f756b77fb2f59fbcac22255aa87ff4840fa6d0dbf",
+    "candidate": "e013fd8a6dadc68cfee0b5746c22d08955d4a2a3f3e3c8674ff23e9e8543f860"
+  },
+  {
+    "path": "services/api/src/payment/registered-payment-execution.service.ts",
+    "expected": "a756c02fe780cf207796afbe73fd0195157fac8ceb0f8e3c86f3652d54fa5a57",
+    "candidate": "80bca352310daca950cd76d81f418b3fcdc7fddd8089018a7b261fadbdcac2ed"
+  },
+  {
+    "path": "services/api/src/payment/registered-payment-notification.service.ts",
+    "expected": "eba13bba0f91056b3b73a9b328203ef0869e702960c6dd4d4a67ac125f9b1df5",
+    "candidate": "784a01ca337ac30573ca8dea5871aadfa91c0c46a8c669f8e354d32e15a12bf7"
+  },
+  {
+    "path": "services/api/src/payment/testing/registered-payment-execution.synthetic-db.ts",
+    "expected": "c91649f5ebdc52bd54334330f61b69945762aa1b46654251ca5868e4356cf340",
+    "candidate": "b12fae35568b40af66fc699499053f34f5f8765a7a08bcb1dc23bdce82275503"
+  }
+]
