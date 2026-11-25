@@ -1,3 +1,4 @@
+import { isRetiredWageOutflow } from "../fund-execution/fund-execution-wage-retirement";
 import { isRetiredProjectEmployeeLoan } from "../project-expense/project-employee-loan-retirement";
 import { isPendingLegacyContractCutover, readLegacyContractSignature } from "../contract/contract-approval-cutover";
 import { isDeepStrictEqual } from "node:util";
@@ -48,6 +49,7 @@ import {
 
 const APPROVAL_FORM_TEMPLATE_KEY = "approval_form";
 const RETIRED_EMPLOYEE_LOAN_ARCHIVE = "历史员工借款缺少归档审批单，已停止补生成";
+const RETIRED_WAGE_OUTFLOW_ARCHIVE = "历史工资出款缺少归档审批单，已停止补生成";
 const SPOT_PROCUREMENT_APPROVAL_TYPES = new Set([
   "spot_procurement_version",
   "spot_procurement_payment"
@@ -616,7 +618,7 @@ export class ApprovalFormService {
       }
       if (!pendingContract && !pendingParallelRound && instance.status !== "approved" &&
           !(businessType === "spot_procurement_version" && isParallelApprovalRound(instance.frozenNodes) && instance.status === "approval_pending")) return { available: false };
-      if (instance.status === "approved" && await this.missingRetiredLoanArchive(this.prisma, instance)) return { available: false };
+      if (instance.status === "approved" && await this.missingRetiredArchiveReason(this.prisma, instance)) return { available: false };
       if (isParallelApprovalRound(instance.frozenNodes)) await this.currentParallelApplication(businessType, businessId);
       const logs = await this.prisma.approvalActionLog.findMany({ where: { approvalInstanceId: instance.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
       const incomplete = pendingContract || pendingParallelRound ||
@@ -666,11 +668,10 @@ export class ApprovalFormService {
         if (!(error instanceof BadRequestException)) throw error;
         available = false;
       }
-      const missingRetiredArchive = available && await this.missingRetiredLoanArchive(this.prisma, instance);
+      const missingRetiredArchive = available && await this.missingRetiredArchiveReason(this.prisma, instance);
       items.push({ id: instance.id, businessType: instance.businessType, businessId: instance.businessId,
         title: BUSINESS_TYPE_LABELS[instance.businessType], code, approvedAt: logs.at(-1)?.createdAt ?? instance.updatedAt,
-        available: available && !missingRetiredArchive, unavailableReason: missingRetiredArchive ? RETIRED_EMPLOYEE_LOAN_ARCHIVE
-          : available ? null : "历史审批或签名证据不完整，请核查原审批记录" });
+        available: available && !missingRetiredArchive, unavailableReason: missingRetiredArchive || (available ? null : "历史审批或签名证据不完整，请核查原审批记录") });
     }
     return { items, nextCursor: candidates.length === 50 ? candidates.at(-1)!.id : null };
   }
@@ -691,10 +692,30 @@ export class ApprovalFormService {
     return claim?.claimType === "loan";
   }
 
-  private async missingRetiredLoanArchive(client: ApprovalFormClient, instance: ApprovalInstance) {
-    return await this.isEmployeeLoanApproval(client, instance) && !await client.pdfDocument.findFirst({
+  private async retiredArchiveReason(client: ApprovalFormClient, instance: ApprovalInstance) {
+    if (instance.businessType === "fund_execution_case") {
+      const row = await client.fundExecutionCase.findFirst({
+        where: { caseKey: instance.businessId, approvalInstanceId: instance.id },
+        orderBy: { revision: "desc" },
+        select: { fundExecutionId: true }
+      });
+      if (!row) return null;
+      const execution = await client.fundExecution.findUnique({
+        where: { id: row.fundExecutionId },
+        select: { executionKind: true, direction: true }
+      });
+      return isRetiredWageOutflow(execution) ? RETIRED_WAGE_OUTFLOW_ARCHIVE : null;
+    }
+    return await this.isEmployeeLoanApproval(client, instance) ? RETIRED_EMPLOYEE_LOAN_ARCHIVE : null;
+  }
+
+  private async missingRetiredArchiveReason(client: ApprovalFormClient, instance: ApprovalInstance) {
+    const reason = await this.retiredArchiveReason(client, instance);
+    if (!reason) return null;
+    const existing = await client.pdfDocument.findFirst({
       where: { approvalInstanceId: instance.id }, select: { id: true }
     });
+    return existing ? null : reason;
   }
 
   private async loadContractApprovalFormRenderToken(
@@ -783,7 +804,8 @@ export class ApprovalFormService {
       });
       if (existing) return { kind: "existing" as const, document: existing };
 
-      if (await this.isEmployeeLoanApproval(tx, instance)) throw new GoneException(RETIRED_EMPLOYEE_LOAN_ARCHIVE);
+      const retiredArchiveReason = await this.retiredArchiveReason(tx, instance);
+      if (retiredArchiveReason) throw new GoneException(retiredArchiveReason);
 
       await tx.$queryRaw(Prisma.sql`
         SELECT "approvalInstanceId" FROM "ApprovalFormGenerationClaim"

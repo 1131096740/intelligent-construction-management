@@ -914,6 +914,79 @@ getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id.include
     expect(prisma.pdfDocument.create).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["bank_transaction", "outflow", true],
+    ["bank_transaction", "inflow", false],
+    ["reversal", "inflow", false],
+    ["reversal", "outflow", false]
+  ])("preserves exact V7 archives and only stops lazy initial wage archive generation (%s, %s)", async (executionKind, direction, retired) => {
+    const businessType = "fund_execution_case";
+    const businessId = "case-key";
+    const actor = "user-chair";
+    const instance = {
+      id: "inst-1", businessType, businessId, status: "approved", applicantUserId: "user-applicant",
+      updatedAt: new Date("2026-08-31T08:00:00Z"), frozenNodes: [{ name: "董事长", mode: "any", roleKeys: ["chairman"] }]
+    };
+    const findCase = jest.fn().mockResolvedValue({ fundExecutionId: "execution", reason: "按原记录核对" });
+    const readExecution = jest.fn().mockResolvedValue({
+      executionKind, direction, amountCents: 100n, occurredAt: new Date("2026-08-31T07:00:00Z")
+    });
+    const prisma = buildPrisma({
+      approvalInstance: { findFirst: jest.fn().mockResolvedValue(instance), findUnique: jest.fn().mockResolvedValue(instance),
+        findMany: jest.fn().mockResolvedValue([instance]) },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ id: actor, name: "董事长乙", isActive: true }),
+        findMany: jest.fn().mockResolvedValue([{ id: actor, name: "董事长乙" }])
+      },
+      fundExecutionCase: { findFirst: findCase, findFirstOrThrow: findCase },
+      fundExecution: { findUnique: readExecution, findUniqueOrThrow: readExecution }
+    });
+    const files = {
+      assertCanDownloadApprovalFormByBusiness: jest.fn(async (_type: string, _id: string, user: string) => {
+        if (user === "stranger") throw new NotFoundException("审批单不存在或无权查看");
+      }),
+      assertApprovalFormArchiveAnchor: jest.fn(),
+      uploadPrivateFile: jest.fn().mockResolvedValue({ id: "file-1" }),
+      getFileBuffer: jest.fn(async (id: string) => ({ file: { id }, buffer: id === "sig-1" ? PNG_1X1 : await fixturePdf() }))
+    };
+    const audit = { record: jest.fn() };
+    const auth = { confirmPassword: jest.fn() };
+    const service = new ApprovalFormService(prisma as never, files as never, audit as never, auth as never);
+    await expect(service.downloadAvailability(businessType, businessId, actor)).resolves.toEqual({ available: !retired });
+    if (!retired) {
+      await expect(service.getOrCreateByBusiness(businessType, businessId, actor)).resolves.toEqual(prisma.created);
+      expect(files.uploadPrivateFile).toHaveBeenCalledTimes(1);
+      return;
+    }
+
+    await expect(service.renderForDownload(businessType, businessId, "stranger", "password", "核对历史"))
+      .rejects.toMatchObject({ status: 404 });
+    await expect(service.renderForDownload(businessType, businessId, actor, "password", "核对历史"))
+      .rejects.toMatchObject({ status: 410 });
+    await expect(service.listForDownload(actor)).resolves.toMatchObject({
+      items: [{ businessId, available: false, unavailableReason: "历史工资出款缺少归档审批单，已停止补生成" }]
+    });
+    expect(findCase).toHaveBeenCalledWith(expect.objectContaining({
+      where: { caseKey: businessId, approvalInstanceId: instance.id }
+    }));
+    expect(prisma.approvalFormGenerationClaim.create).not.toHaveBeenCalled();
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+
+    prisma.pdfDocument.findFirst.mockResolvedValue(prisma.created);
+    await expect(service.downloadAvailability(businessType, businessId, actor)).resolves.toEqual({ available: true });
+    const downloaded = await service.renderForDownload(businessType, businessId, actor, "password", "核对历史");
+    expect(downloaded.buffer.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(files.assertApprovalFormArchiveAnchor).toHaveBeenCalledWith({
+      pdfDocumentId: prisma.created.id, fileId: prisma.created.fileId, businessType, businessId, approvalInstanceId: instance.id
+    });
+    expect(audit.record).toHaveBeenCalledWith(prisma, expect.objectContaining({
+      action: "approval.form.download", actorUserId: actor, businessId
+    }));
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+    expect(prisma.pdfDocument.create).not.toHaveBeenCalled();
+  });
+
   it("合同审批单下载必须先通过业务 ACL，拒绝时不触发惰性生成", async () => {
     const prisma = buildPrisma({
       pdfDocument: {

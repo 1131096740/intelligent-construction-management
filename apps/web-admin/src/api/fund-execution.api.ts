@@ -2,7 +2,7 @@ import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 import type { BusinessEntrySceneDefinition } from "@jiangkong/shared-domain";
 
-export type FundExecutionObservationPurpose = "fund_execution_case";
+export type FundExecutionObservationPurpose = "fund_execution_case" | "fund_execution_reversal";
 export type FundExecutionKind = "quarantine" | "reversal";
 export type FundExecutionDirection = "inflow" | "outflow";
 export type FundExecutionCaseStatus =

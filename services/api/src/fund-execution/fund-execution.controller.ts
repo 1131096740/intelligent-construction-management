@@ -55,7 +55,7 @@ export class FundExecutionController {
     return this.options.listObservationCandidates(
       user.id,
       new Date(),
-      purpose === "payment_execution" ? "payment_execution" : "fund_execution_case"
+      purpose === "payment_execution" || purpose === "fund_execution_reversal" ? purpose : "fund_execution_case"
     );
   }
 
