@@ -1,0 +1,54 @@
+--- installer.cjs
++++ installer.cjs
+@@ -281 +281,2 @@
+-  const named320=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_329';
++  const named330=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_330';
++  const named320=named330||(purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_329');
+@@ -731,3 +732,2 @@
+-        need(material.migrationCount===329 && /^[0-9a-f]{40}$/u.test(material.sourceTree) &&
+-          Array.isArray(rows) && rows.length===34,'NAMED_320_SOURCE');
+-        const predecessor=consumerLedger;
++        need(named330&&material.migrationCount===330 && /^[0-9a-f]{40}$/u.test(material.sourceTree) &&
++          Array.isArray(rows) && rows.length===35 && rows.at(-1)?.name==='20261128000000_text_agreement_direct_payment','NAMED_330_SOURCE');
+@@ -736,9 +736,20 @@
+-        for(const row of rows){
+-          const match=/^(\d{14})_[a-z0-9_]+$/u.exec(row&&typeof row.name==='string'?row.name:'');
+-          need(match&&match[1]>previous&&typeof row.sha256==='string'&&/^[0-9a-f]{64}$/u.test(row.sha256),'NAMED_320_TAIL_SEQUENCE');
+-          previous=match[1];
+-          const bytes=capture(path.join('/qualification/workspace/services/api/prisma/migrations',row.name,'migration.sql')).bytes;
+-          need(hash(bytes)===row.sha256,'NAMED_320_TAIL_DIGEST');
+-          const dir=path.join(folder,'migrations',row.name);
+-          fs.mkdirSync(dir,{mode:0o700});
+-          fs.writeFileSync(path.join(dir,'migration.sql'),bytes,{flag:'wx',mode:0o600});
++        let outside;
++        for(const batch of [rows.slice(0,-1), rows.slice(-1)]){
++          for(const row of batch){
++            const match=/^(\d{14})_[a-z0-9_]+$/u.exec(row&&typeof row.name==='string'?row.name:'');
++            need(match&&match[1]>previous&&typeof row.sha256==='string'&&/^[0-9a-f]{64}$/u.test(row.sha256),'NAMED_320_TAIL_SEQUENCE');
++            previous=match[1];
++            const bytes=capture(path.join('/qualification/workspace/services/api/prisma/migrations',row.name,'migration.sql')).bytes;
++            need(hash(bytes)===row.sha256,'NAMED_320_TAIL_DIGEST');
++            const dir=path.join(folder,'migrations',row.name);
++            fs.mkdirSync(dir,{mode:0o700});
++            fs.writeFileSync(path.join(dir,'migration.sql'),bytes,{flag:'wx',mode:0o600});
++          }
++          consumerLedger=[...consumerLedger,...batch.map(({name,sha256})=>({name,sha256,finished:true,rolledBack:false}))];
++          const count=consumerLedger.length;
++          const expected=count===329?material.ledger329:material.ledger320;
++          need(hash(JSON.stringify(consumerLedger))===expected,'NAMED_330_LEDGER_SOURCE');
++          await deploy();
++          outside=await verifyLedger(consumerLedger,true);
++          await named295Tail.checkTailCatalogs();
++          if(count===329) receipt.textDirectPredecessor={count,ledgerSha256:expected,sameIdentity:true,exactB7:true};
+@@ -746,5 +756,0 @@
+-        consumerLedger=[...predecessor,...rows.map(({name,sha256})=>({name,sha256,finished:true,rolledBack:false}))];
+-        need(hash(JSON.stringify(consumerLedger))===material.ledger320,'NAMED_320_LEDGER_SOURCE');
+-        await deploy();
+-        const outside=await verifyLedger(consumerLedger,true);
+-        await named295Tail.checkTailCatalogs();
+@@ -781 +787 @@
+-      enter(named320?'EXACT_329_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
++      enter(named330?'EXACT_330_NAMED_FRESH_CONSUMER':named320?'EXACT_329_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
+@@ -1153 +1159 @@
+-module.exports.withNamedPol113Pol114320=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,329);
++module.exports.withNamedPol113Pol114330=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,330);

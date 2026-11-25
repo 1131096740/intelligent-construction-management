@@ -1,10 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 umask 077
-[[ ( $# == 1 || ( $# == 2 && $2 == --current-320 ) ) && ( $1 == pol113 || $1 == pol114 ) ]]
+[[ ( $# == 1 || ( $# == 2 && ( $2 == --current-320 || $2 == --text-direct-330 ) ) ) && ( $1 == pol113 || $1 == pol114 ) ]]
 mode=$1
 mode_args=()
-if [[ $# == 2 ]]; then mode_args=(--current-320); fi
+if [[ $# == 2 ]]; then mode_args=("$2"); fi
 root=$(git rev-parse --show-toplevel)
 ref=${CI_SOURCE_SHA:?missing exact CI source SHA}
 [[ $ref == "$(git -C "$root" rev-parse HEAD)" && -z $(git -C "$root" status --porcelain --untracked-files=no) ]]

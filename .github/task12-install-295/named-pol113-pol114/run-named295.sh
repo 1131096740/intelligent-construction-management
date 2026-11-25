@@ -11,12 +11,14 @@ evidence=$5
 node - "$generated/context/candidate-admission.json" "$prepared/source.json" "$ref" <<'JS'
 const [candidateFile,sourceFile,sha]=process.argv.slice(2);
 const a=require(candidateFile),s=require(sourceFile);
-const current320=s.mode==='current-320';
-const count=current320?329:295;
+const textDirect=s.mode==='text-direct-330';
+const current320=textDirect||s.mode==='current-320';
+const count=textDirect?330:current320?329:295;
 if(a.candidateSha!==sha||s.sourceSha!==sha||s.migrationCount!==count||a.migrationCount!==count||
   a.ledger295!==(current320?s.predecessor.ledgerSha256:s.ledgerSha256))process.exit(65);
 if(current320&&(a.ledger320!==s.ledgerSha256||a.sourceTree!==s.sourceTree||
   JSON.stringify(a.tails)!==JSON.stringify(s.tails)))process.exit(65);
+if(textDirect&&a.ledger329!=="3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2")process.exit(65);
 JS
 (cd "$generated/context" && shasum -a 256 -c ../context.sha256 >/dev/null)
 [[ -z $(docker ps -q) ]]
