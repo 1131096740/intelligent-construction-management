@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 [[ $# == 2 || ( $# == 3 && ( $3 == --current-320 || $3 == --text-direct-330 ) && $2 != pol275 ) ||
-  ( $# == 3 && ( $2 == line-a || $2 == task398-ledger-loss || $2 == task398-standard || $2 == company-proxy ) && $3 == --payment-remainder-331 ) ||
+  ( $# == 3 && ( $2 == line-a || $2 == task398-ledger-loss || $2 == task398-standard || $2 == company-proxy || $2 == browser-partial || $2 == browser-completion ) && $3 == --payment-remainder-331 ) ||
   ( $# == 4 && $2 == pol275 && ( $3 == --current-320 || $3 == --text-direct-330 ) && $4 =~ ^[a-f0-9]{40}$ ) ]] || exit 64
 sha=$1
 lane=$2

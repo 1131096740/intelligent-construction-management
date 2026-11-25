@@ -15,7 +15,7 @@ scope=task398-browser-completion
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const count=source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
   console.log(count);
 ' "$prepared/source.json" "$sha")
@@ -26,8 +26,12 @@ fingerprint=$(cat "$build/context.sha256")
 [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
+stage_args=()
+if [[ $count == 331 ]]; then
+  stage_args=(--payment-remainder-331)
+fi
 python3 "$plan/stage-completion.py" \
-  "$repo" "$prepared/prepared/context/workspace" "$work" > "$work/overlay-files.txt"
+  "$repo" "$prepared/prepared/context/workspace" "$work" ${stage_args[@]+"${stage_args[@]}"} > "$work/overlay-files.txt"
 overlay_files=()
 while IFS= read -r file; do overlay_files+=("$file"); done < "$work/overlay-files.txt"
 [[ ${#overlay_files[@]} == 8 ]] || exit 65

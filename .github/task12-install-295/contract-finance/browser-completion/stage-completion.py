@@ -4,7 +4,10 @@ from pathlib import Path
 import subprocess
 import sys
 
-repo, workspace, output = map(Path, sys.argv[1:])
+repo, workspace, output = map(Path, sys.argv[1:4])
+options = sys.argv[4:]
+if options not in ([], ['--payment-remainder-331']):
+    raise SystemExit('TASK398_BROWSER_COMPLETION_STAGING_MODE')
 original = repo / '.github/task12-install-290'
 partial = original / 'browser-partial'
 completion = original / 'browser-completion'
@@ -59,5 +62,11 @@ for name in sorted(partial_pins.keys() | completion_pins.keys()):
         subprocess.run(['patch', '--batch', '--fuzz=0', '--silent', str(target), str(diagnostics)], check=True)
         read_acl = diagnostics.with_name('task398-browser-read-acl.patch')
         subprocess.run(['patch', '--batch', '--fuzz=0', '--silent', str(target), str(read_acl)], check=True)
+        if options:
+            check(target.read_bytes(), '70eab0c53fe72130f3f4530a6859b9dad2aee2ec3d3a8ecfb35ee338317841a5', target.name)
+            payment_remainder = Path(__file__).with_name('completion331.patch')
+            subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
+                            str(target), str(payment_remainder)], check=True)
+            check(target.read_bytes(), '81781b68d0791237751515f46cf0d8de0f72ff8e433220649ce206b5e60dd2a8', target.name)
     target.chmod(0o644)
     print(name)

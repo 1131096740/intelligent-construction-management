@@ -6,7 +6,7 @@ const read=file=>JSON.parse(readFileSync(file,'utf8'));
 const outer=read(process.argv[2]);
 const evidence=read(join(process.argv[3],'receipt.json'));
 const count=Number(process.argv[4]??295);
-assert.ok([295,329,330].includes(count));
+assert.ok([295,329,330,331].includes(count));
 assert.equal(outer.status,'TASK398_BROWSER_PARTIAL_EXACT_'+count+'_PASSED');
 if(count!==295){
   assert.equal(outer.forward320?.count,count);
@@ -17,10 +17,17 @@ if(count!==295){
   assert.equal(outer.combinedAfterBusiness?.count,count);
   assert.equal(outer.combinedAfterBusiness?.ledgerSha256,outer.forward320.ledgerSha256);
   assert.equal(outer.combinedAfterBusiness?.exactB7,true);
-  if(count===330){
+  if(count>=330){
     assert.equal(outer.textDirectPredecessor?.count,329);
     assert.equal(outer.textDirectPredecessor?.sameIdentity,true);
     assert.equal(outer.textDirectPredecessor?.sameBaseB7,true);
+  }
+  if(count===331){
+    assert.deepEqual(outer.paymentRemainderPredecessor,{
+      count:330,ledgerSha256:'12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f',
+      sameIdentity:true,sameBaseB7:true
+    });
+    assert.equal(outer.forward320.ledgerSha256,'0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014');
   }
 }
 assert.equal(evidence.status,'BROWSER_PARTIAL_CASE_RETURNED_NOT_FULL_ACCEPTANCE');
