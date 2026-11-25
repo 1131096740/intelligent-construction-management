@@ -530,6 +530,7 @@ export type PaymentLifecycleDetailReadModel = PaymentDetailReadModel & {
   reviewApprovalContext: PaymentReviewApprovalContext | null;
   executionContext: PaymentExecutionContext | null;
   withdrawApprovalContext?: { expectedApprovalInstanceId: string };
+  remainderWithdrawalContext?: { expectedUpdatedAt: string; remainingAmountCents: string };
   delegationApprovalContext?: PaymentDelegationApprovalContext;
   revisionSubmissionContext?: {
     expectedUpdatedAt: string;
@@ -6240,6 +6241,17 @@ export function reviseAndSubmitPaymentRequest(paymentId: string, body: {
   amountCalculationExplanation?: string;
 }) {
   return postJson<CreatePaymentRequestReadModel>(`/payments/${encodeURIComponent(paymentId)}/revision-submission`, body);
+}
+
+export function withdrawPaymentRemainder(paymentId: string, body: {
+  expectedUpdatedAt: string;
+  requestedAmountCents: string;
+  code?: string;
+  reason: string;
+}) {
+  return postJson<{ revised: CreatePaymentRequestReadModel | null }>(
+    `/payments/${encodeURIComponent(paymentId)}/remainder-withdrawal`, body
+  );
 }
 
 export function uploadContractArchiveFile(

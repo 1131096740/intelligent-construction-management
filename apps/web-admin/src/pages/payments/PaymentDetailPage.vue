@@ -237,6 +237,31 @@
           />
 
           <div
+            v-if="paymentDetail.remainderWithdrawalContext && isPaymentActionEnabled('withdraw_remainder')"
+            class="action-group"
+          >
+            <div class="action-title">
+              <strong>撤回并调整余款</strong>
+              <span>剩余待付 {{ formatCents(paymentDetail.remainderWithdrawalContext.remainingAmountCents) }}</span>
+            </div>
+            <div class="action-fields">
+              <MoneyInput v-model="remainderForm.amountYuan" label="调整后的待付金额" required />
+              <label class="action-field">
+                <span>新付款单号</span>
+                <t-input v-model="remainderForm.code" />
+              </label>
+              <label class="action-field action-field--wide">
+                <span>调整原因</span>
+                <t-textarea v-model="remainderForm.reason" maxlength="200" />
+              </label>
+            </div>
+            <p>填 0 可撤回全部余款。填写新金额时，新申请会由全部岗位重新审批。</p>
+            <t-button theme="primary" :loading="actionBusy === 'remainderWithdrawal'" @click="prepareRemainderWithdrawal">
+              核对余款调整
+            </t-button>
+          </div>
+
+          <div
             v-if="paymentDetail.revisionSubmissionContext && isPaymentActionEnabled('revise_and_submit')"
             class="action-group"
           >
@@ -762,6 +787,16 @@
       </section>
     </template>
 
+    <t-dialog
+      v-model:visible="remainderConfirmationVisible"
+      header="确认撤回原申请余款"
+      :confirm-btn="{ content: '确认提交', loading: actionBusy === 'remainderWithdrawal' }"
+      @confirm="submitRemainderWithdrawal"
+    >
+      <p>系统会停止原申请的余款登记，并保留原审批和实付记录。</p>
+      <p v-if="preparedRemainderWithdrawal">调整后的待付金额为 {{ preparedRemainderWithdrawal.amountYuan }} 元。</p>
+    </t-dialog>
+
     <SensitiveActionDialog
       v-if="paymentReviewActionEnabled('review_approval') && sensitiveAction.kind === 'approvalApprove'"
       v-model="sensitiveAction.visible"
@@ -882,6 +917,7 @@ import {
   transferPaymentApproval,
   uploadPaymentPdfArchivePrivateFile,
   withdrawPaymentApproval,
+  withdrawPaymentRemainder,
   type PaymentApprovalReviewActionContext,
   type PaymentApprovalReviewActionDecision,
   type PaymentExecutionRecordAttemptState,
@@ -1055,6 +1091,13 @@ const paymentActionForm = reactive({
   delegationEndsAt: "",
   downloadFileId: ""
 });
+const remainderForm = reactive({ amountYuan: "", code: "", reason: "" });
+const remainderConfirmationVisible = ref(false);
+const preparedRemainderWithdrawal = ref<{
+  paymentId: string;
+  amountYuan: string;
+  input: Parameters<typeof withdrawPaymentRemainder>[1];
+} | null>(null);
 const paymentRevisionForm = reactive({ amountYuan: "", paymentMatter: "", amountCalculationExplanation: "" });
 
 const paymentDetailMetaView = computed(() => paymentDetail.value?.meta ?? []);
@@ -1161,7 +1204,7 @@ const paymentActionByKey = computed(
 );
 const paymentOperationalActions = computed(() =>
   (paymentDetail.value?.availableActions ?? []).filter(
-    (action) => !["abandon_application", "revise_and_submit"].includes(action.key) &&
+    (action) => !["abandon_application", "revise_and_submit", "withdraw_remainder"].includes(action.key) &&
       !(registeredExecutionCapability.value?.supportedDomain && action.key === "record_execution")
   )
 );
@@ -1282,6 +1325,52 @@ async function submitPaymentRevision() {
     }));
   } catch (error) {
     setActionError(error, "付款申请信息不完整");
+  }
+}
+
+function readRemainderWithdrawal() {
+  const context = paymentDetail.value?.remainderWithdrawalContext;
+  if (!context || !isPaymentActionEnabled("withdraw_remainder")) throw new Error("当前申请的余款调整权限已变化");
+  if (!remainderForm.amountYuan.trim()) throw new Error("请填写调整后的待付金额");
+  const requestedAmountCents = yuanTextToCentsText(remainderForm.amountYuan.trim());
+  const reason = remainderForm.reason.trim();
+  const code = remainderForm.code.trim();
+  if (!reason) throw new Error("请填写调整原因");
+  if (BigInt(requestedAmountCents) >= BigInt(context.remainingAmountCents)) throw new Error("调整后的金额须少于剩余待付金额");
+  if (requestedAmountCents !== "0" && !code) throw new Error("请填写新付款单号");
+  return { expectedUpdatedAt: context.expectedUpdatedAt, requestedAmountCents, code: code || undefined, reason };
+}
+
+function prepareRemainderWithdrawal() {
+  try {
+    if (!paymentDetail.value) return;
+    preparedRemainderWithdrawal.value = {
+      paymentId: paymentDetail.value.id,
+      amountYuan: remainderForm.amountYuan.trim(),
+      input: readRemainderWithdrawal()
+    };
+    remainderConfirmationVisible.value = true;
+  } catch (error) {
+    setActionError(error, "请核对余款调整信息");
+  }
+}
+
+async function submitRemainderWithdrawal() {
+  const prepared = preparedRemainderWithdrawal.value;
+  if (actionBusy.value || !prepared) return;
+  try {
+    const { paymentId, input } = prepared;
+    if (paymentDetail.value?.id !== paymentId) throw new Error("付款申请已变化，请重新核对");
+    const succeeded = await runPaymentAction("remainderWithdrawal", () =>
+      withdrawPaymentRemainderWithCapability(paymentId, input)
+    );
+    if (succeeded) {
+      remainderConfirmationVisible.value = false;
+      preparedRemainderWithdrawal.value = null;
+      Object.assign(remainderForm, { amountYuan: "", code: "", reason: "" });
+    }
+  } catch (error) {
+    setActionError(error, "请核对余款调整信息");
   }
 }
 
@@ -2292,6 +2381,18 @@ async function runPaymentAction(key: string, action: () => Promise<unknown>) {
   } finally {
     actionBusy.value = "";
   }
+}
+
+async function withdrawPaymentRemainderWithCapability(
+  paymentId: string,
+  body: Parameters<typeof withdrawPaymentRemainder>[1]
+) {
+  const capability = await fetchPaymentActionCapability(paymentId);
+  const matchesRequestedPayment = capability.paymentId === paymentId;
+  if (!matchesRequestedPayment) throw new Error("付款申请已变化，请重新核对");
+  const operationAllowed = capability.availableActions.includes("withdraw_remainder");
+  if (!operationAllowed) throw new Error("当前申请的余款调整权限已变化，请刷新详情");
+  return withdrawPaymentRemainder(paymentId, body);
 }
 
 async function reviseAndSubmitPaymentWithCapability(

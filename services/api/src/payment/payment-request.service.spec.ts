@@ -1343,6 +1343,66 @@ name: "签批人甲",
       return { tx, prisma };
     }
 
+    it("releases only the unpaid remainder and submits the reduced amount against the latest signed settlement", async () => {
+      const rows = [
+        signedSettlementRow("signed-original", "100.0000", 1n),
+        signedSettlementRow("signed-reduction", "-30.0000", 2n)
+      ];
+      const { tx } = signedSettlementCreateTx({ rows, selectedId: "signed-reduction" });
+      const origin = {
+        id: "original-payment", code: "FK-ORIGIN", sourceType: "signed_settlement",
+        projectId: "project-1", contractId: "contract-1", status: "partially_paid", paymentSubjectType: "our_company",
+        requestedAmountCents: 10_000n, approvedAmountCents: 10_000n, paidAmountCents: 4_000n,
+        remainingWithdrawnCents: null, updatedAt: new Date("2026-11-20T00:00:00.000Z")
+      };
+      const released = { ...origin, remainingWithdrawnCents: 6_000n };
+      const duties = ["comprehensive_director", "project_manager", "contract_director", "finance_director", "general_manager"]
+        .map(roleKey => ({ userId: roleKey, roleKey }));
+      tx.$queryRaw.mockImplementation(query => Promise.resolve(
+        (query.sql ?? "").includes('FOR UPDATE OF payment, version') ? [origin] : duties
+      ));
+      tx.paymentRequest.findMany.mockResolvedValue([released]);
+      const db = {
+        ...tx,
+        paymentRequest: { ...tx.paymentRequest, update: jest.fn().mockResolvedValue(released) },
+        user: { findUnique: jest.fn().mockResolvedValue({ isActive: true }) },
+        userPosition: { findMany: jest.fn().mockResolvedValue([{ positionId: "keeper", projectId: null }]) },
+        projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+        position: { findMany: jest.fn().mockResolvedValue([{ id: "keeper", key: "comprehensive_director" }]) },
+        approvalInstance: {
+          findMany: jest.fn().mockResolvedValue([{
+            id: "approved-round", businessType: "payment_request", businessId: origin.id, flowType: "payment.approve", status: "approved"
+          }]),
+          create: jest.fn().mockResolvedValue({ id: "new-round" })
+        },
+        auditLog: { create: jest.fn().mockResolvedValue({}) }
+      };
+      const prisma = { $transaction: jest.fn(async callback => callback(db)) };
+      const service = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+      const result = await service.withdrawRemainder(origin.id, "keeper", {
+        expectedUpdatedAt: origin.updatedAt.toISOString(), requestedAmountCents: "3000",
+        code: "FK-ADJUSTED", reason: "负结算后回到可付余额"
+      });
+      expect(db.paymentRequest.update).toHaveBeenCalledWith({
+        where: { id: origin.id }, data: { remainingWithdrawnCents: 6_000n }
+      });
+      expect(db.approvalInstance.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+        businessId: "payment-1", status: "in_progress", currentNodeIndex: 0,
+        frozenNodes: expect.arrayContaining([
+          expect.objectContaining({ roleKeys: expect.arrayContaining(["contract_director"]) }),
+          expect.objectContaining({ roleKeys: expect.arrayContaining(["finance_director"]) })
+        ])
+      }) });
+      expect(db.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+        action: "payment.request.withdraw_remainder", businessId: origin.id,
+        metadata: expect.objectContaining({ previousApprovalInstanceId: "approved-round", withdrawnCents: "6000", revisedPaymentId: "payment-1" })
+      }) });
+      expect(result).toMatchObject({
+        origin: { approvedAmountCents: "10000", paidAmountCents: "4000", remainingWithdrawnCents: "6000" },
+        revised: { signedSettlementId: "signed-reduction", requestedAmountCents: "3000", status: "approval_pending" }
+      });
+    });
+
     it("uses the full contract cumulative, not the negative latest period, as the payment cap", async () => {
       const rows = [
         signedSettlementRow("signed-positive", "100.0000", 1n),

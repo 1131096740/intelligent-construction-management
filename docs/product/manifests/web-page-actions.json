@@ -9,20 +9,20 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 434,
+    "registeredActionCount": 435,
     "pageActionCount": 108,
-    "backgroundActionCount": 326,
+    "backgroundActionCount": 327,
     "reachableVueFileCount": 236,
     "routeRootCount": 82,
     "totalVueFileCount": 256,
     "parsedVueFileCount": 256,
     "reachableProductionModuleCount": 406,
-    "templateEventDirectiveCount": 1539,
+    "templateEventDirectiveCount": 1541,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 425,
-    "candidateProductionMutationConsumerCount": 425,
-    "acceptedProductionMutationConsumerCount": 425,
-    "productionMutationConsumerPairCount": 425,
+    "coveredProductionMutationConsumerCount": 426,
+    "candidateProductionMutationConsumerCount": 426,
+    "acceptedProductionMutationConsumerCount": 426,
+    "productionMutationConsumerPairCount": 426,
     "blockerCount": 0
   },
   "evidence": {
@@ -2333,7 +2333,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5687,
+              "sourceLine": 5688,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2379,7 +2379,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5687,
+              "sourceLine": 5688,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3529,7 +3529,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5687,
+              "sourceLine": 5688,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3573,7 +3573,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5687,
+              "sourceLine": 5688,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5138,7 +5138,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5687,
+              "sourceLine": 5688,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5182,7 +5182,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5687,
+              "sourceLine": 5688,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6249,7 +6249,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5687,
+              "sourceLine": 5688,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6295,7 +6295,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5687,
+              "sourceLine": 5688,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7345,7 +7345,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5687,
+              "sourceLine": 5688,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7389,7 +7389,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5687,
+              "sourceLine": 5688,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -15537,7 +15537,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5687,
+              "sourceLine": 5688,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -15581,7 +15581,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5687,
+              "sourceLine": 5688,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17178,7 +17178,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5687,
+              "sourceLine": 5688,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17222,7 +17222,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5687,
+              "sourceLine": 5688,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -19778,7 +19778,7 @@
         "event": "confirm",
         "handler": "confirmPaymentApprovalApprove",
         "kind": "event",
-        "sourceLine": 777,
+        "sourceLine": 812,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -19843,7 +19843,7 @@
         "event": "confirm",
         "handler": "confirmPaymentApprovalReject",
         "kind": "event",
-        "sourceLine": 792,
+        "sourceLine": 827,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -19908,7 +19908,7 @@
         "event": "confirm",
         "handler": "confirmPaymentApprovalReturn",
         "kind": "event",
-        "sourceLine": 807,
+        "sourceLine": 842,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -20021,7 +20021,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5687,
+              "sourceLine": 5688,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20065,7 +20065,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5687,
+              "sourceLine": 5688,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20177,7 +20177,7 @@
         "event": "call",
         "handler": "abandonPaymentRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 2309,
+        "sourceLine": 2410,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -20242,7 +20242,7 @@
         "event": "call",
         "handler": "downloadPaymentApprovalFormWithCapability",
         "kind": "background_call",
-        "sourceLine": 2333,
+        "sourceLine": 2434,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -20309,7 +20309,7 @@
         "event": "call",
         "handler": "delegatePaymentApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 2321,
+        "sourceLine": 2422,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -20374,7 +20374,7 @@
         "event": "call",
         "handler": "downloadPaymentPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 2406,
+        "sourceLine": 2507,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -20439,7 +20439,7 @@
         "event": "call",
         "handler": "recordPaymentFinanceWithCapability",
         "kind": "background_call",
-        "sourceLine": 2356,
+        "sourceLine": 2457,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -20504,7 +20504,7 @@
         "event": "call",
         "handler": "recordPaymentPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 2368,
+        "sourceLine": 2469,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -20605,7 +20605,7 @@
         "event": "call",
         "handler": "generatePaymentPdfArchiveWithCapability",
         "kind": "background_call",
-        "sourceLine": 2347,
+        "sourceLine": 2448,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -20670,7 +20670,7 @@
         "event": "call",
         "handler": "reviseAndSubmitPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2297,
+        "sourceLine": 2398,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -20735,7 +20735,7 @@
         "event": "call",
         "handler": "transferPaymentApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 2385,
+        "sourceLine": 2486,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -20800,7 +20800,7 @@
         "event": "call",
         "handler": "withdrawPaymentApprovalWithCapability",
         "kind": "background_call",
-        "sourceLine": 2397,
+        "sourceLine": 2498,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -20851,6 +20851,71 @@
       ]
     },
     {
+      "id": "payment-detail.withdraw-remainder",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "ownerRoutePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "withdrawPaymentRemainderWithCapability",
+        "kind": "background_call",
+        "sourceLine": 2386,
+        "sourceColumn": 0
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "withdraw_remainder",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "withdrawPaymentRemainder",
+          "method": "POST",
+          "path": "/payments/:param/remainder-withdrawal",
+          "normalizedKey": "POST /payments/:param/remainder-withdrawal",
+          "bodyKind": "json",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/payments/:paymentId/remainder-withdrawal",
+            "normalizedKey": "POST /payments/:param/remainder-withdrawal",
+            "controller": "PaymentController",
+            "handler": "withdrawRemainder",
+            "sourceFile": "services/api/src/payment/payment.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "payment.create"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "withdrawPaymentRemainderWithCapability",
+              "withdrawPaymentRemainder"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "payment-execution.record",
       "usage": "page_action",
       "routePaths": [
@@ -20865,7 +20930,7 @@
         "event": "confirm",
         "handler": "confirmPaymentExecution",
         "kind": "event",
-        "sourceLine": 822,
+        "sourceLine": 857,
         "sourceColumn": 6
       },
       "semantic": "business_write",

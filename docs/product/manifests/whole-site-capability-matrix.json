@@ -14,25 +14,25 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "0227dbadedb7c9b2c24d91e769749093ac6afa276034dbccef0b5988dd9ca853",
+      "sha256": "4586872d7c3b6a4230fc81386f0126414247bdd09ee7ca56f88bc4899c482ff8",
       "status": "ready",
       "summary": {
-        "routeCount": 879
+        "routeCount": 880
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "4ef59d9d6239e4fc51aef83ad03a74b8df73f77cbae15a52cc176074810da5f4",
+      "sha256": "c1d14c9f7084f6d71246b16b227a36e2d9855e0040bd3de4239d4d089a88a2e0",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
-        "exportedFunctionCount": 764,
-        "transportWrapperCount": 743,
+        "exportedFunctionCount": 765,
+        "transportWrapperCount": 744,
         "pureExportCount": 21,
-        "mainRequestBindingCount": 814,
+        "mainRequestBindingCount": 815,
         "ticketFollowupCount": 6,
-        "requestEdgeCount": 772,
-        "productionConsumerCount": 631,
+        "requestEdgeCount": 773,
+        "productionConsumerCount": 632,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,46 +42,46 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "5d99aa97abd41eca596d8888b53fa22400e0e1f997a6cb333d64e8fcfc605028",
+      "sha256": "e51721afcc60ea7a4776b9994181090deabcdba1d21cf6ca4a56d5fb6dca94ba",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 434,
+        "registeredActionCount": 435,
         "pageActionCount": 108,
-        "backgroundActionCount": 326,
+        "backgroundActionCount": 327,
         "reachableVueFileCount": 236,
         "routeRootCount": 82,
         "totalVueFileCount": 256,
         "parsedVueFileCount": 256,
         "reachableProductionModuleCount": 406,
-        "templateEventDirectiveCount": 1539,
+        "templateEventDirectiveCount": 1541,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 425,
-        "candidateProductionMutationConsumerCount": 425,
-        "acceptedProductionMutationConsumerCount": 425,
-        "productionMutationConsumerPairCount": 425,
+        "coveredProductionMutationConsumerCount": 426,
+        "candidateProductionMutationConsumerCount": 426,
+        "acceptedProductionMutationConsumerCount": 426,
+        "productionMutationConsumerPairCount": 426,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "384df66dd37fb66af5c048972ae920add5e018eeaa773aa283f96a5c60115b4f",
+      "sha256": "dfe4dd95fc3f13b46c44a8857417194f75d078d454c9d48d4bb406f5a1b172ef",
       "status": "ready",
       "summary": {
-        "routeCount": 879,
-        "exactRouteCount": 879,
-        "normalizedRouteCount": 879,
+        "routeCount": 880,
+        "exactRouteCount": 880,
+        "normalizedRouteCount": 880,
         "classificationOverrideCount": 299,
         "consumerSurfaceOverrideCount": 76,
         "classificationOverrideSha256": "269b58c52bda4e786da705eb64c08b6ce803b6d42bf4520e65efa9e68b8c9b43",
         "consumerSurfaceOverrideSha256": "c14620f08f076d0b1bc3a7ecfb258a147bdeb7ca120f68c23cdb9ce10521ad49",
-        "derivedProductionPageCount": 580,
-        "pageRouteCount": 599,
+        "derivedProductionPageCount": 581,
+        "pageRouteCount": 600,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 136,
         "internalTaskCount": 74,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 651,
+          "web_api_wrapper": 652,
           "auth_store": 5,
           "signed_ticket_delivery": 2,
           "machine_probe": 2,
@@ -93,23 +93,23 @@
     }
   },
   "summary": {
-    "routeCount": 879,
-    "pageRouteCount": 599,
+    "routeCount": 880,
+    "pageRouteCount": 600,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 136,
     "internalTaskRouteCount": 74,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 814,
+    "mainRequestBindingCount": 815,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 434,
-    "actionBindingCount": 529,
-    "acceptedActionBindingCount": 484,
+    "registeredActionCount": 435,
+    "actionBindingCount": 530,
+    "acceptedActionBindingCount": 485,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 425,
-    "coveredProductionMutationConsumerPairCount": 425,
+    "productionMutationConsumerPairCount": 426,
+    "coveredProductionMutationConsumerPairCount": 426,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -35655,6 +35655,73 @@
           },
           "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
           "wrapper": "generatePaymentPdfArchive",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
+        "path": "/payments/:paymentId/remainder-withdrawal",
+        "normalizedKey": "POST /payments/:param/remainder-withdrawal",
+        "controller": "PaymentController",
+        "handler": "withdrawRemainder",
+        "sourceFile": "services/api/src/payment/payment.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "project_action",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": "payment.create",
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "withdrawPaymentRemainder",
+          "method": "POST",
+          "path": "/payments/:param/remainder-withdrawal",
+          "normalizedKey": "POST /payments/:param/remainder-withdrawal",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+          ],
+          "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "payment-detail.withdraw-remainder",
+          "bindingIndex": 0,
+          "identity": "payment-detail.withdraw-remainder\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000withdrawPaymentRemainder\u0000POST\u0000POST /payments/:param/remainder-withdrawal\u00000",
+          "usage": "background",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+          "capability": {
+            "kind": "available_action_string",
+            "source": "capability.availableActions",
+            "key": "withdraw_remainder",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "wrapper": "withdrawPaymentRemainder",
           "productionConsumers": [
             "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
           ],

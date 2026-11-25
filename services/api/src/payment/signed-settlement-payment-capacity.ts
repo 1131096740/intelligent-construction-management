@@ -136,7 +136,9 @@ export function paymentRequestOutstandingCents(payment: {
   requestedAmountCents: bigint;
   approvedAmountCents: bigint | null;
   paidAmountCents: bigint;
+  remainingWithdrawnCents?: bigint | null;
 }): bigint {
+  if (payment.remainingWithdrawnCents != null) return 0n;
   const payableAmountCents = ["approved_pending_payment", "partially_paid", "paid"].includes(
     payment.status
   )
@@ -226,7 +228,8 @@ export async function loadSignedSettlementPaymentBasis(
         status: true,
         requestedAmountCents: true,
         approvedAmountCents: true,
-        paidAmountCents: true
+        paidAmountCents: true,
+        remainingWithdrawnCents: true
       }
     }),
     tx.projectProxyPayment.findMany({

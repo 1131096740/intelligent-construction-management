@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 879,
-    "exactRouteCount": 879,
-    "normalizedRouteCount": 879,
+    "routeCount": 880,
+    "exactRouteCount": 880,
+    "normalizedRouteCount": 880,
     "classificationOverrideCount": 299,
     "consumerSurfaceOverrideCount": 76,
     "classificationOverrideSha256": "269b58c52bda4e786da705eb64c08b6ce803b6d42bf4520e65efa9e68b8c9b43",
     "consumerSurfaceOverrideSha256": "c14620f08f076d0b1bc3a7ecfb258a147bdeb7ca120f68c23cdb9ce10521ad49",
-    "derivedProductionPageCount": 580,
-    "pageRouteCount": 599,
+    "derivedProductionPageCount": 581,
+    "pageRouteCount": 600,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 136,
     "internalTaskCount": 74,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 651,
+      "web_api_wrapper": 652,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 651,
+    "productionWrapperRouteCount": 652,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -4964,7 +4964,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5687,
+            "sourceLine": 5688,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
@@ -26033,6 +26033,47 @@
             "method": "POST",
             "normalizedPath": "/payments/:param/pdf-generation",
             "normalizedKey": "POST /payments/:param/pdf-generation",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/payments/:paymentId/remainder-withdrawal",
+      "normalizedKey": "POST /payments/:param/remainder-withdrawal",
+      "controller": "PaymentController",
+      "handler": "withdrawRemainder",
+      "sourceFile": "services/api/src/payment/payment.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "payment.create",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+            "wrapper": "withdrawPaymentRemainder",
+            "method": "POST",
+            "normalizedPath": "/payments/:param/remainder-withdrawal",
+            "normalizedKey": "POST /payments/:param/remainder-withdrawal",
             "productionConsumers": [
               "apps/web-admin/src/pages/payments/PaymentDetailPage.vue"
             ]

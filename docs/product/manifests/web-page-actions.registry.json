@@ -2639,6 +2639,31 @@
       ]
     },
     {
+      "id": "payment-detail.withdraw-remainder",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "trigger": {
+        "element": "module",
+        "event": "call",
+        "handler": "withdrawPaymentRemainderWithCapability"
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "available_action_string",
+        "source": "capability.availableActions",
+        "key": "withdraw_remainder"
+      },
+      "wrappers": [
+        {
+          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
+          "name": "withdrawPaymentRemainder"
+        }
+      ]
+    },
+    {
       "id": "payment-detail.abandon",
       "usage": "background",
       "routePaths": [

@@ -31,7 +31,7 @@ async function pendingPayment(tx: Prisma.TransactionClient, paymentId: string, r
   if (!domain.supportedDomain) return null;
   const payment = domain.payment;
   const round = await currentRegisteredPaymentApproval(tx, paymentId);
-  if (!payment || !round || round.id !== roundId || payment.paymentSubjectType !== "our_company" || !["approved_pending_payment", "partially_paid"].includes(payment.status) || (payment.approvedAmountCents ?? payment.requestedAmountCents) <= payment.paidAmountCents) return null;
+  if (!payment || payment.remainingWithdrawnCents != null || !round || round.id !== roundId || payment.paymentSubjectType !== "our_company" || !["approved_pending_payment", "partially_paid"].includes(payment.status) || (payment.approvedAmountCents ?? payment.requestedAmountCents) <= payment.paidAmountCents) return null;
   return {payment,round,version:domain.version};
 }
 

@@ -143,7 +143,7 @@ export class RegisteredPaymentExecutionService {
     return this.prisma.$transaction(async tx => {
       if (!(await this.canRegister(tx, actorUserId))) return null;
       const requests = await tx.paymentRequest.findMany({
-        where: { status: { in: ["approved_pending_payment", "partially_paid"] }, paymentSubjectType: "our_company" },
+        where: { status: { in: ["approved_pending_payment", "partially_paid"] }, paymentSubjectType: "our_company", remainingWithdrawnCents: null },
         orderBy: { id: "asc" }
       });
       const items = [];

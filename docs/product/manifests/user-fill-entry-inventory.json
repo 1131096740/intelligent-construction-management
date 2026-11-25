@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 422,
+    "activeBusinessActionCount": 423,
     "technicalActionCount": 8,
-    "activeBindingCount": 516,
+    "activeBindingCount": 517,
     "retiredWriteEntryCount": 123,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
@@ -4433,6 +4433,22 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /payments/:param/approval-withdrawal"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "payment-detail.withdraw-remainder",
+      "status": "unified_candidate",
+      "usage": "background",
+      "routePaths": [
+        "/付款管理/:paymentId"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",
+      "capabilityKind": "available_action_string",
+      "bindingKeys": [
+        "POST /payments/:param/remainder-withdrawal"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

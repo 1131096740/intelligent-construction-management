@@ -40,6 +40,7 @@ import { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto
 import { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
 import { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import { RevisePaymentRequestDto } from "./dto/revise-payment-request.dto";
+import { WithdrawPaymentRemainderDto } from "./dto/withdraw-payment-remainder.dto";
 import { WithdrawPaymentApprovalDto } from "./dto/withdraw-payment-approval.dto";
 import { PaymentReadService } from "./payment-read.service";
 import { PaymentRequestService } from "./payment-request.service";
@@ -155,6 +156,16 @@ export class PaymentController {
     @Body() body: RevisePaymentRequestDto
   ) {
     return this.payments.reviseAndSubmit(paymentId, user.id, body);
+  }
+
+  @Post(":paymentId/remainder-withdrawal")
+  @RequireProjectRole("payment.create")
+  withdrawRemainder(
+    @Param("paymentId") paymentId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: WithdrawPaymentRemainderDto
+  ) {
+    return this.payments.withdrawRemainder(paymentId, user.id, body);
   }
 
   @Post(":paymentId/approval-transfer")

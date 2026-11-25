@@ -97,6 +97,7 @@ type PaymentDetailLifecycleProjection = {
   reviewApprovalContext: PaymentApprovalReviewContext | null;
   executionContext: PaymentExecutionContext | null;
   withdrawApprovalContext?: { expectedApprovalInstanceId: string };
+  remainderWithdrawalContext?: { expectedUpdatedAt: string; remainingAmountCents: string };
   delegationApprovalContext?: PaymentDelegationApprovalContext;
   revisionSubmissionContext?: {
     expectedUpdatedAt: string;
@@ -732,13 +733,16 @@ export class PaymentReadService {
       const withdrawnForRevision = returnedForRevision && latestApproval?.status === "withdrawn";
       const revisionStatus = withdrawnForRevision ? "withdrawn_for_revision" : "returned_for_revision";
       const approval = this.approvalStatusView(returnedForRevision ? revisionStatus : payment.status);
-      const execution = this.executionStatusView(payment.status, paidAmountCents, payableAmountCents);
-      const nextAction = ended
+      const remainderWithdrawn = payment.remainingWithdrawnCents != null;
+      const execution = remainderWithdrawn
+        ? { label: "余款已撤回", tone: "default" as const, complete: true }
+        : this.executionStatusView(payment.status, paidAmountCents, payableAmountCents);
+      const nextAction = ended || remainderWithdrawn
         ? "已结束"
         : returnedForRevision
         ? "补充付款申请或放弃申请"
         : this.nextActionLabel(payment.status, execution.complete);
-      const pendingOwner = ended
+      const pendingOwner = ended || remainderWithdrawn
         ? "-"
         : returnedForRevision
         ? "申请人"
@@ -748,7 +752,7 @@ export class PaymentReadService {
         ? signedBasisByContract.get(payment.contractId)
         : undefined;
       const suspensionApplies =
-        Boolean(signedBasis?.suspended) && payableAmountCents - paidAmountCents > 0n;
+        Boolean(signedBasis?.suspended) && !remainderWithdrawn && payableAmountCents - paidAmountCents > 0n;
 
       return {
         id: payment.code,
@@ -1064,7 +1068,7 @@ export class PaymentReadService {
       const round = await currentRegisteredPaymentApproval(tx,payment.id);
       const frozenContractReady = Boolean(contract && version && version.contractId === contract.id && contract.projectId === payment.projectId && version.signingSubjectType === "our_company" && version.companyEntityIdSnapshot && version.companyEntityNameSnapshot && version.companyEntityCreditCodeSnapshot);
       const remaining = (payment.approvedAmountCents ?? payment.requestedAmountCents) - payment.paidAmountCents;
-      const workflowReady = frozenContractReady && Boolean(round) && ["approved_pending_payment","partially_paid"].includes(payment.status) && remaining > 0n;
+      const workflowReady = payment.remainingWithdrawnCents == null && frozenContractReady && Boolean(round) && ["approved_pending_payment","partially_paid"].includes(payment.status) && remaining > 0n;
       let canSupplementVoucher = false;
       if (allowedActor && executions.length) {
         const receipts = await tx.registeredPaymentFunding.findMany({where:{executionId:{in:executions.map(row=>row.id)}}});
@@ -1323,7 +1327,10 @@ export class PaymentReadService {
     const withdrawnForRevision = returnedForRevision && revisionAction === "withdraw";
     const revisionStatus = withdrawnForRevision ? "withdrawn_for_revision" : "returned_for_revision";
     const approval = this.approvalStatusView(returnedForRevision ? revisionStatus : payment.status);
-    const execution = this.executionStatusView(payment.status, paidAmountCents, payableAmountCents);
+    const remainingWithdrawnCents = payment.remainingWithdrawnCents ?? null;
+    const execution = remainingWithdrawnCents === null
+      ? this.executionStatusView(payment.status, paidAmountCents, payableAmountCents)
+      : { label: "余款已撤回", tone: "default" as const, complete: true };
     const reviewApprovalContext =
       currentApprovalReview.access.canReview &&
       payment.updatedAt instanceof Date &&
@@ -1384,6 +1391,17 @@ export class PaymentReadService {
           amountCalculationExplanation: payment.amountCalculationExplanation
         }
       : undefined;
+    const remainderWithdrawalContext = payment.sourceType === "signed_settlement" &&
+      payment.paymentSubjectType === "our_company" && payment.approvedAmountCents !== null &&
+      remainingWithdrawnCents === null && ["approved_pending_payment", "partially_paid"].includes(payment.status) &&
+      latestApproval?.status === "approved" && payment.updatedAt instanceof Date &&
+      roleKeys.includes("comprehensive_director") && payableAmountCents > paidAmountCents
+      ? { expectedUpdatedAt: payment.updatedAt.toISOString(), remainingAmountCents: moneyCentsToApi(payableAmountCents - paidAmountCents) }
+      : undefined;
+    if (remainderWithdrawalContext) availableActions.push(detailAction({
+      key: "withdraw_remainder", label: "撤回并调整余款", kind: "primary", roleKeys,
+      requiredAction: "payment.create", enabled: true
+    }));
     if (revisionSubmissionContext) availableActions.push(detailAction({
       key: "revise_and_submit", label: "修改并重新提交", kind: "primary", roleKeys,
       requiredAction: "payment.create", enabled: true
@@ -1423,12 +1441,12 @@ export class PaymentReadService {
       : returnedForRevision
         ? "returned_for_revision"
         : "formal_ledger";
-    const nextStep = payment.status === "abandoned"
+    const nextStep = payment.status === "abandoned" || remainingWithdrawnCents !== null
       ? "已结束"
       : returnedForRevision
       ? "补充付款申请或放弃申请"
       : this.nextActionLabel(payment.status, execution.complete);
-    const currentOwner = payment.status === "abandoned"
+    const currentOwner = payment.status === "abandoned" || remainingWithdrawnCents !== null
       ? "-"
       : returnedForRevision
       ? "申请人"
@@ -1441,6 +1459,7 @@ export class PaymentReadService {
     const blockedReasons = disabledActionReasons(availableActions);
     if (
       currentSignedSettlementBasis?.suspended &&
+      remainingWithdrawnCents === null &&
       payableAmountCents - paidAmountCents > 0n
     ) {
       blockedReasons.push(
@@ -1652,6 +1671,9 @@ export class PaymentReadService {
             ]
           : []),
         { label: "已付金额", value: this.formatMoney(paidAmountCents) },
+        ...(remainingWithdrawnCents === null ? [] : [
+          { label: "已撤回余款", value: this.formatMoney(remainingWithdrawnCents) }
+        ]),
         ...(refundedAmountCents > 0n
           ? [
               { label: "已退金额", value: this.formatMoney(refundedAmountCents) },
@@ -1703,6 +1725,7 @@ export class PaymentReadService {
       reviewApprovalContext,
       executionContext,
       ...(withdrawApprovalContext ? { withdrawApprovalContext } : {}),
+      ...(remainderWithdrawalContext ? { remainderWithdrawalContext } : {}),
       ...(currentApprovalReview.delegation ? { delegationApprovalContext: currentApprovalReview.delegation } : {}),
       ...(revisionSubmissionContext ? { revisionSubmissionContext } : {}),
       lifecycleKind,
@@ -1905,6 +1928,7 @@ export class PaymentReadService {
           requestedAmountCents: true,
           approvedAmountCents: true,
           paidAmountCents: true,
+          remainingWithdrawnCents: true,
           paymentTermsStageId: true
         }
       }),
@@ -2252,6 +2276,7 @@ export class PaymentReadService {
       requestedAmountCents: bigint;
       approvedAmountCents: bigint | null;
       paidAmountCents: bigint;
+      remainingWithdrawnCents?: bigint | null;
     }>;
     externalOccupancyCents: bigint;
   }) {
@@ -2268,7 +2293,7 @@ export class PaymentReadService {
       )
         ? (request.approvedAmountCents ?? request.requestedAmountCents)
         : request.requestedAmountCents;
-      const outstandingCents = payableCents - request.paidAmountCents;
+      const outstandingCents = request.remainingWithdrawnCents == null ? payableCents - request.paidAmountCents : 0n;
       return total + request.paidAmountCents + (outstandingCents > 0n ? outstandingCents : 0n);
     }, 0n);
     const contractRemainingCents =
@@ -3076,10 +3101,12 @@ export class PaymentReadService {
       requestedAmountCents: bigint;
       approvedAmountCents: bigint | null;
       paidAmountCents: bigint;
+      remainingWithdrawnCents?: bigint | null;
     }>
   ) {
     return paymentRequests.reduce(
       (totals, payment) => {
+        if (payment.remainingWithdrawnCents != null) return totals;
         const paidAmountCents = payment.paidAmountCents > 0n ? payment.paidAmountCents : 0n;
         if (["approval_pending", "in_approval"].includes(payment.status)) {
           return {

@@ -1026,7 +1026,8 @@ export class MeService {
       ? await read((take) => tx.paymentRequest.findMany({
           where: {
             projectId: { in: executablePaymentProjectIds },
-            status: { in: ["approved_pending_payment", "partially_paid"] }
+            status: { in: ["approved_pending_payment", "partially_paid"] },
+            remainingWithdrawnCents: null
           },
           select: { id: true },
           orderBy: { id: "asc" },

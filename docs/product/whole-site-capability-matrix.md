@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `0227dbadedb7c9b2c24d91e769749093ac6afa276034dbccef0b5988dd9ca853` |
-| webApiWrappers | ready | `4ef59d9d6239e4fc51aef83ad03a74b8df73f77cbae15a52cc176074810da5f4` |
-| webPageActions | ready | `5d99aa97abd41eca596d8888b53fa22400e0e1f997a6cb333d64e8fcfc605028` |
-| routeUsage | ready | `384df66dd37fb66af5c048972ae920add5e018eeaa773aa283f96a5c60115b4f` |
+| nestRoutes | ready | `4586872d7c3b6a4230fc81386f0126414247bdd09ee7ca56f88bc4899c482ff8` |
+| webApiWrappers | ready | `c1d14c9f7084f6d71246b16b227a36e2d9855e0040bd3de4239d4d089a88a2e0` |
+| webPageActions | ready | `e51721afcc60ea7a4776b9994181090deabcdba1d21cf6ca4a56d5fb6dca94ba` |
+| routeUsage | ready | `dfe4dd95fc3f13b46c44a8857417194f75d078d454c9d48d4bb406f5a1b172ef` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 879 |
-| pageRouteCount | 599 |
+| routeCount | 880 |
+| pageRouteCount | 600 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 136 |
 | internalTaskRouteCount | 74 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 814 |
+| mainRequestBindingCount | 815 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 434 |
-| actionBindingCount | 529 |
-| acceptedActionBindingCount | 484 |
+| registeredActionCount | 435 |
+| actionBindingCount | 530 |
+| acceptedActionBindingCount | 485 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 425 |
-| coveredProductionMutationConsumerPairCount | 425 |
+| productionMutationConsumerPairCount | 426 |
+| coveredProductionMutationConsumerPairCount | 426 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -671,6 +671,7 @@
 | POST | /payments/:paymentId/pdf-archive-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadPaymentPdfArchivePrivateFile | payment-detail.pdf-archive | covered | — |
 | POST | /payments/:paymentId/pdf-archive | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#recordPaymentPdfArchive | payment-detail.pdf-archive | covered | — |
 | POST | /payments/:paymentId/pdf-generation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#generatePaymentPdfArchive | payment-detail.pdf-generation | covered | — |
+| POST | /payments/:paymentId/remainder-withdrawal | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#withdrawPaymentRemainder | payment-detail.withdraw-remainder | covered | — |
 | POST | /payments/:paymentId/revision-submission | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviseAndSubmitPaymentRequest | payment-detail.revise-and-submit | covered | — |
 | POST | /payments | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createPaymentRequest | payment-request.create-local-form | covered | — |
 | POST | /project-fund-disputes/drafts | page | web_api_wrapper | apps/web-admin/src/api/project-fund-dispute.api.ts#saveProjectFundDisputeDraft | project-fund-dispute.draft.save | covered | — |

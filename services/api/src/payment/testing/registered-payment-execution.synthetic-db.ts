@@ -37,12 +37,16 @@ export function createRegisteredPaymentSyntheticDb() {
   const paymentRequests = rows.paymentRequest as typeof rows.paymentRequest & {
     update(args: PaymentUpdate): Promise<Record<string, unknown>>;
   };
+  const createPayment = paymentRequests.create;
+  paymentRequests.create = args => createPayment({
+    ...args, data: { remainingWithdrawnCents: null, ...args.data }
+  });
   const updatePayment = paymentRequests.update;
   paymentRequests.update = async args => {
-    if (args.data.paidAmountCents === undefined || args.data.updatedAt !== undefined) return updatePayment(args);
+    if ((args.data.paidAmountCents === undefined && args.data.remainingWithdrawnCents === undefined) || args.data.updatedAt !== undefined) return updatePayment(args);
     const payment = await paymentRequests.findFirst({ where: args.where });
     if (!(payment?.updatedAt instanceof Date)) throw new Error("Synthetic payment update requires an existing version");
-    // Model Prisma's @updatedAt for paid-amount changes with a deterministic version step.
+    // Model Prisma's @updatedAt for payment data changes with a deterministic version step.
     return updatePayment({ ...args, data: { ...args.data, updatedAt: new Date(payment.updatedAt.getTime() + 1) } });
   };
   // Simulate only persisted coordinates. This never proves PG trigger/locks.

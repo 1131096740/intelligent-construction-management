@@ -3671,6 +3671,7 @@ model PaymentRequest {
   requestedAmountCents                  BigInt
   approvedAmountCents                   BigInt?
   paidAmountCents                       BigInt             @default(0)
+  remainingWithdrawnCents               BigInt?
   paymentMatter                         String?
   amountCalculationExplanation          String?
   paymentSubjectType                    String             @default("our_company")

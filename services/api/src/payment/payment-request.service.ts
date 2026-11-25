@@ -10,6 +10,7 @@ import { registeredOriginalPaymentResults, resolveRegisteredExistingSource } fro
 import { readRegisteredCompanyOwnedSources } from "../fund-account/registered-company-owned-fund-source";
 import { appendRegisteredFunding, appendRegisteredIntercompany, assertRegisteredPaymentActor, enforceRegisteredPaymentAdvanceConstraints, prepareRegisteredFunding, readRegisteredProjectAdvanceStatus, registeredPaymentFingerprint } from "./registered-payment-funding";
 import { RecordRegisteredPaymentExecutionDto } from "./dto/record-registered-payment-execution.dto";
+import { type WithdrawPaymentRemainderDto } from "./dto/withdraw-payment-remainder.dto";
 import { assertFrozenCompanyIdentity } from "../company-entity/frozen-company-identity";
 import { chinaDateOnly, requiredPastChinaDate } from "@jiangkong/shared-domain";
 import {requireContractBankEvent,claimContractBankEvent} from "../contract-ledger/contract-bank-event";
@@ -131,6 +132,7 @@ const PAYMENT_POST_MONEY_FIELDS = [
   "requestedAmountCents",
   "approvedAmountCents",
   "paidAmountCents",
+  "remainingWithdrawnCents",
   "amountCents",
   "fixedAmountCents",
   "sourcePayableAmountCents",
@@ -194,6 +196,7 @@ interface PaymentExecutionLockRow {
   requestedAmountCents: bigint;
   approvedAmountCents: bigint | null;
   paidAmountCents: bigint;
+  remainingWithdrawnCents?: bigint | null;
 }
 
 type RegisteredPaymentCoordinates = {
@@ -763,6 +766,79 @@ export class PaymentRequestService {
     });
     await this.approvalNotifications?.afterCommit(payment.id);
     return paymentPostResponseToApi(payment);
+  }
+
+  async withdrawRemainder(paymentId: string, actorUserId: string, input: WithdrawPaymentRemainderDto) {
+    if (!this.prisma) throw new ConflictException("付款余款调整服务暂不可用");
+    const expectedUpdatedAt = new Date(input.expectedUpdatedAt);
+    const requestedAmountCents = parseMoneyCentsInput(input.requestedAmountCents, "调整后的待付金额", "调整后的待付金额格式不正确");
+    const reason = input.reason.trim();
+    const code = input.code?.trim();
+    if (Number.isNaN(expectedUpdatedAt.getTime()) || requestedAmountCents < 0n || !reason || (requestedAmountCents > 0n && !code)) {
+      throw new BadRequestException("请填写有效的申请版本、调整原因和新付款单号");
+    }
+    const result = await this.prisma.$transaction(async tx => {
+      const payment = await this.lockPaymentRequestForUpdate(tx, paymentId);
+      if (!payment || payment.sourceType !== "signed_settlement" || payment.paymentSubjectType !== "our_company" ||
+          payment.remainingWithdrawnCents != null || payment.updatedAt.getTime() !== expectedUpdatedAt.getTime() ||
+          !["approved_pending_payment", "partially_paid"].includes(payment.status) || payment.approvedAmountCents === null) {
+        throw new ConflictException("当前已签结算付款的状态或版本已变化，请刷新后重试");
+      }
+      const actor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
+      if (!actor?.isActive || !(await this.loadActorRoleKeys(tx, actorUserId, payment.projectId)).includes("comprehensive_director")) {
+        throw new ForbiddenException("只有本项目有权的综合部主管可以调整付款余款");
+      }
+      const round = await currentRegisteredPaymentApproval(tx, payment.id);
+      if (!round) throw new ConflictException("付款申请缺少有效的原批准轮次，请先核对");
+      const withdrawnCents = payment.approvedAmountCents - payment.paidAmountCents;
+      if (withdrawnCents <= 0n || requestedAmountCents >= withdrawnCents) {
+        throw new BadRequestException("调整后的待付金额必须少于原剩余待付金额");
+      }
+      const origin = await tx.paymentRequest.update({
+        where: { id: payment.id },
+        data: { remainingWithdrawnCents: withdrawnCents }
+      });
+      const revised = await this.createReducedRemainderRequest(tx, origin, actorUserId, requestedAmountCents, code);
+      await this.audit.record(tx, {
+        actorUserId,
+        action: "payment.request.withdraw_remainder",
+        businessType: "payment_request",
+        businessId: origin.id,
+        metadata: {
+          previousApprovalInstanceId: round.id,
+          approvedCents: moneyCentsToApi(payment.approvedAmountCents),
+          paidCents: moneyCentsToApi(payment.paidAmountCents),
+          withdrawnCents: moneyCentsToApi(withdrawnCents),
+          revisedPaymentId: revised?.id ?? null,
+          requestedAmountCents: moneyCentsToApi(requestedAmountCents),
+          reason
+        }
+      });
+      return { origin, revised };
+    });
+    if (result.revised) await this.approvalNotifications?.afterCommit(result.revised.id);
+    return { origin: paymentPostResponseToApi(result.origin), revised: result.revised ? paymentPostResponseToApi(result.revised) : null };
+  }
+
+  private async createReducedRemainderRequest(
+    tx: Prisma.TransactionClient,
+    origin: PaymentRequest,
+    actorUserId: string,
+    requestedAmountCents: bigint,
+    code?: string
+  ) {
+    if (requestedAmountCents === 0n) return null;
+    await this.lockContractPaymentCapacityRows(tx, origin.contractId);
+    const basis = await loadSignedSettlementPaymentBasis(tx, origin.contractId, { lock: true });
+    return this.submitPaymentRequest(tx, {
+      sourceType: "signed_settlement",
+      signedSettlementId: basis.latestConfirmed.id,
+      code: code!,
+      requestedAmountCents,
+      paymentSubjectType: origin.paymentSubjectType as CreatePaymentRequestDto["paymentSubjectType"],
+      paymentMatter: origin.paymentMatter ?? undefined,
+      amountCalculationExplanation: origin.amountCalculationExplanation ?? undefined
+    }, actorUserId);
   }
 
   private persistPaymentSubmission(
@@ -2388,6 +2464,7 @@ export class PaymentRequestService {
         payment."requestedAmountCents",
         payment."approvedAmountCents",
         payment."paidAmountCents",
+        payment."remainingWithdrawnCents",
         version."signingSubjectType",
         version."companyEntityIdSnapshot",
         version."companyEntityNameSnapshot",
@@ -3887,6 +3964,7 @@ export class PaymentRequestService {
       const roles = await assertRegisteredPaymentActor(tx,actorUserId);
       const payment = await tx.paymentRequest.findUnique({where:{id:paymentId}});
       if (!payment || payment.paymentSubjectType !== "our_company" || !["approved_pending_payment","partially_paid"].includes(payment.status)) throw new ConflictException("当前申请暂不能登记实际付款，请刷新共同待办");
+      if (payment.remainingWithdrawnCents != null) throw new ConflictException("原付款申请的未付金额已撤回");
       if (!(await currentRegisteredPaymentDomain(tx,payment.id)).supportedDomain) throw new ConflictException("当前付款不属于统一实付办理范围，请经原业务权限入口核验");
       if (!(await registeredPaymentInstalled(tx))) throw new ConflictException("统一实付尚未启用，请通过原付款入口办理");
       const round = await currentRegisteredPaymentApproval(tx,payment.id);
@@ -4142,6 +4220,9 @@ export class PaymentRequestService {
           throw new ConflictException("付款申请已变化，请刷新后重试");
         }
 
+        if (payment.remainingWithdrawnCents != null) {
+          throw new ConflictException("原付款申请的未付金额已撤回");
+        }
         if (!["approved_pending_payment", "partially_paid"].includes(payment.status)) {
           throw new Error(this.paymentExecutionBlockedMessage(payment.status));
         }
