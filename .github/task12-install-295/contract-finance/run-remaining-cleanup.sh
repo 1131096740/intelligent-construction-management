@@ -40,20 +40,28 @@ for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
 args+=(--mount "type=bind,src=$common/installer.cjs,dst=/qualification/installer.cjs,readonly")
-node - "$archive" "$prepared/source.json" "$work" > "$work/cleanup-mounts.tsv" <<'JS'
+node - "$archive" "$prepared/source.json" "$work" "$plan" > "$work/cleanup-mounts.tsv" <<'JS'
 const fs=require('node:fs'), path=require('node:path'),{createHash}=require('node:crypto'),assert=require('node:assert/strict');
-const [archive,sourceFile,work]=process.argv.slice(2);
+const {spawnSync}=require('node:child_process'),{gunzipSync}=require('node:zlib');
+const [archive,sourceFile,work,plan]=process.argv.slice(2);
 const current=require(sourceFile).mode==='current-320';
 const lifecycle='fixtures/contract-lifecycle-route.spec.ts';
+const aggregate='fixtures/contract-draft-aggregate-concurrency.spec.ts';
 const oldLifecycle='32b015b36b9093f8354281d4807edb4f304eb657902eeb22faa43a3e952f9d1f';
-const newLifecycle='9519497389690475b6b87a2b1d3daa13e57dac68951c3b4607e115b6527af48d';
+const newLifecycle='568c71d1620eb7fb62cbd5bfadb1644f4dcd215adeeb497a2790cd4eec16a445';
+const oldAggregate='1997a922aabf03503e7c628bcf33666bf298937ef52bfd105d4c47ce35fd3ce4';
+const newAggregate='1b6e0b8fb7cc61958b1b7b5eb6845bc62fc813a5168a374fabe9ecf5fd4fd65c';
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 const {cleanup:{mounts}}=require(path.join(archive,'remaining-special.json'));
 // Keep the archived runner and registered test inventory unchanged.
 const overlays=current?{
-  [lifecycle]:{before:oldLifecycle,after:newLifecycle,
-    old:'...readMoney, takeoverStatus: "pending_review", submittedAt: expect.any(Date)',
-    next:'...readMoney, takeoverStatus: "pending_finance", submittedAt: expect.any(Date)'},
+  [lifecycle]:{before:oldLifecycle,after:newLifecycle,patch:'remaining-cleanup-lifecycle-current.patch.gz',
+    patchSha256:'217f7ac8eaa1923cae2ea5ae74a6d59338cc4cf972a6511b4622429f8704128b'},
+  [aggregate]:{before:oldAggregate,after:newAggregate,
+    old:'      expect(saved.draftOperationAvailableActions).not.toContain("submit_contract_draft");',
+    next:`      expect(saved.draftOperationAvailableActions).toContain("submit_contract_draft");
+      expect(saved.readiness.ready).toBe(false);
+      await expect(client.approvalInstance.count({ where: { businessId: ids.version } })).resolves.toBe(0);`},
   'remaining-retained.cjs':{before:'7b6ae487f0a3d6d020ca77227c18b3b774762519952f4415edb91eec49e9a76e',
     after:'ae442e062e0e4ca27cc769cae0c5d6aaf114e1e2eb46cc63cdf02a595f0c02e1',
     old:'      failedOrMissing:results.flatMap(x=>x.passed?[]:[x.ordinal])};',
@@ -69,7 +77,7 @@ const overlays=current?{
         return frames.length||pair||prisma||sqlstate?[{ordinal,frames,statuses:pair?.slice(1).map(Number),prisma,sqlstate}]:[];
       })};`},
   'fixtures.json':{before:'6af14063a3fd2511d757d1dd527b9dea97f06b8f504696e0e76be10aff2fb9d6',
-    after:'5419e2ecaf3eb13c2fe311e80e9a42eee405fd206c25e4e28e8895c3edcc58e0',old:oldLifecycle,next:newLifecycle},
+    after:'e398024eaa553a532d868c8e927269b0d662c2be77b782faa0cdbf402d2ed5ec',old:oldLifecycle,next:newLifecycle,extra:[oldAggregate,newAggregate]},
 }:{};
 assert.ok(Object.keys(overlays).every(file=>Object.hasOwn(mounts,file)));
 for(const [file,{target,sha256}] of Object.entries(mounts)){
@@ -81,12 +89,21 @@ for(const [file,{target,sha256}] of Object.entries(mounts)){
   if(Object.hasOwn(overlays,file)){
     const overlay=overlays[file];
     assert.equal(sha256,overlay.before);
-    const original=material.toString('utf8');
-    assert.equal(original.split(overlay.old).length,2);
-    const staged=original.replace(overlay.old,overlay.next);
-    assert.equal(digest(staged),overlay.after);
     source=path.join(work,path.basename(file));
-    fs.writeFileSync(source,staged,{flag:'wx'});
+    if(overlay.patch){
+      const patch=gunzipSync(fs.readFileSync(path.join(plan,overlay.patch)));
+      assert.equal(digest(patch),overlay.patchSha256);
+      fs.writeFileSync(source,material,{flag:'wx'});
+      assert.equal(spawnSync('patch',['--batch','--fuzz=0','--silent',source],{input:patch}).status,0);
+    }else{
+      let staged=material.toString('utf8');
+      for(const [old,next] of [[overlay.old,overlay.next],...(overlay.extra?[overlay.extra]:[])]){
+        assert.equal(staged.split(old).length,2);
+        staged=staged.replace(old,next);
+      }
+      fs.writeFileSync(source,staged,{flag:'wx'});
+    }
+    assert.equal(digest(fs.readFileSync(source)),overlay.after);
     fs.chmodSync(source,0o644);
   }
   console.log(source+'\t'+target);

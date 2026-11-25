@@ -165,8 +165,8 @@ for name,pin in pins['workspace'].items():
         if current320 and name == 'services/api/src/database/contract-business-entry-http.spec.ts':
             # Archived 295 retains serial seal. Current 329 uses an explicit historical V2 input for live finance.
             pin = {**pin,
-                   'base': 'bfc6fb500ec2be35345e4c2db0a7d99b9183b7a873647ed15e15ffb5c7878b4c',
-                   'result': 'ecff93562a4407981f3636240f15db4194b03c96101b74ff8afba2e79cd78a52',
+                   'base': 'a4010bea7e37797d0db81b7333e80878d0d911082f9b35b96d7f4e7b6f91a7f7',
+                   'result': '06d1f605177ea7eace47aade609bdc08eed1c00343e8a45a8a5f0eb3c55f9dff',
                    'file': 'patches/contract-business-entry-signed-settlement-current329.spec.ts.gz'}
         if current320 and name == 'services/api/src/database/base-entry-http-postgres.spec.ts':
             pin = {**pin,

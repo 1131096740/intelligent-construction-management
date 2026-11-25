@@ -591,8 +591,13 @@ if (enabled) {
           ]);
           const approved = attempts.filter((attempt) => attempt.status === "fulfilled");
           const rejected = attempts.filter((attempt) => attempt.status === "rejected");
-          expect(approved).toHaveLength(1);
-          expect(rejected).toHaveLength(1);
+          expect({
+            approved: approved.length,
+            rejected: rejected.length,
+            responses: rejected.flatMap(({ reason }) => reason instanceof Error
+              ? (reason.message.match(/POL114_SIGNED_SETTLEMENT_(?:HTTP_[1-5][0-9]{2}_[A-Z_]+|QUERY_[0-9A-Z_]+)/gu) ?? [])
+              : [])
+          }).toMatchObject({ approved: 1, rejected: 1 });
           expect(rejected[0]?.reason).toEqual(expect.objectContaining({
             message: expect.stringContaining(`POST ${rowPath}/review: 409`)
           }));
