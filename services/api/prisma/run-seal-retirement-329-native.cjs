@@ -30,19 +30,20 @@ function file(pathname, expected) {
   return bytes;
 }
 
-function captureSource(candidate) {
+function captureSource(candidate, paymentRemainder) {
   assert.match(candidate, /^[a-f0-9]{40}$/u);
   assert.equal(git(["rev-parse", "HEAD"]).toString().trim(), candidate);
   assert.equal(tracked(), "");
   const ledger = git(["ls-tree", "-r", "--name-only", "-z", candidate, "--", "services/api/prisma/migrations"]).toString().split("\0")
     .filter(name => name.endsWith("/migration.sql"))
     .map(name => ({ name: path.basename(path.dirname(name)), sha256: hash(fs.readFileSync(path.join(root, name))), finished: true, rolledBack: false }));
-  assert.ok(ledger.length === 329 || ledger.length === 330);
-  const mode = ledger.length === 330 ? "--text-direct-330" : "--current-320";
+  assert.ok(paymentRemainder ? ledger.length === 331 : ledger.length === 329 || ledger.length === 330);
+  const mode = paymentRemainder ? "--payment-remainder-331" : ledger.length === 330 ? "--text-direct-330" : "--current-320";
   const archive = JSON.parse(execFileSync(process.execPath,
     [path.join(root, ".github/task12-install-295/contract-finance/check-ledger.cjs"), root, candidate, mode], { env }));
   assert.equal(hash(JSON.stringify(ledger)), archive.ledgerSha256);
-  return { candidate, sourceTree: archive.sourceTree, ledgerDigest: archive.ledgerSha256, ledger };
+  return { candidate, sourceTree: archive.sourceTree, ledgerDigest: archive.ledgerSha256, ledger,
+    ...(paymentRemainder ? { predecessor330: archive.predecessor330 } : {}) };
 }
 
 function captureRuntime(pgManifestPath, pgManifestSha, documentPath, documentSha, office, officeSha) {
@@ -106,9 +107,10 @@ function localPort() {
   });
 }
 
+const liveForwardPrefixes = count => [271, 289, 295, 329, 330, 331].filter(size => size <= count);
+
 function migrationPrefixes(directory, ledger) {
-  const sizes = [203, 205, 213, 215, 218, 221, 263, 271, 289, 295, 329];
-  if (ledger.length === 330) sizes.push(330);
+  const sizes = [203, 205, 213, 215, 218, 221, 263, ...liveForwardPrefixes(ledger.length)];
   return new Map(sizes.map(size => {
     const prefix = path.join(directory, "prefix-" + size);
     fs.mkdirSync(path.join(prefix, "migrations"), { recursive: true, mode: 0o700 });
@@ -185,11 +187,24 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
   deploy(263);
   verify(inspect(), 263);
   const archiveMaterial = installArchive(archive, sql, runId, port, { name: plan.appName, oid: setup.appOid, nonce: plan.nonce }, stage);
-  for (const size of [271, 289, 295, 329, 330].filter(size => prefixes.has(size))) {
+  let paymentRemainderPredecessor;
+  for (const size of liveForwardPrefixes(source.ledger.length)) {
     deploy(size);
-    verify(inspect(), size);
+    const installed = inspect();
+    verify(installed, size);
+    if (size === 330 && source.predecessor330) {
+      const ledgerSha256 = hash(JSON.stringify(installed.ledger));
+      assert.equal(ledgerSha256, source.predecessor330.ledgerSha256);
+      paymentRemainderPredecessor = { count: size, ledgerSha256, sameIdentity: true };
+    }
   }
-  return { appOid: setup.appOid, app: plan.appName, tailMaterials, archiveMaterial };
+  const verifyAfterBusiness = () => {
+    const final = inspect();
+    verify(final, source.ledger.length);
+    return { count: final.ledger.length, ledgerSha256: hash(JSON.stringify(final.ledger)), sameIdentity: true };
+  };
+  return { appOid: setup.appOid, app: plan.appName, tailMaterials, archiveMaterial,
+    paymentRemainderPredecessor, verifyAfterBusiness };
 }
 
 function grantApplication(sql, database, app, appPassword) {
@@ -283,10 +298,11 @@ function grantApplication(sql, database, app, appPassword) {
 async function main(args) {
   assert.equal(process.platform, "darwin");
   assert.equal(process.arch, "arm64");
-  assert.equal(args.length, 10);
+  const paymentRemainder = args.length === 11 && args.at(-1) === "--payment-remainder-331";
+  assert.ok(args.length === 10 || paymentRemainder);
   const [mode, sha, pgManifest, pgSha, docManifest, docSha, office, officeSha, archiveAdmission, archiveSha] = args;
   assert.ok(["verify", "run"].includes(mode));
-  const source = captureSource(sha);
+  const source = captureSource(sha, paymentRemainder);
   const normalArchiveRecipeSha = "90b698f5230ae172518e285bf8c4e197eb1d552518c55670c2b3794eb82f1b75";
   file(path.join(__dirname, "task12-normal274-archive-binding.cjs"), normalArchiveRecipeSha);
   const approvalLockRecipeSha = "5d565dc516cd26c64e3fda295b97968be7912abc62f47ab47ffd93be29fd6c2f";
@@ -401,9 +417,14 @@ async function main(args) {
       });
       assert.equal(negative.status, 2);
     }
-    const { appOid, app, tailMaterials, archiveMaterial } = await migrate({ source, archive, database, directory, sql, url: ownerUrl, run, stage, runId, port });
+    const { appOid, app, tailMaterials, archiveMaterial, paymentRemainderPredecessor, verifyAfterBusiness } =
+      await migrate({ source, archive, database, directory, sql, url: ownerUrl, run, stage, runId, port });
     receipt.tailMaterials = tailMaterials;
     receipt.archiveInstallation = archiveMaterial;
+    if (paymentRemainder) {
+      assert.ok(paymentRemainderPredecessor);
+      receipt.paymentRemainderPredecessor = paymentRemainderPredecessor;
+    }
     stage("ROLE");
     grantApplication(sql, database, app, appPassword);
     const appUrl = new URL(ownerUrl);
@@ -424,6 +445,11 @@ async function main(args) {
     assert.ok(proof);
     receipt.proof = JSON.parse(proof[1]);
     assert.equal(receipt.proof.candidate, source.candidate);
+    if (paymentRemainder) {
+      stage("READBACK_331_AFTER_BUSINESS");
+      receipt.ledgerAfterBusiness = verifyAfterBusiness();
+      assert.equal(receipt.ledgerAfterBusiness.ledgerSha256, source.ledgerDigest);
+    }
     assert.equal(tracked(), "");
     file(runtime.document, runtime.documentSha);
     receipt.status = "PASSED";
