@@ -371,6 +371,7 @@ type ContractTakeoverHistoricalPaymentVoucherRow = {
 
 type ContractTakeoverActivationContractRow = {
   id: string;
+  counterparty: string;
   contractTypeKey: string | null;
   companyEntityId: string | null;
   companyEntityName: string | null;
@@ -384,6 +385,7 @@ type ContractTakeoverActivationContractRow = {
 
 type ContractTakeoverActivationVersionRow = {
   id: string;
+  draftData: Prisma.JsonValue;
   amountCents: bigint;
   amountLimitType: string;
   pricingNature: string;
@@ -5428,6 +5430,7 @@ export class ContractTakeoverService {
         SELECT
           contract."id",
           contract."contractTypeKey",
+          contract."counterparty",
           contract."companyEntityId",
           contract."companyEntityName",
           entity."isActive" AS "companyEntityIsActive",
@@ -5447,7 +5450,7 @@ export class ContractTakeoverService {
       `);
     const [contractVersion] =
       await tx.$queryRaw<ContractTakeoverActivationVersionRow[]>(Prisma.sql`
-        SELECT "id", "amountCents", "amountLimitType", "pricingNature", "status"
+        SELECT "id", "amountCents", "amountLimitType", "pricingNature", "status", "draftData"
         FROM "ContractVersion"
         WHERE "id" = ${takeover.contractVersionId}
         FOR UPDATE

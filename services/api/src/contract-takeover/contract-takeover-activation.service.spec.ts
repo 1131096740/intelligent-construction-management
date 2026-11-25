@@ -28,6 +28,7 @@ describe("ContractTakeoverActivationService POL-09 operating projection", () => 
           takeoverLevel: "A"
         },
         contractFacts: {
+          signedAt: new Date("2026-01-01"),
           historicalSettledCents: 100_000n,
           zeroSettlementDeclared: false
         },
@@ -37,6 +38,7 @@ describe("ContractTakeoverActivationService POL-09 operating projection", () => 
         ],
         vouchers: [{ historicalPaymentId: "historical-payment-1" }],
         contract: {
+          counterparty: "历史相对方",
           contractTypeKey: "material_purchase",
           companyEntityId: null,
           companyEntityIsActive: null,
@@ -46,7 +48,7 @@ describe("ContractTakeoverActivationService POL-09 operating projection", () => 
           companyEntityCreditCode: null,
           companyEntityRegisteredAddress: null
         },
-        contractVersion: { amountCents: 1_000_000n, amountLimitType: "capped" }
+        contractVersion: { draftData: null, amountCents: 1_000_000n, amountLimitType: "capped" }
       },
       "finance-director-1",
       "activate-1"
@@ -102,6 +104,7 @@ describe("ContractTakeoverActivationService POL-09 operating projection", () => 
             takeoverLevel: "C"
           },
           contractFacts: {
+            signedAt: new Date("2026-01-01"),
             historicalSettledCents: 0n,
             zeroSettlementDeclared: true
           },
@@ -109,6 +112,7 @@ describe("ContractTakeoverActivationService POL-09 operating projection", () => 
           payments: [],
           vouchers: [],
           contract: {
+            counterparty: "历史相对方",
             contractTypeKey: "material_purchase",
             companyEntityId: null,
             companyEntityIsActive: null,
@@ -118,7 +122,7 @@ describe("ContractTakeoverActivationService POL-09 operating projection", () => 
             companyEntityCreditCode: null,
             companyEntityRegisteredAddress: null
           },
-          contractVersion: { amountCents: 1_000_000n, amountLimitType: "capped" }
+          contractVersion: { draftData: null, amountCents: 1_000_000n, amountLimitType: "capped" }
         },
         "finance-director-1",
         "activate-c"
@@ -156,6 +160,7 @@ describe("ContractTakeoverActivationService POL-09 operating projection", () => 
           takeoverLevel: "A"
         },
         contractFacts: {
+          signedAt: new Date("2026-01-01"),
           historicalSettledCents: 0n,
           zeroSettlementDeclared: true
         },
@@ -168,6 +173,7 @@ describe("ContractTakeoverActivationService POL-09 operating projection", () => 
         ],
         vouchers: [{ historicalPaymentId: "historical-payment-direct-1" }],
         contract: {
+          counterparty: "历史相对方",
           contractTypeKey: "other",
           companyEntityId: null,
           companyEntityIsActive: null,
@@ -177,7 +183,7 @@ describe("ContractTakeoverActivationService POL-09 operating projection", () => 
           companyEntityCreditCode: null,
           companyEntityRegisteredAddress: null
         },
-        contractVersion: { amountCents: 1_000_000n, amountLimitType: "capped" }
+        contractVersion: { draftData: null, amountCents: 1_000_000n, amountLimitType: "capped" }
       },
       "finance-director-1",
       "activate-direct-1"
@@ -218,6 +224,7 @@ function activationTx() {
       updateMany: jest.fn().mockResolvedValue({ count: 1 })
     },
     contractVersion: {
+      draftData: null,
       updateMany: jest.fn().mockResolvedValue({ count: 1 })
     },
     paymentTermsVersion: {

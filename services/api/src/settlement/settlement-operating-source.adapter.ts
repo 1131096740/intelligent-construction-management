@@ -1,3 +1,4 @@
+import { isHistoricalUpwardDraft, requireHistoricalUpwardAuthority } from "../contract-takeover/historical-upward-authority";
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import type { PrimaryCostCategoryCode } from "@jiangkong/shared-domain";
@@ -118,17 +119,33 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
       throw new BadRequestException("零金额结算不产生经营金额事实");
     }
     const amountCents = absolute(signedAmountCents);
-    const costCategoryCode = settlementCostCategory(
-      requiredJsonText(source, "contractTypeKey", "下游结算")
-    );
-    const debtor = payerSubject(source, affiliate.businessPartyVersionId);
-    const creditor = {
-      kind: "downstream_counterparty" as const,
-      id: requiredJsonText(source, "counterpartyVersionId", "下游结算")
-    };
+    const upward = source.contractRelationship === "upward";
+    const debtor = upward
+      ? { kind: "construction_enterprise" as const, id: affiliate.businessPartyVersionId }
+      : payerSubject(source, affiliate.businessPartyVersionId);
+    const creditor = upward
+      ? { kind: "participating_company" as const, id: requiredJsonText(source, "companyEntityId", "对上历史结算") }
+      : { kind: "downstream_counterparty" as const,
+        id: requiredJsonText(source, "counterpartyVersionId", "下游结算") };
     const impactDirection = signedAmountCents > 0n ? "increase" : "decrease";
-    const impacts: AppendOperatingFactInput["impacts"] = [
-      {
+    const impacts: AppendOperatingFactInput["impacts"] = [];
+    if (upward) {
+      impacts.push({
+        idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:receivable`,
+        sourceImpactKey: "receivable_increase",
+        impactKind: "receivable_increase",
+        amountCents,
+        direction: impactDirection,
+        subjectRole: "creditor",
+        subject: creditor,
+        description: "对上历史结算形成我方期初应收",
+        impactSnapshot: sourceJson({ relationship: "upward", projectConsolidation: "exclude_internal" })
+      });
+    } else {
+      const costCategoryCode = settlementCostCategory(
+        requiredJsonText(source, "contractTypeKey", "下游结算")
+      );
+      impacts.push({
         idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:confirmed_cost`,
         sourceImpactKey: "confirmed_cost",
         impactKind: "confirmed_cost",
@@ -139,22 +156,22 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
         costCategoryCode,
         description:
           signedAmountCents > 0n ? "生效结算确认项目成本" : "负向结算冲减项目成本"
-      }
-    ];
-    if (signedPayableCents !== 0n) {
-      impacts.push({
-        idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:payable`,
-        sourceImpactKey:
-          signedPayableCents > 0n ? "payable_increase" : "payable_decrease",
-        impactKind:
-          signedPayableCents > 0n ? "payable_increase" : "payable_decrease",
-        amountCents: absolute(signedPayableCents),
-        direction: signedPayableCents > 0n ? "increase" : "decrease",
-        subjectRole: "creditor",
-        subject: creditor,
-        description:
-          signedPayableCents > 0n ? "生效结算增加下游应付" : "负向结算冲减下游应付"
       });
+      if (signedPayableCents !== 0n) {
+        impacts.push({
+          idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:payable`,
+          sourceImpactKey:
+            signedPayableCents > 0n ? "payable_increase" : "payable_decrease",
+          impactKind:
+            signedPayableCents > 0n ? "payable_increase" : "payable_decrease",
+          amountCents: absolute(signedPayableCents),
+          direction: signedPayableCents > 0n ? "increase" : "decrease",
+          subjectRole: "creditor",
+          subject: creditor,
+          description:
+            signedPayableCents > 0n ? "生效结算增加下游应付" : "负向结算冲减下游应付"
+        });
+      }
     }
     return {
       entryKind: "original",
@@ -173,7 +190,7 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
         "下游结算"
       ),
       factKind: "downstream_settlement",
-      operatingLevel: "project",
+      operatingLevel: upward ? "participating_company" : "project",
       evidenceLevel: "A",
       amountCents,
       currencyCode: "CNY",
@@ -190,7 +207,7 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
         : {}),
       sourceSnapshot: snapshot.sourceSnapshot,
       basisSnapshot: sourceJson({
-        authority: "confirmed_settlement_archive",
+        authority: upward ? "activated_historical_upward_settlement" : "confirmed_settlement_archive",
         archiveEvidenceId: requiredJsonText(
           source,
           "archiveEvidenceId",
@@ -231,6 +248,7 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
         where: { id: row.contractVersionId },
         select: {
           signingSubjectType: true,
+          draftData: true,
           companyEntityVersionId: true,
           affiliateAssignmentId: true,
           affiliateBusinessPartyVersionId: true
@@ -250,7 +268,13 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
       )
     ]);
     if (!confirmation) return null;
-    if (!contract?.contractTypeKey || !version || !counterparty?.businessPartyVersionId) {
+    if (!contract?.contractTypeKey || !version) {
+      throw new BadRequestException("生效结算缺少合同类型、签约主体或下游相对方快照");
+    }
+    const upward = confirmation.takeoverLevel === "NONE" && isHistoricalUpwardDraft(version.draftData)
+      ? requireHistoricalUpwardAuthority(version.draftData)
+      : null;
+    if (!upward && !counterparty?.businessPartyVersionId) {
       throw new BadRequestException("生效结算缺少合同类型、签约主体或下游相对方快照");
     }
     const historicalCorrectionDeltaCents =
@@ -266,11 +290,14 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
       readAffiliateSnapshot(tx, {
         projectId: row.projectId,
         occurredAt,
-        assignmentId: version.affiliateAssignmentId,
-        businessPartyVersionId: version.affiliateBusinessPartyVersionId
+        assignmentId: upward?.affiliate.assignmentId ?? version.affiliateAssignmentId,
+        businessPartyVersionId: upward?.affiliate.businessPartyVersionId ?? version.affiliateBusinessPartyVersionId
       })
     ]);
-    const counterpartySnapshot = counterparty.snapshot as Record<string, unknown>;
+    if (upward && !occurredBeforeEffectiveDate(occurredAt, effectiveDate)) {
+      throw new BadRequestException("对上历史结算截止日必须早于经营账启用日");
+    }
+    const counterpartySnapshot = counterparty?.snapshot as Record<string, unknown> | undefined;
     return {
       projectId: row.projectId,
       sourceType: this.sourceType,
@@ -286,9 +313,10 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
         contractTypeKey: contract.contractTypeKey,
         signingSubjectType: version.signingSubjectType,
         companyEntityVersionId: version.companyEntityVersionId,
-        counterpartyVersionId: counterparty.businessPartyVersionId,
+        ...(upward ? { contractRelationship: "upward", companyEntityId: upward.companyEntityId } : {}),
+        counterpartyVersionId: counterparty?.businessPartyVersionId ?? null,
         counterpartyName:
-          typeof counterpartySnapshot.name === "string"
+          typeof counterpartySnapshot?.name === "string"
             ? counterpartySnapshot.name
             : null,
         amountCents: (row.amountCents - historicalCorrectionDeltaCents).toString(),
@@ -341,6 +369,7 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
     confirmedByUserId: string;
     confirmedAt: Date;
     occurredAt: Date;
+    takeoverLevel?: string;
   } | null> {
     if (sourceType === "historical_takeover" && sourceTakeoverId) {
       const [takeover, facts, evidence] = await Promise.all([
@@ -377,7 +406,8 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
         evidenceId: evidence.id,
         confirmedByUserId,
         confirmedAt: takeover.activatedAt,
-        occurredAt: historicalDate
+        occurredAt: historicalDate,
+        takeoverLevel: takeover.takeoverLevel
       };
     }
     if (governanceVersion === 1) {

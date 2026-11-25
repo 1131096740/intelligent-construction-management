@@ -24,6 +24,8 @@ type ContractOption = {
 const signedAt = "2026-09-01";
 const cutoff = "2026-10-31";
 const contractTypeKey = "material_purchase";
+const ourCompany = "合成我方签约主体";
+const constructionEnterprise = "A28 合成施工企业";
 
 describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
   let app: INestApplication;
@@ -65,7 +67,7 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     const project = await prisma.project.create({ data: { code: `A28-${suffix}`, name: "合成历史接管项目" } });
     projectId = project.id;
     path = `/projects/${projectId}/contract-takeovers`;
-    const company = await prisma.companyEntity.create({ data: { name: "合成我方签约主体" } });
+    const company = await prisma.companyEntity.create({ data: { name: ourCompany } });
     companyEntityId = company.id;
     const passwordHash = await hash(password, 4);
     for (const role of roles) {
@@ -120,9 +122,50 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     return result.body;
   }
 
+  async function enableUpwardOperatingLedger() {
+    const secret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+    if (!secret) throw new Error("A28 启用经营账场景需要隔离经营账写入凭据");
+    await prisma.$executeRaw`INSERT INTO "OperatingLedgerWriteSecret" ("id", "secretHash")
+      VALUES (1, public.crypt(${secret}, public.gen_salt('bf')))`;
+    const start = new Date("2026-01-01");
+    const userId = actors.contract_staff.id;
+    const creditCode = "91310000000000000X";
+    const party = await prisma.businessParty.create({ data: {
+      name: constructionEnterprise, normalizedName: constructionEnterprise,
+      unifiedSocialCreditCode: creditCode, createdByUserId: userId
+    } });
+    const partyVersion = await prisma.businessPartyVersion.create({ data: {
+      businessPartyId: party.id, versionNo: 1, createdByUserId: userId,
+      snapshot: { name: constructionEnterprise, unifiedSocialCreditCode: creditCode }
+    } });
+    await prisma.projectAffiliateAssignment.create({ data: {
+      projectId, businessPartyId: party.id, businessPartyVersionId: partyVersion.id,
+      affiliateNameSnapshot: constructionEnterprise, affiliateCreditCodeSnapshot: creditCode,
+      effectiveFrom: start, changeReason: "A28 测试施工企业", assignedByUserId: userId
+    } });
+    const company = await prisma.companyEntityVersion.create({ data: {
+      companyEntityId, versionNo: 1, name: ourCompany, unifiedSocialCreditCode: "913100000000000018",
+      isActive: true, action: "create", actorUserId: userId
+    } });
+    await prisma.companyEntity.update({ where: { id: companyEntityId }, data: {
+      currentVersionNo: 1, dataStatus: "complete", unifiedSocialCreditCode: company.unifiedSocialCreditCode
+    } });
+    await prisma.projectParticipatingCompany.create({ data: {
+      projectId, companyEntityId, companyEntityVersionId: company.id,
+      companyNameSnapshot: company.name, companyCreditCodeSnapshot: company.unifiedSocialCreditCode,
+      effectiveFrom: start, changeReason: "A28 测试参与公司", addedByUserId: userId
+    } });
+    expect(await request("finance_director", `/projects/${projectId}/operating-profile`, "PATCH", {
+      operatingLedgerEffectiveDate: "2026-11-01"
+    })).toMatchObject({ status: 200, body: { operatingLedgerEffectiveDate: "2026-11-01" } });
+    return partyVersion.id;
+  }
+
   async function moneyWrites() {
     return {
       operatingFacts: await prisma.operatingFact.count({ where: { projectId } }),
+      paymentExecutions: await prisma.paymentExecution.count(),
+      fundExecutions: await prisma.fundExecution.count(),
       fundMovements: await prisma.fundMovement.count(),
       refunds: await prisma.paymentExecutionRefund.count()
     };
@@ -134,11 +177,12 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     { relationship: "inside", settledCents: "0", finance: "finance_director", excessTreatment: null },
     { relationship: "upward", settledCents: "6000", finance: "finance_staff", excessTreatment: "abnormal_overpay" }
   ] as const)("由实际岗位接管并继续办理 $relationship 历史合同", async ({ relationship, settledCents, finance, excessTreatment }) => {
+    const affiliateVersionId = relationship === "upward" ? await enableUpwardOperatingLedger() : null;
     const beforeMoney = await moneyWrites();
     const zero = settledCents === "0";
     const code = `A28-${relationship}-${randomUUID()}`;
     const name = `合成历史合同 ${relationship}`;
-    const counterparty = `合成签约相对方 ${relationship}`;
+    const counterparty = relationship === "upward" ? constructionEnterprise : `合成签约相对方 ${relationship}`;
     const terms = "按经双方确认的历史结算金额办理收付";
     const draft = await request<{ id: string }>("contract_staff", path, "POST", {
       code, name, counterparty, relationship, contractTypeKey, companyEntityId,
@@ -213,6 +257,7 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
           excessEvidenceFileIds: [await uploadPdf(finance, "独立超额核对依据")],
           payments: [{
             rowKey: "历史回单-1", paidAt: "2026-10-30", amountCents: "7000",
+            ...(relationship === "upward" ? { payerName: constructionEnterprise, payeeName: ourCompany } : {}),
             voucherFileIds: [await uploadPdf(finance, "历史银行回单")]
           }]
         };
@@ -278,7 +323,29 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     expect(continuation).toMatchObject({
       status: 201, body: { status: "draft", contractVersionId: confirmedOption?.contractVersionId }
     });
-    // The project has no operating-ledger date. Contract opening facts activate without moving cash or issuing any refund.
-    expect(await moneyWrites()).toEqual(beforeMoney);
+    const afterMoney = await moneyWrites();
+    if (relationship === "upward") {
+      expect(afterMoney).toEqual({ ...beforeMoney, operatingFacts: beforeMoney.operatingFacts + 3 });
+      const persisted = await prisma.operatingFact.findMany({ where: { projectId }, include: { impacts: true } });
+      expect(persisted).toHaveLength(3);
+      const receipt = persisted.find((fact) => fact.sourceType === "contract_takeover_historical_payment");
+      expect(receipt).toMatchObject({
+        amountCents: 7_000n, factKind: "fund_movement", direction: "inflow", evidenceLevel: "A",
+        isBeforeOperatingLedgerEffectiveDate: true,
+        actualPayerSubjectKind: "construction_enterprise", actualPayerSubjectId: affiliateVersionId,
+        payeeSubjectKind: "participating_company", payeeSubjectId: companyEntityId,
+        sourceSnapshot: { contractRelationship: "upward", unmatchedReceiptCents: "1000" }
+      });
+      expect(persisted.flatMap((fact) => fact.impacts).map(({ impactKind, direction, amountCents }) =>
+        [impactKind, direction, amountCents])).toEqual(expect.arrayContaining([
+        ["contract_commitment_reference", "increase", 10_000n],
+        ["receivable_increase", "increase", 6_000n],
+        ["receivable_decrease", "decrease", 6_000n]
+      ]));
+      expect(persisted.flatMap((fact) => fact.impacts)).toHaveLength(3);
+      expect(await prisma.contractTakeoverBalanceAccount.count({ where: { takeoverId: draft.body.id } })).toBe(0);
+    } else {
+      expect(afterMoney).toEqual(beforeMoney);
+    }
   }, 60_000);
 });

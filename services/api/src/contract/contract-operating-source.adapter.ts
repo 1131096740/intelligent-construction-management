@@ -1,3 +1,4 @@
+import { isHistoricalUpwardDraft, requireHistoricalUpwardAuthority } from "../contract-takeover/historical-upward-authority";
 import { assertUpwardDirectArchivePersistentProof } from "./contract-upward-direct-archive-proof";
 import { economicExcludedAt, economicExcludedYuanAt } from "../contract-ledger/contract-economic-coverage";
 import { isDeepStrictEqual } from "node:util";
@@ -57,6 +58,34 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
         const source = policy.fact.input;
         return { projectId, sourceType: this.sourceType, sourceBusinessId: version.id, sourceBusinessCode: source.sourceBusinessCode,
           sourceVersion: source.sourceVersion, status: "confirmed", sourceSnapshot: source.sourceSnapshot };
+      }
+    }
+    if (contract.source === "historical_takeover" && version.changeType === "historical_takeover" && isHistoricalUpwardDraft(version.draftData)) {
+      const takeover = await tx.contractTakeover.findFirst({
+        where: { contractVersionId: version.id, takeoverStatus: "confirmed", activatedAt: { not: null } },
+        select: { id: true, takeoverLevel: true, signedAt: true, activatedAt: true, activatedByUserId: true }
+      });
+      if (takeover?.takeoverLevel === "NONE" && takeover.activatedAt && takeover.activatedByUserId) {
+        const authority = requireHistoricalUpwardAuthority(version.draftData);
+        const [effectiveDate, affiliate] = await Promise.all([
+          readOperatingLedgerEffectiveDate(tx, projectId),
+          readAffiliateSnapshot(tx, { projectId, occurredAt: takeover.signedAt,
+            assignmentId: authority.affiliate.assignmentId, businessPartyVersionId: authority.affiliate.businessPartyVersionId })
+        ]);
+        const amountKnown = version.amountLimitType !== "unlimited" && version.amountLimitType !== "uncapped";
+        return {
+          projectId, sourceType: this.sourceType, sourceBusinessId: version.id, sourceVersion: version.versionNo,
+          sourceBusinessCode: contract.code ?? contract.temporaryCode ?? contract.name, status: "confirmed",
+          sourceSnapshot: sourceJson({
+            contractId: contract.id, contractVersionId: version.id, contractRelationship: "upward",
+            historicalTakeoverId: takeover.id, amountNature: amountKnown ? "fixed" : "uncapped",
+            commitmentDeltaCents: amountKnown ? version.amountCents.toString() : "0",
+            companyEntityIdSnapshot: authority.companyEntityId, companyEntityVersionId: authority.companyEntityVersionId,
+            occurredAt: takeover.signedAt.toISOString(), confirmedAt: takeover.activatedAt.toISOString(),
+            confirmedByUserId: takeover.activatedByUserId,
+            operatingLedgerEffectiveDate: effectiveDate.toISOString(), affiliate
+          })
+        };
       }
     }
     const relationship = downstreamContractRelationship(version);
@@ -170,9 +199,11 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
     const money = numeric2
       ? { numericProtocolVersion: 2 as const, amountCents: null, amountYuan: deltaYuan === null ? null : new Prisma.Decimal(deltaYuan).abs().toFixed(4) }
       : { amountCents: delta! < 0n ? -delta! : delta! };
-    const direction = numeric2 ? deltaYuan === null ? "notice" : new Prisma.Decimal(deltaYuan).lt(0) ? "decrease" : "increase" : delta! < 0n ? "decrease" : "increase";
+    const upwardHistory = source.contractRelationship === "upward" && typeof source.historicalTakeoverId === "string";
+    const direction = upwardHistory && source.amountNature === "uncapped" ? "notice"
+      : numeric2 ? deltaYuan === null ? "notice" : new Prisma.Decimal(deltaYuan).lt(0) ? "decrease" : "increase" : delta! < 0n ? "decrease" : "increase";
     if (source.signingSubjectType === "draft_unconfirmed") throw new Error("合同签约主体待补充，不能形成正式经营事实");
-    const debtor = source.signingSubjectType === "affiliate"
+    const debtor = upwardHistory || source.signingSubjectType === "affiliate"
       ? { kind: "construction_enterprise" as const, id: affiliate.businessPartyVersionId }
       : { kind: "participating_company" as const, id: requiredJsonText(source, source.archiveProtocolVersion === 2 ? "companyEntityIdSnapshot" : "companyEntityVersionId", "合同签约主体") };
     const frozenOutside = source.archiveProtocolVersion === 2 && source.contractRelationship === "outside"
@@ -188,8 +219,10 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
       insideSubjectId = insideArchiveCounterparty(parties, rows[0], snapshot.sourceBusinessId).subjectId;
       if (source.counterpartySubjectId !== insideSubjectId || source.counterpartyVersionId !== rows[0].businessPartyVersionId) throw new BadRequestException("新归档相对方自然身份不一致");
     }
-    const creditor = { kind: "downstream_counterparty" as const,
-      id: insideSubjectId ?? requiredJsonText(source, frozenOutside ? "counterpartySubjectId" : "counterpartyVersionId", "合同相对方") };
+    const creditor = upwardHistory
+      ? { kind: "participating_company" as const, id: requiredJsonText(source, "companyEntityIdSnapshot", "对上历史合同") }
+      : { kind: "downstream_counterparty" as const,
+        id: insideSubjectId ?? requiredJsonText(source, frozenOutside ? "counterpartySubjectId" : "counterpartyVersionId", "合同相对方") };
     return { entryKind: "original", input: {
       projectId: snapshot.projectId, sourceType: snapshot.sourceType, sourceBusinessId: snapshot.sourceBusinessId,
       sourceBusinessCode: snapshot.sourceBusinessCode, sourceVersion: snapshot.sourceVersion,
@@ -203,12 +236,14 @@ export class ContractOperatingSourceAdapter implements OperatingSourceAdapter {
         : occurredBeforeEffectiveDate(occurredAt, requiredJsonDate(source, "operatingLedgerEffectiveDate", "合同承诺")),
       affiliateAssignmentId: affiliate.assignmentId, affiliateBusinessPartyVersionId: affiliate.businessPartyVersionId,
       affiliateNameSnapshot: affiliate.name, affiliateCreditCodeSnapshot: affiliate.creditCode, sourceSnapshot: snapshot.sourceSnapshot,
-      basisSnapshot: sourceJson({ authority: "effective_contract_version", amountNature: source.amountNature }),
+      basisSnapshot: sourceJson({ authority: upwardHistory ? "activated_historical_upward_contract" : "effective_contract_version",
+        amountNature: source.amountNature }),
       subjects: { debtor, creditor }, impacts: [{
         idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:commitment`,
         sourceImpactKey: "contract_commitment_reference", impactKind: "contract_commitment_reference",
         ...money, direction,
-        subjectRole: "debtor", subject: debtor, description: frozenOutside ? "表外原合同承诺，不形成成本或应付"
+        subjectRole: "debtor", subject: debtor, description: upwardHistory ? "对上历史合同仅作为内部合同承诺依据"
+          : frozenOutside ? "表外原合同承诺，不形成成本或应付"
           : "生效合同版本净增减，仅影响承诺，不形成成本或应付"
       }]
     } };
