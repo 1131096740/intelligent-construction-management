@@ -229,6 +229,10 @@ function grantApplication(sql, database, app, appPassword) {
     assert.ok(granted === "t" || granted === "f");
     return granted === "f" ? grantColumns("UPDATE", table, [column]) : "";
   });
+  const newBindingReads = [
+    ["ContractSignedChange", "appendixFormalFileId"],
+    ["SignedContractSettlementAttachment", "fileId"]
+  ];
   sql("BEGIN;" +
     "ALTER ROLE " + role + " LOGIN PASSWORD '" + appPassword + "' CONNECTION LIMIT 12;" +
     "GRANT CONNECT ON DATABASE " + identifier(database) + " TO " + role + ";" +
@@ -238,8 +242,21 @@ function grantApplication(sql, database, app, appPassword) {
     grantColumns("SELECT", "ContractDocumentComparison", comparison.select) +
     grantColumns("UPDATE", "ContractDocumentComparison", comparison.update) +
     grantColumns("SELECT", "ContractDraftCheckpoint", ["contractVersionId", "id", "sequenceNo", "name", "snapshot", "createdAt"]) +
+    newBindingReads.map(([table, column]) => grantColumns("SELECT", table, [column])).join("") +
     locks.join("") +
     "COMMIT;");
+  for (const [table, column] of newBindingReads) {
+    const exact = sql(`
+      SELECT has_column_privilege('${app}',target.relation,'${column}','SELECT')
+        AND NOT has_table_privilege('${app}',target.relation,'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+        AND NOT EXISTS (SELECT FROM pg_catalog.pg_attribute a
+          WHERE a.attrelid=target.relation AND a.attnum>0 AND NOT a.attisdropped
+          AND (has_column_privilege('${app}',target.relation,a.attnum,'SELECT WITH GRANT OPTION, INSERT, UPDATE, REFERENCES')
+            OR (a.attname<>'${column}' AND has_column_privilege('${app}',target.relation,a.attnum,'SELECT'))))
+      FROM (VALUES ('public."${table}"'::regclass)) AS target(relation);
+    `).trim();
+    assert.equal(exact, "t", "NATIVE_329_FILE_BINDING_COLUMNS");
+  }
 }
 
 async function main(args) {

@@ -178,7 +178,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
         return await next(params);
       } catch (error) {
         const projected = projectTask16RegistrationError(error);
-        const unknown = stage === "LOGIN" && projected.serverErrorKind === "UNKNOWN_REQUEST_ERROR";
+        const unknown = projected.serverErrorKind === "UNKNOWN_REQUEST_ERROR";
         if (projected.serverPrismaCode || unknown) {
           const message = unknown && error instanceof Error ? error.message : "";
           const unknownSqlState = /(?:code:\s*"|SQLSTATE[ :]+)([0-9A-Z]{5})\b/u.exec(message)?.[1];
