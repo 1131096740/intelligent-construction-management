@@ -2,6 +2,8 @@
 
 ## 2026-11-25 #382 集成进度
 
+草稿 PR #428 的 330 候选 `f541ec045e5682ee9ed378c25f3a2e2666377271` [托管 CI 56/56 通过](https://github.com/1131096740/intelligent-construction-management/actions/runs/45654677900/attempts/2)。独立 331 候选 `684d6944215bb05db2d8b6dfc251bdab2939ad4d` 的标准付款 8/8、文字约定付款及退款 1/1 同库顺序迁移通过，均零跳过。331 分次付款浏览器、现金交接、归还本金、付款执行和合同相邻分片已接入本地候选，隔离验收继续。[#426 验收记录](docs/progress/2026-11-25-issue-426.md)
+
 A02 与 A16 已在独立候选 `d5b768e4209d906d28bea5d1402054fecade56a8` 的顺序迁移 331 真库分别通过 6/6 和 8/8，均零跳过。原 330 账本保持可核对，验收后的 331 全账本与隔离资源回收均已确认。其余 331 分片继续接入。[#426 验收记录](docs/progress/2026-11-25-issue-426.md)
 
 [#425 已关闭](https://github.com/1131096740/intelligent-construction-management/issues/425)。草稿 PR #428 的精确候选 `c44dd86490ec0372bad2650fc15a192708895f3f` [托管 CI 56 项全过](https://github.com/1131096740/intelligent-construction-management/actions/runs/45585497433)，包含合同资金、剩余真库和发布汇总。相同 SHA 本地回归剩余真库后半段 15 组全过，数据库及导出镜像均已回收，聚合回执 SHA-256 为 `6c8b8a1a2ba377c3baca28b52c9d6f60a2dbd75842d0a8875c965b7d8c62e390`。上一候选的本地 POL113 浏览器运行被超时终止，同 SHA 托管原 30 项和浏览器 23 项通过，保留原定手机模拟跳过 1 项。当前候选托管连同后续 POL114 通过。
