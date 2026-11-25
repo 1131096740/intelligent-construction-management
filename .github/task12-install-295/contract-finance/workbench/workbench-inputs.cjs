@@ -7,9 +7,9 @@ const root='/qualification';
 const pins={
   'workspace/apps/web-admin/playwright.template-workbench-real.config.ts':'6b389c710266bfdc15f299b7e8a87de5a530eb79d91fabd88ca87f15e3f300c8',
   'workspace/apps/web-admin/e2e/template-workbench-real.e2e.ts':'17dcd6f2c44525f3e2805f0bc8d6ecf8c2055aefb270a4a2e95f027af5a12f7f',
-  'workspace/services/api/src/settlement/settlement-template-workbench.owned290.http.pg.spec.ts':'4da1282d7069e36c1ad423c600b750b4b0ae659ddb4428933b078a21024954ac',
+  'workspace/services/api/src/settlement/settlement-template-workbench.owned290.http.pg.spec.ts':'e36beb56bd8b1267ae76de304a29c7f64817ab7ddb724af1a99208498f9d7dc6',
   'task12-pol109-stage-browser.cjs':'8adbaf1cd69af3d8154f163c490922bf5a5150ae8b21d3f705389282babbe71f',
-  'task12-pol115-workbench-ci.cjs':'73d8898479118908d41c9e87cf51937bddf12f426a35b995cdccb3c9ce6a4aad',
+  'task12-pol115-workbench-ci.cjs':'8219f547b252df3aa3984f414071dbae27070ddfd9540c5ff510a2e8c51f1b91',
   'browser-preflight.cjs':'2f8483b2a066cd5b0024492a3ec8b6f41f8c2dd06714b226cd4b2e6038720ce3',
 };
 function verifyInputs(){

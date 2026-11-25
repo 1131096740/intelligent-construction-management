@@ -16,7 +16,7 @@ if [[ ${3:-} == --text-direct-330 ]]; then
 fi
 if [[ ${3:-} == --payment-remainder-331 ]]; then
   case "$lane" in
-    line-a|task398-ledger-loss|task398-standard|company-proxy|browser-partial|browser-completion|cash-handover|principal-return|payment-execution|settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|expense-execution|expense-finance|expense-receipt) ;;
+    line-a|task398-ledger-loss|task398-standard|company-proxy|browser-partial|browser-completion|cash-handover|principal-return|payment-execution|settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|expense-execution|expense-finance|expense-receipt|pol115-workbench) ;;
     *) exit 64 ;;
   esac
 fi

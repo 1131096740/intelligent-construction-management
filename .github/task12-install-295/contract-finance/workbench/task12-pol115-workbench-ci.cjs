@@ -37,9 +37,10 @@ function stageBrowser(workDir) {
 }
 
 async function runWorkbench(context, receipt, source) {
-  const textDirect=source?.mode==='text-direct-330';
+  const paymentRemainder=source?.mode==='payment-remainder-331';
+  const textDirect=paymentRemainder||source?.mode==='text-direct-330';
   const current320=textDirect||source?.mode==='current-320';
-  const count=textDirect?330:current320?329:295;
+  const count=paymentRemainder?331:textDirect?330:current320?329:295;
   if (receipt.purpose !== 'POL115_WORKBENCH_ORIGINAL_'+count || context.candidateTree !== (current320?source.sourceTree:tree) ||
       context.database !== 'jg_task01_'+context.runId.replaceAll('-','')) {
     throw new Error('POL115_WORKBENCH_OWNED_SCOPE');
@@ -66,6 +67,7 @@ async function runWorkbench(context, receipt, source) {
     OPERATING_LEDGER_DB_WRITE_SECRET:randomUUID(), RUN_TEMPLATE_WORKBENCH_PG16:'1',
     ...(current320?{TASK_POL115_WORKBENCH_EXACT_320:'1'}:{}),
     ...(textDirect?{TASK_POL115_WORKBENCH_TEXT_DIRECT_330:'1'}:{}),
+    ...(paymentRemainder?{TASK_POL115_WORKBENCH_PAYMENT_REMAINDER_331:'1'}:{}),
     TASK_POL115_WORKBENCH_290_RUN_ID:context.runId.replaceAll('-',''), TASK_POL115_WORKBENCH_290_WEB_ROOT:web,
   };
 

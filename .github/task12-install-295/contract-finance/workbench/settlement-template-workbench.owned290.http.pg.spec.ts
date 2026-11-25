@@ -60,7 +60,8 @@ describePg("结算模板工作台公开HTTP / PG16", () => {
     if (ownedRun !== undefined) {
       const current320 = process.env.TASK_POL115_WORKBENCH_EXACT_320 === "1";
       const textDirect = process.env.TASK_POL115_WORKBENCH_TEXT_DIRECT_330 === "1";
-      const count = textDirect ? 330 : current320 ? 329 : 295;
+      const paymentRemainder = process.env.TASK_POL115_WORKBENCH_PAYMENT_REMAINDER_331 === "1";
+      const count = paymentRemainder ? 331 : textDirect ? 330 : current320 ? 329 : 295;
       const [witness] = await app.get(PrismaService).$queryRaw<Array<{ accepted: boolean }>>`
         SELECT (d.datname = ${url.pathname.slice(1)} AND d.datdba = 10 AND
           current_user = 'jg_task01_owner' AND current_user::regrole::oid = 10 AND current_user = session_user AND
@@ -79,7 +80,10 @@ describePg("结算模板工作台公开HTTP / PG16", () => {
             AND checksum = '0bfe144cae30a7a29973c06dfb51737965fb9709e408db412f8d137d0663db4e')) AND
           (NOT ${textDirect} OR EXISTS (SELECT FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
             AND migration_name = '20261128000000_text_agreement_direct_payment'
-            AND checksum = '4d99963155b37e091f37db7a1648d2fed6e6464aee7c643002a3297b4120991c'))) AS accepted
+            AND checksum = '4d99963155b37e091f37db7a1648d2fed6e6464aee7c643002a3297b4120991c')) AND
+          (NOT ${paymentRemainder} OR EXISTS (SELECT FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+            AND migration_name = '20261129000000_payment_remaining_withdrawal'
+            AND checksum = '67593637957ba372cbba7633334fb9896ba6adf472b0c1b9b6f1482c0d645fc2'))) AS accepted
         FROM pg_catalog.pg_database d WHERE d.datname = current_database()
       `;
       if (witness?.accepted !== true) throw new Error("POL115_WORKBENCH_OWNED_282_DATABASE");

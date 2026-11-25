@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 ) ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -12,6 +12,7 @@ count=295
 case ${5-} in
   --current-320) mode_args=(--current-320); count=329 ;;
   --text-direct-330) mode_args=(--text-direct-330); count=330 ;;
+  --payment-remainder-331) mode_args=(--payment-remainder-331); count=331 ;;
 esac
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -22,7 +23,7 @@ scope=pol115-workbench
 node -e '
   const [file,sha,count]=process.argv.slice(1);
   const source=require(file);
-  const modes={"329":"current-320","330":"text-direct-330"};
+  const modes={"329":"current-320","330":"text-direct-330","331":"payment-remainder-331"};
   if(source.sourceSha!==sha||source.migrationCount!==Number(count)||(modes[count]&&source.mode!==modes[count]))process.exit(1);
 ' "$prepared/source.json" "$sha" "$count"
 image=$(cat "$build/image.id")
