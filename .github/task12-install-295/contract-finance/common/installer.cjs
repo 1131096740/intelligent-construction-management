@@ -818,7 +818,9 @@ statement_timeout='60s'
       let current;
       const batches = forward320.textDirect ? [tails.slice(0,34), tails.slice(34,35)] : [tails];
       if (forward320.paymentRemainder) batches.push(tails.slice(35,36));
-      if (forward320.upwardArchive) batches.push(tails.slice(36));
+      if (forward320.upwardArchive) batches.push(tails.slice(36,37));
+      const a28 = forward320.historicalTakeover ? require('./historical-takeover-333-profile.cjs') : null;
+      if (a28) batches.push(tails.slice(37));
       for (const batch of batches) {
         for (const row of batch) {
           const index = tails.indexOf(row);
@@ -861,6 +863,19 @@ statement_timeout='60s'
           need(digest==='0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014' &&
             equal(await jsonSql(finalSql),final),'UPWARD_ARCHIVE_331_PREDECESSOR_CONTINUITY');
           receipt.upwardArchivePredecessor={count:331,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true};
+        }
+        if (a28 && current.ledger.length===332) {
+          const digest=hash(JSON.stringify(current.ledger));
+          need(digest===a28.predecessor332 && equal(await jsonSql(finalSql),final),'A28_333_PREDECESSOR_CONTINUITY');
+          const catalog=await jsonSql(a28.catalogSql);
+          a28.assertCatalog(catalog,false);
+          receipt.historicalTakeoverPredecessor={count:332,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true,catalog};
+        }
+        if (a28 && current.ledger.length===333) {
+          need(hash(JSON.stringify(current.ledger))===a28.ledgerSha256,'A28_333_LEDGER_DIGEST');
+          const catalog=await jsonSql(a28.catalogSql);
+          a28.assertCatalog(catalog,true);
+          receipt.historicalTakeover333Catalog=catalog;
         }
       }
       receipt.forward320={count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
@@ -960,6 +975,12 @@ statement_timeout='60s'
       const afterConsumer = await jsonSql(control.inspectSql());
       need(equal(afterConsumer.ledger,combined ? qualifiedLedger : ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
       need(equal(await jsonSql(finalSql), final), 'CONSUMER_PROTECTED_CATALOG_CONTINUITY');
+      if (forward320?.historicalTakeover) {
+        const a28=require('./historical-takeover-333-profile.cjs');
+        need(hash(JSON.stringify(afterConsumer.ledger))===a28.ledgerSha256,'A28_333_LEDGER_AFTER_CONSUMER');
+        need(equal(await jsonSql(a28.catalogSql),receipt.historicalTakeover333Catalog),'A28_333_CATALOG_AFTER_CONSUMER');
+        receipt.historicalTakeoverCatalogAfterBusiness=true;
+      }
       if(cleanupLegacy){
         const legacy=await jsonSql(control.inspectSql(),{database:cleanupLegacy.database});
         need(equal(legacy.ledger,cleanupLegacy.expectedLedger)&&
@@ -1357,7 +1378,8 @@ module.exports.withCombined295MultiWitnessForRestore = (receipt,consume) =>
 function readForward320({sourceTree,migrations,tails},target=329) {
   const textDirect=target>=330;
   const paymentRemainder=target>=331;
-  const upwardArchive=target===332;
+  const upwardArchive=target>=332;
+  const historicalTakeover=target===333;
   need(typeof sourceTree==='string' && /^[0-9a-f]{40}$/u.test(sourceTree) &&
     typeof migrations==='string' && path.isAbsolute(migrations) &&
     Array.isArray(tails) && tails.length===target-295,'FORWARD_320_SOURCE');
@@ -1376,6 +1398,10 @@ function readForward320({sourceTree,migrations,tails},target=329) {
       tails[36]?.sha256==='4e8e6e23267f525ca2bff68719e2989126fff82e5bd0d0ba344abc2c4c8d4da3',
       'UPWARD_ARCHIVE_332_TERMINAL');
   }
+  if(historicalTakeover) {
+    const {terminal}=require('./historical-takeover-333-profile.cjs');
+    need(tails[37]?.name===terminal.name && tails[37]?.sha256===terminal.sha256,'A28_333_TERMINAL');
+  }
   let previous='20261119003900';
   const rows=tails.map(row => {
     const match=row && typeof row.name==='string' ? /^(\d{14})_[a-z0-9_]+$/u.exec(row.name) : null;
@@ -1388,7 +1414,7 @@ function readForward320({sourceTree,migrations,tails},target=329) {
     need(hash(bytes)===row.sha256,'FORWARD_320_TAIL_DIGEST');
     return bytes;
   });
-  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive};
+  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover};
 }
 
 module.exports.withCombined320ContractPayment = (receipt,consume,material) => {
@@ -1411,6 +1437,11 @@ module.exports.withCombined331PaymentRemainder = (receipt,consume,material) => {
 module.exports.withCombined332UpwardArchive = (receipt,consume,material) => {
   need(typeof consume==='function' && material && typeof material==='object','UPWARD_ARCHIVE_332_ARGUMENTS');
   return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,332));
+};
+
+module.exports.withCombined333HistoricalTakeover = (receipt,consume,material) => {
+  need(typeof consume==='function' && material && typeof material==='object','A28_333_ARGUMENTS');
+  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,333));
 };
 
 module.exports.withCombined320ContractPaymentForRestore = (receipt,prepare295,consume,material) => {
