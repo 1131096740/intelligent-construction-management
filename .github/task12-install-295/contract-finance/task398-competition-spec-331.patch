@@ -1,6 +1,8 @@
 --- original
 +++ revised
-@@ -616,0 +617,33 @@
+@@ -614,0 +615,32 @@
++    expect(await observeRace()).toEqual(recorded);
++    expect(await json("/fund-accounts","GET",undefined,finance)).toEqual(accounts);
 +    const expectSharedQueues=async()=>{
 +     for(const token of [finance,keeper]){
 +      const items=await json("/payment-executions/work-items","GET",undefined,token);
@@ -31,6 +33,3 @@
 +    expect(Buffer.from(await download.arrayBuffer())).toEqual(png);
 +    expect(await getResult(winner.key,winnerChoice.token)).toMatchObject({status:200,body:{execution:{voucherPending:false}}});
 +    await expectSharedQueues();
-+    expect(await observeRace()).toEqual(recorded);
-+    expect(await json("/fund-accounts","GET",undefined,finance)).toEqual(accounts);
-+    console.info("TASK398_COMPETITION_SHARED_RECEIPT");

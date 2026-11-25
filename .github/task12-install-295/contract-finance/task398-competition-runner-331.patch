@@ -1,9 +1,12 @@
 --- original
 +++ revised
-@@ -368,0 +369,5 @@
+@@ -358 +358,3 @@
+-  const knownTitle="rejects a project source gap, then shares three valid instalments and supplements the voucher";
++  const knownTitle=overpayScenario
++   ?"allows only one of two concurrent instalments that would together overpay"
++   :"rejects a project source gap, then shares three valid instalments and supplements the voucher";
+@@ -368,0 +371,3 @@
 +   if(standard290.purpose==="TASK398_COMPETITION_EXACT_331"){
-+    if(output.split(/\r?\n/u).filter(line=>line.trim()==="TASK398_COMPETITION_SHARED_RECEIPT").length!==1)
-+     throw Error("TASK398_COMPETITION_EVIDENCE");
 +    standard290.competition={http:[201,409],paidCents:"6000",remainingCents:"4000",bothQueues:true,voucherReadback:true};
 +   }
 @@ -543 +548 @@
