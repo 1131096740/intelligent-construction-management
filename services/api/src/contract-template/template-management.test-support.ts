@@ -473,6 +473,53 @@ export class TemplateSyntheticStore {
         const rows = await this.table(model).findMany({ where: { [filter]: query.values[0] } });
         return rows.map(row => Object.fromEntries(columns.map(column => [column, row[column]])));
       }
+      const privateFileReads = [
+        ['/* private_file_offline_revision_binding */ SELECT "contractVersionId" FROM public."ContractOfflineRevision" WHERE "fileId" = ? OR "previewPdfFileId" = ? LIMIT 1',
+          "contractOfflineRevision", ["fileId", "previewPdfFileId"], ["contractVersionId"]],
+        ['/* private_file_expense_attachment_binding */ SELECT "expenseClaimId", "attachedByUserId", "removedAt" FROM public."ExpenseClaimAttachment" WHERE "fileId" = ? LIMIT 1',
+          "expenseClaimAttachment", ["fileId"], ["expenseClaimId", "attachedByUserId", "removedAt"]],
+        ['/* private_file_project_binding */ SELECT "projectId" FROM public."ContractBankVerificationRequest" WHERE "evidenceFileId" = ? OR "holderEvidenceFileId" = ? LIMIT 1',
+          "contractBankVerificationRequest", ["evidenceFileId", "holderEvidenceFileId"], ["projectId"]],
+        ['/* private_file_project_binding */ SELECT "projectId" FROM public."ContractProxyExecution" WHERE "evidenceFileId" = ? LIMIT 1',
+          "contractProxyExecution", ["evidenceFileId"], ["projectId"]],
+        ['/* private_file_project_binding */ SELECT "projectId" FROM public."UpwardContractAmountRevision" WHERE "evidenceFileId" = ? LIMIT 1',
+          "upwardContractAmountRevision", ["evidenceFileId"], ["projectId"]],
+        ['/* private_file_project_binding */ SELECT "projectId" FROM public."ProjectAffiliateContractFact" WHERE "evidenceFileId" = ? OR "confirmationSignatureFileId" = ? LIMIT 1',
+          "projectAffiliateContractFact", ["evidenceFileId", "confirmationSignatureFileId"], ["projectId"]],
+        ['/* private_file_project_binding */ SELECT "projectId" FROM public."ProjectAffiliateSettlementFact" WHERE "evidenceFileId" = ? OR "confirmationSignatureFileId" = ? LIMIT 1',
+          "projectAffiliateSettlementFact", ["evidenceFileId", "confirmationSignatureFileId"], ["projectId"]],
+        ['/* private_file_project_binding */ SELECT "projectId" FROM public."ProjectAffiliatePaymentFact" WHERE "evidenceFileId" = ? OR "confirmationSignatureFileId" = ? LIMIT 1',
+          "projectAffiliatePaymentFact", ["evidenceFileId", "confirmationSignatureFileId"], ["projectId"]],
+        ['/* private_file_project_binding */ SELECT "projectId", "businessType" FROM public."ProjectAffiliateBusinessEvidence" WHERE "fileId" = ? LIMIT 1',
+          "projectAffiliateBusinessEvidence", ["fileId"], ["projectId", "businessType"]],
+        ['/* private_file_project_binding */ SELECT "projectId" FROM public."ProjectAffiliateCompanyContract" WHERE "fileId" = ? OR "confirmationSignatureFileId" = ? LIMIT 1',
+          "projectAffiliateCompanyContract", ["fileId", "confirmationSignatureFileId"], ["projectId"]]
+      ] as const;
+      const privateFileRead = privateFileReads.find(([statement]) => text === statement);
+      if (privateFileRead) {
+        const [, model, filters, columns] = privateFileRead;
+        const [fileId] = query.values;
+        if (query.values.length !== filters.length || typeof fileId !== "string" || query.values.some(value => value !== fileId)) {
+          throw new Error("合成资料绑定只接受同一文件坐标");
+        }
+        const row = await this.table(model).findFirst({ where: { OR: filters.map(filter => ({ [filter]: fileId })) } });
+        return row ? [Object.fromEntries(columns.map(column => [column, row[column]]))] : [];
+      }
+      const projectEvidenceJoins = [
+        ['/* private_file_project_binding */ SELECT reserve."projectId" FROM public."ProjectNecessaryExpenseReserveEntry" entry JOIN public."ProjectNecessaryExpenseReserve" reserve ON reserve.id = entry."reserveId" WHERE entry."evidenceFileId" = ? LIMIT 1',
+          "projectNecessaryExpenseReserveEntry", "projectNecessaryExpenseReserve", "reserveId"],
+        ['/* private_file_project_binding */ SELECT dispute."projectId" FROM public."ProjectFundDisputeEntry" entry JOIN public."ProjectFundDispute" dispute ON dispute.id = entry."disputeId" WHERE entry."evidenceFileId" = ? LIMIT 1',
+          "projectFundDisputeEntry", "projectFundDispute", "disputeId"]
+      ] as const;
+      const projectEvidenceJoin = projectEvidenceJoins.find(([statement]) => text === statement);
+      if (projectEvidenceJoin) {
+        const [, entryModel, parentModel, parentId] = projectEvidenceJoin;
+        const [fileId] = query.values;
+        if (query.values.length !== 1 || typeof fileId !== "string") throw new Error("合成项目凭证只接受固定文件坐标");
+        const entries = await this.table(entryModel).findMany({ where: { evidenceFileId: fileId } });
+        const parent = await this.table(parentModel).findFirst({ where: { id: { in: entries.map(entry => entry[parentId]) } } });
+        return parent ? [{ projectId: parent.projectId }] : [];
+      }
       if (text.startsWith("/* contract_upward_archive_projection_probe_v2 */")) return [{ status: "absent", projectionOid: null, closureOid: null }];
       if (text === 'UPDATE public."ContractVersion" SET "originalSignedNumber" = ? WHERE "id" = ? AND "contractId" = ? RETURNING "id", "originalSignedNumber"') {
         if (query.values.length !== 3 || (query.values[0] !== null && typeof query.values[0] !== "string") || typeof query.values[1] !== "string" || typeof query.values[2] !== "string") throw new Error("合成原号写入拒绝未知参数");

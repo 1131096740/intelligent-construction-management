@@ -2,7 +2,7 @@
   "services/api/prisma/database-dynamic-gate-manifest.json": "3e65683b60f4f9ed5d3d1cfbce1c04c7827eb840c976eb6b1b57a1e82c357ec0",
   "services/api/prisma/migrations/20261129001000_contract_upward_archive_verifier_pin_forward/migration.sql": "4e8e6e23267f525ca2bff68719e2989126fff82e5bd0d0ba344abc2c4c8d4da3",
   "services/api/prisma/task12-upward-projection-forward.test.cjs": "75d19e9b91dd8b706f978c3a5d2c0127e9f7a0b9d0310a8c6f0e6574c42cf91d",
-  "services/api/src/contract-template/template-management.test-support.ts": "f994b50127e7111f069aca028a34ad2e07dc6f1447ca0fdbc265afff68c1ce1e",
+  "services/api/src/contract-template/template-management.test-support.ts": "213fcdf195ae58218defb7ac9f01ea507923be36b9ec96404394210ac480d72b",
   "services/api/src/contract/contract-direct-outside-operating-executor-qualification.ts": "e8dfaed6e34613de8d9abe47fa5f450bcb837d08a861c60b4a461591c7a19bd1",
   "services/api/src/contract/contract-direct-pending-save.ts": "9bafb801dcfe561a5072a6fbc4d8ac890ce2f729a23d055e4828a082490ae48c",
   "services/api/src/contract/contract-direct-pending-source.ts": "99c929bf8d53f511fe65309b8cf9bcd776a1da04de15e78b58255a66c47e71e7",
