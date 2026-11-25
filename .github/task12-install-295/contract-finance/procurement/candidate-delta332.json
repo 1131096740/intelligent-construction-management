@@ -12,7 +12,7 @@
   {
     "path": "services/api/src/contract-template/template-management.test-support.ts",
     "expected": "a456d498881dddabcfbf987fa46ce69fb9b3f9c3e41f39d3ec7fc9758da5852f",
-    "candidate": "03f0a6360cf7cd2a806e3cb1bf7a5a5933d1e8c1cd6a57f8568bad066fbfca4b"
+    "candidate": "e407d448a0031442d5b4e2306b8bed59bf85ee3a44e97be49d94b3320df16ed5"
   },
   {
     "path": "services/api/src/contract/contract-direct-outside-operating-executor-qualification.ts",
