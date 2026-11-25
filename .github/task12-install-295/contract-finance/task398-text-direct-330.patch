@@ -36,8 +36,7 @@
 @@ -330 +356 @@
 -  const selection=standard290?["--json","--outputFile",reportFile]:[];
 +  const selection=standard290||textDirectFinance?["--json","--outputFile",reportFile]:[];
-@@ -338,0 +365,8 @@
-+  }
+@@ -339,0 +366,8 @@
 +  if(textDirectFinance){
 +   const report=JSON.parse(readFileSync(reportFile,"utf8"));
 +   const rows=report.testResults?.flatMap(suite=>suite.assertionResults)??[];
@@ -45,6 +44,7 @@
 +      rows.length!==1||rows[0].status!=="passed"||rows[0].title!=="records a two-part text agreement payment with original replay, real refund and repayment")
 +    throw Error("TASK425_TEXT_FINANCE_COVERAGE");
 +   textDirectReceipt.finance={passed:1,skipped:0};
++  }
 @@ -350 +384,18 @@
 -  if(current280)writeFileSync(path.join(privateLogDir,"owned-postgresql.log"),readPostgresLog(),{mode:0o600,flag:"wx"});
 +  if(current280){
@@ -67,19 +67,22 @@
 +  }
 @@ -488 +539 @@
 - const modes=new Map([["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
-+ const modes=new Map([["text-direct-330",["--text-direct-finance"]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
-@@ -490,0 +542,2 @@
++ const modes=new Map([["text-direct-330",["--text-direct-finance"]],["standard-330",[]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+@@ -490,0 +542,5 @@
 + const textDirect=mode==="text-direct-330";
++ const standard330=mode==="standard-330";
++ if(standard330&&receipt?.purpose!=="TASK398_STANDARD_EXACT_330")throw Error("TASK398_STANDARD_330_SCOPE");
++ const current330=textDirect||standard330;
 + if(textDirect&&receipt?.purpose!=="TASK425_TEXT_DIRECT_FINANCE_330")throw Error("TASK425_TEXT_FINANCE_SCOPE");
-@@ -500 +553 @@
+@@ -500 +556 @@
 - if(candidateTree!==(standard320?receipt.forward320?.sourceTree:standard295?"67644d9465a0ab4ee80ede099139d9c129d66f14":(mode==="correction-catalog"||mode==="standard-290")?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
-+ if(candidateTree!==(standard320||textDirect?receipt.forward320?.sourceTree:standard295?"67644d9465a0ab4ee80ede099139d9c129d66f14":(mode==="correction-catalog"||mode==="standard-290")?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
-@@ -540,2 +593,2 @@
++ if(candidateTree!==(standard320||current330?receipt.forward320?.sourceTree:standard295?"67644d9465a0ab4ee80ede099139d9c129d66f14":(mode==="correction-catalog"||mode==="standard-290")?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
+@@ -540,2 +596,2 @@
 -   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==(standard320?329:standard295?295:(mode==="correction-catalog"||mode==="standard-290")?290:282)
 -   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(standard320?"3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2":standard295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||mode==="standard-290")?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
-+   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==(textDirect?330:standard320?329:standard295?295:(mode==="correction-catalog"||mode==="standard-290")?290:282)
-+   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(textDirect?"0e683661f4216f15039ae285aa100a82de66ed4c6e098d5ef4cca776839f3ccf":standard320?"3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2":standard295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||mode==="standard-290")?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
-@@ -557 +610,2 @@
++   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==(current330?330:standard320?329:standard295?295:(mode==="correction-catalog"||mode==="standard-290")?290:282)
++   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(current330?"0e683661f4216f15039ae285aa100a82de66ed4c6e098d5ef4cca776839f3ccf":standard320?"3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2":standard295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||mode==="standard-290")?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
+@@ -557 +613,2 @@
 -  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:standard320||standard295||mode==="standard-290"?receipt:undefined,ownedMigrationBaseline:{
-+  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:standard320||standard295||mode==="standard-290"?receipt:undefined,
++  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:standard330||standard320||standard295||mode==="standard-290"?receipt:undefined,
 +  textDirectReceipt:textDirect?receipt:undefined,ownedMigrationBaseline:{

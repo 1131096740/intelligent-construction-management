@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 ]] || exit 64
+[[ $# == 4 || ( $# == 5 && $5 == standard-330 ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -18,6 +18,14 @@ count=$(node -e '
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
   console.log(count);
 ' "$prepared/source.json" "$sha")
+variant_args=()
+purpose=TASK398_STANDARD_EXACT_$count
+if [[ ${5-} == standard-330 ]]; then
+  [[ $count == 330 ]] || exit 64
+  variant_args=(standard-330)
+elif [[ $count == 330 ]]; then
+  purpose=TASK425_TEXT_DIRECT_FINANCE_330
+fi
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -38,7 +46,7 @@ if [[ $count == 330 ]]; then
   runner_sha() { node -e 'const fs=require("node:fs"),{createHash}=require("node:crypto"); console.log(createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$runner"; }
   [[ $(runner_sha) == 08bacc09e2870c23bc4e73ff5d6473ae1a64c005d3ed92790713609406369b96 ]] || exit 65
   patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-text-direct-330.patch"
-  [[ $(runner_sha) == 61bb416a19b3344a3618a2d3e3922f274957dfad72081eda47abf83de62c005c ]] || exit 65
+  [[ $(runner_sha) == 3d6a765062ed345fcceb5857ba4f3dec2867421b37cbffdc61f0f60ccec50133 ]] || exit 65
 fi
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
@@ -62,17 +70,17 @@ done
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 exit_code=0
-docker run "${args[@]}" --entrypoint node "$image" /qualification/task398-standard-entry.cjs   > "$work/private.stdout" 2> "$work/private.stderr" || exit_code=$?
+docker run "${args[@]}" --entrypoint node "$image" /qualification/task398-standard-entry.cjs ${variant_args[@]+"${variant_args[@]}"} > "$work/private.stdout" 2> "$work/private.stderr" || exit_code=$?
 tail -n 1 "$work/private.stdout" > "$work/receipt.json"
 node -e '
   const row=require(process.argv[1]);
-  const purpose=process.argv[3]==="330"?"TASK425_TEXT_DIRECT_FINANCE_330":"TASK398_STANDARD_EXACT_"+process.argv[3];
+  const purpose=process.argv[3];
   if(row.purpose!==purpose||row.sourceSha!==process.argv[2])process.exit(1);
   console.log(JSON.stringify(row));
-' "$work/receipt.json" "$sha" "$count" || { printf 'TASK398_STANDARD_295_NO_RECEIPT %s\n' "$work" >&2; exit 1; }
+' "$work/receipt.json" "$sha" "$purpose" || { printf 'TASK398_STANDARD_295_NO_RECEIPT %s\n' "$work" >&2; exit 1; }
 (( exit_code == 0 )) || exit "$exit_code"
 node -e '
   const proof=require(process.argv[1]);
-  const expected=(process.argv[4]==="330"?"TASK425_TEXT_DIRECT_FINANCE_330":"TASK398_STANDARD_EXACT_"+process.argv[4])+"_PASSED";
-  if(proof.status!==expected||proof.sourceSha!==process.argv[3])process.exit(1);
-' "$work/receipt.json" "$scope" "$sha" "$count"
+  const expected=process.argv[3]+"_PASSED";
+  if(proof.status!==expected||proof.sourceSha!==process.argv[2])process.exit(1);
+' "$work/receipt.json" "$sha" "$purpose"

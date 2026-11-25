@@ -5,13 +5,16 @@ const {sourceSha} = source;
 const current320=source.mode==='current-320';
 const textDirect=source.mode==='text-direct-330';
 const count=textDirect?330:current320?329:295;
+const standard330=process.argv[2]==='standard-330';
+assert.ok(process.argv.length===2||(process.argv.length===3&&textDirect&&standard330));
+const textFinance=textDirect&&!standard330;
 const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement} = require('./installer.cjs');
 const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run-task398-shared-standard-local.cjs');
 
-const receipt = {schemaVersion:1,sourceSha,purpose:textDirect?'TASK425_TEXT_DIRECT_FINANCE_330':'TASK398_STANDARD_EXACT_'+count,business:'NOT_ENTERED',stages:[]};
+const receipt = {schemaVersion:1,sourceSha,purpose:textFinance?'TASK425_TEXT_DIRECT_FINANCE_330':'TASK398_STANDARD_EXACT_'+count,business:'NOT_ENTERED',stages:[]};
 async function run(){
   assert.equal(source.migrationCount,count);
-  const consume=context=>runTask398Owned282Voucher(context,textDirect?'text-direct-330':'standard-'+count,receipt);
+  const consume=context=>runTask398Owned282Voucher(context,textFinance?'text-direct-330':'standard-'+count,receipt);
   if(current320||textDirect){
     assert.equal(source.predecessor.ledgerSha256,require('./multi-witness.cjs').final);
     const install=textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
@@ -28,9 +31,11 @@ async function run(){
   assert.equal(receipt.installOnly295?.count,295);
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   if(textDirect){
-    assert.deepEqual(receipt.finance,{passed:1,skipped:0});
     assert.equal(receipt.textDirectPredecessor?.count,329);
     assert.equal(receipt.textDirectPredecessor?.sameBaseB7,true);
+  }
+  if(textFinance){
+    assert.deepEqual(receipt.finance,{passed:1,skipped:0});
   }else{
     assert.deepEqual(receipt.original,{business:1,passed:8,skipped:0});
   }
