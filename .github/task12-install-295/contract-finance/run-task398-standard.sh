@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == standard-330 || $5 == ledger-loss-330 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == standard-330 || $5 == ledger-loss-330 || $5 == ledger-loss-331 ) ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -14,7 +14,7 @@ scope=task398-standard
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const count=source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
   console.log(count);
 ' "$prepared/source.json" "$sha")
@@ -23,10 +23,12 @@ purpose=TASK398_STANDARD_EXACT_$count
 if [[ ${5-} == standard-330 ]]; then
   [[ $count == 330 ]] || exit 64
   variant_args=(standard-330)
-elif [[ ${5-} == ledger-loss-330 ]]; then
-  [[ $count == 330 ]] || exit 64
-  variant_args=(ledger-loss-330)
-  purpose=TASK398_LEDGER_LOSS_EXACT_330
+elif [[ ${5-} == ledger-loss-330 || ${5-} == ledger-loss-331 ]]; then
+  [[ $5 == "ledger-loss-$count" ]] || exit 64
+  variant_args=("$5")
+  purpose=TASK398_LEDGER_LOSS_EXACT_$count
+elif [[ $count == 331 ]]; then
+  exit 64
 elif [[ $count == 330 ]]; then
   purpose=TASK425_TEXT_DIRECT_FINANCE_330
 fi
@@ -42,22 +44,26 @@ python3 "$plan/stage-task398-standard.py" \
 overlay_files=()
 while IFS= read -r file; do overlay_files+=("$file"); done < "$work/overlay-files.txt"
 [[ ${#overlay_files[@]} == 6 ]] || exit 65
-if [[ $count == 329 || $count == 330 ]]; then
+if [[ $count == 329 || $count == 330 || $count == 331 ]]; then
   patch --batch --forward --fuzz=0 --silent "$work/services/api/prisma/run-task398-shared-standard-local.cjs" < "$plan/task398-standard-320.patch"
 fi
-if [[ $count == 330 ]]; then
+if [[ $count == 330 || $count == 331 ]]; then
   runner="$work/services/api/prisma/run-task398-shared-standard-local.cjs"
   runner_sha() { node -e 'const fs=require("node:fs"),{createHash}=require("node:crypto"); console.log(createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$runner"; }
   [[ $(runner_sha) == 08bacc09e2870c23bc4e73ff5d6473ae1a64c005d3ed92790713609406369b96 ]] || exit 65
   patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-text-direct-330.patch"
   [[ $(runner_sha) == 2a38871242e820e1164c3a68ca1373795dc05adf14a147500ec981e06a403b97 ]] || exit 65
-  if [[ ${5-} == ledger-loss-330 ]]; then
+  if [[ ${5-} == ledger-loss-330 || ${5-} == ledger-loss-331 ]]; then
     spec="$work/services/api/src/database/task16-shared-standard.http.pg.spec.ts"
     [[ $(sha256sum "$spec" | cut -d' ' -f1) == e70aa4d7364f7232f694881bb96fce88bfa57a89bd24fc6f527b4d85dfa6b901 ]] || exit 65
     patch --batch --forward --fuzz=0 --silent "$spec" < "$plan/task398-commit-fault-330.patch"
     [[ $(sha256sum "$spec" | cut -d' ' -f1) == 4f374450ef008d745d67807529521d36b1d6a598a60dc5b161804b626b183b78 ]] || exit 65
     patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-330.patch"
     [[ $(runner_sha) == d21d72c39d6a3baead9ff149607b4cdac607b13ce0c810508997f44c3278c50d ]] || exit 65
+    if [[ $count == 331 ]]; then
+      patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-331.patch"
+      [[ $(runner_sha) == af42b4c2fb8489cd6560b8dfb2775f4880ed806730e9e00d36073ebd1bb89b29 ]] || exit 65
+    fi
   fi
 fi
 

@@ -1,0 +1,43 @@
+--- runner
++++ runner
+@@ -538,15 +538,16 @@
+  `);
+ }
+ async function runTask398Owned282Voucher(context, mode="standard", receipt){
+- const modes=new Map([["text-direct-330",["--text-direct-finance"]],["standard-330",[]],["ledger-loss-330",["--ledger-loss-real"]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["text-direct-330",["--text-direct-finance"]],["standard-330",[]],["ledger-loss-330",["--ledger-loss-real"]],["ledger-loss-331",["--ledger-loss-real"]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+  const standard295=mode==="standard-295";
+  const standard320=mode==="standard-329";
+  const textDirect=mode==="text-direct-330";
+- const ledgerLoss330=mode==="ledger-loss-330";
++ const ledgerLoss331=mode==="ledger-loss-331";
++ const ledgerLoss=ledgerLoss331||mode==="ledger-loss-330";
+  const standard330=mode==="standard-330";
+- if(ledgerLoss330&&receipt?.purpose!=="TASK398_LEDGER_LOSS_EXACT_330")throw Error("TASK398_LEDGER_LOSS_330_SCOPE");
++ if(ledgerLoss&&receipt?.purpose!==`TASK398_LEDGER_LOSS_EXACT_${ledgerLoss331?331:330}`)throw Error("TASK398_LEDGER_LOSS_SCOPE");
+  if(standard330&&receipt?.purpose!=="TASK398_STANDARD_EXACT_330")throw Error("TASK398_STANDARD_330_SCOPE");
+- const current330=textDirect||standard330||ledgerLoss330;
++ const current330=textDirect||standard330||ledgerLoss;
+  if(textDirect&&receipt?.purpose!=="TASK425_TEXT_DIRECT_FINANCE_330")throw Error("TASK425_TEXT_FINANCE_SCOPE");
+  if(standard320&&receipt?.purpose!=="TASK398_STANDARD_EXACT_329") throw Error("TASK398_STANDARD_320_SCOPE");
+  if(standard295&&receipt?.purpose!=="TASK398_STANDARD_EXACT_295") throw Error("TASK398_STANDARD_295_SCOPE");
+@@ -597,8 +598,8 @@
+  `));
+  const ledger=readback.ledger.map(row=>({name:row.name,sha256:row.sha256,finished:true,rolledBack:false}));
+  if(readback.database!==database||readback.actor!=="jg_task01_owner"||readback.ownerOid!=="10"
+-   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==(current330?330:standard320?329:standard295?295:(mode==="correction-catalog"||mode==="standard-290")?290:282)
+-   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(current330?"12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f":standard320?"3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2":standard295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||mode==="standard-290")?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
++   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==(ledgerLoss331?331:current330?330:standard320?329:standard295?295:(mode==="correction-catalog"||mode==="standard-290")?290:282)
++   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(ledgerLoss331?"0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014":current330?"12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f":standard320?"3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2":standard295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||mode==="standard-290")?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
+  const protectedExec=await snapshotOwned280CashProfile(sql,fences);
+  const storage=mkdtempSync(path.join(workDir,"cash-storage-"));
+  chmodSync(storage,0o700);
+@@ -614,7 +615,7 @@
+    ${options.handoverScenario?owned282CashHandoverSql:""}
+  `);
+  const catalog=await runBusiness(options,{candidate,short,storage,url,sql,env,current280:true,readPostgresLog,
+-  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:ledgerLoss330||standard330||standard320||standard295||mode==="standard-290"?receipt:undefined,
++  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:ledgerLoss||standard330||standard320||standard295||mode==="standard-290"?receipt:undefined,
+   textDirectReceipt:textDirect?receipt:undefined,ownedMigrationBaseline:{
+   expectedDirectoryCount:282,terminalMigration:"20261118231000_registered_payment_voucher_fixed_read",
+   terminalMigrationChecksum:"e1ff36a191e8173a2cf06db3c20aa386db58360bfceba39eed010f9444da196e"
