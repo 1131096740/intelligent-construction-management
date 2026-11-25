@@ -186,7 +186,7 @@ function grantApplication(sql, database, app, appPassword) {
     "GRANT CONNECT ON DATABASE " + identifier(database) + " TO " + role + ";" +
     "GRANT USAGE ON SCHEMA public TO " + role + ";" + grant("SELECT", reads) +
     Object.entries(writes).map(([privilege, names]) => grant(privilege, names)).join("") +
-    'GRANT UPDATE ("signatureFileId") ON public."User" TO ' + role + ";" +
+    'GRANT UPDATE ("lastLoginAt", "signatureFileId") ON public."User" TO ' + role + ";" +
     "COMMIT;");
 }
 
