@@ -17359,10 +17359,22 @@ function provePrincipalReturnPageAction({ action, wrapper, context }) {
 const DUTY_SMS_PANEL = `${WEB_SOURCE_ROOT}/components/DutySmsStatusPanel.vue`;
 const DUTY_SMS_API = `${WEB_SOURCE_ROOT}/api/duty-sms.api.ts`;
 const DUTY_SMS_ACTION = "duty-sms.retry";
+const APPROVAL_PROGRESS_PANEL = `${WEB_SOURCE_ROOT}/components/ApprovalProgressPanel.vue`;
+const APPROVAL_PROGRESS_SMS_CONTROLLER = "services/api/src/approval/approval-progress.controller.ts";
+const APPROVAL_PROGRESS_SMS_SERVICE = "services/api/src/approval/approval-transition-notification.service.ts";
+const APPROVAL_PROGRESS_SERVICE = "services/api/src/approval/approval-progress.service.ts";
+const EXPENSE_APPROVAL_SMS_CONTROLLER = "services/api/src/expense-claim/expense-claim.controller.ts";
+const EXPENSE_APPROVAL_SMS_SERVICE = "services/api/src/expense-claim/expense-claim-funding-notification.service.ts";
+const APPROVAL_SMS_AUTHORITIES = {
+  "approval-progress": [APPROVAL_PROGRESS_SMS_CONTROLLER, "ApprovalProgressController", "dutySmsStatus", "retryDutySms"],
+  "expense-claim-approvals": [EXPENSE_APPROVAL_SMS_CONTROLLER, "ExpenseClaimController", "approvalDutySmsStatus", "retryApprovalDutySms"]
+};
 const DUTY_SMS_DOMAINS = [
+  ["approval-progress"],
   ["contract-bank-verifications", "components/ContractBankVerificationPanel.vue", "r.id"],
   ["contract-economic-reviews", "components/ContractEconomicReviewPanel.vue", "r.id"],
   ["contract-proxy-executions", "components/ContractProxyExecutionPanel.vue", "entry.id"],
+  ["expense-claim-approvals"],
   ["expense-claims", "pages/expense-claims/ExpenseClaimDetailPage.vue", "detail.id"],
   ["fund-account-transfers", "pages/funds/FundAccountTransfers.vue", "transfer.id"],
   ["fund-accounts/principal-returns", "pages/funds/FundPrincipalReturns.vue", "application.id"],
@@ -17378,13 +17390,13 @@ const DUTY_SMS_DOMAINS = [
 const PAYMENT_SMS_CONTROLLER = "services/api/src/payment/registered-payment-execution.controller.ts";
 const PAYMENT_SMS_SERVICE = "services/api/src/payment/registered-payment-notification.service.ts";
 
-async function dutySmsMethods(root, file) {
+async function dutySmsMethods(root, file, { definitions = false } = {}) {
   const ast = parseSource(file, await readFile(resolve(root, file), "utf8"));
   const methods = new Map();
   walkEstree(ast, node => {
     const name = node.type === "MethodDefinition" && !node.computed && node.key.type === "Identifier" ? node.key.name :
       node.type === "FunctionDeclaration" ? node.id?.name : null;
-    if (name) methods.set(name, methods.has(name) ? null : (node.value ?? node).body);
+    if (name) methods.set(name, methods.has(name) ? null : definitions ? node : (node.value ?? node).body);
   });
   return methods;
 }
@@ -17763,7 +17775,8 @@ const PRINCIPAL_SMS_SERVICE = "services/api/src/fund-account/fund-principal-retu
 function dutySmsRoute(method, [domain, , , scope = ""], suffix = "") {
   const path = domain === PRINCIPAL_SMS_DOMAIN
     ? "/fund-accounts/principal-returns/applications/:param/duty-sms/:param"
-    : `/${domain}/:param${scope}/duty-sms`;
+    : domain === "expense-claim-approvals" ? "/expense-claims/:param/approval-duty-sms"
+      : `/${domain}/:param${scope}/duty-sms`;
   return `${method} ${path}${suffix}`;
 }
 
@@ -17806,6 +17819,222 @@ async function principalDutySmsAuthorityIsProven(root) {
   } catch { return false; }
 }
 
+function proveApprovalProgressSmsConsumers(context) {
+  const ast = context.asts.get(APPROVAL_PROGRESS_PANEL);
+  if (!ast) return false;
+  const symbols = buildSymbolContext(ast, APPROVAL_PROGRESS_PANEL, context.sourceFileSet);
+  const bindings = topLevelScopeVariables(symbols.scopeManager, "DutySmsStatusPanel");
+  const imported = bindings.length === 1 && symbols.importsByBinding.get(bindings[0]);
+  if (imported?.kind !== "default" || imported.sourceFile !== DUTY_SMS_PANEL ||
+      !directRegistrationExpression(fundAdvanceNode(symbols, "transitionSmsTypes"), `new Set([
+        "project_expense_request", "project_financing_quota", "project_settlement_exception_quota", "fund_execution_case"
+      ])`) ||
+      !directRegistrationExpression(fundAdvanceNode(symbols, "correctionStatuses"), 'new Set(["rejected", "returned", "returned_to_applicant"])') ||
+      !directRegistrationExpression(fundAdvanceNode(symbols, "auth"), "useAuthStore()") ||
+      !directRegistrationMatches(fundAdvanceNode(symbols, "isOwnPendingDuty"), `function isOwnPendingDuty(flow: ApprovalProgress, node: ApprovalProgress["nodes"][number]) {
+        return !flow.viewerOnly && flow.canHandle && node.pending.some(person => person.id === auth.user?.id);
+      }`) ||
+      !directRegistrationMatches(fundAdvanceNode(symbols, "isOwnCorrection"), `function isOwnCorrection(flow: ApprovalProgress) {
+        return !flow.viewerOnly && correctionStatuses.has(flow.status) && flow.applicant.id === auth.user?.id;
+      }`)) return false;
+  const instances = [];
+  walkEstree(ast.templateBody, (node) => {
+    if (node.type === "VElement" && node.rawName === "DutySmsStatusPanel") instances.push(node);
+  });
+  const expected = [
+    ["expense-claim-approvals", "flow.businessId", "flow.id", "String(index)", "flow.businessType === 'expense_claim' && isOwnPendingDuty(flow, node)", true],
+    ["approval-progress", "flow.id", null, null, "transitionSmsTypes.has(flow.businessType) && index === flow.currentNodeIndex && isOwnPendingDuty(flow, node)", true],
+    ["expense-claim-approvals", "flow.businessId", "flow.id", null, "flow.businessType === 'expense_claim' && isOwnCorrection(flow)", false],
+    ["approval-progress", "flow.id", null, null, "transitionSmsTypes.has(flow.businessType) && isOwnCorrection(flow)", false]
+  ];
+  return instances.length === expected.length && expected.every(([domain, id, round, duty, guard, insideNode], i) => {
+    const instance = instances[i];
+    const attrs = instance.startTag.attributes;
+    const matchesBinding = (name, expression) => {
+      const bound = directiveExpression(elementDirective(instance, "bind", name));
+      return !attrs.some(attr => !attr.directive && attr.key.name === name) &&
+        (expression ? directRegistrationExpression(bound, expression) : !bound);
+    };
+    const loops = [];
+    for (let parent = instance.parent; parent; parent = parent.parent) {
+      const expression = directiveExpression(elementDirective(parent, "for"));
+      if (expression?.type === "VForExpression") loops.push(expression);
+    }
+    const flow = loops.at(-1);
+    const node = insideNode ? loops[0] : null;
+    return attrs.find(attr => !attr.directive && attr.key.name === "domain")?.value?.value === domain &&
+      !elementDirective(instance, "bind", "domain") &&
+      directRegistrationExpression(directiveExpression(elementDirective(instance, "if")), guard) &&
+      matchesBinding("business-id", id) && matchesBinding("expected-approval-instance-id", round) &&
+      matchesBinding("duty-key", duty) &&
+      loops.length === (insideNode ? 2 : 1) && flow.left.map(binding => binding.name).join() === "flow" &&
+      directRegistrationExpression(flow.right, "flows") &&
+      (!insideNode || (node.left.map(binding => binding.name).join() === "node,index" &&
+        directRegistrationExpression(node.right, "flow.nodes")));
+  });
+}
+
+async function approvalSmsAuthorityIsProven(root) {
+  try {
+    const [approvalController, expenseController, transition, expense, progress, delivery] = await Promise.all([
+      dutySmsMethods(root, APPROVAL_PROGRESS_SMS_CONTROLLER, { definitions: true }),
+      dutySmsMethods(root, EXPENSE_APPROVAL_SMS_CONTROLLER, { definitions: true }),
+      ...[APPROVAL_PROGRESS_SMS_SERVICE, EXPENSE_APPROVAL_SMS_SERVICE, APPROVAL_PROGRESS_SERVICE, AUDIT_SMS_DELIVERY]
+        .map(file => dutySmsMethods(root, file))
+    ]);
+    const handlersMatch = (controller, source) => {
+      const handlers = parseSource("approval-sms-proof.ts", `class Proof { ${source} }`).body[0].body.body;
+      return handlers.every(handler => directRegistrationAstShape(controller.get(handler.key.name)) === directRegistrationAstShape(handler));
+    };
+    if (!handlersMatch(approvalController, `
+      @Get(":instanceId/duty-sms")
+      async dutySmsStatus(@Param("instanceId") id: string, @CurrentUser() user: AuthenticatedUser) {
+        return { notice: await this.notifications?.status(id, user.id) ?? null };
+      }
+      @Post(":instanceId/duty-sms/retry")
+      retryDutySms(@Param("instanceId") id: string, @CurrentUser() user: AuthenticatedUser, @Body() input: RetryDutyNotificationDto) {
+        if (!this.notifications) throw new BadRequestException("短信通知暂不可用");
+        return this.notifications.retry(id, user.id, input.attemptId);
+      }
+    `) || !handlersMatch(expenseController, `
+      @Get(":claimId/approval-duty-sms")
+      async approvalDutySmsStatus(
+        @Param("claimId") id: string, @CurrentUser() user: AuthenticatedUser,
+        @Query("approvalDutyIndex", approvalDutyIndexPipe) approvalDutyIndex?: number,
+        @Query("approvalInstanceId") approvalInstanceId?: string
+      ) {
+        this.assertApprovalSmsCoordinates(approvalDutyIndex, approvalInstanceId);
+        return { notice: await this.dutyNotifications?.approvalStatus(id, user.id, approvalDutyIndex, approvalInstanceId) ?? null };
+      }
+      @Post(":claimId/approval-duty-sms/retry")
+      retryApprovalDutySms(
+        @Param("claimId") id: string, @CurrentUser() user: AuthenticatedUser,
+        @Body() body: RetryDutyNotificationDto,
+        @Query("approvalDutyIndex", approvalDutyIndexPipe) approvalDutyIndex?: number,
+        @Query("approvalInstanceId") approvalInstanceId?: string
+      ) {
+        if (!this.dutyNotifications) throw new BadRequestException("短信通知暂不可用");
+        this.assertApprovalSmsCoordinates(approvalDutyIndex, approvalInstanceId);
+        return this.dutyNotifications.retryApproval(id, user.id, body.attemptId, approvalDutyIndex, approvalInstanceId);
+      }
+    `) ||
+        !auditDutyDeliveryAuthorityIsProven(delivery) ||
+        !directRegistrationMatches(transition.get("status"), "{ return auditDutyNoticeStatus(this.noticeAccess(), roundId, actorId); }") ||
+        !directRegistrationMatches(transition.get("retry"), `{
+          const result = await retryFailedAuditDutyNotice(this.noticeAccess(), roundId, actorId, attemptId);
+          if (result.enqueued) await this.afterCommit();
+          return (await this.status(roundId, actorId)) ?? result.status;
+        }`) ||
+        !directRegistrationMatches(transition.get("noticeAccess"), `{
+          return {
+            prisma: this.prisma, sms: this.sms, kind,
+            lockDuty: (tx: Prisma.TransactionClient, id: string) => this.lockRound(tx, id),
+            currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => this.currentMessage(tx, intent)
+          };
+        }`) ||
+        !directRegistrationMatches(transition.get("currentMessage"), `{
+          const data = intent.metadata as Prisma.JsonObject | null;
+          if (!intent.businessId || typeof data?.recipientId !== "string" ||
+              (data.duty !== "correction" && typeof data.duty !== "number")) return null;
+          const duties = await this.progress.transitionSmsDuties(tx, intent.businessId, data.duty === "correction");
+          const user = duties.find(row => row.duty === data.duty)?.recipients.find(row => row.id === data.recipientId);
+          return user ? { phone: user.phone ?? "" } : null;
+        }`) ||
+        !directRegistrationMatches(expense.get("approvalStatus"), `{
+          return auditDutyNoticeStatus(this.approvalNoticeAccess(approvalDutyIndex, approvalInstanceId), id, actorId);
+        }`) ||
+        !directRegistrationMatches(expense.get("retryApproval"), `{
+          const result = await retryFailedAuditDutyNotice(this.approvalNoticeAccess(approvalDutyIndex, approvalInstanceId), id, actorId, attemptId);
+          if (result.enqueued) await this.afterCommit();
+          return (await this.approvalStatus(id, actorId, approvalDutyIndex, approvalInstanceId)) ?? result.status;
+        }`) ||
+        !directRegistrationMatches(expense.get("approvalNoticeAccess"), `{
+          const scope: Record<string, string | number> = {};
+          if (approvalInstanceId !== undefined) scope.approvalInstanceId = approvalInstanceId;
+          if (approvalDutyIndex !== undefined) scope.approvalDutyIndex = approvalDutyIndex;
+          else if (approvalInstanceId !== undefined) scope.duty = "correction";
+          return {
+            prisma: this.prisma, sms: this.sms, kind: approvalKind, scope,
+            lockDuty: (tx: Prisma.TransactionClient, id: string) => this.lockDuty(tx, id),
+            currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => this.currentApprovalMessage(tx, intent)
+          };
+        }`)) return false;
+    const statementsMatch = (body, expected) => {
+      let position = -1;
+      return expected.every(statement => {
+        position = body.findIndex((node, index) => index > position && directRegistrationMatches(node, statement));
+        return position >= 0;
+      });
+    };
+    const resolveExpense = expense.get("currentApprovalMessage")?.body ?? [];
+    const correction = resolveExpense.find(node => node.type === "IfStatement" &&
+      directRegistrationExpression(node.test, 'data?.duty === "correction"'))?.consequent?.body ?? [];
+    const retry = delivery.get("retryFailedAuditDutyNotice")?.body?.[0]?.argument?.arguments?.[0]?.body?.body ?? [];
+    return directRegistrationMatches(delivery.get("currentAuditDutyAttempt"), `{
+      const {kind, scope} = access;
+      const rows = await tx.$queryRaw<AuditLog[]>(Prisma.sql\`
+    SELECT queued.* FROM "AuditLog" queued
+    WHERE queued."businessType" = \${kind} AND queued."businessId" = \${businessId}
+      AND queued."action" = 'queued' AND queued."metadata"->>'recipientId' = \${actorId}
+      \${scope ? Prisma.sql\`AND queued."metadata" @> \${JSON.stringify(scope)}::jsonb\` : Prisma.empty}
+      AND NOT EXISTS (SELECT 1 FROM "AuditLog" retry
+        WHERE retry."businessType" = queued."businessType" AND retry."businessId" = queued."businessId"
+          AND retry."action" = 'queued' AND retry."metadata"->>'retryOf' = queued."id")
+    ORDER BY queued."createdAt" DESC, queued."id" DESC LIMIT 1
+  \`);
+      return rows[0];
+    }`) &&
+      statementsMatch(delivery.get("readAuditDutyStatus")?.body ?? [], [
+        'const status = outcome === "failed" || outcome === "unknown" || outcome === "accepted" || outcome === "cancelled" ? outcome : events.length ? "unknown" : "queued";',
+        'return { attemptId: attempt.id, status, canRetry: available && status === "failed" };'
+      ]) &&
+      staticMemberPath(retry[8]?.declarations?.[0]?.init?.argument?.callee) === "tx.auditLog.createMany" &&
+      statementsMatch(retry.slice(0, 8), [
+        "await access.lockDuty(tx, businessId);",
+        "const attempt = await currentAuditDutyAttempt(tx, access, businessId, actorId);",
+        `if (!attempt || !await canAccessNotice(access, tx, attempt)) {
+          throw new ConflictException("当前待办或短信记录已变化，请刷新");
+        }`,
+        "const status = await readAuditDutyStatus(tx, access.kind, attempt, access.sms.available());",
+        'if (!status.canRetry) throw new ConflictException("仅确认发送失败的短信可以重试");'
+      ]) &&
+      statementsMatch(progress.get("transitionSmsDuties")?.body ?? [], [
+        'if (!round || !Object.hasOwn(flowTypes, round.businessType) || flowTypes[round.businessType] !== round.flowType) return [];',
+        'if (latest?.id !== id) return [];',
+        'if (ctx.retiredReminderReason || !("status" in ctx.business) || (ctx.business.projectId && !ctx.project?.isActive)) return [];',
+        `if (correction) {
+          const action = fundExecution ? "return_to_applicant" : "reject";
+          if (!ctx.logs.some(log => log.action === action)) return [];
+          const applicant = ctx.byId.get(round.applicantUserId);
+          return applicant?.isActive ? [{ duty: "correction", recipients: [applicant] }] : [];
+        }`,
+        `return activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex).map(duty => ({
+          duty, recipients: ctx.currentPendingByDuty?.[duty] ?? ctx.pending.filter(user => ctx.nodeIds[duty]?.includes(user.id))
+        }));`
+      ]) &&
+      statementsMatch(correction, [
+        'if (!claim || claim.claimType === "loan" || claim.voidedAt || !["draft", "rejected"].includes(claim.status)) return null;',
+        `if (round?.id !== instanceId || round.applicantUserId !== recipientId ||
+          round.status !== (claim.status === "draft" ? "returned" : "rejected")) return null;`,
+        'return user?.isActive ? { phone: user.phone ?? "" } : null;'
+      ]) &&
+      statementsMatch(resolveExpense, [
+        `if (!claim || !supportsExpenseParallelApproval(claim) || claim.voidedAt ||
+          claim.status !== "approval_pending" || claim.approvalInstanceId !== instanceId) return null;`,
+        `if (round?.status !== "in_progress" || round.businessId !== claim.id || round.businessType !== "expense_claim" ||
+          round.flowType !== "expense_claim.approve" || !isParallelApprovalRound(nodes) ||
+          !activeApprovalNodeIndexes(nodes, 0).includes(nodeIndex)) return null;`,
+        "if (!user?.isActive) return null;",
+        "const roleScopes = await loadExpenseApprovalRoleScopes(tx, recipientId, claim.projectId);",
+        "const identity = resolveExpenseParallelDutyIdentity({ node, actorUserId: recipientId, actorRoleScopes: roleScopes });",
+        "if (!identity) return null;",
+        "if (claim.projectId && !project?.isActive) return null;"
+      ]);
+  } catch {
+    return false;
+  }
+}
+
 function proveDutySmsRetry({ action, wrapper, context }) {
   const keys = (method, suffix) => DUTY_SMS_DOMAINS.map(row => dutySmsRoute(method, row, suffix));
   if (action.id !== DUTY_SMS_ACTION || action.sourceFile !== DUTY_SMS_PANEL ||
@@ -17834,7 +18063,7 @@ function proveDutySmsRetry({ action, wrapper, context }) {
       }`) ||
       !directRegistrationMatches(refresh, `async function refresh() {
         const request = ++generation;
-        const next = await fetchDutySms(props.domain, props.businessId, props.dutyKey).catch(() => null);
+        const next = await fetchDutySms(props.domain, props.businessId, props.dutyKey, props.expectedApprovalInstanceId).catch(() => null);
         if (request === generation) notice.value = next;
       }`) ||
       importedWrapperCalls([retry], wrapper, context).length !== 1) return null;
@@ -17854,21 +18083,33 @@ function proveDutySmsRetry({ action, wrapper, context }) {
       importedWrapperCalls([refresh], read, context).length !== 1) return null;
   const readerAst = context.asts.get(DUTY_SMS_API);
   if (!readerAst) return null;
-  const reader = fundAdvanceNode(buildSymbolContext(readerAst, DUTY_SMS_API, context.sourceFileSet), "fetchDutySms");
-  if (!directRegistrationMatches(reader, `async function fetchDutySms(domain: DutySmsDomain, id: string, dutyKey?: string): Promise<DutySmsStatus | null> {
-    const response = await apiFetch(path(domain, id, dutyKey));
+  const apiSymbols = buildSymbolContext(readerAst, DUTY_SMS_API, context.sourceFileSet);
+  const reader = fundAdvanceNode(apiSymbols, "fetchDutySms");
+  if (!directRegistrationMatches(reader, `async function fetchDutySms(domain: DutySmsDomain, id: string, dutyKey?: string, expectedApprovalInstanceId?: string): Promise<DutySmsStatus | null> {
+    const response = await apiFetch(domain === "expense-claim-approvals"
+      ? \`/expense-claims/\${encodeURIComponent(id)}/approval-duty-sms?\${expenseApprovalScope(expectedApprovalInstanceId, dutyKey)}\`
+      : path(domain, id, dutyKey));
     if (!response.ok) return null;
     return ((await response.json()) as { notice: DutySmsStatus | null }).notice;
-  }`)) return null;
-  const writer = fundAdvanceNode(buildSymbolContext(readerAst, DUTY_SMS_API, context.sourceFileSet), "retryDutySms");
+  }`) ||
+      !directRegistrationMatches(fundAdvanceNode(apiSymbols, "expenseApprovalScope"), `function expenseApprovalScope(expectedApprovalInstanceId?: string, dutyKey?: string) {
+        if (!expectedApprovalInstanceId) throw new Error("当前费用审批轮次无法确认，请刷新状态");
+        const scope = new URLSearchParams({ approvalInstanceId: expectedApprovalInstanceId });
+        if (dutyKey !== undefined) scope.set("approvalDutyIndex", dutyKey);
+        return scope.toString();
+      }`)) return null;
+  const writer = fundAdvanceNode(apiSymbols, "retryDutySms");
   if (!directRegistrationMatches(writer?.body?.body?.[0], `if (domain === "fund-accounts/registrations" && !expectedApprovalInstanceId) {
         throw new Error("当前余额复核轮次无法确认，请刷新状态");
       }`) ||
       !directRegistrationMatches(writer?.body?.body?.[1], 'const body = domain === "fund-accounts/registrations" ? { attemptId, expectedApprovalInstanceId } : { attemptId };') ||
-      !directRegistrationMatches(writer?.body?.body?.[2], `const response = await apiFetch(\`\${path(domain, id, dutyKey)}/retry\`, {
+      !directRegistrationMatches(writer?.body?.body?.[2], `const response = await apiFetch(domain === "expense-claim-approvals"
+        ? \`/expense-claims/\${encodeURIComponent(id)}/approval-duty-sms/retry?\${expenseApprovalScope(expectedApprovalInstanceId, dutyKey)}\`
+        : \`\${path(domain, id, dutyKey)}/retry\`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-      });`)) return null;
+      });`) || !proveApprovalProgressSmsConsumers(context)) return null;
   for (const [domain, relativeFile, id] of DUTY_SMS_DOMAINS) {
+    if (APPROVAL_SMS_AUTHORITIES[domain]) continue;
     const file = `${WEB_SOURCE_ROOT}/${relativeFile}`;
     const ast = context.asts.get(file);
     if (!ast) return null;
@@ -17928,7 +18169,7 @@ function proveDutySmsRetry({ action, wrapper, context }) {
   return { verified: true, kind: "duty_sms_retry", capabilityWitness: true, capabilitySources: new Set([readIdentity]), capabilitySourceFile: DUTY_SMS_PANEL };
 }
 
-function dutySmsReadAndWriteAuthoritiesMatch({ mutationBindings, webManifest, nestManifest, registeredPaymentSmsAuthority, fundTransferSmsAuthority, bankDutySmsAuthority, ledgerDutySmsAuthority, balanceDutySmsAuthority, paymentApprovalSmsAuthority, principalDutySmsAuthority }) {
+function dutySmsReadAndWriteAuthoritiesMatch({ mutationBindings, webManifest, nestManifest, registeredPaymentSmsAuthority, fundTransferSmsAuthority, bankDutySmsAuthority, ledgerDutySmsAuthority, balanceDutySmsAuthority, paymentApprovalSmsAuthority, principalDutySmsAuthority, approvalSmsAuthority }) {
   const readKeys = DUTY_SMS_DOMAINS.map(row => dutySmsRoute("GET", row));
   const association = { apiFile: DUTY_SMS_API, wrapper: "fetchDutySms", normalizedKeys: readKeys,
     productionConsumers: [DUTY_SMS_PANEL] };
@@ -17946,6 +18187,17 @@ function dutySmsReadAndWriteAuthoritiesMatch({ mutationBindings, webManifest, ne
     const read = index.get(key);
     const write = binding && index.get(binding.normalizedKey);
     const [domain] = DUTY_SMS_DOMAINS[i];
+    const approval = APPROVAL_SMS_AUTHORITIES[domain];
+    if (approval) {
+      const [file, controller, readHandler, writeHandler] = approval;
+      return approvalSmsAuthority && binding?.causalVerified && [key, binding.normalizedKey].every(
+        routeKey => nestRouteAssociationIsTrusted(nestManifest, routeKey)) &&
+        [[read, readHandler], [write, writeHandler]].every(([route, handler]) =>
+          route?.sourceFile === file && route.handler === handler &&
+          route.controller === controller && route.authentication === "authenticated" && !route.isPublic &&
+          route.guardAuthorization === "authenticated_only" && route.requiredProjectAction === null &&
+          route.authorizationCombination === null && !route.requiredPositions.length);
+    }
     const ledger = LEDGER_SMS_AUTHORITIES[domain];
     if (ledger) {
       const [file, controller] = ledger;
@@ -23208,6 +23460,8 @@ export async function inspectWholeSitePageActionManifest({
     await paymentApprovalSmsAuthorityIsProven(resolvedRoot);
   const principalDutySmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
     await principalDutySmsAuthorityIsProven(resolvedRoot);
+  const approvalSmsAuthority = registryActions.some(action => action.id === DUTY_SMS_ACTION) &&
+    await approvalSmsAuthorityIsProven(resolvedRoot);
   const contractDutySmsAuthority = registryActions.some(action => action.id === MULTI_SMS_ACTION) &&
     await contractDutySmsAuthorityIsProven(resolvedRoot);
   const companyDutySmsAuthority = registryActions.some(action => action.id === MULTI_SMS_ACTION) &&
@@ -23509,7 +23763,7 @@ export async function inspectWholeSitePageActionManifest({
     const dutySmsProofs = [...(capabilityContext.pipelineProofs?.values() ?? [])];
     const provenDutySmsAuthority = (action.id === DUTY_SMS_ACTION &&
       dutySmsProofs.some(proof => proof.kind === "duty_sms_retry") &&
-      dutySmsReadAndWriteAuthoritiesMatch({ mutationBindings, webManifest, nestManifest, registeredPaymentSmsAuthority, fundTransferSmsAuthority, bankDutySmsAuthority, ledgerDutySmsAuthority, balanceDutySmsAuthority, paymentApprovalSmsAuthority, principalDutySmsAuthority })) ||
+      dutySmsReadAndWriteAuthoritiesMatch({ mutationBindings, webManifest, nestManifest, registeredPaymentSmsAuthority, fundTransferSmsAuthority, bankDutySmsAuthority, ledgerDutySmsAuthority, balanceDutySmsAuthority, paymentApprovalSmsAuthority, principalDutySmsAuthority, approvalSmsAuthority })) ||
       (action.id === MULTI_SMS_ACTION && dutySmsProofs.some(proof => proof.kind === "multi_duty_sms_retry") &&
       multiDutySmsReadAndWriteAuthoritiesMatch({ mutationBindings, webManifest, nestManifest, contractDutySmsAuthority, companyDutySmsAuthority, generalProcurementDutySmsAuthority, spotProcurementDutySmsAuthority }));
     const capabilityProvenanceTrusted =

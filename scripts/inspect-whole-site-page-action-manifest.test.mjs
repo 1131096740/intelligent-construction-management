@@ -11156,14 +11156,23 @@ test("duty SMS retry needs the actual server attempt capability and the fixed do
   const principalController = "services/api/src/fund-account/fund-principal-return.controller.ts";
   const principalService = "services/api/src/fund-account/fund-principal-return-notification.service.ts";
   const principalSource = await readFile(principalService, "utf8");
-  const domains = ["contract-bank-verifications", "contract-economic-reviews", "contract-proxy-executions", "expense-claims", "fund-account-transfers", "fund-accounts/principal-returns", "fund-accounts/registrations", "payment-executions", "payments", "settlements", "spot-procurement-payments", "upward-contract-amount-revisions", "upward-receipt-matches"];
-  const routePaths = ["/结算管理/:settlementId", "/费用与报销/:claimId", "/零星材料付款/:paymentId", "/付款管理", "/资金账户", "/统一资金办理工作台", "/资金余额复核/:registrationId", "/付款管理/:paymentId", "/垫资本金归还/:applicationId", ...reviewConsumers.map(consumer => consumer[5])];
+  const approvalPanel = "apps/web-admin/src/components/ApprovalProgressPanel.vue";
+  const approvalPanelSource = await readFile(approvalPanel, "utf8");
+  const approvalCenter = "apps/web-admin/src/pages/approval-center/ApprovalCenterPage.vue";
+  const progressController = "services/api/src/approval/approval-progress.controller.ts";
+  const expenseController = "services/api/src/expense-claim/expense-claim.controller.ts";
+  const transitionService = "services/api/src/approval/approval-transition-notification.service.ts";
+  const expenseService = "services/api/src/expense-claim/expense-claim-funding-notification.service.ts";
+  const progressService = "services/api/src/approval/approval-progress.service.ts";
+  const expenseServiceSource = await readFile(expenseService, "utf8");
+  const domains = ["approval-progress", "contract-bank-verifications", "contract-economic-reviews", "contract-proxy-executions", "expense-claim-approvals", "expense-claims", "fund-account-transfers", "fund-accounts/principal-returns", "fund-accounts/registrations", "payment-executions", "payments", "settlements", "spot-procurement-payments", "upward-contract-amount-revisions", "upward-receipt-matches"];
+  const routePaths = ["/结算管理/:settlementId", "/费用与报销/:claimId", "/零星材料付款/:paymentId", "/付款管理", "/资金账户", "/统一资金办理工作台", "/资金余额复核/:registrationId", "/付款管理/:paymentId", "/垫资本金归还/:applicationId", ...reviewConsumers.map(consumer => consumer[5]), "/审批中心"];
   const parent = (domain, id) => `<script setup lang="ts">
     import DutySmsStatusPanel from "../../components/DutySmsStatusPanel.vue";
     </script><template><DutySmsStatusPanel domain="${domain}" :business-id="${id}" /></template>`;
   const names = ["fetchDutySms", "retryDutySms"];
   const routeSets = ["GET", "POST"].map(method => domains.map(domain =>
-    method + (domain === "fund-accounts/principal-returns" ? " /fund-accounts/principal-returns/applications/:param/duty-sms/:param" : ` /${domain}/:param${domain === "fund-accounts/registrations" ? "/review" : domain === "payments" ? "/approval" : ""}/duty-sms`) + (method === "POST" ? "/retry" : "")));
+    method + (domain === "fund-accounts/principal-returns" ? " /fund-accounts/principal-returns/applications/:param/duty-sms/:param" : domain === "expense-claim-approvals" ? " /expense-claims/:param/approval-duty-sms" : ` /${domain}/:param${domain === "fund-accounts/registrations" ? "/review" : domain === "payments" ? "/approval" : ""}/duty-sms`) + (method === "POST" ? "/retry" : "")));
   const source = await readFile(panel, "utf8");
   const root = await fixture({
     actions: [registryAction({
@@ -11181,6 +11190,16 @@ test("duty SMS retry needs the actual server attempt capability and the fixed do
       if (ledger) return {
         ...route(key), controller: ledger[3], sourceFile: `services/api/src/contract-ledger/${ledger[2]}.controller.ts`,
         handler: key.startsWith("GET ") ? "dutySms" : "retryDutySms", requiredProjectAction: null, guardAuthorization: "authenticated_only"
+      };
+      if (key.includes("/approval-progress/")) return {
+        ...route(key), controller: "ApprovalProgressController", sourceFile: progressController,
+        handler: key.startsWith("GET ") ? "dutySmsStatus" : "retryDutySms",
+        requiredProjectAction: null, guardAuthorization: "authenticated_only"
+      };
+      if (key.includes("/approval-duty-sms")) return {
+        ...route(key), controller: "ExpenseClaimController", sourceFile: expenseController,
+        handler: key.startsWith("GET ") ? "approvalDutySmsStatus" : "retryApprovalDutySms",
+        requiredProjectAction: null, guardAuthorization: "authenticated_only"
       };
       if (key.includes("/payments/")) return {
         ...route(key), controller: "PaymentController", sourceFile: approvalController,
@@ -11228,11 +11247,20 @@ test("duty SMS retry needs the actual server attempt capability and the fixed do
       { path: "${routePaths[6]}", component: () => import("../pages/funds/FundAccountsPage.vue") },
       { path: "${routePaths[7]}", component: () => import("../pages/payments/PaymentDetailPage.vue") },
       { path: "${routePaths[8]}", component: () => import("../pages/funds/FundPrincipalReturns.vue") },
+      { path: "/审批中心", component: () => import("../pages/approval-center/ApprovalCenterPage.vue") },
       ${reviewConsumers.map(([, component, , , , path]) =>
         `{ path: "${path}", component: () => import("../components/${component}.vue") }`).join(",\n")}
     ];`,
     extraFiles: {
       [panel]: source,
+      [approvalPanel]: approvalPanelSource,
+      [approvalCenter]: `<script setup lang="ts">import ApprovalProgressPanel from "../../components/ApprovalProgressPanel.vue";</script>
+        <template><ApprovalProgressPanel /></template>`,
+      [progressController]: await readFile(progressController, "utf8"),
+      [expenseController]: await readFile(expenseController, "utf8"),
+      [transitionService]: await readFile(transitionService, "utf8"),
+      [expenseService]: expenseServiceSource,
+      [progressService]: await readFile(progressService, "utf8"),
       [api]: await readFile(api, "utf8"),
       [settlement]: parent("settlements", "settlementDetail.settlementId"),
       [expense]: parent("expense-claims", "detail.id"),
@@ -11265,6 +11293,15 @@ test("duty SMS retry needs the actual server attempt capability and the fixed do
     const inspect = () => inspectWholeSitePageActionManifest({ root });
     const allowed = await inspect();
     assert.equal(allowed.actions.find(action => action.id === "duty-sms.retry")?.capability.serverDerived, true);
+    await write(root, approvalPanel, approvalPanelSource.replace(':duty-key="String(index)"', ':duty-key="String(0)"'));
+    const mismatchedApprovalDuty = await inspect();
+    assert.ok(mismatchedApprovalDuty.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
+    await write(root, approvalPanel, approvalPanelSource);
+    await write(root, expenseService, expenseServiceSource.replace(
+      "scope.approvalInstanceId = approvalInstanceId", "scope.unrelatedApprovalId = approvalInstanceId"));
+    const missingApprovalRound = await inspect();
+    assert.ok(missingApprovalRound.blockers.writeWithoutServerCapability.some(row => row.actionId === "duty-sms.retry"));
+    await write(root, expenseService, expenseServiceSource);
     await write(root, principalService, principalSource.replace(
       "const dutyName = await this.currentDuty(tx, row, round, duty, recipientId);", 'const dutyName = "固定文字";'));
     const missingPrincipalAuthority = await inspect();
