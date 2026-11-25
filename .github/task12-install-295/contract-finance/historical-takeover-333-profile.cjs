@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { ledgerSha256: predecessor332 } = require('./upward-archive-332-profile.cjs');
 
 const mode = 'historical-takeover-333';
+const installerSha256 = '0af924527e7f6fdb70c51348ee0567f51f722da9035467341c43df53737aa420';
 const ledgerSha256 = 'a00af648da634cce25c27c796171ca21cfa93d17679bfd8176f961b45ecf4fca';
 const terminal = Object.freeze({
   name: '20261129002000_contract_takeover_no_grade_handover_checks',
@@ -51,4 +52,4 @@ function assertSource(source, predecessor295) {
   assert.deepEqual(source.tails.at(-1), { ...terminal, finished: true, rolledBack: false });
 }
 
-module.exports = { mode, ledgerSha256, predecessor332, terminal, catalogSql, assertCatalog, assertSource };
+module.exports = { mode, installerSha256, ledgerSha256, predecessor332, terminal, catalogSql, assertCatalog, assertSource };

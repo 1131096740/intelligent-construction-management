@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { randomBytes } = require('node:crypto');
+const { createHash, randomBytes } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { admitSource } = require('./install-only292.cjs');
 const { withCombined333HistoricalTakeover } = require('./installer.cjs');
@@ -77,6 +77,9 @@ async function main() {
   assert.notEqual(process.getuid(), 0);
   assert.equal(process.env.DATABASE_URL, undefined);
   profile.assertSource(source, final);
+  const installerSha256 = createHash('sha256').update(fs.readFileSync(path.join(root, 'installer.cjs'))).digest('hex');
+  assert.equal(installerSha256, profile.installerSha256, 'A28_INSTALLER_RUNTIME_FINGERPRINT');
+  receipt.installerSha256 = installerSha256;
   const baseline = require(path.join(api, 'prisma/migration-baseline.cjs')).loadCanonicalMigrationBaseline();
   assert.equal(baseline.expectedDirectoryCount, 333);
   assert.equal(baseline.terminalMigration, profile.terminal.name);
