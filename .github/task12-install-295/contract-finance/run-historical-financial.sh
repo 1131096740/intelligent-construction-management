@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && $5 == --current-320 ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 ) ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -11,13 +11,13 @@ count=$(node -e '
   const source=require(process.argv[1]);
   if(source.sourceSha!==process.argv[2])process.exit(65);
   if(source.mode==="current-320"&&source.migrationCount===329)console.log(source.migrationCount);
+  else if(source.mode==="text-direct-330"&&source.migrationCount===330)console.log(330);
   else if(source.mode===undefined&&source.migrationCount===295)console.log(295);
   else process.exit(65);
 ' "$prepared/source.json" "$sha")
 mode_args=()
-if [[ $count == 329 ]]; then mode_args=(--current-320)
-elif [[ $# == 5 ]]; then exit 65
-fi
+case "$count" in 329) mode_args=(--current-320);; 330) mode_args=(--text-direct-330);; esac
+if [[ $# == 5 && ${mode_args[0]:-} != "$5" ]]; then exit 65; fi
 lane=historical-financial
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -28,8 +28,8 @@ node - "$prepared/source.json" "$sha" "$common/multi-witness.cjs" "$plan/histori
 const [sourceFile,sha,terminalFile,profileFile,workspace,count]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||source.migrationCount!==Number(count))process.exit(65);
-if(count==='329'){
-  if(source.mode!=='current-320'||source.predecessor.ledgerSha256!==terminal.final)process.exit(65);
+if(count!=='295'){
+  if(source.mode!==(count==='330'?'text-direct-330':'current-320')||source.predecessor.ledgerSha256!==terminal.final)process.exit(65);
 } else if(source.ledgerSha256!==terminal.final)process.exit(65);
 const {spec,sha:digest}=require(profileFile).financial;
 const bytes=require('node:fs').readFileSync(workspace+'/services/api/'+spec);

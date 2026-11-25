@@ -15,8 +15,8 @@ scope=cleanup
 
 node -e '
   const source=require(process.argv[1]);
-  const current=source.mode==="current-320";
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==(current?329:295))process.exit(1);
+  const count=source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
 ' "$prepared/source.json" "$sha"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
@@ -44,7 +44,7 @@ node - "$archive" "$prepared/source.json" "$work" "$plan" > "$work/cleanup-mount
 const fs=require('node:fs'), path=require('node:path'),{createHash}=require('node:crypto'),assert=require('node:assert/strict');
 const {spawnSync}=require('node:child_process'),{gunzipSync}=require('node:zlib');
 const [archive,sourceFile,work,plan]=process.argv.slice(2);
-const current=require(sourceFile).mode==='current-320';
+const current=['current-320','text-direct-330'].includes(require(sourceFile).mode);
 const lifecycle='fixtures/contract-lifecycle-route.spec.ts';
 const aggregate='fixtures/contract-draft-aggregate-concurrency.spec.ts';
 const oldLifecycle='32b015b36b9093f8354281d4807edb4f304eb657902eeb22faa43a3e952f9d1f';

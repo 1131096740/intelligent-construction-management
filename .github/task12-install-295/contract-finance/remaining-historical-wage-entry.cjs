@@ -2,29 +2,30 @@
 
 const assert=require('node:assert/strict');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement}=require('./installer.cjs');
 const {final,digest}=require('./multi-witness.cjs');
 const {runHistoricalWage}=require('./remaining-historical-wage-runner.cjs');
 
 const root='/qualification';
 const source=require('./contract-finance-source.json');
-const current320=process.argv[2]==='--current-320';
-const count=current320?329:295;
+const textDirect=process.argv[2]==='--text-direct-330';
+const current=textDirect||process.argv[2]==='--current-320';
+const count=textDirect?330:current?329:295;
 const receipt={schemaVersion:1,purpose:'REMAINING_HISTORICAL_WAGE_'+count,
   sourceSha:source.sourceSha,stages:['INPUTS'],status:'STOPPED'};
 
 async function main(){
-  assert.equal(process.argv.length,current320?3:2);
+  assert.equal(process.argv.length,current?3:2);
   assert.notEqual(process.getuid(),0);
   assert.equal(process.env.DATABASE_URL,undefined);
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
   assert.equal(source.migrationCount,count);
-  if(current320){
-    assert.equal(source.mode,'current-320');
+  if(current){
+    assert.equal(source.mode,textDirect?'text-direct-330':'current-320');
     assert.match(source.sourceTree,/^[a-f0-9]{40}$/u);
     assert.equal(source.predecessor.migrationCount,295);
     assert.equal(source.predecessor.ledgerSha256,final);
-    assert.equal(source.tails.length,34);
+    assert.equal(source.tails.length,count-295);
     const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
     assert.equal(baseline.expectedDirectoryCount,count);
     assert.equal(baseline.terminalMigration,source.tails.at(-1).name);
@@ -35,8 +36,9 @@ async function main(){
   }
   receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   const consume=context=>runHistoricalWage(context,receipt,source);
-  if(current320){
-    await withCombined320ContractPayment(receipt,async context=>{
+  if(current){
+    const installCurrent=textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
+    await installCurrent(receipt,async context=>{
       assert.equal(context.candidateTree,source.sourceTree);
       await consume(context);
     },{

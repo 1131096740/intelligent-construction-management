@@ -2,14 +2,17 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && $6 == --current-320 ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 ) ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
 build=$(cd "$4" && pwd -P)
 mode_args=()
 count=295
-if [[ $# == 6 ]]; then mode_args=(--current-320); count=329; fi
+if [[ $# == 6 ]]; then
+  mode_args=("$6")
+  case "$6" in --current-320) count=329;; --text-direct-330) count=330;; esac
+fi
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$plan/common"
@@ -19,7 +22,8 @@ scope=pol108-$shard
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==Number(process.argv[3])||(process.argv[3]==="329"&&source.mode!=="current-320"))process.exit(1);
+  const modes={329:"current-320",330:"text-direct-330"};
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==Number(process.argv[3])||source.mode!==modes[process.argv[3]])process.exit(1);
 ' "$prepared/source.json" "$sha" "$count"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")

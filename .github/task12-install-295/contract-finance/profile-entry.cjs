@@ -2,16 +2,17 @@
 
 const assert=require('node:assert/strict');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitnessForProfile,withCombined320MultiWitnessForProfile}=require('./installer.cjs');
+const {withCombined295MultiWitnessForProfile,withCombined320MultiWitnessForProfile,withCombined330MultiWitnessForProfile}=require('./installer.cjs');
 const {final,digest}=require('./multi-witness.cjs');
 const {runRetained,verifyInputs}=require('./remaining-retained.cjs');
 const source=require('./contract-finance-source.json');
-const current320=source.mode==='current-320';
-const count=current320?329:295;
+const textDirect=source.mode==='text-direct-330';
+const current=textDirect||source.mode==='current-320';
+const count=textDirect?330:current?329:295;
 const root='/qualification';
 const lane='profile';
 const receipt={schemaVersion:1,purpose:'REMAINING_PROFILE_WARM_EXACT_'+count,lane,sourceSha:source.sourceSha,
-  migrationSha256:current320?source.tails.at(-1).sha256:digest,business:'NOT_ENTERED',stages:['INPUTS'],status:'STOPPED'};
+  migrationSha256:current?source.tails.at(-1).sha256:digest,business:'NOT_ENTERED',stages:['INPUTS'],status:'STOPPED'};
 
 async function main(){
   assert.equal(process.argv.length,2);
@@ -19,9 +20,9 @@ async function main(){
   assert.equal(process.env.DATABASE_URL,undefined);
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
   assert.equal(source.migrationCount,count);
-  assert.equal(current320?source.predecessor.ledgerSha256:source.ledgerSha256,final);
-  assert.equal((current320?source.predecessor.tails:source.tails).at(-1).sha256,digest);
-  if(current320){
+  assert.equal(current?source.predecessor.ledgerSha256:source.ledgerSha256,final);
+  assert.equal((current?source.predecessor.tails:source.tails).at(-1).sha256,digest);
+  if(current){
     assert.equal(source.predecessor.migrationCount,295);
     const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
     assert.equal(baseline.expectedDirectoryCount,count);
@@ -33,8 +34,9 @@ async function main(){
   assert.equal(rows[0].pending,2);
   receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   const consume=context=>runRetained(context,receipt,lane);
-  if(current320){
-    await withCombined320MultiWitnessForProfile(receipt,consume,{sourceTree:source.sourceTree,
+  if(current){
+    const installCurrent=textDirect?withCombined330MultiWitnessForProfile:withCombined320MultiWitnessForProfile;
+    await installCurrent(receipt,consume,{sourceTree:source.sourceTree,
       migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails});
     assert.equal(receipt.forward320.count,count);
     assert.equal(receipt.forward320.sourceTree,source.sourceTree);

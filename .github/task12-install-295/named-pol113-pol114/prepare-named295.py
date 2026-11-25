@@ -17,12 +17,14 @@ historical = prepared / 'prepared/context'
 source = json.loads((prepared / 'source.json').read_bytes())
 ref = source['sourceSha']
 count = source['migrationCount']
-current320 = source.get('mode') == 'current-320'
-mode = ['--current-320'] if current320 else []
+text_direct = source.get('mode') == 'text-direct-330'
+current320 = text_direct or source.get('mode') == 'current-320'
+mode = ['--text-direct-330'] if text_direct else (['--current-320'] if current320 else [])
+ledger329 = '3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2'
 previous = source['predecessor'] if current320 else source
 assert previous['migrationCount'] == 295 and len(previous['tails']) == 3
 if current320:
-    assert count == 329 and len(source['tails']) == 34
+    assert count == (330 if text_direct else 329) and len(source['tails']) == count - 295
 assert subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip() == ref
 admission = subprocess.check_output(['node',str(common.parent/'check-ledger.cjs'),str(repo),ref,*mode])
 assert json.loads(admission) == source
@@ -75,6 +77,8 @@ new_installer = patch(old_installer,(plan/'installer-named295.patch').read_bytes
 assert digest(new_installer) == 'e94bd046c552817cbd49cfb86c693ea0e0496d93f677f99801f90dfad835a7ef'
 if current320:
     new_installer = patch(new_installer,(plan/'installer-named320.patch').read_bytes())
+if text_direct:
+    new_installer = patch(new_installer,(plan/'installer-named330.patch').read_bytes())
 write(context/'installer.cjs',new_installer)
 for name, pin in pins['runtime'].items():
     material = read_pinned(repo/pin['repoFile'] if 'repoFile' in pin else donor/pin['file'],pin['digest'])
@@ -96,6 +100,20 @@ for name, pin in pins['runtime'].items():
             for old, new in replacements.items():
                 assert material.count(old) == 1
                 material = material.replace(old, new)
+            if text_direct:
+                source_counts = {
+                    b'withNamedPol113Pol114320': b'withNamedPol113Pol114330',
+                    b'EXACT_329': b'EXACT_330',
+                    b'slice(-7).map(({size})=>size),[290,291,292,293,294,295,329]':
+                        b'slice(-8).map(({size})=>size),[290,291,292,293,294,295,329,330]',
+                    b'count:329,ledgerSha256:admission.ledger320': b'count:330,ledgerSha256:admission.ledger320',
+                }
+                for old, new in source_counts.items():
+                    assert material.count(old) == (2 if old in (b'withNamedPol113Pol114320',b'EXACT_329') else 1)
+                    material = material.replace(old,new)
+                prior_witness = b'  assert.equal(receipt.forward320?.sourceTree,admission.sourceTree);'
+                assert material.count(prior_witness) == 1
+                material = material.replace(prior_witness,b"  assert.deepEqual(receipt.textDirectPredecessor,{count:329,ledgerSha256:admission.ledger329,sameIdentity:true,exactB7:true});\n"+prior_witness)
             diagnostic_anchor = b'        ...bootSummary(traces),\n'
             diagnostic = br"""        statuses:traces.flatMap(value=>{
           if(typeof value!=="string")return [];
@@ -180,6 +198,7 @@ write(context/'workspace.sha256',''.join(f'{digest(p.read_bytes())}  ./{p.relati
 write(context/'candidate-admission.json',(json.dumps({
     'tree':proof['tree'],'candidateSha':ref,'ledger292':proof['combined292'],'ledger295':previous['ledgerSha256'],
     'migrationCount':count,
+    **({'ledger329':ledger329} if text_direct else {}),
     **({'sourceTree':source['sourceTree'],'ledger320':source['ledgerSha256'],'tails':source['tails']} if current320 else {}),
 })+'\n').encode())
 docker = read_pinned(donor/'Dockerfile.in','456025c143f993973d1947343c7636565406c74c5a0456addc1e1ff3dcffc24e').decode()

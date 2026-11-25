@@ -2,20 +2,22 @@
 const assert=require('node:assert/strict');
 const source=require('./contract-finance-source.json');
 const {sourceSha}=source;
-const current320=process.argv.at(-1)==='--current-320';
-const count=current320?329:295;
-const {withCombined295MultiWitness,withCombined320ContractPayment}=require('./installer.cjs');
+const textDirect=process.argv.at(-1)==='--text-direct-330';
+const current320=textDirect||process.argv.at(-1)==='--current-320';
+const count=textDirect?330:current320?329:295;
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement}=require('./installer.cjs');
 const receipt={schemaVersion:1,sourceSha,purpose:'ORIGINAL_POL109_EXACT_'+count,business:'NOT_ENTERED',stages:[]};
 Promise.resolve().then(()=>{
   assert.equal(process.argv.length,current320?3:2);
   assert.equal(source.migrationCount,count);
   if(current320){
-    assert.equal(source.mode,'current-320');
+    assert.equal(source.mode,textDirect?'text-direct-330':'current-320');
     assert.equal(source.predecessor.migrationCount,295);
   }
   const proof=require('./workspace-proof.cjs').verifyWorkspace();
   const consume=context=>require('./workspace/services/api/prisma/task12-pol109-ci.cjs').runPol109(context,receipt,proof);
-  if(current320) return withCombined320ContractPayment(receipt,consume,{
+  const install=textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
+  if(current320) return install(receipt,consume,{
     sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
   });
   return withCombined295MultiWitness(receipt,consume);

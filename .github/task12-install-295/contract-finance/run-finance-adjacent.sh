@@ -2,14 +2,14 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && $6 == --current-320 ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 ) ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
 build=$(cd "$4" && pwd -P)
 lane=$5
 mode_args=()
-if [[ $# == 6 ]]; then mode_args=(--current-320); fi
+if [[ $# == 6 ]]; then mode_args=("$6"); fi
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 prior="$root/.github/task12-install-289"
@@ -20,9 +20,11 @@ node - "$prepared/source.json" "$sha" "$plan/finance-adjacent-profiles.json" "$l
 const [sourceFile,sha,profilesFile,lane,terminalFile,mode]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||!Object.hasOwn(require(profilesFile),lane))process.exit(65);
-if(mode==='--current-320') {
-  if(source.mode!=='current-320'||source.migrationCount!==329||source.predecessor?.migrationCount!==295||
-     source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==34) process.exit(65);
+if(mode!==undefined) {
+  const textDirect=mode==='--text-direct-330';
+  const count=textDirect?330:329;
+  if(source.mode!==(textDirect?'text-direct-330':'current-320')||source.migrationCount!==count||source.predecessor?.migrationCount!==295||
+     source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==count-295) process.exit(65);
 } else if(source.migrationCount!==295||source.ledgerSha256!==terminal.final) process.exit(65);
 JS
 image=$(cat "$build/image.id")
@@ -42,7 +44,7 @@ console.log(runner+'\t'+'/qualification/'+profile.runner);
 const suite=profile.fixture?prior+'/fixtures/invoice-ledger.postgres.spec.ts':workspace+'/services/api/'+profile.suite;
 assert.equal(hash(suite),profile.suiteSha256);
 if(profile.fixture)console.log(suite+'\t'+'/qualification/workspace/services/api/'+profile.suite);
-if (mode==='--current-320' && profile.legacySeed) {
+if (['--current-320','--text-direct-330'].includes(mode) && profile.legacySeed) {
   const {revision,files}=profile.legacySeed;
   const dir='services/api/src/fund-execution/';
   execFileSync('git',['-C',repo,'merge-base','--is-ancestor',revision,sha]);
@@ -81,7 +83,7 @@ done < "$work/mounts.tsv"
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 count=295
-if [[ $# == 6 ]]; then count=329; fi
+case "${6:-}" in --current-320) count=329;; --text-direct-330) count=330;; esac
 printf '%s\n' "假设原 $lane 业务断言、角色及并发行为可在同一 $count 隔离库保持。观察原用例统计、combinedAfterBusiness 和 cleanup。" > "$work/hypothesis.txt"
 printf '%s\n' "$work"
 status=0

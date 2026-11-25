@@ -2,15 +2,16 @@
 
 const assert=require('node:assert/strict');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement}=require('./installer.cjs');
 const {final,digest}=require('./multi-witness.cjs');
 const plan=require('./contract-adjacent-profiles.json');
 const {verify}=require('./contract-ci.cjs');
 const source=require('./contract-finance-source.json');
 const root='/qualification';
 const lane=process.argv[2];
-const current320=process.argv[3]==='--current-320';
-const count=current320?329:295;
+const textDirect=process.argv[3]==='--text-direct-330';
+const current320=textDirect||process.argv[3]==='--current-320';
+const count=textDirect?330:current320?329:295;
 const receipt={schemaVersion:1,purpose:'ORIGINAL_CONTRACT_ADJACENT_EXACT_'+count,lane,sourceSha:source.sourceSha,
   migrationSha256:current320?source.tails.at(-1).sha256:digest,business:'NOT_ENTERED',stages:['INPUTS'],status:'STOPPED'};
 
@@ -21,11 +22,11 @@ async function main(){
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
   assert.equal(source.migrationCount,count);
   if(current320){
-    assert.equal(source.mode,'current-320');
+    assert.equal(source.mode,textDirect?'text-direct-330':'current-320');
     assert.match(source.sourceTree,/^[a-f0-9]{40}$/u);
     assert.equal(source.predecessor.migrationCount,295);
     assert.equal(source.predecessor.ledgerSha256,final);
-    assert.equal(source.tails.length,34);
+    assert.equal(source.tails.length,count-295);
   } else {
     assert.equal(source.ledgerSha256,final);
     assert.equal(source.tails.at(-1).sha256,digest);
@@ -48,7 +49,8 @@ async function main(){
     receipt.settlement=verify(profile.verifyMode,context);
   };
   if(current320){
-    await withCombined320ContractPayment(receipt,consume,{
+    const installCurrent=textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
+    await installCurrent(receipt,consume,{
       sourceTree:source.sourceTree,migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails
     });
     assert.equal(receipt.forward320.count,count);
