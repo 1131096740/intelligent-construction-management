@@ -838,7 +838,7 @@ export class ActualPurchaseBatchService {
           actualPurchaseBatchId: batch.id,
           code,
           status: "draft",
-          settlementAmountCents: batch.effectiveTotalAmountCents,
+          settlementAmountCents: requestedAmountCents,
           supplierBalanceAmountCents: 0n,
           companyPaymentAmountCents: requestedAmountCents,
           paidAmountCents: 0n,
@@ -882,7 +882,7 @@ export class ActualPurchaseBatchService {
       });
       await tx.spotProcurementPayment.update({ where: { id: payment.id }, data: { primaryPaymentChannelId: channels.find((channel) => channel.isPrimary)?.id ?? null } });
       await this.audit.record(tx, { actorUserId, action: "actual_purchase_batch.spot_payment.create", businessType: "actual_purchase_batch", businessId: batch.id, metadata: { paymentId: payment.id, code, requestedAmountCents: requestedAmountCents.toString(), batchTotalAmountCents: batch.effectiveTotalAmountCents.toString() } });
-      return { id: payment.id, code, status: "draft", batchId: batch.id, requestedAmountCents: moneyCentsToApi(requestedAmountCents), settlementAmountCents: moneyCentsToApi(batch.effectiveTotalAmountCents) };
+      return { id: payment.id, code, status: "draft", batchId: batch.id, requestedAmountCents: moneyCentsToApi(requestedAmountCents), settlementAmountCents: moneyCentsToApi(payment.settlementAmountCents) };
     });
   }
 
