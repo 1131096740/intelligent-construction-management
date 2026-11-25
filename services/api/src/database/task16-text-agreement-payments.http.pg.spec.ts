@@ -151,7 +151,7 @@ run("records a two-part text agreement payment with original replay, real refund
     expect(await json(registrationPath, finance, firstBody)).toEqual(first);
     expect((await json(optionsPath, finance)).body).toMatchObject({ paidAmountCents: "6000", remainingAmountCents: "4000" });
 
-    const refundPath = "/payments/" + payment.id + "/executions/" + first.body.id + "/refunds";
+    const refundPath = "/payment-financial/payments/" + payment.id + "/executions/" + first.body.id + "/refunds";
     const refundBody = { amountCents: "2000", receivedAt: plan.paidAt, accountId: account.id,
       reason: "实收部分退款", idempotencyKey: randomUUID() };
     const refund = await json(refundPath, finance, refundBody);
@@ -177,7 +177,7 @@ run("records a two-part text agreement payment with original replay, real refund
     const executionIds = [first.body.id, second.body.id];
     expect(await owner.paymentExecution.count({ where: { paymentRequestId: payment.id } })).toBe(2);
     expect(await owner.paymentExecutionRefund.findMany({ where: { paymentRequestId: payment.id } })).toEqual([
-      expect.objectContaining({ amountCents: 2_000n, paymentExecutionId: first.body.id, accountId: account.id })
+      expect.objectContaining({ id: refund.body.refundId, amountCents: 2_000n, paymentExecutionId: first.body.id, accountId: account.id })
     ]);
     const paymentAllocations = await owner.paymentExecutionAllocation.findMany({ where: { paymentRequestId: payment.id } });
     expect(paymentAllocations).toHaveLength(2);
