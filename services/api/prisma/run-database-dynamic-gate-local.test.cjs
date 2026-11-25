@@ -72,7 +72,12 @@ test("task01 operator lists real explicit inputs without execution or inherited 
   const report = JSON.parse(result.stdout);
   assert.equal(report.executed, false);
   assert.equal(report.coveredTests, 1);
-  assert.equal(report.remainingTests, 0);
+  // Remaining tests are global inventory, including A28's separate sealed runner.
+  assert.equal(report.remainingFiles, 1);
+  assert.equal(report.remainingTests, 3);
+  assert.deepEqual(report.remaining.map(file => file.path), [
+    "services/api/src/contract-takeover/contract-takeover-a28.http.pg.spec.ts"
+  ]);
   assert.equal(report.coveredGroups[0].runner.path, "services/api/prisma/run-enterprise-task01-local.cjs");
   assert.equal(report.coveredGroups[0].runner.invocation, "task01_explicit_inputs");
   assert.doesNotMatch(result.stdout, /must-not-use/u);
@@ -569,14 +574,14 @@ test("manifest preserves source inventory and one separately invoked task01 oper
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 105,
-    fullyPendingSuites: 84,
+    pendingFiles: 106,
+    fullyPendingSuites: 85,
     partiallyPendingSuites: 21,
-    pendingTests: 627,
+    pendingTests: 630,
     coveredFiles: 105,
     coveredTests: 627,
-    remainingFiles: 0,
-    remainingTests: 0,
+    remainingFiles: 1,
+    remainingTests: 3,
     migrationCount: baseline.expectedDirectoryCount,
     terminalMigration: baseline.terminalMigration,
     terminalMigrationChecksum: baseline.terminalMigrationChecksum
