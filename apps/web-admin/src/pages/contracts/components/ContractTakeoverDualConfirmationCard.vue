@@ -56,7 +56,7 @@
             确认财务侧
           </t-button>
           <t-button
-            v-if="canConfirmFinance && financeConfirmedRevision === financeRevision && !activated"
+            v-if="canWithdrawFinance && financeConfirmedRevision === financeRevision && !activated"
             size="small"
             variant="outline"
             @click="$emit('withdraw', 'finance')"
@@ -93,6 +93,7 @@ defineProps<{
   financeBasisStale: boolean;
   canConfirmContract: boolean;
   canConfirmFinance: boolean;
+  canWithdrawFinance: boolean;
   canReturnFinance: boolean;
 }>();
 

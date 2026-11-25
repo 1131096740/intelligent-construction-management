@@ -78,7 +78,8 @@ export function contractTakeoverPerformanceStatus(
 
 export function takeoverDepartmentAccess(
   roleKeys: string[],
-  activated: boolean
+  activated: boolean,
+  noGrade = false
 ): TakeoverDepartmentAccess {
   if (activated) {
     return {
@@ -96,7 +97,9 @@ export function takeoverDepartmentAccess(
     canEditFinance:
       roleKeys.includes("finance_staff") ||
       roleKeys.includes("finance_director"),
-    canConfirmFinance: roleKeys.includes("finance_director")
+    canConfirmFinance:
+      roleKeys.includes("finance_director") ||
+      (noGrade && roleKeys.includes("finance_staff"))
   };
 }
 
@@ -581,8 +584,11 @@ export function takeoverResponsibleUserText(takeover: ContractTakeoverReadModel)
   return "未填写";
 }
 
-export function canSubmitTakeoverReview(takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">) {
-  return takeover.takeoverStatus === "draft" || takeover.takeoverStatus === "needs_supplement";
+export function canSubmitTakeoverReview(
+  takeover: Pick<ContractTakeoverReadModel, "takeoverStatus" | "takeoverLevel" | "contractSide">
+) {
+  return (takeover.takeoverStatus === "draft" || takeover.takeoverStatus === "needs_supplement") &&
+    (takeover.takeoverLevel !== "NONE" || Boolean(takeover.contractSide));
 }
 
 export function canReturnTakeoverForSupplement(
@@ -681,7 +687,7 @@ export function canEditTakeover(takeover: Pick<ContractTakeoverReadModel, "takeo
 }
 
 export function takeoverActionDisabledReason(
-  takeover: Pick<ContractTakeoverReadModel, "takeoverStatus">,
+  takeover: Pick<ContractTakeoverReadModel, "takeoverStatus" | "takeoverLevel" | "contractSide">,
   action: TakeoverAction
 ): string {
   if (action === "edit") {
@@ -692,6 +698,10 @@ export function takeoverActionDisabledReason(
   }
   if (action === "submit_review") {
     if (canSubmitTakeoverReview(takeover)) return "";
+    if ((takeover.takeoverStatus === "draft" || takeover.takeoverStatus === "needs_supplement")
+        && takeover.takeoverLevel === "NONE" && !takeover.contractSide) {
+      return "请先核实并保存历史累计结算，再提交财务核对";
+    }
     if (takeover.takeoverStatus === "pending_review") return "已在复核中，无需重复提交";
     if (takeover.takeoverStatus === "confirmed") return "已完成主管确认，无需再提交复核";
     if (takeover.takeoverStatus === "voided") return "接管记录已作废，不能提交复核";

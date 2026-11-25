@@ -1775,12 +1775,11 @@ export class ContractTakeoverService {
           projectId,
           takeoverId
         );
-        await this.assertProjectSideDirector(
-          tx,
-          projectId,
-          actorUserId,
-          side
-        );
+        if (side === "finance" && aggregate.takeover.takeoverLevel === "NONE") {
+          await this.assertProjectFinanceEditor(tx, projectId, actorUserId);
+        } else {
+          await this.assertProjectSideDirector(tx, projectId, actorUserId, side);
+        }
         const priorEvent =
           await tx.contractTakeoverConfirmationEvent.findUnique({
             where: { idempotencyKey }
@@ -1827,7 +1826,7 @@ export class ContractTakeoverService {
               aggregate.contractFacts.financeBasisRevision
           ) {
             throw new BadRequestException(
-              "请先完成财务填写并由财务主管核对，再由合同主管复核"
+              "请先完成财务填写和核对，再由合同主管复核"
             );
           }
         }
@@ -2985,6 +2984,15 @@ export class ContractTakeoverService {
         throw new Error("当前接管记录不能提交复核，请确认仍处于草稿或待补充状态");
       }
       await assertTakeoverHandoverReady(tx, takeover, "提交复核");
+      if (takeover.takeoverLevel === "NONE") {
+        const contractFacts = await tx.contractTakeoverContractFacts.findUnique({
+          where: { takeoverId: takeover.id },
+          select: { takeoverId: true }
+        });
+        if (!contractFacts) {
+          throw new BadRequestException("请先核实并保存历史累计结算，再提交财务核对");
+        }
+      }
 
       // 合同部提交后进入财务填写；重新提交一律清空上一次财务/主管确认，
       // 强制财务重新核对、主管再复核。

@@ -404,6 +404,7 @@ describe("ContractTakeoverController", () => {
         "return_finance_for_supplement",
         "attach_payment_voucher",
         "save_finance_side",
+        "confirm_finance_side",
         "submit_correction"
       ]
     ],

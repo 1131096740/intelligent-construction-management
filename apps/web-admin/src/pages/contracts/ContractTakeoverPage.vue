@@ -1038,7 +1038,8 @@
               && Boolean(selectedRow.takeover.financeSide)
               && !financeSideState?.dirty
               && !financeSideState?.saving"
-            :can-return-finance="departmentAccess.canConfirmFinance
+            :can-withdraw-finance="canWithdrawFinanceConfirmation"
+            :can-return-finance="departmentAccess.canEditFinance
               && canReturnTakeoverForFinanceSupplement(selectedRow.takeover)"
             @confirm="openDepartmentAction($event, 'confirm')"
             @withdraw="openDepartmentAction($event, 'withdraw')"
@@ -2540,7 +2541,10 @@ function contractSideModelFromTakeover(
     };
   }
 
-  const historicalSettledCents = String(takeover.historicalSettledCents);
+  const recordedSettlement = String(takeover.historicalSettledCents);
+  const historicalSettledCents = takeover.takeoverLevel === "NONE" && recordedSettlement === "0"
+    ? ""
+    : recordedSettlement;
   return {
     signedAt: takeover.signedAt.slice(0, 10),
     performanceStatus: contractTakeoverPerformanceStatus(takeover.lifecycleStatus),
@@ -2590,7 +2594,7 @@ function financeSideModelFromTakeover(
     return {
       basedOnContractRevision: contractSide.revision,
       basedOnFinanceBasisRevision: contractSide.financeBasisRevision,
-      zeroPaymentDeclared: true,
+      zeroPaymentDeclared: takeover.takeoverLevel !== "NONE",
       payments: []
     };
   }
@@ -3043,8 +3047,12 @@ const selectedRow = computed<ContractTakeoverTableRow | null>(
 const departmentAccess = computed(() =>
   takeoverDepartmentAccess(
     roleKeys.value,
-    Boolean(selectedRow.value?.takeover.confirmedAt)
+    Boolean(selectedRow.value?.takeover.confirmedAt),
+    selectedRow.value?.takeover.takeoverLevel === "NONE"
   )
+);
+const canWithdrawFinanceConfirmation = computed(() =>
+  departmentAccess.value.canConfirmFinance && roleKeys.value.includes("finance_director")
 );
 const financeBasisStatus = computed(() => {
   const contractSide = selectedRow.value?.takeover.contractSide;
@@ -3082,7 +3090,7 @@ const departmentActionDescription = computed(() => {
     return "撤回后不会覆盖任何已保存事实；对应部门需重新核对并确认，双侧未齐前接管不会激活。";
   }
   return action.side === "finance"
-    ? "财务主管将基于当前合同侧修订与财务基线确认逐笔实付、凭证、分配及余额口径。"
+    ? "财务确认人将基于当前合同侧修订与财务基线核对逐笔收付、凭证、分配及余额。"
     : "合同主管将确认当前合同事实、历史结算、履约状态、付款条款和结算依据。";
 });
 const canSubmitAppliedCorrections = computed(() =>
@@ -4384,7 +4392,7 @@ function openDepartmentAction(
   const state = side === "contract" ? contractSideState.value : financeSideState.value;
   const allowed = side === "contract"
     ? departmentAccess.value.canConfirmContract
-    : departmentAccess.value.canConfirmFinance;
+    : action === "confirm" ? departmentAccess.value.canConfirmFinance : canWithdrawFinanceConfirmation.value;
   if (!allowed || !state) {
     setMessage("当前岗位或当前事实状态不能执行该部门确认操作", "danger");
     return;
@@ -4879,7 +4887,7 @@ function openSupplementReturn(takeover: ContractTakeoverReadModel) {
 }
 
 function openFinanceSupplementReturn(takeover: ContractTakeoverReadModel) {
-  if (!departmentAccess.value.canConfirmFinance) {
+  if (!departmentAccess.value.canEditFinance) {
     setMessage("当前岗位不能驳回财务核对", "danger");
     return;
   }
@@ -4901,7 +4909,10 @@ function closeSupplementReturn() {
 }
 
 async function returnSelectedTakeoverForSupplement(values: { reason: string; password: string }) {
-  if (!canConfirmTakeovers.value) {
+  const canReturn = supplementReturnSide.value === "finance"
+    ? departmentAccess.value.canEditFinance
+    : canConfirmTakeovers.value;
+  if (!canReturn) {
     supplementReturnError.value = "当前岗位不能退回历史合同接管资料";
     return;
   }

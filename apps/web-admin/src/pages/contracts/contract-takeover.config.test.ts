@@ -120,6 +120,9 @@ describe("contract takeover page configuration", () => {
       canEditContract: false,
       canConfirmFinance: false
     });
+    expect(takeoverDepartmentAccess(["finance_staff"], false, true)).toMatchObject({
+      canConfirmFinance: true
+    });
     expect(takeoverDepartmentAccess(["finance_director"], false)).toMatchObject({
       canEditFinance: true,
       canConfirmFinance: true,
@@ -530,10 +533,11 @@ describe("contract takeover page configuration", () => {
   });
 
   it("shows workflow actions only for allowed statuses", () => {
-    expect(canSubmitTakeoverReview({ takeoverStatus: "draft" })).toBe(true);
-    expect(canSubmitTakeoverReview({ takeoverStatus: "needs_supplement" })).toBe(true);
-    expect(canSubmitTakeoverReview({ takeoverStatus: "pending_review" })).toBe(false);
-    expect(canSubmitTakeoverReview({ takeoverStatus: "confirmed" })).toBe(false);
+    expect(canSubmitTakeoverReview({ ...takeover(), takeoverStatus: "draft", takeoverLevel: "B" })).toBe(true);
+    expect(canSubmitTakeoverReview({ ...takeover(), takeoverStatus: "needs_supplement", takeoverLevel: "B" })).toBe(true);
+    expect(canSubmitTakeoverReview({ ...takeover(), takeoverStatus: "pending_review", takeoverLevel: "B" })).toBe(false);
+    expect(canSubmitTakeoverReview({ ...takeover(), takeoverStatus: "confirmed", takeoverLevel: "B" })).toBe(false);
+    expect(canSubmitTakeoverReview({ takeoverStatus: "draft", takeoverLevel: "NONE", contractSide: null })).toBe(false);
 
     expect(canEditTakeover({ takeoverStatus: "draft" })).toBe(true);
     expect(canEditTakeover({ takeoverStatus: "needs_supplement" })).toBe(true);
