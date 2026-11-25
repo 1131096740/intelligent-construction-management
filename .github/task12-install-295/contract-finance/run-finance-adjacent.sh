@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 ) ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 ) ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -21,9 +21,8 @@ const [sourceFile,sha,profilesFile,lane,terminalFile,mode]=process.argv.slice(2)
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||!Object.hasOwn(require(profilesFile),lane))process.exit(65);
 if(mode!==undefined) {
-  const textDirect=mode==='--text-direct-330';
-  const count=textDirect?330:329;
-  if(source.mode!==(textDirect?'text-direct-330':'current-320')||source.migrationCount!==count||source.predecessor?.migrationCount!==295||
+  const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331}[mode];
+  if(source.mode!==mode.slice(2)||source.migrationCount!==count||source.predecessor?.migrationCount!==295||
      source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==count-295) process.exit(65);
 } else if(source.migrationCount!==295||source.ledgerSha256!==terminal.final) process.exit(65);
 JS
@@ -44,7 +43,7 @@ console.log(runner+'\t'+'/qualification/'+profile.runner);
 const suite=profile.fixture?prior+'/fixtures/invoice-ledger.postgres.spec.ts':workspace+'/services/api/'+profile.suite;
 assert.equal(hash(suite),profile.suiteSha256);
 if(profile.fixture)console.log(suite+'\t'+'/qualification/workspace/services/api/'+profile.suite);
-if (['--current-320','--text-direct-330'].includes(mode) && profile.legacySeed) {
+if (mode!==undefined && profile.legacySeed) {
   const {revision,files}=profile.legacySeed;
   const dir='services/api/src/fund-execution/';
   execFileSync('git',['-C',repo,'merge-base','--is-ancestor',revision,sha]);
@@ -83,7 +82,7 @@ done < "$work/mounts.tsv"
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 count=295
-case "${6:-}" in --current-320) count=329;; --text-direct-330) count=330;; esac
+case "${6:-}" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; esac
 printf '%s\n' "假设原 $lane 业务断言、角色及并发行为可在同一 $count 隔离库保持。观察原用例统计、combinedAfterBusiness 和 cleanup。" > "$work/hypothesis.txt"
 printf '%s\n' "$work"
 status=0
