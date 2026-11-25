@@ -3661,6 +3661,7 @@ model PaymentRequest {
   signedSettlementOccupiedCents         BigInt?
   signedSettlementBasisAt               DateTime?
   sourceType                            String             @default("settlement")
+  contractDueBasis                      String?
   contractId                            String
   contractVersionId                     String
   paymentTermsVersionId                 String
@@ -4325,7 +4326,7 @@ model PaymentExecutionAllocation {
   allocationType           String
   sourceRowId              String
   paymentTermsVersionId    String
-  stageType                String
+  stageType                String?
   stageId                  String?
   stageName                String?
   triggerAnchor            String?

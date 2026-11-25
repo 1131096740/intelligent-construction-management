@@ -51,6 +51,19 @@ describe("contract business options configuration", () => {
     ]);
   });
 
+  it("submits a text-only contract agreement with its preview proof and no stage or settlement", () => {
+    const fingerprint = "d".repeat(64);
+    expect(buildPaymentCreatePayload(contract(), null, {
+      sourceType: "contract_due", requestedAmountYuan: "550.00", code: "FK-TEXT-01",
+      textAgreement: { paymentTermsVersionId: "terms-1", fingerprint },
+      paymentMatter: " 巡检服务 ", amountCalculationExplanation: " 按已核对工单计价 "
+    })).toEqual({
+      sourceType: "contract_due", requestedAmountCents: "55000", code: "FK-TEXT-01",
+      contractVersionId: "version-1", paymentTermsVersionId: "terms-1", expectedAgreementFingerprint: fingerprint,
+      paymentMatter: "巡检服务", amountCalculationExplanation: "按已核对工单计价"
+    });
+  });
+
   it("builds payment payloads without requiring user-entered technical ids", () => {
     const selectedContract = findContractOption([contract()], "version-1");
     const selectedSettlement = findSettlementOption(selectedContract, "settlement-1");

@@ -1,4 +1,4 @@
-import { IsIn, ValidateIf } from "class-validator";
+import { IsIn, Matches, ValidateIf } from "class-validator";
 import {
   IsCanonicalMoneyText,
   IsMaxUnicodeTextLength,
@@ -40,6 +40,10 @@ export class CreatePaymentRequestDto {
     blankMessage: "付款条款版本编号不能为空白"
   })
   paymentTermsVersionId?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @Matches(/^[a-f0-9]{64}$/u, { message: "付款约定核对凭据不正确，请重新读取合同" })
+  expectedAgreementFingerprint?: string;
 
   @IsOptionalNonBlankText({
     typeMessage: "付款阶段编号必须是文字",

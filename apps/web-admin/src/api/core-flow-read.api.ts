@@ -1198,6 +1198,7 @@ export interface CreatePaymentRequestPayload {
   signedSettlementId?: string;
   contractVersionId?: string;
   paymentTermsVersionId?: string;
+  expectedAgreementFingerprint?: string;
   paymentTermsStageId?: string;
   paymentMatter?: string;
   amountCalculationExplanation?: string;
