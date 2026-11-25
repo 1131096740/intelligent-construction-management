@@ -154,6 +154,31 @@ describe("已签结算复核业务", () => {
     }
   });
 
+  it("returns a retryable conflict when PostgreSQL aborts a concurrent signed review", async () => {
+    const { tx, visibility, auth, prisma } = fixture();
+    const operatingSources = { appendConfirmedSourceIfEnabledInTransaction: jest.fn() };
+    const service = new SignedContractSettlementService(
+      prisma as unknown as PrismaService,
+      visibility as unknown as ProjectVisibilityService,
+      auth as unknown as AuthService,
+      operatingSources
+    );
+    const oldKey = process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY;
+    process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY = "b".repeat(64);
+    try {
+      const binding = { database: "isolated", role: "runtime", xid: "88", backend: "5", expires: "1795370000" };
+      const deadlock = new Prisma.PrismaClientKnownRequestError("transaction rolled back", {
+        code: "P2010", clientVersion: "test", meta: { code: "40P01" }
+      });
+      tx.$queryRaw.mockResolvedValueOnce([binding]).mockRejectedValueOnce(deadlock);
+      await expect(service.review("project", "settlement", "director", 2, "confirm")).rejects.toBeInstanceOf(ConflictException);
+      expect(operatingSources.appendConfirmedSourceIfEnabledInTransaction).not.toHaveBeenCalled();
+    } finally {
+      if (oldKey === undefined) delete process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY;
+      else process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY = oldKey;
+    }
+  });
+
   it("驳回不追加；表外与对上确认后追加经营来源；无成本分类的下游合同不追加", async () => {
     const operatingSources = { appendConfirmedSourceIfEnabledInTransaction: jest.fn() };
     const oldKey = process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY;

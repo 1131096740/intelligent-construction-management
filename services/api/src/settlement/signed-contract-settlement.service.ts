@@ -13,6 +13,7 @@ import {
   type OperatingSourceAppendPort
 } from "../operating-ledger/operating-source-replay.service";
 import { isDownstreamSettlementCostType } from "./settlement-operating-source.adapter";
+import { isSettlementDraftSerializationConflict } from "./settlement-draft-lifecycle";
 import { assertNoLegacySettlementForSignedPeriod } from "../operating-ledger/settlement-source-dedup";
 import { SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE } from "./signed-settlement-operating-source.adapter";
 
@@ -270,6 +271,9 @@ export class SignedContractSettlementService {
         return result.reviewed;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
     } catch (error) {
+      if (isSettlementDraftSerializationConflict(error)) {
+        throw new ConflictException("已签结算遇到并发操作，请刷新后重试");
+      }
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2010") {
         const marker = String(error.meta?.message);
         const state = error.meta?.code;
