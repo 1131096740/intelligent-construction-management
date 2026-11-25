@@ -7,6 +7,8 @@ import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { AppModule } from "../app.module";
+import { AuthRateLimitService } from "../auth/auth-rate-limit.service";
+import { AuthService } from "../auth/auth.service";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { configureApiSecurity } from "../api-security";
 import { PrismaService } from "./prisma.service";
@@ -52,6 +54,8 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
   let databaseFailure: { model?: string; action: string; code: string; sqlState?: string } | undefined;
   let authFailure: ReturnType<typeof takeTask12AuthError>;
   let loggedAuthFailure: ReturnType<typeof projectTask16RegistrationError> | undefined;
+  let loginBoundary: "RATE_LIMIT" | "AUTH_SERVICE" | undefined;
+  let loginError: ReturnType<typeof projectTask16RegistrationError> | undefined;
   try {
     const [identity] = await readOnlyApplication.$queryRaw<Array<{ safe: boolean; oid: string }>>`
       SELECT current_database()  = ${packet.database} AND current_user = session_user
@@ -98,6 +102,26 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     const authErrors = new Task12AuthErrorFilter(app.get(HttpAdapterHost));
     app.useGlobalFilters(authErrors);
     app.useGlobalInterceptors(new Task12AuthStageInterceptor(authErrors));
+    const accountRateLimit = app.get(AuthRateLimitService);
+    const takeRateLimit = accountRateLimit.take.bind(accountRateLimit);
+    accountRateLimit.take = async (...args) => {
+      if (stage === "LOGIN") loginBoundary = "RATE_LIMIT";
+      try { return await takeRateLimit(...args); }
+      catch (error) {
+        if (stage === "LOGIN") loginError = projectTask16RegistrationError(error);
+        throw error;
+      }
+    };
+    const auth = app.get(AuthService);
+    const login = auth.login.bind(auth);
+    auth.login = async (...args) => {
+      if (stage === "LOGIN") loginBoundary = "AUTH_SERVICE";
+      try { return await login(...args); }
+      catch (error) {
+        if (stage === "LOGIN") loginError = projectTask16RegistrationError(error);
+        throw error;
+      }
+    };
     app.get(PrismaService).$use(async (params, next) => {
       try {
         return await next(params);
@@ -135,6 +159,8 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
       const server = app.getHttpServer() as object;
       const ticket = armTask12AuthError(authErrors, server, user.phone);
       loggedAuthFailure = undefined;
+      loginBoundary = undefined;
+      loginError = undefined;
       try {
         await post(actor, "/auth/login", { phone: user.phone, password: passwords[actor] });
       } finally {
@@ -276,7 +302,8 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     const marker = typeof detail?.message === "string" && /^(?:NATIVE_329|TASK12)_[A-Z0-9_]{1,100}$/u.test(detail.message) ? detail.message : undefined;
     const status = typeof detail?.status === "number" ? detail.status : undefined;
     const expected = typeof detail?.expected === "number" ? detail.expected : undefined;
-    const diagnostic = JSON.stringify({ stage, code, marker, status, expected, databaseFailure, authFailure, loggedAuthFailure });
+    const diagnostic = JSON.stringify({ stage, code, marker, status, expected, databaseFailure, authFailure, loggedAuthFailure,
+      loginBoundary, loginError });
     process.stdout.write("SEAL_329_NATIVE_FAILURE " + diagnostic + "\n");
     throw new Error(diagnostic);
   } finally {
