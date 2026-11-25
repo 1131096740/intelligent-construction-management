@@ -2,9 +2,10 @@
 const assert=require('node:assert/strict');
 const source=require('./contract-finance-source.json');
 const {sourceSha}=source;
-const current320=process.argv.at(-1)==='--current-320';
-const count=current320?329:295;
-const {withPol108At295,withPol108At320}=require('./installer.cjs');
+const textDirect=process.argv.at(-1)==='--text-direct-330';
+const current320=textDirect||process.argv.at(-1)==='--current-320';
+const count=textDirect?330:current320?329:295;
+const {withPol108At295,withPol108At320,withPol108At330}=require('./installer.cjs');
 const {selectShards}=require('./pol108-shards.cjs');
 const [shard]=process.argv.slice(2);
 assert.equal(process.argv.length,current320?4:3);
@@ -13,9 +14,10 @@ const receipt={schemaVersion:1,sourceSha,shard,purpose:'ORIGINAL_POL108_EXACT_'+
 Promise.resolve().then(()=>{
   assert.equal(source.migrationCount,count);
   if(current320) {
-    assert.equal(source.mode,'current-320');
+    assert.equal(source.mode,textDirect?'text-direct-330':'current-320');
     assert.equal(source.predecessor.migrationCount,295);
-    return withPol108At320(receipt,shard,{sourceTree:source.sourceTree,
+    const install=textDirect?withPol108At330:withPol108At320;
+    return install(receipt,shard,{sourceTree:source.sourceTree,
       migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails});
   }
   return withPol108At295(receipt,shard);

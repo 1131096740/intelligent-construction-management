@@ -10,11 +10,16 @@ out.mkdir()
 profile=json.loads((old/'profile.json').read_text())['pol109Assembly']
 source_record=json.loads(source.read_text())
 count = source_record['migrationCount']
-if count == 329 and source_record.get('mode') == 'current-320':
+current_tails = {
+    (329, 'current-320'): '20261127000000_contract_takeover_pending_finance',
+    (330, 'text-direct-330'): '20261128000000_text_agreement_direct_payment',
+}
+current_tail = current_tails.get((count, source_record.get('mode')))
+if current_tail:
     terminal = source_record['tails'][-1]
     source_tree = source_record['sourceTree']
     import re
-    if (terminal['name'] != '20261127000000_contract_takeover_pending_finance' or
+    if (terminal['name'] != current_tail or
             not re.fullmatch('[0-9a-f]{64}',terminal['sha256']) or not re.fullmatch('[0-9a-f]{40}',source_tree)):
         raise SystemExit('POL109_320_SOURCE')
 else:
