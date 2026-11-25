@@ -173,12 +173,13 @@ export class ExpenseClaimController {
     @Param("claimId") claimId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
+    @Query("scopeKey") scopeKey?: string,
     @Body() body: { idempotencyKey?: string } = {}
   ) {
     return this.uploadPrivateFile(
       claimId,
       user.id,
-      "record_expense_claim_payment",
+      scopeKey === "public_cash" ? "record_expense_claim_public_cash_payment" : "record_expense_claim_payment",
       file,
       body.idempotencyKey,
       "费用付款凭证"

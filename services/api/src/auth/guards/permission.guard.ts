@@ -77,7 +77,7 @@ export class PermissionGuard implements CanActivate {
       const registrationId = request.params?.registrationId;
       if (receiptAction && registrationId && await matchesOwnFundReviewReceipt(this.prisma as never, request.user.id, registrationId, request.body, receiptAction)) return true;
     }
-    const requiredAction = await this.resolveRequiredAction(request, declaredAction);
+    const requiredAction = await this.resolveRequiredAction(request, declaredAction, context.getHandler().name);
 
     const anyProjectPositionScope = this.reflector.getAllAndOverride<boolean>(
       ANY_PROJECT_POSITION_SCOPE_KEY,
@@ -549,8 +549,18 @@ export class PermissionGuard implements CanActivate {
 
   private async resolveRequiredAction(
     request: AuthenticatedRequest,
-    declaredAction?: BusinessAction
+    declaredAction?: BusinessAction,
+    handler?: string
   ): Promise<BusinessAction | undefined> {
+    const funding = request.body?.registeredFunding;
+    if (declaredAction === "expense_claim.payment.execute" && (
+      (handler === "recordReimbursementPayment" && funding !== null && typeof funding === "object" &&
+        "scopeKey" in funding && funding.scopeKey === "public_cash") ||
+      (handler === "uploadPaymentVoucherFile" && request.query?.scopeKey === "public_cash")
+    )) {
+      return "expense_claim.public_cash_payment.execute";
+    }
+
     const eventId = request.params?.eventId;
     if (
       declaredAction !== "clearing.confirm" ||

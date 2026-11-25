@@ -79,6 +79,7 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
   paymentSubjectCompanyEntities: Array<{ id: string; name: string }>;
   fundsPermissions: {
     canRecordPayment: boolean;
+    canRecordPublicCashPayment?: boolean;
     canRecordReimbursementPayment: boolean;
     canGenerateFinalPaymentPdf: boolean;
     canGenerateLoanFinalDisbursementPdf: boolean;
@@ -97,7 +98,8 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
     note: string | null;
     createdAt: string;
     registeredFunding?: {
-      actualPayerCompanyId: string;
+      actualPayerCompanyId: string | null;
+      actualPayerKind?: "public_cash";
       actualPayerName: string;
       originalDebtorCompanyId: string;
       relationshipEntryId: string | null;
@@ -550,10 +552,12 @@ export function uploadExpenseClaimPaymentVoucherFile(
   claimId: string,
   file: Blob,
   fileName: string,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  scopeKey?: string
 ) {
+  const query = scopeKey === "public_cash" ? "?scopeKey=public_cash" : "";
   return uploadExpenseClaimPrivateFile(
-    `/expense-claims/${encodeURIComponent(claimId)}/payment-voucher-file-uploads`,
+    `/expense-claims/${encodeURIComponent(claimId)}/payment-voucher-file-uploads${query}`,
     file,
     fileName,
     idempotencyKey
@@ -601,7 +605,7 @@ export async function recordExpenseClaimPayment(claimId: string, body: ExpenseCl
   });
   await ensureOk(response);
   return response.json() as Promise<{ id: string; expenseClaimId: string; paidAmountCents: string; status: string;
-    registeredFunding?: { actualPayerCompanyId: string; relationshipEntryId: string | null };
+    registeredFunding?: { actualPayerCompanyId: string | null; actualPayerKind?: "public_cash"; relationshipEntryId: string | null };
   }>;
 }
 

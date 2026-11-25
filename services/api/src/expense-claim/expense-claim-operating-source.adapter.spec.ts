@@ -94,6 +94,28 @@ describe("POL-06 expense operating source adapters", () => {
     );
   });
 
+  it("clears the payable and public cash once without adding an expense cost", () => {
+    const mapped = new ExpenseClaimPaymentExecutionOperatingSourceAdapter().toOperatingFactInput(
+      snapshot("expense_claim_payment_execution", "cash-execution", {
+        expenseClaimId: "claim-1",
+        claimType: "reimbursement",
+        registeredFunding: { actualPayerCompanyId: null, actualPayerName: "公共现金" },
+        applicantUserId: "employee-1",
+        applicantNameSnapshot: "张三",
+        applicantPhoneSnapshot: "13800000001",
+        amountCents: "3000",
+        paidAt: "2026-08-15T03:00:00.000Z",
+        confirmedAt: "2026-08-15T03:00:00.000Z",
+        recordedByUserId: "cash-keeper",
+        voucherFileId: "voucher-1"
+      })
+    );
+    expect(mapped.input.impacts).toMatchObject([
+      { impactKind: "payable_decrease", amountCents: 3000n },
+      { impactKind: "public_cash_funds_decrease", amountCents: 3000n, subject: { kind: "public_cash", id: "public_cash" } }
+    ]);
+  });
+
   it("uses each frozen registered payer without creating a second cost impact", () => {
     const adapter = new ExpenseClaimPaymentExecutionOperatingSourceAdapter();
     for (const [executionId, companyId] of [["payment-1", "company-2"], ["payment-2", "company-3"]]) {

@@ -647,6 +647,15 @@ export class ExpenseClaimService {
     const canReadProcurementPayment = procurementActor && (procurementActor.globalRoleKeys.some((role) => ["chairman", "general_manager", "comprehensive_director", "finance_staff", "finance_director"].includes(role)) || procurementActor.projectRoleKeys.some((role) => ["project_manager", "finance_staff", "finance_director"].includes(role)));
     const existingDetailAccess = isOwner || duties.length > 0 || canReadExistingExpenseEvidence || Boolean(canReadProcurementPayment);
     if (!existingDetailAccess && !(claim.status !== "draft" && await this.approvalProgress?.canViewBusiness("expense_claim", claim.id, actorUserId))) throw new NotFoundException("费用申请不存在或当前账号无权读取");
+    const canPayClaim = ["reimbursement", "incidental_expense"].includes(claim.claimType) &&
+      ["approved_pending_payment", "partially_paid"].includes(claim.status);
+    const cashAccount = canPayClaim && claim.projectId && claim.companyEntityNameSnapshot?.trim() &&
+      roles.includes("comprehensive_director")
+      ? await this.prisma.registeredFundAccount.findUnique({
+          where: { scopeKey: "public_cash" },
+          select: { publicCashCustody: { select: { currentCustodianId: true } } }
+        })
+      : null;
     const [project, lines, attachments, paymentSubjectCompanyEntities, paymentExecutions, finalPaymentPdf] = await Promise.all([
       claim.projectId
         ? this.prisma.project.findUnique({ where: { id: claim.projectId }, select: { id: true, code: true, name: true } })
@@ -792,7 +801,8 @@ export class ExpenseClaimService {
       paymentSubjectPermissions: { canAdjust: canAdjustPaymentSubject },
       paymentSubjectCompanyEntities,
       fundsPermissions: {
-        canRecordPayment: (claim.claimType === "reimbursement" || claim.claimType === "incidental_expense") && ["approved_pending_payment", "partially_paid"].includes(claim.status) && roles.includes("finance_staff"),
+        canRecordPayment: canPayClaim && roles.includes("finance_staff"),
+        canRecordPublicCashPayment: cashAccount?.publicCashCustody?.currentCustodianId === actorUserId,
         canRecordReimbursementPayment: claim.claimType === "reimbursement" && ["approved_pending_payment", "partially_paid"].includes(claim.status) && roles.includes("finance_staff"),
         canGenerateFinalPaymentPdf: claim.claimType === "reimbursement" && claim.status === "paid" && roles.includes("finance_staff"),
         canGenerateLoanFinalDisbursementPdf: false,
@@ -827,11 +837,13 @@ export class ExpenseClaimService {
         ...(registeredOperationalPayment ? {
           registeredFunding: {
             actualPayerCompanyId: registeredOperationalPayment.actualPayerCompanyId,
+            ...(registeredOperationalPayment.actualPayerCompanyId === null ? { actualPayerKind: "public_cash" as const } : {}),
             actualPayerName: registeredOperationalPayment.actualPayerName,
             originalDebtorCompanyId: registeredOperationalPayment.originalDebtorCompanyId,
-            relationshipEntryId: registeredOperationalPayment.actualPayerCompanyId === registeredOperationalPayment.originalDebtorCompanyId
-              ? null
-              : registeredOperationalPayment.id
+            relationshipEntryId: registeredOperationalPayment.actualPayerCompanyId !== null &&
+              registeredOperationalPayment.actualPayerCompanyId !== registeredOperationalPayment.originalDebtorCompanyId
+              ? registeredOperationalPayment.id
+              : null
           }
         } : {})
       })),
@@ -887,6 +899,9 @@ export class ExpenseClaimService {
     }
     if (detail.fundsPermissions.canRecordPayment) {
       availableActions.push("record_expense_claim_payment");
+    }
+    if (detail.fundsPermissions.canRecordPublicCashPayment) {
+      availableActions.push("record_expense_claim_public_cash_payment");
     }
     if (detail.fundsPermissions.canGenerateFinalPaymentPdf) {
       availableActions.push("generate_expense_claim_final_payment_pdf");

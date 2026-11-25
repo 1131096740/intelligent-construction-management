@@ -371,16 +371,16 @@ export class ExpenseClaimPaymentExecutionOperatingSourceAdapter
     );
     const amountCents = requiredJsonMoney(source, "amountCents", "费用实际付款");
     if (amountCents <= 0n) throw new BadRequestException("费用实际付款金额必须大于 0");
-    const payer: OperatingSubjectReference = {
-      kind: "participating_company",
-      id: source.registeredFunding === undefined
-        ? requiredJsonText(source, "paymentSubjectCompanyEntityId", "费用实际付款")
-        : requiredJsonText(
-            requiredJsonRecord(source.registeredFunding, "费用登记付款"),
-            "actualPayerCompanyId",
-            "费用登记付款"
-          )
-    };
+    const funding = source.registeredFunding === undefined
+      ? null
+      : requiredJsonRecord(source.registeredFunding, "费用登记付款");
+    const isPublicCash = funding !== null && funding.actualPayerCompanyId === null;
+    const payer: OperatingSubjectReference = isPublicCash
+      ? { kind: "public_cash", id: "public_cash" }
+      : { kind: "participating_company", id: funding
+          ? requiredJsonText(funding, "actualPayerCompanyId", "费用登记付款")
+          : requiredJsonText(source, "paymentSubjectCompanyEntityId", "费用实际付款") };
+    const fundsImpact = isPublicCash ? "public_cash_funds_decrease" : "company_project_funds_decrease";
     const claimType = requiredJsonText(source, "claimType", "费用实际付款");
     const payee = claimPayee(source, claimType, "费用实际付款");
     return {
@@ -413,13 +413,13 @@ export class ExpenseClaimPaymentExecutionOperatingSourceAdapter
           },
           {
             idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:funds`,
-            sourceImpactKey: "company_project_funds_decrease",
-            impactKind: "company_project_funds_decrease",
+            sourceImpactKey: fundsImpact,
+            impactKind: fundsImpact,
             amountCents,
             direction: "decrease",
             subjectRole: "actual_payer",
             subject: payer,
-            description: "费用实际付款减少我方公司项目资金"
+            description: isPublicCash ? "费用实际付款减少公共现金" : "费用实际付款减少我方公司项目资金"
           }
         ],
         basisSnapshot: sourceJson({

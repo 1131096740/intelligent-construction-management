@@ -490,7 +490,7 @@ export class SpotProcurementPaymentExecutionOperatingSourceAdapter
       executedByUserId: string;
       voucherFileId: string | null;
       createdAt: Date;
-      registeredOperationalPayment?: { id: string; actualPayerCompanyId: string; originalDebtorCompanyId: string } | null;
+      registeredOperationalPayment?: { id: string; actualPayerCompanyId: string | null; originalDebtorCompanyId: string } | null;
     },
     payment: {
       id: string;
@@ -507,7 +507,8 @@ export class SpotProcurementPaymentExecutionOperatingSourceAdapter
   ): Promise<OperatingSourceSnapshot> {
     if (
       !payment.payeeNameSnapshot ||
-      (payment.paymentType && !payment.payerCompanyEntityId)
+      (payment.paymentType && !payment.payerCompanyEntityId) ||
+      (execution.registeredOperationalPayment && !execution.registeredOperationalPayment.actualPayerCompanyId)
     ) {
       throw new BadRequestException("零采实际付款缺少已冻结的主体或收款对象");
     }

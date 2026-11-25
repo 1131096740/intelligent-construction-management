@@ -1,8 +1,9 @@
 import { chinaDateOnly } from "@jiangkong/shared-domain";
 import { readRegisteredCompanyOwnedSources } from "./registered-company-owned-fund-source";
-import { BadRequestException, ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
+import { currentPublicCashCustodian } from "./public-cash-custodian";
 import { parseMoneyCentsInput } from "../money/decimal-money";
 import { assertRegisteredPaymentActor, availableRegisteredBalance, RegisteredBalanceDecimal } from "../payment/registered-payment-funding";
 
@@ -47,7 +48,16 @@ function validateFunding(input: OperationalPayment, funding: RegisteredOperation
   return { lines, payloadFingerprint };
 }
 
-function result(row: { id: string; actualPayerCompanyId: string; originalDebtorCompanyId: string }) {
+type StoredOperationalPayer = { id: string; actualPayerCompanyId: string | null; originalDebtorCompanyId: string };
+type CompanyOperationalPayment = { actualPayerCompanyId: string; relationshipEntryId: string | null };
+type CashOperationalPayment = { actualPayerKind: "public_cash"; actualPayerCompanyId: null; relationshipEntryId: null };
+type OperationalPaymentResult = CompanyOperationalPayment | CashOperationalPayment;
+type SpotOperationalPayment = OperationalPayment & { sourceType: "spot_procurement_payment_execution" };
+
+function result(row: StoredOperationalPayer): OperationalPaymentResult {
+  if (row.actualPayerCompanyId === null) {
+    return { actualPayerKind: "public_cash", actualPayerCompanyId: null, relationshipEntryId: null };
+  }
   return {
     actualPayerCompanyId: row.actualPayerCompanyId,
     relationshipEntryId: row.actualPayerCompanyId !== row.originalDebtorCompanyId ? row.id : null,
@@ -62,29 +72,50 @@ export function observeRegisteredOperationalPaymentSource(
   } });
 }
 
+export function readRegisteredOperationalPayment(
+  tx: Prisma.TransactionClient, input: SpotOperationalPayment & { funding?: RegisteredOperationalFunding },
+): Promise<CompanyOperationalPayment | null>;
+export function readRegisteredOperationalPayment(
+  tx: Prisma.TransactionClient, input: OperationalPayment & { funding?: RegisteredOperationalFunding },
+): Promise<OperationalPaymentResult | null>;
 export async function readRegisteredOperationalPayment(
   tx: Prisma.TransactionClient, input: OperationalPayment & { funding?: RegisteredOperationalFunding },
 ) {
   const row = await tx.registeredOperationalPayment.findUnique({ where: executionReference(input) });
   if (!row && !input.funding) return null;
-  if (!row || !input.funding || validateFunding(input, input.funding).payloadFingerprint !== row.payloadFingerprint) {
+  if (!row || (input.sourceType === "spot_procurement_payment_execution" && row.actualPayerCompanyId === null) ||
+      !input.funding || validateFunding(input, input.funding).payloadFingerprint !== row.payloadFingerprint) {
     throw new ConflictException("原实付记录的资金凭据与本次提交不同，请查询原实付结果");
   }
   return result(row);
 }
 
+export function appendRegisteredOperationalPayment(
+  tx: Prisma.TransactionClient, input: SpotOperationalPayment & { funding: RegisteredOperationalFunding },
+): Promise<CompanyOperationalPayment>;
+export function appendRegisteredOperationalPayment(
+  tx: Prisma.TransactionClient, input: OperationalPayment & { funding: RegisteredOperationalFunding },
+): Promise<OperationalPaymentResult>;
 export async function appendRegisteredOperationalPayment(
   tx: Prisma.TransactionClient, input: OperationalPayment & { funding: RegisteredOperationalFunding },
 ) {
   const { projectId, originalDebtorCompanyId, funding, actorUserId, paidAt } = input;
   if (!projectId || !originalDebtorCompanyId) throw new ConflictException("项目或原债务公司尚未明确，请核对原单");
   const { lines, payloadFingerprint } = validateFunding(input, funding);
-  await assertRegisteredPaymentActor(tx, actorUserId);
+  const roles = await assertRegisteredPaymentActor(tx, actorUserId);
   const account = await tx.registeredFundAccount.findUnique({ where: { scopeKey: funding.scopeKey }, include: { company: true } });
-  if (!account || account.kind !== "company" || !account.company?.isActive || !account.company.unifiedSocialCreditCode) {
-    throw new ConflictException("请选择具有有效法人资料的登记公司账户");
+  const isPublicCash = input.sourceType === "expense_claim_payment_execution" && funding.scopeKey === "public_cash";
+  const company = account?.company;
+  if (!account || (isPublicCash
+    ? account.kind !== "public_cash" || account.companyEntityId !== null
+    : account.kind !== "company" || !company?.isActive || !company.unifiedSocialCreditCode)) {
+    throw new ConflictException(isPublicCash ? "公共现金账户尚未核对登记" : "请选择具有有效法人资料的登记公司账户");
   }
   await tx.$queryRaw(Prisma.sql`SELECT id FROM public."RegisteredFundAccount" WHERE id = ${account.id} FOR UPDATE`);
+  if (isPublicCash && (!roles.includes("comprehensive_director") ||
+    await currentPublicCashCustodian(tx, account.id) !== actorUserId)) {
+    throw new ForbiddenException("只有当前具名公共现金保管人可以登记本笔付款");
+  }
   const current = await tx.fundAccountBalanceRegistration.findFirst({
     where: { accountId: account.id, status: "confirmed" }, orderBy: { version: "desc" }, include: { sources: true },
   });
@@ -99,13 +130,13 @@ export async function appendRegisteredOperationalPayment(
     throw new ConflictException("实际付款账户余额不足或待核对");
   }
   const debit = new Map(lines.map(line => [line.sourceBatchId, new RegisteredBalanceDecimal(line.amountCents.toString()).div(100)]));
-  const unassigned = account.company.id !== originalDebtorCompanyId
+  const unassigned = company && company.id !== originalDebtorCompanyId
     ? available.sources.filter(source => debit.has(source.id) && source.projectStatus !== "project").map(source => source.id) : [];
   const provenOwned = await readRegisteredCompanyOwnedSources(tx, unassigned);
   for (const [sourceBatchId, amount] of debit) {
     const source = available.sources.find(item => item.id === sourceBatchId);
     const eligible = source && (source.projectStatus === "project" ? source.projectId === projectId :
-      provenOwned.get(source.id) === account.company.id);
+      isPublicCash ? source.projectStatus === "pending" : provenOwned.get(source.id) === company?.id);
     if (!source || !eligible || source.amountYuan.lt(amount) ||
         available.pendingAllocations.some(pending => pending.candidateSourceIds.includes(sourceBatchId))) {
       throw new ConflictException("所选项目资金来源余额不足或待核对");
@@ -129,8 +160,8 @@ export async function appendRegisteredOperationalPayment(
   })) });
   const row = await tx.registeredOperationalPayment.create({ data: {
     id, ...executionReference(input), accountId: account.id, registrationId: registration.id,
-    previousRegistrationId: current.id, actualPayerCompanyId: account.company.id, originalDebtorCompanyId,
-    actualPayerName: account.company.name, projectId, actorUserId, amountCents: input.amountCents, paidAt, payloadFingerprint,
+    previousRegistrationId: current.id, actualPayerCompanyId: isPublicCash ? null : company!.id, originalDebtorCompanyId,
+    actualPayerName: isPublicCash ? "公共现金" : company!.name, projectId, actorUserId, amountCents: input.amountCents, paidAt, payloadFingerprint,
     allocations: { create: lines },
   } });
   await tx.$executeRaw`SET CONSTRAINTS public."RegisteredOperationalPayment_conservation", public."FundAccountBalanceRegistration_operational_payment" IMMEDIATE`;
