@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 archive_name, workspace_name, work_name, *options = sys.argv[1:]
-if options not in ([], ['--current-320'], ['--text-direct-330'], ['--payment-remainder-331']):
+if options not in ([], ['--current-320'], ['--text-direct-330'], ['--payment-remainder-331'], ['--upward-archive-332']):
     raise SystemExit('TASK410_STAGE_MODE')
 archive, workspace, work = map(Path, (archive_name, workspace_name, work_name))
 pins = json.loads((archive / 'fixed-overlay-pins.json').read_text())
@@ -87,7 +87,7 @@ if options:
     ]:
         subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                         str(work / relative), str(Path(__file__).with_name(delta))], check=True)
-if options in (['--text-direct-330'], ['--payment-remainder-331']):
+if options in (['--text-direct-330'], ['--payment-remainder-331'], ['--upward-archive-332']):
     spec = work / 'services/api/src/database/company-proxy-repayment.http.pg.spec.ts'
     verify(spec.read_bytes(), '54740e4a9fcef9c331eaf2943b850d29a6438bdb06a47a854511effc7c8db6cc', spec.name)
     subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent', str(spec),
@@ -106,7 +106,7 @@ if options in (['--text-direct-330'], ['--payment-remainder-331']):
         subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                         str(target), str(Path(__file__).with_name(delta))], check=True)
         verify(target.read_bytes(), final, relative)
-if options == ['--payment-remainder-331']:
+if options in (['--payment-remainder-331'], ['--upward-archive-332']):
     subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent', str(spec),
                     str(Path(__file__).with_name('task410-signed-competition-331.patch'))], check=True)
     verify(spec.read_bytes(), 'a847c18dfa554fe0349b9e1cb57a7ace558c312f158c5f77a78b2689e7dd0f6a', spec.name)
@@ -115,6 +115,18 @@ if options == ['--payment-remainder-331']:
          'e972ef88289361db2249dd2bab43409ee6db00850b8e1f663027cd56b38a51e7', '4d7db1204623533024ab0fef51cc8541645a953be9c4654b8cd19bda658ed5e0'),
         ('services/api/src/database/task410-owned-test-database.ts', 'task410-support-331.patch',
          '511cc6b6019130e15ac882d7b00531f22c0de0613d0fbcaffdc0da7f0d1e27ab', '1bc51e247679b9f86649eaf1d7c88479e0168a0f02c563a4c3f5ba3876197563'),
+    ]:
+        target = work / relative
+        verify(target.read_bytes(), earlier, relative)
+        subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
+                        str(target), str(Path(__file__).with_name(delta))], check=True)
+        verify(target.read_bytes(), final, relative)
+if options == ['--upward-archive-332']:
+    for relative, delta, earlier, final in [
+        ('services/api/prisma/run-task398-shared-standard-local.cjs', 'task410-runner-332.patch',
+         '4d7db1204623533024ab0fef51cc8541645a953be9c4654b8cd19bda658ed5e0', '157074d07ac6f4a41c2c40142bfe77f61dbf8cae440437d3b63d5d06ffb09c61'),
+        ('services/api/src/database/task410-owned-test-database.ts', 'task410-support-332.patch',
+         '1bc51e247679b9f86649eaf1d7c88479e0168a0f02c563a4c3f5ba3876197563', '8fe31b09f59c816345794d220c4e3585adf3212e1c07337496c87475d0d10f69'),
     ]:
         target = work / relative
         verify(target.read_bytes(), earlier, relative)

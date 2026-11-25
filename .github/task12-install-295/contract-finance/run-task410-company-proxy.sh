@@ -14,13 +14,15 @@ scope=company-proxy-repayment
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==(source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295))process.exit(1);
-' "$prepared/source.json" "$sha"
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==(source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295))process.exit(1);
+  if(source.migrationCount===332) require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
+' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs"
 mode_args=()
 case $(node -p 'require(process.argv[1]).mode' "$prepared/source.json") in
   current-320) mode_args=(--current-320) ;;
   text-direct-330) mode_args=(--text-direct-330) ;;
   payment-remainder-331) mode_args=(--payment-remainder-331) ;;
+  upward-archive-332) mode_args=(--upward-archive-332) ;;
 esac
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
@@ -46,7 +48,8 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003600_fund_balance_notice_lock/migration.sql,dst=/qualification/terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
-  --mount "type=bind,src=$plan/task410-entry.cjs,dst=/qualification/task410-entry.cjs,readonly")
+  --mount "type=bind,src=$plan/task410-entry.cjs,dst=/qualification/task410-entry.cjs,readonly"
+  --mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
