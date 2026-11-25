@@ -87,7 +87,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
   const passwords = Array.from({length: 8}, () => randomBytes(32).toString("hex"));
   let app: INestApplication | undefined;
   let stage = "IDENTITY";
-  let databaseFailure: { model?: string; action: string; kind: string; code?: string; sqlState?: string; relation?: string } | undefined;
+  let databaseFailure: { model?: string; action: string; kind: string; code?: string; sqlState?: string; relation?: string; routine?: string } | undefined;
   let loginFacts: { rateLimitRows?: number; lastLoginRecorded?: boolean; auditRows?: number; refreshRows?: number } | undefined;
   let authFailure: ReturnType<typeof takeTask12AuthError>;
   let loggedAuthFailure: ReturnType<typeof projectTask16RegistrationError> | undefined;
@@ -180,15 +180,17 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
         const projected = projectTask16RegistrationError(error);
         const unknown = projected.serverErrorKind === "UNKNOWN_REQUEST_ERROR";
         if (projected.serverPrismaCode || unknown) {
-          const message = unknown && error instanceof Error ? error.message : "";
+          const metadata = error instanceof Prisma.PrismaClientKnownRequestError ? error.meta?.message : undefined;
+          const message = typeof metadata === "string" ? metadata : unknown && error instanceof Error ? error.message : "";
           const unknownSqlState = /(?:code:\s*"|SQLSTATE[ :]+)([0-9A-Z]{5})\b/u.exec(message)?.[1];
           const sqlState = projected.serverSqlState ?? (
             unknownSqlState && ["42501", "23502", "23503", "23505", "23514", "42P01", "42703", "25006", "25P02"].includes(unknownSqlState)
               ? unknownSqlState : undefined
           );
           const relation = /permission denied for (?:table|relation) "?([a-zA-Z0-9_]+)"?/u.exec(message)?.[1];
+          const routine = /permission denied for function (jg_[a-z0-9_]{1,95})\b/u.exec(message)?.[1];
           databaseFailure = { model: params.model, action: params.action, kind: projected.serverErrorKind, code: projected.serverPrismaCode,
-            sqlState, relation: relation && Object.hasOwn(Prisma.ModelName, relation) ? relation : undefined };
+            sqlState, relation: relation && Object.hasOwn(Prisma.ModelName, relation) ? relation : undefined, routine };
         }
         throw error;
       }
@@ -249,7 +251,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     stage = "TEMPLATE";
     const equipment = readFileSync(resolve(__dirname, "../../assets/templates/equipment-rental-real-v1.docx"));
     const published = await publishTask12GeneratedEquipmentTemplate(equipment, seed.users[2].id, port(2));
-    stage = "DRAFT";
+    stage = "DRAFT_CREATE";
     const created = await post(0, "/contracts", { projectId: seed.project.id, numericProtocolVersion: 2, contractTypeKey: "equipment_rental", relationship: "inside", amountLimitType: "capped" });
     const { id: contractId } = created.contract;
     const { id: versionId } = created.version;
@@ -257,13 +259,16 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     const draft = "/contract-drafts/" + versionId;
     const contract = "/contracts/" + versionId;
     const detail = (actor = 0) => get(actor, "/contracts/" + contractId + "?versionId=" + versionId);
+    stage = "DRAFT_LEASE";
     const lease = await post(0, draft + "/edit-lease");
     const headers = { "x-contract-draft-lease": lease.token as string };
     const workbench = () => get(0, draft + "/workbench");
     const name = "隔离验收设备租赁合同";
     const addedClause = "双方补充约定原件保密。";
     const save = async (documentBody?: object) => {
+      stage = documentBody ? "DRAFT_WORKBENCH_BEFORE_EDIT" : "DRAFT_WORKBENCH_BEFORE_SETUP";
       const current = await workbench();
+      stage = documentBody ? "DRAFT_SAVE_EDIT" : "DRAFT_SAVE_SETUP";
       await expectStatus(send(0, draft, "PUT", { headers, json: {
         idempotencyKey: randomUUID(), saveKind: "manual", expectedRevision: current.version.draftRevision,
         changedSections: ["draft", "parties"],
@@ -279,6 +284,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
       }}), 200);
     };
     await save();
+    stage = "DRAFT_DOCUMENT_BODY";
     const source = await get(0, draft + "/document-body");
     const block = source.blocks.find((item: Payload) => item.editable && item.text.startsWith("3.甲方需要延长本合同租赁期限"));
     expect(block?.id).toBeDefined();
