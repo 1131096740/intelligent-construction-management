@@ -2,11 +2,13 @@
 const assert=require('node:assert/strict');
 const source=require('./contract-finance-source.json');
 const {sourceSha}=source;
-const {withCombined295MultiWitness,withCombined320ContractPayment}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement}=require('./installer.cjs');
 const lane=process.argv[2];
 assert.ok(['warm','collision'].includes(lane));
-const current320=process.argv[3]==='--current-320';
-const count=current320?329:295;
+const requestedMode=process.argv[3];
+const textDirect=requestedMode==='--text-direct-330';
+const current320=textDirect||requestedMode==='--current-320';
+const count=textDirect?330:current320?329:295;
 const purpose='ORIGINAL_POL275_'+lane.toUpperCase()+'_EXACT_'+count;
 const receipt={schemaVersion:1,sourceSha,purpose,business:'NOT_ENTERED',stages:[]};
 Promise.resolve().then(()=>{
@@ -14,14 +16,14 @@ Promise.resolve().then(()=>{
   assert.equal(source.migrationCount,count);
   if(current320) {
     assert.equal(lane,'warm','POL275_COLLISION_320_FORBIDDEN');
-    assert.equal(source.mode,'current-320');
+    assert.equal(source.mode,requestedMode.slice(2));
     assert.equal(source.predecessor.migrationCount,295);
   }
-  const material=current320 ? {sourceTree:source.sourceTree,
+  const material=current320 ? {sourceTree:source.sourceTree,count,
     migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails} : undefined;
   const consume=lane==='warm' ? context=>require('./pol275.cjs').verifyPol275(context,receipt,true,material) : undefined;
   return current320
-    ? withCombined320ContractPayment(receipt,consume,material)
+    ? (textDirect?withCombined330TextAgreement:withCombined320ContractPayment)(receipt,consume,material)
     : withCombined295MultiWitness(receipt,consume);
 }).then(()=>{
   if(lane==='warm'){

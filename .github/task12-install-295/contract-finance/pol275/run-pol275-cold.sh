@@ -2,13 +2,13 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && $5 == --current-320 ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 ) ) ]] || exit 64
 count=295
 mode=()
-if [[ $# == 5 ]]; then
-  count=329
-  mode=(--current-320)
-fi
+case ${5-} in
+  --current-320) count=329; mode=(--current-320) ;;
+  --text-direct-330) count=330; mode=(--text-direct-330) ;;
+esac
 purpose="ORIGINAL_POL275_COLD_EXACT_$count"
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
@@ -24,7 +24,8 @@ node -e '
   const source=require(process.argv[1]);
   const count=Number(process.argv[3]);
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
-  if(count===329 && (source.mode!=="current-320" || source.predecessor?.migrationCount!==295))process.exit(1);
+  const modes={329:"current-320",330:"text-direct-330"};
+  if(modes[count] && (source.mode!==modes[count] || source.predecessor?.migrationCount!==295))process.exit(1);
 ' "$prepared/source.json" "$sha" "$count"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")

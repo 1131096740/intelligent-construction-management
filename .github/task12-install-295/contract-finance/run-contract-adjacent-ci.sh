@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 [[ $# == 2 || ( $# == 3 && ( $3 == --current-320 || $3 == --text-direct-330 ) && $2 != pol275 ) ||
-  ( $# == 4 && $2 == pol275 && $3 == --current-320 && $4 =~ ^[a-f0-9]{40}$ ) ]] || exit 64
+  ( $# == 4 && $2 == pol275 && ( $3 == --current-320 || $3 == --text-direct-330 ) && $4 =~ ^[a-f0-9]{40}$ ) ]] || exit 64
 sha=$1
 lane=$2
 mode_args=()
@@ -11,7 +11,7 @@ if (( $# >= 3 )); then
   case "$lane" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|cash-handover|principal-return|payment-execution|task398-standard|expense-execution|expense-finance|expense-receipt|company-proxy|onboarding|procurement|pfq|browser-partial|browser-completion|pol115-workbench|pol275|line-a) mode_args=("$3") ;; *) exit 64;; esac
 fi
 if [[ ${3:-} == --text-direct-330 ]]; then
-  case "$lane" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|line-a|onboarding|procurement|task398-standard|cash-handover|principal-return|pol115-workbench|company-proxy|payment-execution|browser-partial|browser-completion|expense-execution|expense-finance|expense-receipt|pfq) ;; *) exit 64;; esac
+  case "$lane" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|line-a|onboarding|procurement|task398-standard|cash-handover|principal-return|pol115-workbench|company-proxy|payment-execution|browser-partial|browser-completion|expense-execution|expense-finance|expense-receipt|pfq|pol275) ;; *) exit 64;; esac
 fi
 root=$(git rev-parse --show-toplevel)
 plan=$(cd "$(dirname "$0")" && pwd -P)

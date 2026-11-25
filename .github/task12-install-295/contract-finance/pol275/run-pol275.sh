@@ -2,13 +2,13 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && $5 == warm && $6 == --current-320 ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && $5 == warm && ( $6 == --current-320 || $6 == --text-direct-330 ) ) ]] || exit 64
 count=295
 mode=()
-if [[ $# == 6 ]]; then
-  count=329
-  mode=(--current-320)
-fi
+case ${6-} in
+  --current-320) count=329; mode=(--current-320) ;;
+  --text-direct-330) count=330; mode=(--text-direct-330) ;;
+esac
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -35,7 +35,8 @@ node -e '
   const source=require(process.argv[1]);
   const count=Number(process.argv[3]);
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
-  if(count===329 && (source.mode!=="current-320" || source.predecessor?.migrationCount!==295))process.exit(1);
+  const modes={329:"current-320",330:"text-direct-330"};
+  if(modes[count] && (source.mode!==modes[count] || source.predecessor?.migrationCount!==295))process.exit(1);
 ' "$prepared/source.json" "$sha" "$count"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
@@ -69,10 +70,10 @@ if [[ $lane == warm ]]; then
 else
   install -m 0644 "$pol/collision-observation.cjs" "$work/collision-observation.cjs"
 fi
-check "$common/installer.cjs" 969b376ad45bf4ca54d60e00e234dca316cde1e09d22d9e4d0300c85b4e273b5
+check "$common/installer.cjs" 3a7dca40f95be2acd9119e512fa37cf3f29bc7815ecd4d46ee3537f49959301d
 cp "$common/installer.cjs" "$work/installer.cjs"
 patch --batch --fuzz=0 --silent "$work/installer.cjs" "$plan/installer-pol275.patch"
-check "$work/installer.cjs" 93c831ef1c3f0e319c6445f63c447f947109d3ef905e4741ea31eaf43da12f55
+check "$work/installer.cjs" 856a33ead8a863841fcbc34e69fad877e3840ee22d6902fa394cd6f877e0d208
 chmod 644 "$work/installer.cjs"
 node --check "$work/installer.cjs"
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL

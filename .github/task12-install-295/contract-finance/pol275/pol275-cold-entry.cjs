@@ -4,8 +4,10 @@ const {createHash}=require('node:crypto');
 const {readFileSync}=require('node:fs');
 const source=require('./contract-finance-source.json');
 const {sourceSha}=source;
-const current320=process.argv[2]==='--current-320';
-const count=current320?329:295;
+const requestedMode=process.argv[2];
+const textDirect=requestedMode==='--text-direct-330';
+const current320=textDirect||requestedMode==='--current-320';
+const count=textDirect?330:current320?329:295;
 const installer=require('./installer.cjs');
 const original='/qualification/workspace/services/api/prisma/pol275-original-evidence.cjs';
 const receipt={schemaVersion:1,sourceSha,purpose:'ORIGINAL_POL275_COLD_EXACT_'+count,business:'NOT_ENTERED',stages:[]};
@@ -13,7 +15,7 @@ Promise.resolve().then(()=>{
   assert.equal(process.argv.length,current320?3:2);
   assert.equal(source.migrationCount,count);
   if(current320) {
-    assert.equal(source.mode,'current-320');
+    assert.equal(source.mode,requestedMode.slice(2));
     assert.equal(source.predecessor.migrationCount,295);
   }
   assert.equal(createHash('sha256').update(readFileSync(original)).digest('hex'),'a338dcd1817f5dc6dacdea62cb36b3357d7933bc58587e61b4b71dec7a91d2db');
@@ -23,7 +25,7 @@ Promise.resolve().then(()=>{
     receipt.pol275={migrationCount:catalog.migrationCount,originalTerminal:catalog.terminalMigration};
   };
   return current320
-    ? installer.withCombined320ContractPayment(receipt,consume,{
+    ? (textDirect?installer.withCombined330TextAgreement:installer.withCombined320ContractPayment)(receipt,consume,{
       sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
     })
     : installer.withCombined295MultiWitness(receipt,consume);
