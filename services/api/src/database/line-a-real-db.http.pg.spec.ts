@@ -29,6 +29,8 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     contractD: "linea-contract-d", versionD: "linea-contract-d-v1",
     contractE: "linea-contract-e", versionE: "linea-contract-e-v1",
     contractF: "linea-contract-f", versionF: "linea-contract-f-v1",
+    contractG: "linea-contract-g", versionG: "linea-contract-g-v1",
+    contractH: "linea-contract-h", versionH: "linea-contract-h-v1",
     staff: "linea-user-staff", director: "linea-user-director",
     manager: "linea-user-manager", finance: "linea-user-finance"
   };
@@ -172,7 +174,9 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { id: ids.contractC, code: "LINEA-HT-C", name: "隔离框架其他合同", contractTypeKey: "other", ...contractBase },
       { id: ids.contractD, code: "LINEA-HT-D", name: "隔离已签结算付款合同D", contractTypeKey: "labor_subcontract", ...contractBase },
       { id: ids.contractE, code: "LINEA-HT-E", name: "隔离付款并发合同E", contractTypeKey: "labor_subcontract", ...contractBase },
-      { id: ids.contractF, code: "LINEA-HT-F", name: "隔离调减暂停合同F", contractTypeKey: "labor_subcontract", ...contractBase }
+      { id: ids.contractF, code: "LINEA-HT-F", name: "隔离调减暂停合同F", contractTypeKey: "labor_subcontract", ...contractBase },
+      { id: ids.contractG, code: "LINEA-HT-G", name: "隔离负结算竞争合同", contractTypeKey: "labor_subcontract", ...contractBase },
+      { id: ids.contractH, code: "LINEA-HT-H", name: "隔离历史结算承接合同", contractTypeKey: "labor_subcontract", ...contractBase }
     ] });
     const versionBase = {
       changeType: "original", status: "effective", amountCents: 1_000_000n, numericProtocolVersion: 1,
@@ -190,7 +194,9 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
         amountCents: 0n, amountLimitType: "unlimited", pricingNature: "framework" },
       { id: ids.versionD, contractId: ids.contractD, versionNo: 1, ...versionBase },
       { id: ids.versionE, contractId: ids.contractE, versionNo: 1, ...versionBase },
-      { id: ids.versionF, contractId: ids.contractF, versionNo: 1, ...versionBase }
+      { id: ids.versionF, contractId: ids.contractF, versionNo: 1, ...versionBase },
+      { id: ids.versionG, contractId: ids.contractG, versionNo: 1, ...versionBase },
+      { id: ids.versionH, contractId: ids.contractH, versionNo: 1, ...versionBase }
     ] });
     await owner.paymentTermsVersion.createMany({ data: [
       { id: "linea-terms-a", contractId: ids.contractA, contractVersionId: ids.versionA, versionNo: 1,
@@ -204,6 +210,8 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { id: "linea-terms-e", contractId: ids.contractE, contractVersionId: ids.versionE, versionNo: 1,
         status: "effective", originalText: "隔离付款约定：结算后三十日支付" },
       { id: "linea-terms-f", contractId: ids.contractF, contractVersionId: ids.versionF, versionNo: 1,
+        status: "effective", originalText: "隔离付款约定：结算后三十日支付" },
+      { id: "linea-terms-h", contractId: ids.contractH, contractVersionId: ids.versionH, versionNo: 1,
         status: "effective", originalText: "隔离付款约定：结算后三十日支付" }
     ] });
     await owner.contractPartySnapshot.createMany({ data: [
@@ -212,7 +220,11 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { contractVersionId: ids.versionB, roleKey: "party_b", displayOrder: 0,
         businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" } },
       { contractVersionId: ids.versionC, roleKey: "party_b", displayOrder: 0,
-        businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" } }
+        businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" } },
+      ...[ids.versionG, ids.versionH].map(contractVersionId => ({
+        contractVersionId, roleKey: "party_b", displayOrder: 0,
+        businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" }
+      }))
     ] });
 
     const pdf = await PDFDocument.create();
@@ -439,6 +451,99 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       expect.objectContaining({ impactKind: "confirmed_cost", amountCents: 100_000n, direction: "increase" }),
       expect.objectContaining({ impactKind: "payable_increase", amountCents: 100_000n, direction: "increase" })
     ]));
+  });
+
+  const settlementPath = `/projects/${ids.project}/signed-contract-settlements`;
+  async function newSignedDraft(contractId: string, number: string, amountYuan: string) {
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    pdf.setTitle(number);
+    const original = new Uint8Array(await pdf.save());
+    const form = new FormData();
+    form.append("file", new Blob([original], { type: "application/pdf" }), `${number}.pdf`);
+    const upload = await fetch(`${base}${settlementPath}/files`, {
+      method: "POST", headers: { authorization: `Bearer ${tokens.get("staff")}` }, body: form
+    });
+    expect(upload.status).toBe(201);
+    const { id: fileId } = await upload.json();
+    const created = await call("staff", settlementPath, {
+      contractKind: "downstream", contractId, number, amountYuan, fileIds: [fileId]
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.state).toBe("draft");
+    return { id: created.body.id as string, revision: created.body.revision as number };
+  }
+
+  it("serializes two -8 yuan settlements at both submission and review (A11)", async () => {
+    const initial = await newSignedDraft(ids.contractG, "LINEA-G-10", "10.0000");
+    const initialSubmission = await call("staff", `${settlementPath}/${initial.id}/submission`, { revision: initial.revision });
+    expect(initialSubmission.body.state).toBe("pending_review");
+    const initialReview = await call("director", `${settlementPath}/${initial.id}/review`, {
+      revision: initialSubmission.body.revision, decision: "confirm"
+    });
+    expect(initialReview.body.state).toBe("confirmed");
+    const drafts = [
+      await newSignedDraft(ids.contractG, "LINEA-G-NEG-1", "-8.0000"),
+      await newSignedDraft(ids.contractG, "LINEA-G-NEG-2", "-8.0000")
+    ];
+    const submitted = await Promise.all(drafts.map(draft =>
+      callRaw("staff", `${settlementPath}/${draft.id}/submission`, { revision: draft.revision })
+    ));
+    expect(submitted.map(result => result.status).sort()).toEqual([201, 409]);
+    expect(submitted.find(result => result.status === 409)?.body.message).toContain("已确认金额不足以冲减");
+
+    const rejectedDraft = drafts[submitted.findIndex(result => result.status === 409)]!;
+    const accepted = drafts[submitted.findIndex(result => result.status === 201)]!;
+    expect(await owner.signedContractSettlement.findUniqueOrThrow({ where: { id: rejectedDraft.id } }))
+      .toMatchObject({ state: "draft", revision: rejectedDraft.revision, submittedAt: null });
+    expect(await owner.auditLog.count({
+      where: { action: "settlement.signed_submitted", businessId: { in: drafts.map(draft => draft.id) } }
+    })).toBe(1);
+
+    // Seed an inherited pending record to exercise the independent review guard
+    // even though current submission rules already prevent two live pending rows.
+    const inherited = await owner.signedContractSettlement.update({
+      where: { id: rejectedDraft.id },
+      data: { state: "pending_review", submittedAt: new Date(), revision: { increment: 1 } }
+    });
+    const review = await Promise.all([
+      { id: accepted.id, revision: submitted.find(result => result.status === 201)!.body.revision as number },
+      { id: inherited.id, revision: inherited.revision }
+    ].map(draft =>
+      callRaw("director", `${settlementPath}/${draft.id}/review`, { revision: draft.revision, decision: "confirm" })
+    ));
+    expect(review.map(result => result.status).sort()).toEqual([201, 409]);
+    expect(review.find(result => result.status === 409)?.body.message).toContain("累计结算不得小于零");
+    const basis = await call("staff", `${settlementPath}/payment-basis?contractKind=downstream&contractId=${ids.contractG}`);
+    expect(basis.body).toMatchObject({ confirmedYuan: "2.0000", latestConfirmed: { amountYuan: "-8.0000" } });
+    expect(await owner.auditLog.count({
+      where: { action: "settlement.signed_confirmed", businessId: { in: drafts.map(draft => draft.id) } }
+    })).toBe(1);
+  });
+
+  it("counts a 60 yuan legacy settlement and a 10 yuan signed settlement once each (A11)", async () => {
+    const legacy = await owner.settlement.create({ data: {
+      id: "linea-legacy-settlement-h", projectId: ids.project, contractId: ids.contractH,
+      contractVersionId: ids.versionH, paymentTermsVersionId: "linea-terms-h",
+      code: "LINEA-JS-LEGACY-H", periodLabel: "隔离历史一期", status: "effective",
+      amountCents: 6_000n, payableAmountCents: 6_000n, paidAmountCents: 0n
+    } });
+    const basisPath = `${settlementPath}/payment-basis?contractKind=downstream&contractId=${ids.contractH}`;
+    expect((await call("staff", basisPath)).body.confirmedYuan).toBe("60.0000");
+
+    const draft = await newSignedDraft(ids.contractH, "LINEA-H-NEW-10", "10.0000");
+    const submitted = await call("staff", `${settlementPath}/${draft.id}/submission`, { revision: draft.revision });
+    expect(submitted.body.state).toBe("pending_review");
+    expect((await call("staff", basisPath)).body.confirmedYuan).toBe("60.0000");
+    const reviewed = await call("director", `${settlementPath}/${draft.id}/review`, {
+      revision: submitted.body.revision, decision: "confirm"
+    });
+    expect(reviewed.body.state).toBe("confirmed");
+    expect((await call("staff", basisPath)).body).toMatchObject({
+      confirmedYuan: "70.0000", latestConfirmed: { id: draft.id, amountYuan: "10.0000" }
+    });
+    expect(await owner.settlement.findUniqueOrThrow({ where: { id: legacy.id } })).toEqual(legacy);
+    expect(await owner.signedContractSettlement.count({ where: { contractId: ids.contractH, state: "confirmed" } })).toBe(1);
   });
 
   it("lets the unified registered payment workbench accept the confirmed signed settlement", async () => {
