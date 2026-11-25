@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { type INestApplication } from "@nestjs/common";
-import { NestFactory } from "@nestjs/core";
+import { HttpAdapterHost, NestFactory } from "@nestjs/core";
 import { PrismaClient } from "@prisma/client";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
@@ -10,6 +10,7 @@ import { AppModule } from "../app.module";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { configureApiSecurity } from "../api-security";
 import { PrismaService } from "./prisma.service";
+import { armTask12AuthError, takeTask12AuthError, Task12AuthErrorFilter, Task12AuthStageInterceptor } from "./task12-auth-error-diagnostic";
 import { CONTRACT_BODY_DOCX4J_ENGINE_VERSION } from "../contract-document/contract-document.service";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { extractContractDocx } from "../contract-document/contract-docx-extractor";
@@ -48,6 +49,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
   let app: INestApplication | undefined;
   let stage = "IDENTITY";
   let databaseFailure: { model?: string; action: string; code: string; sqlState?: string } | undefined;
+  let authFailure: ReturnType<typeof takeTask12AuthError>;
   try {
     const [identity] = await readOnlyApplication.$queryRaw<Array<{ safe: boolean; oid: string }>>`
       SELECT current_database()  = ${packet.database} AND current_user = session_user
@@ -83,6 +85,9 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     stage = "HTTP_BOOT";
     app = await NestFactory.create(AppModule, { logger: false, abortOnError: false });
     configureApiSecurity(app);
+    const authErrors = new Task12AuthErrorFilter(app.get(HttpAdapterHost));
+    app.useGlobalFilters(authErrors);
+    app.useGlobalInterceptors(new Task12AuthStageInterceptor(authErrors));
     app.get(PrismaService).$use(async (params, next) => {
       try {
         return await next(params);
@@ -116,7 +121,15 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
       expectStatus(send(actor, path, "POST", { json, headers }), 201);
     const port = (actor: number) => ({ now: http.now, wait: http.wait, send: (request: Task12LocalLifecycleRequest) => send(actor, request.path, request.method, request) });
     stage = "LOGIN";
-    for (const [actor, user] of seed.users.entries()) await post(actor, "/auth/login", { phone: user.phone, password: passwords[actor] });
+    for (const [actor, user] of seed.users.entries()) {
+      const server = app.getHttpServer() as object;
+      const ticket = armTask12AuthError(authErrors, server, user.phone);
+      try {
+        await post(actor, "/auth/login", { phone: user.phone, password: passwords[actor] });
+      } finally {
+        authFailure = takeTask12AuthError(authErrors, server, ticket);
+      }
+    }
     stage = "SIGNATURES";
     const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9e0AAAAASUVORK5CYII=", "base64");
     for (const actor of [1, 2, 3, 4, 5]) await expectStatus(send(actor, "/me/signature/canvas", "POST", { form: form(png, "image/png", "signature.png") }), 201);
@@ -252,7 +265,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     const marker = typeof detail?.message === "string" && /^(?:NATIVE_329|TASK12)_[A-Z0-9_]{1,100}$/u.test(detail.message) ? detail.message : undefined;
     const status = typeof detail?.status === "number" ? detail.status : undefined;
     const expected = typeof detail?.expected === "number" ? detail.expected : undefined;
-    const diagnostic = JSON.stringify({ stage, code, marker, status, expected, databaseFailure });
+    const diagnostic = JSON.stringify({ stage, code, marker, status, expected, databaseFailure, authFailure });
     process.stdout.write("SEAL_329_NATIVE_FAILURE " + diagnostic + "\n");
     throw new Error(diagnostic);
   } finally {
