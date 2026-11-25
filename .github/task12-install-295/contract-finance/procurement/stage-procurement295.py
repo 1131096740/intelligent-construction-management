@@ -389,9 +389,9 @@ if forward:
     receipt.stages.push("PROCUREMENT_A05_ORGANIZATION_AUTHORITY");
     try{
       const sequence='public."PersonnelChange_sequence_seq"';
-      const preimage=await ownerSql("A05_SEQUENCE_PREIMAGE",`SELECT (NOT has_sequence_privilege('${role}','${sequence}','USAGE,SELECT,UPDATE'))::text`);
+      const preimage=await ownerSql("APPROVED_SCOPE_READ",`SELECT (NOT has_sequence_privilege('${role}','${sequence}','USAGE,SELECT,UPDATE'))::text`);
       condition(preimage.stdout.trim()==="true","PROCUREMENT_A05_SEQUENCE_PREIMAGE");
-      const restricted=await ownerSql("A05_SEQUENCE_USAGE",`
+      const restricted=await ownerSql("ROLE_SETUP",`
         GRANT USAGE ON SEQUENCE ${sequence} TO ${role};
         SELECT (has_sequence_privilege('${role}','${sequence}','USAGE') AND
           NOT has_sequence_privilege('${role}','${sequence}','SELECT,UPDATE,USAGE WITH GRANT OPTION'))::text`);
