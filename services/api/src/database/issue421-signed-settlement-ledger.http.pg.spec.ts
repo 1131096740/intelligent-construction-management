@@ -143,6 +143,7 @@ run("issue 421a signed settlement ledger and exports on real PostgreSQL and HTTP
     await owner.projectMember.createMany({
       data: [
         { projectId: ids.projectA, userId: ids.staffA, positionKey: "contract_staff" },
+        { projectId: ids.projectA, userId: ids.staffA, positionKey: "project_manager" },
         { projectId: ids.projectA, userId: ids.outsider, positionKey: "employee" }
       ]
     });
@@ -417,9 +418,9 @@ run("issue 421a signed settlement ledger and exports on real PostgreSQL and HTTP
     const codeColumn = headersOf(formal.sheet!).indexOf("合同编号") + 1;
     expect([2, 3].map(row => formal.sheet!.getRow(row).getCell(codeColumn).value)).toEqual(["HT-421-A", "HT-421-B"]);
 
-    const limited = await callJson("staffA", `/contracts/lifecycle-ledger?${scope}&projectId=${ids.projectB}`);
+    const limited = await callJson("staffA", "/contracts/lifecycle-ledger?scope=formal_ledger&keyword=框架");
     expect(limited).toMatchObject({ status: 200, body: { rows: [], meta: { total: 0 } } });
-    const limitedExport = await callWorkbook("staffA", `/contracts/ledger-export?${scope}&projectId=${ids.projectB}`);
+    const limitedExport = await callWorkbook("staffA", "/contracts/ledger-export?scope=formal_ledger&keyword=框架");
     expect(limitedExport.status).toBe(200);
     expect(limitedExport.sheet!.rowCount).toBeLessThanOrEqual(2);
   });
