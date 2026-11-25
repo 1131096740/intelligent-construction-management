@@ -64,3 +64,18 @@ export function toHistoricalContractPaymentBalance(
     otherConfirmedOccupancyCents: takeover.otherConfirmedOccupancyCents
   };
 }
+
+export function historicalAdvancePaymentBasis(opening?: {
+  takeoverLevel?: string | null;
+  historicalAdvancePaidCents?: bigint | null;
+  historicalAdvanceDeductedCents?: bigint | null;
+} | null) {
+  const difference = (opening?.historicalAdvancePaidCents ?? 0n) -
+    (opening?.historicalAdvanceDeductedCents ?? 0n);
+  const netAdvanceCents = difference > 0n ? difference : 0n;
+  // 无等级接管的历史实付总额已经包含逐笔划分的预付款。
+  return {
+    netAdvanceCents,
+    advanceOutsidePaidTotalCents: opening?.takeoverLevel === "NONE" ? 0n : netAdvanceCents
+  };
+}

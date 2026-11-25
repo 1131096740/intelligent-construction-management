@@ -1,4 +1,4 @@
-import { orderConfirmedPaymentSettlements, signedSettlementPaymentBalance, type ConfirmedPaymentSettlement } from "./signed-settlement-payment-basis";
+import { loadDownstreamPaymentBasis, orderConfirmedPaymentSettlements, signedSettlementPaymentBalance, type ConfirmedPaymentSettlement } from "./signed-settlement-payment-basis";
 
 describe("signed settlement payment basis", () => {
   it("uses the latest confirmation even when it is a negative correction", () => {
@@ -12,6 +12,26 @@ describe("signed settlement payment basis", () => {
 
     expect(orderConfirmedPaymentSettlements(rows)).toEqual([correction, older]);
     expect(rows).toEqual([older, correction]);
+  });
+
+  it.each([
+    ["NONE", 7_000n],
+    ["B", 6_000n]
+  ])("counts the confirmed historical advance once for takeover level %s", async (takeoverLevel, historicalPaidCents) => {
+    const tx = {
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue(null) },
+      projectProxyPayment: { aggregate: jest.fn().mockResolvedValue({ _sum: { amountCents: null } }) },
+      contractTakeover: { findMany: jest.fn().mockResolvedValue([{
+        takeoverLevel, historicalPaidCents, historicalAdvancePaidCents: 1_000n
+      }]) }
+    };
+    await expect(loadDownstreamPaymentBasis(tx as never, "project", "contract", "version", "70.0000", false))
+      .resolves.toMatchObject({ capacity: {
+        recordedPaidYuan: "70.0000", advancePaidYuan: "10.0000",
+        abnormalOverpayYuan: "0.0000", wholeCentLimit: "0", suspended: false
+      } });
   });
 
   it("keeps fractional yuan and floors only the whole-cent payment limit", () => {

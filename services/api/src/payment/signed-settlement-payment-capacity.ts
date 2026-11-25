@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { contractProxyPaidForContract } from "../contract-ledger/contract-proxy-capacity";
 import {
   CONTRACT_TAKEOVER_BALANCE_SELECT,
+  historicalAdvancePaymentBasis,
   toHistoricalContractPaymentBalance,
   type ContractTakeoverBalanceRow
 } from "./contract-takeover-balance";
@@ -148,10 +149,6 @@ export function paymentRequestOutstandingCents(payment: {
   return outstanding > 0n ? outstanding : 0n;
 }
 
-function maxBigInt(left: bigint, right: bigint): bigint {
-  return left > right ? left : right;
-}
-
 /**
  * 读取合同级已签结算付款容量：合同累计结算（含负数、旧结算、历史起点）
  * 减去已登记付款、在途申请、代付与历史占用。调用方需在同一事务内使用
@@ -215,7 +212,7 @@ export async function loadSignedSettlementPaymentBasis(
         takeoverStatus: "confirmed",
         historicalBalanceConfirmedAt: { not: null }
       },
-      select: CONTRACT_TAKEOVER_BALANCE_SELECT
+      select: { ...CONTRACT_TAKEOVER_BALANCE_SELECT, takeoverLevel: true }
     }),
     tx.paymentRequest.findMany({
       where: {
@@ -250,11 +247,7 @@ export async function loadSignedSettlementPaymentBasis(
   const historicalConfirmedCents = historicalBalance?.settledCents ?? 0n;
   const historicalPaidCents = historicalBalance?.paidCents ?? 0n;
   const historicalProxyPaidCents = historicalBalance?.proxyPaidCents ?? 0n;
-  const historicalUnrecoveredAdvanceCents = maxBigInt(
-    (historicalBalance?.advancePaidCents ?? 0n) -
-      (historicalBalance?.advanceDeductedCents ?? 0n),
-    0n
-  );
+  const historicalAdvance = historicalAdvancePaymentBasis(historicalBalance ? takeover : null);
   const withheldCents =
     (historicalBalance?.retentionWithheldCents ?? 0n) -
     (historicalBalance?.retentionReleasedCents ?? 0n);
@@ -282,7 +275,7 @@ export async function loadSignedSettlementPaymentBasis(
   const recordedPaidCents =
     requests.reduce((total, request) => total + request.paidAmountCents, 0n) +
     historicalPaidCents +
-    historicalUnrecoveredAdvanceCents;
+    historicalAdvance.advanceOutsidePaidTotalCents;
   const systemAdvancePaidCents = requests.reduce(
     (total, request) =>
       request.sourceType === "contract_advance" ? total + request.paidAmountCents : total,
@@ -291,7 +284,7 @@ export async function loadSignedSettlementPaymentBasis(
   const capacity = calculateSignedSettlementPaymentCapacity({
     confirmedCents: settlementAmountYuanToCents(confirmedContractYuan),
     paidCents: recordedPaidCents,
-    advancePaidCents: systemAdvancePaidCents + historicalUnrecoveredAdvanceCents,
+    advancePaidCents: systemAdvancePaidCents + historicalAdvance.netAdvanceCents,
     outstandingCents,
     proxyPaidCents,
     historicalOutstandingCents
