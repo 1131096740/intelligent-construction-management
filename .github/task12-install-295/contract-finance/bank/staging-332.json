@@ -17,6 +17,6 @@
   "bank/execution-files.json": {
     "kind": "execution-manifest",
     "material": "db8782be2783ac8c1b21d9026ea45ccd0eb4f8c81298ebbb9a898ca37e4c29b2.gz",
-    "sha256": "27c285cbfb1818955406e008cf4467cf9ca17b3125bd6cbe57c0d786773ec046"
+    "sha256": "84186a05b32f59b52de1b7a20cb881e30b164b7a8903ab7414985398d9036a76"
   }
 }

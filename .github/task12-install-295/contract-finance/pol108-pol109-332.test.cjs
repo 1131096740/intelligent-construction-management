@@ -159,7 +159,8 @@ test('POL108 and POL109 stage their original fixtures for the exact 332 ledger',
       assert.ok(staged.includes(terminal.sha256));
     }
     const owned = readFileSync(path.join(closure, 'project-close-profit.owned282.http.pg.spec.ts'), 'utf8');
-    assert.match(owned, /and rejects an incomplete A27 final submission/u);
+    assert.ok(owned.includes('it("completes seven stages and real positive, loss, and zero submit-confirm decision cycles",'));
+    assert.match(owned, /A27 incomplete operating details/u);
     assert.ok(owned.includes('经营金额或来源仍不完整，不能最终确认盈亏'));
   } finally {
     rmSync(work, { recursive: true, force: true });

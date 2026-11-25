@@ -57,7 +57,7 @@
   {
     "path": "services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts",
     "expected": "47b5f78892b32c5a64aa0308a03c079eff4551a2806eb8416a210c31c7d1325c",
-    "candidate": "8a513c8821a077cdc251826e051ab3bb09dcb4bdf8e172dda10e85bfe1de5e69"
+    "candidate": "ce13c497e0986e9fa5396053cf47b1257299373a255630b1041e457c5ae718ee"
   },
   {
     "path": "services/api/src/spot-procurement/spot-procurement-access.service.spec.ts",

@@ -112,7 +112,7 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
     await prisma.$disconnect();
   });
 
-  it("completes seven stages and real positive, loss, and zero submit-confirm decision cycles and rejects an incomplete A27 final submission", async () => {
+  it("completes seven stages and real positive, loss, and zero submit-confirm decision cycles", async () => {
     const financeStaffPosition = await prisma.position.findUniqueOrThrow({ where: { key: "finance_staff" } });
     const movementSubmitterPhone = `109${Date.now()}`;
     const movementSubmitterUser = await prisma.user.create({

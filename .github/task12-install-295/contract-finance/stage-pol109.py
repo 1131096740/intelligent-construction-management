@@ -68,9 +68,8 @@ if count == 332:
     if not scenario.strip() or not end:
         raise SystemExit('POL109_A27_SCENARIO')
     setup_end = '    await appendAdjustment("browser-reopen", "expense", 1n, "outflow", "confirmed_cost");\n'
-    original_title = 'completes seven stages and real positive, loss, and zero submit-confirm decision cycles'
     with_a27 = exactly(owned_http.read_text(), setup_end, setup_end + '\n' + scenario_start + scenario + scenario_end)
-    owned_http.write_text(exactly(with_a27, original_title, original_title + ' and rejects an incomplete A27 final submission'))
+    owned_http.write_text(with_a27)
 
 for target in [owned_http,out/'task12-pol109-ci.cjs']:
     text=target.read_text()
