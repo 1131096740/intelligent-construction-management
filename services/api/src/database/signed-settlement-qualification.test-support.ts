@@ -96,7 +96,8 @@ export async function openSignedSettlementQualification(
         SELECT NOT has_table_privilege(session_user, 'public."ContractProxyExecution"', 'SELECT')
           AND NOT has_any_column_privilege(session_user, 'public."ContractProxyExecution"', 'INSERT,UPDATE')
           AND NOT has_table_privilege(session_user, 'public."ContractProxyExecution"', 'DELETE')
-          AND has_column_privilege(session_user, 'public."ContractProxyExecution"', 'frozenSource', 'SELECT') AS restricted
+          AND has_column_privilege(session_user, 'public."ContractProxyExecution"', 'frozenSource', 'SELECT')
+          AND has_column_privilege(session_user, 'public."ContractProxyExecution"', 'id', 'SELECT') AS restricted
       `;
       if (!proxy?.restricted) {
         stage = "SESSION_PRIVILEGES";

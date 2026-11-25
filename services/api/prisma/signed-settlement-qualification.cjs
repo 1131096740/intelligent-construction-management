@@ -42,8 +42,9 @@ function createSignedSettlementQualification(databaseUrl, { existingReadWitness 
     // FileObject INSERT invokes both retained-file checks as this restricted session.
     `GRANT SELECT ("fileId", "objectKey") ON public."ContractEconomicReviewFileReference" TO ${role}`,
     `GRANT SELECT ("attachmentFileId", "correctionType") ON public."ContractTakeoverCorrection" TO ${role}`,
+    // Prisma also projects the model's primary id for this findMany.
     ...(historicalPaymentBasis ? [
-      `GRANT SELECT ("sourceRef", "frozenSource", "entryKind", "status", "paymentRequestId", "amountCents")
+      `GRANT SELECT ("id", "sourceRef", "frozenSource", "entryKind", "status", "paymentRequestId", "amountCents")
         ON public."ContractProxyExecution" TO ${role}`
     ] : []),
     `GRANT SELECT ("id", "projectId", "status", "voidedAt", "amountCents") ON public."ProjectOwnerContract" TO ${role}`,
