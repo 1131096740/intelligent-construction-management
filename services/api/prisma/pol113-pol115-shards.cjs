@@ -8,6 +8,7 @@ const BATCH_FILES = Object.freeze({
     "src/database/approval-v6-independent-http-postgres.spec.ts",
     "src/expense-claim/expense-claim-entry.http.pg.spec.ts",
     "src/fund-execution/fund-execution-entry.http.pg.spec.ts",
+    "src/approval/issue430-notification.pg.spec.ts",
     "src/database/draft-hard-deletion.pg.spec.ts",
     "src/database/draft-deletion-numbering.pg.spec.ts"
   ]),

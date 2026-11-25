@@ -211,8 +211,8 @@ test("public inventory distinguishes CI eligible tests from the explicitly manua
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.executed, false);
-  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 44, files: 103, tests: 622 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
-  assert.equal(report.coveredTests, 623);
+  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 44, files: 104, tests: 626 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
+  assert.equal(report.coveredTests, 627);
 });
 
 test("automatic-only lists the complete CI-eligible denominator and defers the manual operator", () => {
@@ -296,8 +296,8 @@ module.exports.executeAutomaticFixture = async argv => {
   assert.deepEqual(task398Shas, { task398_shared_standard: candidateSha, task398_browser: candidateSha, task398_browser_completion: candidateSha, task407_public_cash_handover: candidateSha, task409_principal_return: candidateSha, task410_company_proxy_repayment: candidateSha });
   assert.equal(receipt.executionScope, "automatic-only");
   assert.deepEqual(receipt.executionInventory.ciEligible, manifest.executionInventory.ciEligible);
-  assert.equal(receipt.coveredFiles, 103);
-  assert.equal(receipt.coveredTests, 622);
+  assert.equal(receipt.coveredFiles, 104);
+  assert.equal(receipt.coveredTests, 626);
   assert.deepEqual(receipt.deferredManualOnly, {
     groups: 1, files: 1, tests: 1, groupIds: ["enterprise_task01_entry"], executionStatus: "NOT_EXECUTED"
   });
@@ -569,19 +569,19 @@ test("manifest preserves source inventory and one separately invoked task01 oper
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 104,
-    fullyPendingSuites: 83,
+    pendingFiles: 105,
+    fullyPendingSuites: 84,
     partiallyPendingSuites: 21,
-    pendingTests: 623,
-    coveredFiles: 104,
-    coveredTests: 623,
+    pendingTests: 627,
+    coveredFiles: 105,
+    coveredTests: 627,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
     terminalMigration: baseline.terminalMigration,
     terminalMigrationChecksum: baseline.terminalMigrationChecksum
   });
-  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 622);
+  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 626);
   assert.equal(manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").executionStatus, "NOT_EXECUTED");
 });
 
@@ -686,7 +686,7 @@ test("contract-template readiness waits for the same TCP database endpoint used 
   }
 });
 
-test("canonical manifest executes all 187 entry tests including the template workbench", () => {
+test("canonical manifest executes all 191 entry tests including the workbench and approval SMS", () => {
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(
     (candidate) => candidate.id === "pol113_pol115_business_entries"
@@ -694,7 +694,7 @@ test("canonical manifest executes all 187 entry tests including the template wor
 
   assert.deepEqual(group, {
     id: "pol113_pol115_business_entries",
-    pendingTests: 187,
+    pendingTests: 191,
     testFiles: [
       {
         path: "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -714,6 +714,11 @@ test("canonical manifest executes all 187 entry tests including the template wor
       {
         path: "services/api/src/fund-execution/fund-execution-entry.http.pg.spec.ts",
         pendingTests: 2,
+        suiteStatus: "fully_pending"
+      },
+      {
+        path: "services/api/src/approval/issue430-notification.pg.spec.ts",
+        pendingTests: 4,
         suiteStatus: "fully_pending"
       },
       {
@@ -1012,7 +1017,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=623/u
+    /inventory\.coveredTests=26，派生值=627/u
   );
 });
 
@@ -1476,7 +1481,7 @@ test("POL113-POL115 preparation is issued only after the selected gate preflight
 });
 
 test("POL113-POL115 exact gate emits a distinct shard receipt only after that shard returns", async () => {
-  for (const [shard, files, tests] of [["pol113_pol114", 2, 31], ["pol115_workbench", 8, 156]]) {
+  for (const [shard, files, tests] of [["pol113_pol114", 2, 31], ["pol115_workbench", 9, 160]]) {
     const result = await artifactLifecycleFixture(false, "pol113_pol115_business_entries", false, shard);
     assert.equal(result.failure, undefined);
     assert.equal(result.receipt.candidateSha, "a".repeat(40));
@@ -1502,6 +1507,7 @@ test("POL113-POL115 runners preserve all five test batches with and without prep
       "src/database/approval-v6-independent-http-postgres.spec.ts",
       "src/expense-claim/expense-claim-entry.http.pg.spec.ts",
       "src/fund-execution/fund-execution-entry.http.pg.spec.ts",
+      "src/approval/issue430-notification.pg.spec.ts",
       "src/database/draft-hard-deletion.pg.spec.ts",
       "src/database/draft-deletion-numbering.pg.spec.ts"
     ]]],
@@ -1579,7 +1585,7 @@ test("POL113-POL115 runners preserve all five test batches with and without prep
   }
 });
 
-test("POL113-POL115 shard coverage partitions exactly 187 enabled cases without changing the aggregate", () => {
+test("POL113-POL115 shard coverage partitions exactly 191 enabled cases without changing the aggregate", () => {
   const { POL113_POL115_GROUP, SHARDS, projectPol113Pol115Shard } = require("./pol113-pol115-shards.cjs");
   const manifest = loadManifest();
   const group = manifest.coveredGroups.find(group => group.id === POL113_POL115_GROUP);
@@ -1590,13 +1596,13 @@ test("POL113-POL115 shard coverage partitions exactly 187 enabled cases without 
   };
   const aggregate = listing("--group", group.id);
   assert.equal(aggregate.shard, undefined);
-  assert.equal(aggregate.coveredTests, 187);
+  assert.equal(aggregate.coveredTests, 191);
   const shardNames = Object.keys(SHARDS);
   const shards = shardNames.map(shard => listing("--group", group.id, "--pol113-pol115-shard", shard));
   assert.deepEqual(shards.map(receipt => [receipt.shard, receipt.coveredFiles, receipt.coveredTests]),
-    [["pol113_pol114", 2, 31], ["pol115_workbench", 8, 156]]);
+    [["pol113_pol114", 2, 31], ["pol115_workbench", 9, 160]]);
   const allFiles = shards.flatMap(shard => shard.coveredGroups[0].testFiles);
-  assert.equal(new Set(allFiles).size, 10);
+  assert.equal(new Set(allFiles).size, 11);
   assert.deepEqual(allFiles.sort(), [...aggregate.coveredGroups[0].testFiles].sort());
   for (const shard of shardNames) assert.deepEqual(resolveGroupCommand(projectPol113Pol115Shard(group, shard)).args,
     [path.join(__dirname, "run-pol113-pol115-entry-local.cjs"), "--shard", shard]);

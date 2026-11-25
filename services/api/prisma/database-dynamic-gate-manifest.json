@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 104,
-    "fullyPendingSuites": 83,
+    "pendingFiles": 105,
+    "fullyPendingSuites": 84,
     "partiallyPendingSuites": 21,
-    "pendingTests": 623,
-    "coveredFiles": 104,
-    "coveredTests": 623,
+    "pendingTests": 627,
+    "coveredFiles": 105,
+    "coveredTests": 627,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -338,7 +338,7 @@
     },
     {
       "id": "pol113_pol115_business_entries",
-      "pendingTests": 187,
+      "pendingTests": 191,
       "testFiles": [
         {
           "path": "services/api/src/database/base-entry-http-postgres.spec.ts",
@@ -358,6 +358,11 @@
         {
           "path": "services/api/src/fund-execution/fund-execution-entry.http.pg.spec.ts",
           "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/approval/issue430-notification.pg.spec.ts",
+          "pendingTests": 4,
           "suiteStatus": "fully_pending"
         },
         {
@@ -1108,8 +1113,8 @@
   "executionInventory": {
     "ciEligible": {
       "groups": 44,
-      "files": 103,
-      "tests": 622
+      "files": 104,
+      "tests": 626
     },
     "manualOnly": {
       "groups": 1,

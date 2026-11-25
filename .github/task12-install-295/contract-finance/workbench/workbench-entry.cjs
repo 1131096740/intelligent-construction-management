@@ -25,7 +25,10 @@ Promise.resolve().then(()=>{
   verifyInputs();
   admitSource('/qualification','/qualification/source/services/api/prisma','/qualification/source-seal.txt');
   const {runWorkbench}=require('./task12-pol115-workbench-ci.cjs');
-  const consume=context=>runWorkbench(context,receipt,current320?source:undefined);
+  const consume=async context=>{
+    await runWorkbench(context,receipt,current320?source:undefined);
+    if(paymentRemainder) await require('./issue430-approval-sms-ci.cjs').runIssue430ApprovalSms(context,receipt,source);
+  };
   if(current320){
     const install=paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
     return install(receipt,consume,{
@@ -52,6 +55,8 @@ Promise.resolve().then(()=>{
     assert.equal(receipt.textDirectPredecessor?.sameBaseB7,true);
   }
   if(paymentRemainder){
+    assert.equal(receipt.issue430?.tests,5);
+    assert.equal(receipt.issue430?.externalSends,0);
     assert.deepEqual(receipt.paymentRemainderPredecessor,{
       count:330,ledgerSha256:source.predecessor330.ledgerSha256,sameIdentity:true,sameBaseB7:true
     });

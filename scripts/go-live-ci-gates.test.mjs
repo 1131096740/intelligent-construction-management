@@ -10,6 +10,27 @@ import test from "node:test";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const localGate = join(root, "scripts", "ops", "run-local-release-gate.sh");
 
+test("331 workbench runs all five issue 430 scenarios with simulated SMS and preserves original workbench proof", async () => {
+  const lane = join(root, ".github/task12-install-295/contract-finance/workbench");
+  const [entry, launcher, input, sms] = await Promise.all([
+    readFile(join(lane, "workbench-entry.cjs"), "utf8"),
+    readFile(join(lane, "run-workbench295.sh"), "utf8"),
+    readFile(join(lane, "workbench-inputs.cjs"), "utf8"),
+    readFile(join(lane, "issue430-approval-sms-ci.cjs"), "utf8")
+  ]);
+  const { createHash } = await import("node:crypto");
+  const digest = createHash("sha256").update(sms).digest("hex");
+  assert.match(entry, /await runWorkbench[\s\S]*?if\(paymentRemainder\) await require\('\.\/issue430-approval-sms-ci\.cjs'\)\.runIssue430ApprovalSms\(context,receipt,source\)/u);
+  assert.match(entry, /receipt\.workbench\?\.tests,9/u);
+  assert.match(launcher, /--network none[\s\S]*?issue430-approval-sms-ci\.cjs/u);
+  assert.match(launcher, /proof\.issue430\?\.tests!==5\|\|proof\.issue430\?\.externalSends!==0/u);
+  assert.ok(input.includes(`'issue430-approval-sms-ci.cjs':'${digest}'`));
+  assert.match(sms, /'src\/approval\/issue430-notification\.pg\.spec\.ts'/u);
+  assert.match(sms, /'src\/fund-execution\/fund-execution-entry\.http\.pg\.spec\.ts'/u);
+  assert.match(sms, /RUN_ISSUE430_SMS: '1'[\s\S]*?APPROVAL_SMS_ENABLED: 'false', SMS_ENABLED: 'false'/u);
+  assert.match(sms, /numPassedTests, 5[\s\S]*?assert\.deepEqual\(scenarios, expectedScenarios\)/u);
+});
+
 test("local release gate publishes the exact-SHA database and browser checks", () => {
   const result = spawnSync("bash", [localGate, "--list-checks"], {
     cwd: root,
@@ -311,8 +332,8 @@ test("CI fans out independent static and database gates behind one stable summar
   assert.equal(manualGroups[0].executionStatus, "NOT_EXECUTED");
   const ciGroups = manifest.coveredGroups.filter(group => group.ciExecution !== "manual-only");
   assert.equal(ciGroups.length, 44);
-  assert.equal(ciGroups.reduce((n, group) => n + group.testFiles.length, 0), 103);
-  assert.equal(ciGroups.reduce((n, group) => n + group.pendingTests, 0), 622);
+  assert.equal(ciGroups.reduce((n, group) => n + group.testFiles.length, 0), 104);
+  assert.equal(ciGroups.reduce((n, group) => n + group.pendingTests, 0), 626);
   assert.doesNotMatch(workflow, /enterprise_task01_entry|run-enterprise-task01-local|--task01-(?:packet|inputs|confirm)/u);
   assert.deepEqual(
     configuredGroups,

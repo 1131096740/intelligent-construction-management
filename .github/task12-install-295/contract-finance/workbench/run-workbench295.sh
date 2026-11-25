@@ -49,7 +49,7 @@ for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.j
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
 args+=(--mount "type=bind,src=$base/task12-pol109-stage-browser.cjs,dst=/qualification/task12-pol109-stage-browser.cjs,readonly")
-for file in browser-preflight.cjs task12-pol115-workbench-ci.cjs; do
+for file in browser-preflight.cjs task12-pol115-workbench-ci.cjs issue430-approval-sms-ci.cjs; do
   args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
 done
 spec=settlement-template-workbench.owned290.http.pg.spec.ts
@@ -74,4 +74,5 @@ node -e '
   const proof=require(process.argv[1]);
   const expected="POL115_WORKBENCH_ORIGINAL_"+process.argv[4]+"_PASSED";
   if(proof.status!==expected||proof.sourceSha!==process.argv[3])process.exit(1);
+  if(process.argv[4]==="331"&&(proof.issue430?.tests!==5||proof.issue430?.externalSends!==0))process.exit(1);
 ' "$work/receipt.json" "$scope" "$sha" "$count"

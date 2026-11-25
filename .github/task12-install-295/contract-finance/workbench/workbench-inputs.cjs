@@ -10,6 +10,7 @@ const pins={
   'workspace/services/api/src/settlement/settlement-template-workbench.owned290.http.pg.spec.ts':'e36beb56bd8b1267ae76de304a29c7f64817ab7ddb724af1a99208498f9d7dc6',
   'task12-pol109-stage-browser.cjs':'8adbaf1cd69af3d8154f163c490922bf5a5150ae8b21d3f705389282babbe71f',
   'task12-pol115-workbench-ci.cjs':'8219f547b252df3aa3984f414071dbae27070ddfd9540c5ff510a2e8c51f1b91',
+  'issue430-approval-sms-ci.cjs':'6ef55c7e19b04636e8e0d4c12600f314c03c713dfc2e8e8a615e212085e3883f',
   'browser-preflight.cjs':'2f8483b2a066cd5b0024492a3ec8b6f41f8c2dd06714b226cd4b2e6038720ce3',
 };
 function verifyInputs(){

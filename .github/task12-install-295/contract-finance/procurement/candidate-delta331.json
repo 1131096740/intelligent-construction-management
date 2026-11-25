@@ -62,12 +62,27 @@
   {
     "path": "services/api/prisma/database-dynamic-gate-manifest.json",
     "expected": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
-    "candidate": "b2a444f14a3cd2be34e47a9f44203d88d40d18b5aab16e0700f4e558d36fcaa0"
+    "candidate": "7e626bdbff7c971dba84448ca968132c1f9d4ce7787ea91c7aa3eebc8b89f235"
+  },
+  {
+    "path": "services/api/prisma/pol113-pol115-shards.cjs",
+    "expected": "7242c788ca855b5773bbdd6d37a3424ae719f3799622542fc77faa6174327dd8",
+    "candidate": "deda62ff055ab33b24cb92bc59cc2366b155359c5aa169e4307f440d40bc2661"
+  },
+  {
+    "path": "services/api/prisma/run-database-dynamic-gate-local.test.cjs",
+    "expected": "78a8d474a9bef166001372b1e096b4f9b190d1d6fce3988bee01ad7f9b6eb09d",
+    "candidate": "fa772afff5ea3f326f6cb5a891198373fa45f4cee8c58f231049cb5216f7c040"
   },
   {
     "path": "services/api/prisma/run-general-procurement-local.cjs",
     "expected": "389f233eed384d4df8d545806144cd84270e13ac78b47c7fbe47584f9bf30e0d",
     "candidate": "a0e31ebf60a62d326eb2f414140b3edd4cb894928584d1c9a9c64669e36b4af7"
+  },
+  {
+    "path": "services/api/prisma/run-pol115-entry-local.cjs",
+    "expected": "1fe60f75ebded5a612216988c987a59ace3f7cc9cb5bd89c690380502b733dee",
+    "candidate": "05c7f96695d7532fa67edd82f124f6569fd1a81749d2c8ce7cd8ba36512c8c87"
   },
   {
     "path": "services/api/prisma/schema.prisma",

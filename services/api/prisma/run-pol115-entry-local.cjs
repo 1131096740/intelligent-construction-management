@@ -6,6 +6,7 @@ const { mkdtempSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
 const { createCommandRuntime } = require("./money-bigint-runner-runtime.cjs");
+const { BATCH_FILES } = require("./pol113-pol115-shards.cjs");
 const { pol113Pol115JestArgs } = require("./pol113-pol115-jest-command.cjs");
 const root = path.resolve(__dirname, "../../..");
 const runId = randomUUID();
@@ -20,14 +21,7 @@ function command(bin, args, env = process.env, capture = false) {
 }
 if (process.env.NODE_ENV === "production") throw new Error("禁止生产执行");
 const requestedSpecs = process.argv.slice(2);
-const jestArgs = pol113Pol115JestArgs(requestedSpecs.length ? requestedSpecs : [
-  "src/operating-takeover/operating-takeover-entry.http.pg.spec.ts",
-  "src/database/approval-v6-independent-http-postgres.spec.ts",
-  "src/expense-claim/expense-claim-entry.http.pg.spec.ts",
-  "src/fund-execution/fund-execution-entry.http.pg.spec.ts",
-  "src/database/draft-hard-deletion.pg.spec.ts",
-  "src/database/draft-deletion-numbering.pg.spec.ts"
-], process.env);
+const jestArgs = pol113Pol115JestArgs(requestedSpecs.length ? requestedSpecs : BATCH_FILES.pol115, process.env);
 const endpoint = process.env.DOCKER_HOST || command("docker", ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"], process.env, true);
 if (!endpoint.startsWith("unix://")) throw new Error("只允许本机 Docker");
 const dockerEnv = { ...process.env, DOCKER_HOST: endpoint };
@@ -51,6 +45,7 @@ async function main() {
     command(process.execPath, [path.join(__dirname, "wait-for-local-tcp-ready.cjs"), port]);
     const env = { ...dockerEnv, FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: files, XDG_CACHE_HOME: cache,
       NODE_ENV: "test", RUN_POL115_ENTRY_PG16: "1",
+      APPROVAL_SMS_ENABLED: "false", SMS_ENABLED: "false",
       DATABASE_URL: `postgresql://jiangkong:${password}@127.0.0.1:${port}/${database}` };
     const runtime = createCommandRuntime({ defaultCwd: root });
     const migration = createCiDynamicMigrationFixture({
