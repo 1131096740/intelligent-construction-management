@@ -1373,7 +1373,7 @@ function readForward320({sourceTree,migrations,tails},target=329) {
   }
   if(upwardArchive) {
     need(tails[36]?.name==='20261129001000_contract_upward_archive_verifier_pin_forward' &&
-      tails[36]?.sha256==='42538d9f925438e3be99e4a4fbd0721dbf93f65bae1c801101cd4e5aa64a8087',
+      tails[36]?.sha256==='4e8e6e23267f525ca2bff68719e2989126fff82e5bd0d0ba344abc2c4c8d4da3',
       'UPWARD_ARCHIVE_332_TERMINAL');
   }
   let previous='20261119003900';

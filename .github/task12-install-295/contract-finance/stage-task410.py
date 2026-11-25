@@ -124,9 +124,9 @@ if options in (['--payment-remainder-331'], ['--upward-archive-332']):
 if options == ['--upward-archive-332']:
     for relative, delta, earlier, final in [
         ('services/api/prisma/run-task398-shared-standard-local.cjs', 'task410-runner-332.patch',
-         '4d7db1204623533024ab0fef51cc8541645a953be9c4654b8cd19bda658ed5e0', '1cad236a03001eab1bcadc996d9f50e1cf82332905c23d48001f7e5ff7b8eb2f'),
+         '4d7db1204623533024ab0fef51cc8541645a953be9c4654b8cd19bda658ed5e0', '682658ecf59908e842e0642e418769b90a3e2febe8fdfecd22df9766629d34c5'),
         ('services/api/src/database/task410-owned-test-database.ts', 'task410-support-332.patch',
-         '1bc51e247679b9f86649eaf1d7c88479e0168a0f02c563a4c3f5ba3876197563', 'aa7db32b1425bdd94c2ce8527116b84cfee7b930d1c9594c5026a13d8b62c249'),
+         '1bc51e247679b9f86649eaf1d7c88479e0168a0f02c563a4c3f5ba3876197563', '9675c13273644d8ecdc5c020f6be3faaa56804860d7a8bce82a2be2477fd98c6'),
     ]:
         target = work / relative
         verify(target.read_bytes(), earlier, relative)

@@ -37,7 +37,7 @@
    forward.sameBaseB7!==true||forward.tails?.length!==count-295))throw Error("TASK398_BROWSER_320_SCOPE");
 + if(upwardArchive&&(receipt.upwardArchivePredecessor?.count!==331||receipt.upwardArchivePredecessor.sameIdentity!==true
 +   ||receipt.upwardArchivePredecessor.sameBaseB7!==true
-+   ||forward.ledgerSha256!=="da5e425d3160952d733fd84f4c5852b6951181fdcb8d37efd2763c32097930e8"))
++   ||forward.ledgerSha256!=="b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4"))
 +  throw Error("TASK398_BROWSER_332_SCOPE");
   if(partial295&&(receipt?.purpose!=="TASK398_BROWSER_PARTIAL_EXACT_295"||!(/^[a-f0-9]{40}$/u.test(receipt.sourceSha)))) throw Error("TASK398_BROWSER_295_SCOPE");
   if(!modes.has(mode))throw new Error("TASK398_OWNED_282_SCENARIO");

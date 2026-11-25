@@ -33,7 +33,7 @@ if(current320) {
     'CONTRACT_FINANCE_TEXT_DIRECT_330_LEDGER_DIGEST');
   if(paymentRemainder) assert.equal(ledgerHash(ledger.slice(0,331)),paymentRemainderLedgerSha256,
     'CONTRACT_FINANCE_PAYMENT_REMAINDER_331_LEDGER_DIGEST');
-  if(upwardArchive) assert.equal(digest,'da5e425d3160952d733fd84f4c5852b6951181fdcb8d37efd2763c32097930e8',
+  if(upwardArchive) assert.equal(digest,'b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4',
     'CONTRACT_FINANCE_UPWARD_ARCHIVE_332_LEDGER_DIGEST');
 } else {
   assert.ok(ledger.length===294||ledger.length===295,'CONTRACT_FINANCE_HOSTED_LEDGER_COUNT');
