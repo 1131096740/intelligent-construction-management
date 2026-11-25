@@ -54,13 +54,22 @@ run("records a two-part text agreement payment with original replay, real refund
     app.useGlobalFilters(registrationErrors);
     await app.listen(0, "127.0.0.1");
     const runtimeDb = app.get(PrismaService);
-    const [privileges] = await runtimeDb.$queryRaw<Array<{ role: string; append: boolean; allocationWrite: boolean; executionUpdate: boolean }>>`
+    const [privileges] = await runtimeDb.$queryRaw<Array<{
+      role: string; append: boolean; allocationWrite: boolean; executionLockColumns: string[]; executionWriteFence: boolean;
+    }>>`
       SELECT session_user::text AS role,
         pg_catalog.has_function_privilege(session_user, 'public.jg_append_text_payment_allocation_v1(text)', 'EXECUTE') AS append,
         pg_catalog.has_any_column_privilege(session_user, 'public."PaymentExecutionAllocation"', 'INSERT,UPDATE') AS "allocationWrite",
-        pg_catalog.has_any_column_privilege(session_user, 'public."PaymentExecution"', 'UPDATE') AS "executionUpdate"
+        ARRAY(SELECT a.attname::text FROM pg_catalog.pg_attribute a WHERE a.attrelid = 'public."PaymentExecution"'::regclass
+          AND a.attnum > 0 AND NOT a.attisdropped
+          AND pg_catalog.has_column_privilege(session_user, a.attrelid, a.attname::text, 'UPDATE')
+          ORDER BY a.attname) AS "executionLockColumns",
+        EXISTS(SELECT 1 FROM pg_catalog.pg_trigger t WHERE t.tgrelid = 'public."PaymentExecution"'::regclass
+          AND t.tgname = 'jg_task16_runtime_voucher_payment_no_update' AND t.tgenabled = 'A'
+          AND t.tgfoid = 'public.jg_task16_runtime_reference_read_only()'::regprocedure) AS "executionWriteFence"
     `;
-    expect(privileges).toEqual({ role: "jg_task01_runtime", append: true, allocationWrite: false, executionUpdate: false });
+    expect(privileges).toEqual({ role: "jg_task01_runtime", append: true, allocationWrite: false,
+      executionLockColumns: ["id"], executionWriteFence: true });
     const origin = await app.getUrl();
     const json = async (path: string, token?: string, input?: object) => {
       const response = await fetch(origin + path, {
@@ -144,8 +153,10 @@ run("records a two-part text agreement payment with original replay, real refund
     const refundBody = { amountCents: "2000", receivedAt: plan.paidAt, accountId: account.id,
       reason: "实收部分退款", idempotencyKey: randomUUID() };
     const refund = await json(refundPath, finance, refundBody);
-    expect(refund.status).toBe(201);
-    expect((await json(refundPath, finance, refundBody)).body.id).toBe(refund.body.id);
+    expect(refund).toMatchObject({ status: 201, body: { refundId: expect.any(String), executionId: first.body.id, idempotent: false } });
+    expect(await json(refundPath, finance, refundBody)).toMatchObject({ status: 201, body: {
+      refundId: refund.body.refundId, executionId: first.body.id, idempotent: true
+    } });
     expect((await json(optionsPath, finance)).body).toMatchObject({ paidAmountCents: "4000", remainingAmountCents: "6000" });
 
     const secondBody = await body("6000", ["4000", "2000"]);
