@@ -96,7 +96,7 @@ for(const lane of lanes){
     if(Array.isArray(row?.failures)&&row.failures.length) summary.cases=row.failures.slice(0,6).map(test=>({
       project:['desktop','mobile','chromium','webkit-mobile'].includes(test?.project)?test.project:undefined,
       titleSha256:typeof test?.titleSha256==='string'&&/^[0-9a-f]{64}$/u.test(test.titleSha256)?test.titleSha256:undefined,
-      kind:['TIMEOUT','ASSERTION','OTHER'].includes(test?.kind)?test.kind:undefined,
+      kind:['TIMEOUT','ASSERTION','NAVIGATION_ABORTED','OTHER'].includes(test?.kind)?test.kind:undefined,
       spec:typeof test?.spec==='string'&&/^pol113-(?:project-profile|business-party|company-entity|settings)-real[.]e2e[.]ts$/u.test(test.spec)?test.spec:undefined,
       line:count(test?.line)?test.line:undefined,
       column:count(test?.column)?test.column:undefined

@@ -238,6 +238,22 @@ describe("其他合同履约的三个并联职责", () => {
     expect(rollback.notifications.queueDuty).toHaveBeenCalledWith(rollback.tx, "report", "round");
   });
 
+  it.each(["40001", "40P01"])("事务竞争 %s 回滚后重试同一审批职责", async (sqlState) => {
+    const { service, tx, action } = fixture();
+    await service.submit("version", "report", "author");
+    tx.$queryRaw.mockRejectedValueOnce(new Prisma.PrismaClientKnownRequestError("transaction aborted", {
+      code: "P2010", clientVersion: "5.22.0", meta: { code: sqlState }
+    }));
+    await expect(service.review("version", "report", "manager", {
+      approvalInstanceId: "round", dutyIndex: 1, decision: "approve"
+    })).resolves.toMatchObject({ status: "in_approval" });
+    expect(action).toHaveBeenCalledTimes(1);
+    await expect(service.review("version", "report", "manager", {
+      approvalInstanceId: "round", dutyIndex: 1, decision: "approve"
+    })).rejects.toMatchObject({ status: 409 });
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+
   it("驳回后制单人看到原因并可修订，确认后不可再修订", async () => {
     const { service } = fixture();
     await service.submit("version", "report", "author");

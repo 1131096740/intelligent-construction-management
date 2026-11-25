@@ -182,23 +182,31 @@ export class ContractWorkCompletionApprovalService {
   }
 
   private async inTransaction<T>(run: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
-    try {
-      return await this.prisma.$transaction(run, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-    } catch (error) {
-      if (!(error instanceof Prisma.PrismaClientKnownRequestError)) throw error;
-      if (error.code === "P2034") throw new ConflictException("履约确认状态已变化，请按原请求重试");
-      if (error.code !== "P2010") throw error;
-      switch (error.meta?.code) {
-        case "42501": throw new ForbiddenException("当前账号无权处理该履约登记");
-        case "P0002": throw new NotFoundException("未找到履约登记");
-        case "23514": {
-          const detail = error.meta?.message;
-          const subjectError = typeof detail === "string" ? subjectConflictMessages.find(message => detail.includes(message)) : undefined;
-          throw new ConflictException(subjectError ?? "项目、合同版本或履约确认状态已变化");
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.prisma.$transaction(run, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      } catch (error) {
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError)) throw error;
+        const sqlState = error.meta?.code;
+        const serializationConflict = error.code === "P2034" ||
+          (error.code === "P2010" && (sqlState === "40001" || sqlState === "40P01"));
+        if (serializationConflict) continue;
+        if (error.code !== "P2010") throw error;
+        switch (sqlState) {
+          case "42501": throw new ForbiddenException("当前账号无权处理该履约登记");
+          case "P0002": throw new NotFoundException("未找到履约登记");
+          case "23514": {
+            const detail = error.meta?.message;
+            const subjectError = typeof detail === "string"
+              ? subjectConflictMessages.find(message => detail.includes(message))
+              : undefined;
+            throw new ConflictException(subjectError ?? "项目、合同版本或履约确认状态已变化");
+          }
+          default: throw error;
         }
-        default: throw error;
       }
     }
+    throw new ConflictException("履约确认状态已变化，请按原请求重试");
   }
 
   private isOriginalDutySet(nodes: readonly Record<string, unknown>[]): boolean {
