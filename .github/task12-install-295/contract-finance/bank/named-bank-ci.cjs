@@ -21,11 +21,13 @@ const runArgs=forward?args.slice(1):args;
 const profile330=textDirect330?require('./text-direct-330-profile.cjs'):undefined;
 const candidateDigest320='3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2';
 const receipt={status:'STOPPED',scope:'NAMED_BANK_ORIGINAL_FULL_12',backupRestore:'NOT_EXECUTED',business:'NOT_ENTERED',stages:[]};
-function verifyExecutionFiles() {
+function verifyExecutionFiles(source) {
   const raw=fs.readFileSync(path.join(prefix,'execution-files.json'));
   if(textDirect330) {
     const expected=require('./bank-staging-330.json')['bank/execution-files.json'].sha256;
     assert.equal(sha(raw),expected,'BANK_330_EXECUTION_MANIFEST');
+    const witness=path.join(workspace,'services/api/src/database/contract-finance-owned.test-support.ts');
+    assert.ok(fs.readFileSync(witness,'utf8').includes(JSON.stringify(source.ledgerSha256)),'BANK_330_TEST_LEDGER');
   } else assert.equal(sha(raw),current320?'bcd29f1064b9c63b30566a7d3902c40e923bb68c4aab2bd80b703dea7e6aaff7':'ae305b0e93201322da07825b47100c588c056a5a98e0a6ddccec8c62f62ce041','BANK_295_EXECUTION_MANIFEST');
   const files=JSON.parse(raw);
   assert.equal(files.length,forward?1946:1814,'BANK_295_EXECUTION_COUNT');
@@ -77,7 +79,7 @@ Promise.resolve().then(async()=>{
     assert.equal(source.migrationCount,295);
     assert.equal(source.ledgerSha256,require('./multi-witness.cjs').final);
   }
-  verifyExecutionFiles();
+  verifyExecutionFiles(source);
   if(runArgs.length){
     verifyJestRegisteredWithoutDb();
     receipt.status='BANK_'+count+'_DIAGNOSTIC_NO_DATABASE_PREFLIGHT_PASSED';

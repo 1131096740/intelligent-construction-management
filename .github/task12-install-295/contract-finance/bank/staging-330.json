@@ -1,8 +1,8 @@
 {
   "bank/overlay/services/api/src/database/contract-finance-owned.test-support.ts": {
     "kind": "full",
-    "material": "fbcbc807dfc57ca8d38c910cb65e55b9607b8ff2098a21b3ef627a903e5d7af0.gz",
-    "sha256": "fbcbc807dfc57ca8d38c910cb65e55b9607b8ff2098a21b3ef627a903e5d7af0"
+    "material": "83f5dc7cd0cdc77dc58bd0d2767ab59f2bfc2c13e7f7f9660b0854c3f046df2c.gz",
+    "sha256": "83f5dc7cd0cdc77dc58bd0d2767ab59f2bfc2c13e7f7f9660b0854c3f046df2c"
   },
   "bank/overlay/services/api/src/database/project-affiliate-company-contract-db.spec.ts": {
     "kind": "patch",
@@ -19,7 +19,7 @@
   "bank/execution-files.json": {
     "kind": "execution-manifest",
     "material": "db8782be2783ac8c1b21d9026ea45ccd0eb4f8c81298ebbb9a898ca37e4c29b2.gz",
-    "sha256": "54126e4478c14005d4e0ea3f77b8f07929bd5c82e1ad10ebd4a382341ab8656c"
+    "sha256": "b1f32d44562a253e59ac89a07d6ca6d55bf07049ce194b7b661495c349061214"
   },
   "bank/overlay/services/api/prisma/contract-bank-runtime-fixture.cjs": {
     "kind": "full",
