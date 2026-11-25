@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && $5 == standard-330 ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == standard-330 || $5 == ledger-loss-330 ) ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -23,6 +23,10 @@ purpose=TASK398_STANDARD_EXACT_$count
 if [[ ${5-} == standard-330 ]]; then
   [[ $count == 330 ]] || exit 64
   variant_args=(standard-330)
+elif [[ ${5-} == ledger-loss-330 ]]; then
+  [[ $count == 330 ]] || exit 64
+  variant_args=(ledger-loss-330)
+  purpose=TASK398_LEDGER_LOSS_EXACT_330
 elif [[ $count == 330 ]]; then
   purpose=TASK425_TEXT_DIRECT_FINANCE_330
 fi
@@ -47,6 +51,10 @@ if [[ $count == 330 ]]; then
   [[ $(runner_sha) == 08bacc09e2870c23bc4e73ff5d6473ae1a64c005d3ed92790713609406369b96 ]] || exit 65
   patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-text-direct-330.patch"
   [[ $(runner_sha) == 724b8a5f646bcfad6190c321ed0ce15cf2d8a57be16bde9842c66f04dd282d15 ]] || exit 65
+  if [[ ${5-} == ledger-loss-330 ]]; then
+    patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-330.patch"
+    [[ $(runner_sha) == 74c9442665e006eb110837fb20e4ee8f29974c0523a90d4241273d3307f68bec ]] || exit 65
+  fi
 fi
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL

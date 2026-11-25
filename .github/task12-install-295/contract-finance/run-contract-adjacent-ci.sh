@@ -8,11 +8,12 @@ sha=$1
 lane=$2
 mode_args=()
 if (( $# >= 3 )); then
-  case "$lane" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|cash-handover|principal-return|payment-execution|task398-standard|expense-execution|expense-finance|expense-receipt|company-proxy|onboarding|procurement|pfq|browser-partial|browser-completion|pol115-workbench|pol275|line-a) mode_args=("$3") ;; *) exit 64;; esac
+  case "$lane" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|cash-handover|principal-return|payment-execution|task398-standard|task398-ledger-loss|expense-execution|expense-finance|expense-receipt|company-proxy|onboarding|procurement|pfq|browser-partial|browser-completion|pol115-workbench|pol275|line-a) mode_args=("$3") ;; *) exit 64;; esac
 fi
 if [[ ${3:-} == --text-direct-330 ]]; then
-  case "$lane" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|line-a|onboarding|procurement|task398-standard|cash-handover|principal-return|pol115-workbench|company-proxy|payment-execution|browser-partial|browser-completion|expense-execution|expense-finance|expense-receipt|pfq|pol275) ;; *) exit 64;; esac
+  case "$lane" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|line-a|onboarding|procurement|task398-standard|task398-ledger-loss|cash-handover|principal-return|pol115-workbench|company-proxy|payment-execution|browser-partial|browser-completion|expense-execution|expense-finance|expense-receipt|pfq|pol275) ;; *) exit 64;; esac
 fi
+if [[ $lane == task398-ledger-loss && ${3:-} != --text-direct-330 ]]; then exit 64; fi
 root=$(git rev-parse --show-toplevel)
 plan=$(cd "$(dirname "$0")" && pwd -P)
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-contract-adjacent.XXXXXXXX")
@@ -35,6 +36,7 @@ case "$lane" in pol115-workbench|onboarding|procurement) profile=mobile ;; line-
 bash "$plan/build.sh" "$work/source" "$sha" "$profile" "$work/browser"
 case "$lane" in
   line-a) bash "$plan/run-line-a.sh" "$work/source" "$sha" "$work/browser" ;;
+  task398-ledger-loss) bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work/browser" ledger-loss-330 ;;
   task398-standard)
     if [[ ${3:-} == --text-direct-330 ]]; then
       bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work/browser" standard-330

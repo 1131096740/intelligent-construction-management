@@ -6,15 +6,16 @@ const current320=source.mode==='current-320';
 const textDirect=source.mode==='text-direct-330';
 const count=textDirect?330:current320?329:295;
 const standard330=process.argv[2]==='standard-330';
-assert.ok(process.argv.length===2||(process.argv.length===3&&textDirect&&standard330));
-const textFinance=textDirect&&!standard330;
+const ledgerLoss330=process.argv[2]==='ledger-loss-330';
+assert.ok(process.argv.length===2||(process.argv.length===3&&textDirect&&(standard330||ledgerLoss330)));
+const textFinance=textDirect&&!standard330&&!ledgerLoss330;
 const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement} = require('./installer.cjs');
 const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run-task398-shared-standard-local.cjs');
 
-const receipt = {schemaVersion:1,sourceSha,purpose:textFinance?'TASK425_TEXT_DIRECT_FINANCE_330':'TASK398_STANDARD_EXACT_'+count,business:'NOT_ENTERED',stages:[]};
+const receipt = {schemaVersion:1,sourceSha,purpose:textFinance?'TASK425_TEXT_DIRECT_FINANCE_330':ledgerLoss330?'TASK398_LEDGER_LOSS_EXACT_330':'TASK398_STANDARD_EXACT_'+count,business:'NOT_ENTERED',stages:[]};
 async function run(){
   assert.equal(source.migrationCount,count);
-  const consume=context=>runTask398Owned282Voucher(context,textFinance?'text-direct-330':'standard-'+count,receipt);
+  const consume=context=>runTask398Owned282Voucher(context,textFinance?'text-direct-330':ledgerLoss330?'ledger-loss-330':'standard-'+count,receipt);
   if(current320||textDirect){
     assert.equal(source.predecessor.ledgerSha256,require('./multi-witness.cjs').final);
     const install=textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
