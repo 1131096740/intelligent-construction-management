@@ -18,15 +18,17 @@ source = json.loads((prepared / 'source.json').read_bytes())
 ref = source['sourceSha']
 count = source['migrationCount']
 source_mode = source.get('mode')
-payment_remainder = source_mode == 'payment-remainder-331'
-text_direct = source_mode in ('text-direct-330', 'payment-remainder-331')
+upward_archive = source_mode == 'upward-archive-332'
+payment_remainder = upward_archive or source_mode == 'payment-remainder-331'
+text_direct = payment_remainder or source_mode == 'text-direct-330'
 current320 = text_direct or source_mode == 'current-320'
 mode = [f'--{source_mode}'] if current320 else []
 ledger329 = '3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2'
 previous = source['predecessor'] if current320 else source
 assert previous['migrationCount'] == 295 and len(previous['tails']) == 3
 if current320:
-    assert count == (331 if payment_remainder else 330 if text_direct else 329) and len(source['tails']) == count - 295
+    expected_count = {'current-320': 329, 'text-direct-330': 330, 'payment-remainder-331': 331, 'upward-archive-332': 332}
+    assert count == expected_count[source_mode] and len(source['tails']) == count - 295
 assert subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip() == ref
 admission = subprocess.check_output(['node',str(common.parent/'check-ledger.cjs'),str(repo),ref,*mode])
 assert json.loads(admission) == source
@@ -86,6 +88,10 @@ if payment_remainder:
     remainder_patch = read_pinned(plan/'installer-named331.patch','1b9587ed98984fce51b875f548c4511c0b224ab3eff8000f7d846408c126ce84')
     new_installer = patch(new_installer,remainder_patch)
     assert digest(new_installer) == 'd9212c0ddb78d8feb513b446a8b8eb59f67c8508e1d29fe4de790ff9c143a0dd'
+if upward_archive:
+    archive_patch = read_pinned(plan/'installer-named332.patch','ba481f1617727cf20a495263adc363904428fa0e7bd4dda6423c55c19e4f828c')
+    new_installer = patch(new_installer,archive_patch)
+    assert digest(new_installer) == '4e054d091d41c472311a7dba455d50731fa0c0a3e36dc771d7c458d1f5a13751'
 write(context/'installer.cjs',new_installer)
 for name, pin in pins['runtime'].items():
     material = read_pinned(repo/pin['repoFile'] if 'repoFile' in pin else donor/pin['file'],pin['digest'])
@@ -134,6 +140,27 @@ for name, pin in pins['runtime'].items():
                     material = material.replace(old,new)
                 assert material.count(prior_witness) == 1
                 material = material.replace(prior_witness,b"  assert.deepEqual(receipt.paymentRemainderPredecessor,{count:330,ledgerSha256:admission.ledger330,sameIdentity:true,exactB7:true});\n"+prior_witness)
+            if upward_archive:
+                archive_replacements = {
+                    b'withNamedPol113Pol114331': b'withNamedPol113Pol114332',
+                    b'EXACT_331': b'EXACT_332',
+                    b'slice(-9).map(({size})=>size),[290,291,292,293,294,295,329,330,331]':
+                        b'slice(-10).map(({size})=>size),[290,291,292,293,294,295,329,330,331,332]',
+                    b'  assert.equal(receipt.forward320?.sourceTree,admission.sourceTree);': b'''  assert.deepEqual(receipt.upwardArchivePredecessor,{count:331,ledgerSha256:admission.ledger331,sameIdentity:true,exactB7:true});
+  assert.deepEqual(receipt.orderedTails.slice(-2),[
+    {size:331,ledgerSha256:admission.ledger331},{size:332,ledgerSha256:admission.ledger332}
+  ]);
+  assert.equal(receipt.forward332?.sourceTree,admission.sourceTree);
+  assert.equal(receipt.forward332?.count,332);
+  assert.equal(receipt.forward332?.sameIdentity,true);
+  assert.equal(receipt.forward332?.exactB7,true);''',
+                    b'receipt.forward320?.ledgerSha256,admission.ledger320': b'receipt.forward332?.ledgerSha256,admission.ledger332',
+                    b'receipt.postBehavior320,{exactB7:true,sameIdentity:true,count:331,ledgerSha256:admission.ledger320}':
+                        b'receipt.postBehavior332,{exactB7:true,sameIdentity:true,count:332,ledgerSha256:admission.ledger332}',
+                }
+                for old,new in archive_replacements.items():
+                    assert material.count(old) == (2 if old in (b'withNamedPol113Pol114331',b'EXACT_331') else 1)
+                    material = material.replace(old,new)
             diagnostic_anchor = b'        ...bootSummary(traces),\n'
             diagnostic = br"""        statuses:traces.flatMap(value=>{
           if(typeof value!=="string")return [];
@@ -222,7 +249,9 @@ write(context/'candidate-admission.json',(json.dumps({
     'migrationCount':count,
     **({'ledger329':ledger329} if text_direct else {}),
     **({'ledger330':source['predecessor330']['ledgerSha256']} if payment_remainder else {}),
-    **({'sourceTree':source['sourceTree'],'ledger320':source['ledgerSha256'],'tails':source['tails']} if current320 else {}),
+    **({'ledger331':source['predecessor331']['ledgerSha256'],'ledger332':source['ledgerSha256']} if upward_archive else {}),
+    **({'ledger320':source['ledgerSha256']} if current320 and not upward_archive else {}),
+    **({'sourceTree':source['sourceTree'],'tails':source['tails']} if current320 else {}),
 })+'\n').encode())
 docker = read_pinned(donor/'Dockerfile.in','456025c143f993973d1947343c7636565406c74c5a0456addc1e1ff3dcffc24e').decode()
 copy = read_pinned(donor/'runtime-copy.txt','de9a7b69c406aa307423a7231ec086b8c6995bd435bfc1fae0bb0dab5d4b40e6').decode().strip()

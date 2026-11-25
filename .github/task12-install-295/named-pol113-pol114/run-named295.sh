@@ -12,19 +12,22 @@ plan=$(cd "$(dirname "$0")" && pwd -P)
 node - "$generated/context/candidate-admission.json" "$prepared/source.json" "$ref" "$plan" <<'JS'
 const [candidateFile,sourceFile,sha,plan]=process.argv.slice(2);
 const a=require(candidateFile),s=require(sourceFile);
-const paymentRemainder=s.mode==='payment-remainder-331';
+const upwardArchive=s.mode==='upward-archive-332';
+const paymentRemainder=upwardArchive||s.mode==='payment-remainder-331';
 const textDirect=s.mode==='text-direct-330'||paymentRemainder;
 const current320=textDirect||s.mode==='current-320';
-const count=paymentRemainder?331:textDirect?330:current320?329:295;
+const count=upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
 if(a.candidateSha!==sha||s.sourceSha!==sha||s.migrationCount!==count||a.migrationCount!==count||
   a.ledger295!==(current320?s.predecessor.ledgerSha256:s.ledgerSha256))process.exit(65);
-if(current320&&(a.ledger320!==s.ledgerSha256||a.sourceTree!==s.sourceTree||
+if(current320&&((upwardArchive?a.ledger332:a.ledger320)!==s.ledgerSha256||a.sourceTree!==s.sourceTree||
   JSON.stringify(a.tails)!==JSON.stringify(s.tails)))process.exit(65);
 if(textDirect&&a.ledger329!=="3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2")process.exit(65);
 if(paymentRemainder){
   const finance=plan+'/../contract-finance';
-  require(finance+'/payment-remainder-331-profile.cjs').assertSource(s,sha,require(finance+'/common/multi-witness.cjs').final);
+  const profile=upwardArchive?'upward-archive-332':'payment-remainder-331';
+  require(finance+'/'+profile+'-profile.cjs').assertSource(s,sha,require(finance+'/common/multi-witness.cjs').final);
   if(a.ledger330!==s.predecessor330.ledgerSha256)process.exit(65);
+  if(upwardArchive&&a.ledger331!==s.predecessor331.ledgerSha256)process.exit(65);
 }
 JS
 (cd "$generated/context" && shasum -a 256 -c ../context.sha256 >/dev/null)
