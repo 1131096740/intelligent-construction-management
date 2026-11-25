@@ -511,6 +511,21 @@ describe("issue 403 actual purchase batches and split payments PostgreSQL", () =
         where: { id: correction.id },
         data: { correctedTotalAmountCents: 700000n, correctionDeltaCents: -300000n }
       })).rejects.toThrow(/actual_purchase_batch_correction_(invalid_transition|snapshot_immutable)/u);
+
+      const secondSupplier = await service.create(fixture.handlerUserId, {
+        kind: "spot_material",
+        procurementId: fixture.procurementId,
+        supplierName: "合成建材供应商",
+        totalAmountCents: "100000",
+        idempotencyKey: `second-supplier-${fixture.prefix}`,
+        lines: [{ materialName: "水泥", amountCents: "100000" }]
+      });
+      const sameRequest = await service.list(fixture.handlerUserId, { procurementId: fixture.procurementId });
+      expect(sameRequest.items).toHaveLength(2);
+      expect(sameRequest.items).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: batch.id, supplierName: "合成五金供应商", totalAmountCents: "1000000" }),
+        expect.objectContaining({ id: secondSupplier.id, supplierName: "合成建材供应商", totalAmountCents: "100000" })
+      ]));
     } finally {
       await prisma.$disconnect();
     }
