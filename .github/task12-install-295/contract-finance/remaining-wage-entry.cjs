@@ -2,15 +2,17 @@
 
 const assert=require('node:assert/strict');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder}=require('./installer.cjs');
 const {final,digest}=require('./multi-witness.cjs');
 const {runWage}=require('./wage.cjs');
 
 const root='/qualification';
 const source=require('./contract-finance-source.json');
-const textDirect=process.argv[2]==='--text-direct-330';
-const current=textDirect||process.argv[2]==='--current-320';
-const count=textDirect?330:current?329:295;
+const requestedMode=process.argv[2];
+const paymentRemainder=requestedMode==='--payment-remainder-331';
+const textDirect=requestedMode==='--text-direct-330';
+const current=paymentRemainder||textDirect||requestedMode==='--current-320';
+const count=paymentRemainder?331:textDirect?330:current?329:295;
 const receipt={schemaVersion:1,purpose:'REMAINING_WAGE_STATEMENT_'+count,
   sourceSha:source.sourceSha,stages:['INPUTS'],status:'STOPPED'};
 
@@ -21,7 +23,7 @@ async function main(){
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
   assert.equal(source.migrationCount,count);
   if(current){
-    assert.equal(source.mode,textDirect?'text-direct-330':'current-320');
+    assert.equal(source.mode,requestedMode.slice(2));
     assert.match(source.sourceTree,/^[a-f0-9]{40}$/u);
     assert.equal(source.predecessor.migrationCount,295);
     assert.equal(source.predecessor.ledgerSha256,final);
@@ -50,7 +52,7 @@ async function main(){
     await runWage(context,receipt);
   };
   if(current){
-    const installCurrent=textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
+    const installCurrent=paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
     await installCurrent(receipt,async context=>{
       assert.equal(context.candidateTree,source.sourceTree);
       await consume(context);
@@ -62,6 +64,11 @@ async function main(){
     assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
     assert.equal(receipt.forward320.sameBaseB7,true);
     assert.equal(receipt.combinedAfterBusiness.count,count);
+    if(paymentRemainder){
+      assert.deepEqual(receipt.paymentRemainderPredecessor,{
+        count:330,ledgerSha256:source.predecessor330.ledgerSha256,sameIdentity:true,sameBaseB7:true
+      });
+    }
   } else {
     await withCombined295MultiWitness(receipt,consume);
   }

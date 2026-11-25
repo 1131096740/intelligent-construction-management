@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 ) ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 ) ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -12,7 +12,7 @@ mode_args=()
 count=295
 if [[ $# == 6 ]]; then
   mode_args=("$6")
-  case "$6" in --current-320) count=329;; --text-direct-330) count=330;; esac
+  case "$6" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; esac
 fi
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -26,9 +26,8 @@ const [sourceFile,sha,profilesFile,lane,terminalFile,mode]=process.argv.slice(2)
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||!Object.hasOwn(require(profilesFile),lane))process.exit(65);
 if(mode!==undefined) {
-  const textDirect=mode==='--text-direct-330';
-  const count=textDirect?330:329;
-  if(source.mode!==(textDirect?'text-direct-330':'current-320')||source.migrationCount!==count||source.predecessor?.migrationCount!==295||
+  const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331}[mode];
+  if(source.mode!==mode.slice(2)||source.migrationCount!==count||source.predecessor?.migrationCount!==295||
      source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==count-295) process.exit(65);
 } else if(source.migrationCount!==295||source.ledgerSha256!==terminal.final) process.exit(65);
 JS

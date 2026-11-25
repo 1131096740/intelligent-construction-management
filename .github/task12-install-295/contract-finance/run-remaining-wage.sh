@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 ) ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -12,11 +12,12 @@ count=$(node -e '
   if(source.sourceSha!==process.argv[2])process.exit(65);
   if(source.mode==="current-320"&&source.migrationCount===329)console.log(source.migrationCount);
   else if(source.mode==="text-direct-330"&&source.migrationCount===330)console.log(330);
+  else if(source.mode==="payment-remainder-331"&&source.migrationCount===331)console.log(331);
   else if(source.mode===undefined&&source.migrationCount===295)console.log(295);
   else process.exit(65);
 ' "$prepared/source.json" "$sha")
 mode_args=()
-case "$count" in 329) mode_args=(--current-320);; 330) mode_args=(--text-direct-330);; esac
+case "$count" in 329) mode_args=(--current-320);; 330) mode_args=(--text-direct-330);; 331) mode_args=(--payment-remainder-331);; esac
 if [[ $# == 5 && ${mode_args[0]:-} != "$5" ]]; then exit 65; fi
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
