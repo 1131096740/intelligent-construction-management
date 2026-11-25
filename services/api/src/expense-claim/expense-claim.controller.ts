@@ -286,10 +286,11 @@ export class ExpenseClaimController {
   async approvalDutySmsStatus(
     @Param("claimId") id: string,
     @CurrentUser() user: AuthenticatedUser,
-    @Query("approvalDutyIndex", approvalDutyIndexPipe) approvalDutyIndex?: number
+    @Query("approvalDutyIndex", approvalDutyIndexPipe) approvalDutyIndex?: number,
+    @Query("approvalInstanceId") approvalInstanceId?: string
   ) {
-    this.assertApprovalDutyIndex(approvalDutyIndex);
-    return { notice: await this.dutyNotifications?.approvalStatus(id, user.id, approvalDutyIndex) ?? null };
+    this.assertApprovalSmsCoordinates(approvalDutyIndex, approvalInstanceId);
+    return { notice: await this.dutyNotifications?.approvalStatus(id, user.id, approvalDutyIndex, approvalInstanceId) ?? null };
   }
 
   @Post(":claimId/approval-duty-sms/retry")
@@ -297,16 +298,20 @@ export class ExpenseClaimController {
     @Param("claimId") id: string,
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: RetryDutyNotificationDto,
-    @Query("approvalDutyIndex", approvalDutyIndexPipe) approvalDutyIndex?: number
+    @Query("approvalDutyIndex", approvalDutyIndexPipe) approvalDutyIndex?: number,
+    @Query("approvalInstanceId") approvalInstanceId?: string
   ) {
     if (!this.dutyNotifications) throw new BadRequestException("短信通知暂不可用");
-    this.assertApprovalDutyIndex(approvalDutyIndex);
-    return this.dutyNotifications.retryApproval(id, user.id, body.attemptId, approvalDutyIndex);
+    this.assertApprovalSmsCoordinates(approvalDutyIndex, approvalInstanceId);
+    return this.dutyNotifications.retryApproval(id, user.id, body.attemptId, approvalDutyIndex, approvalInstanceId);
   }
 
-  private assertApprovalDutyIndex(value?: number) {
-    if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+  private assertApprovalSmsCoordinates(index?: number, instanceId?: string) {
+    if (index !== undefined && (!Number.isSafeInteger(index) || index < 0)) {
       throw new BadRequestException("审批职责编号无效，请刷新");
+    }
+    if (instanceId !== undefined && (typeof instanceId !== "string" || !instanceId.trim())) {
+      throw new BadRequestException("审批轮次无效，请刷新");
     }
   }
 

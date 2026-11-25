@@ -160,23 +160,26 @@ export class ExpenseClaimFundingNotificationService implements OnModuleInit, OnM
     return result.status;
   }
 
-  private approvalNoticeAccess(approvalDutyIndex?: number) {
+  private approvalNoticeAccess(approvalDutyIndex?: number, approvalInstanceId?: string) {
+    const scope: Record<string, string | number> = {};
+    if (approvalInstanceId !== undefined) scope.approvalInstanceId = approvalInstanceId;
+    if (approvalDutyIndex !== undefined) scope.approvalDutyIndex = approvalDutyIndex;
+    else if (approvalInstanceId !== undefined) scope.duty = "correction";
     return {
-      prisma: this.prisma, sms: this.sms, kind: approvalKind,
-      ...(approvalDutyIndex === undefined ? {} : { scope: { approvalDutyIndex } }),
+      prisma: this.prisma, sms: this.sms, kind: approvalKind, scope,
       lockDuty: (tx: Prisma.TransactionClient, id: string) => this.lockDuty(tx, id),
       currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => this.currentApprovalMessage(tx, intent)
     };
   }
 
-  approvalStatus(id: string, actorId: string, approvalDutyIndex?: number) {
-    return auditDutyNoticeStatus(this.approvalNoticeAccess(approvalDutyIndex), id, actorId);
+  approvalStatus(id: string, actorId: string, approvalDutyIndex?: number, approvalInstanceId?: string) {
+    return auditDutyNoticeStatus(this.approvalNoticeAccess(approvalDutyIndex, approvalInstanceId), id, actorId);
   }
 
-  async retryApproval(id: string, actorId: string, attemptId: string, approvalDutyIndex?: number) {
-    const result = await retryFailedAuditDutyNotice(this.approvalNoticeAccess(approvalDutyIndex), id, actorId, attemptId);
+  async retryApproval(id: string, actorId: string, attemptId: string, approvalDutyIndex?: number, approvalInstanceId?: string) {
+    const result = await retryFailedAuditDutyNotice(this.approvalNoticeAccess(approvalDutyIndex, approvalInstanceId), id, actorId, attemptId);
     if (result.enqueued) await this.afterCommit();
-    return (await this.approvalStatus(id, actorId, approvalDutyIndex)) ?? result.status;
+    return (await this.approvalStatus(id, actorId, approvalDutyIndex, approvalInstanceId)) ?? result.status;
   }
 
   private async currentApprovalMessage(tx: Prisma.TransactionClient, intent: AuditLog): Promise<DutyDispatchMessage | null> {

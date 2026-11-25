@@ -107,23 +107,34 @@ pg("费用报销并联逐人入队及退回修改持久化", async () => {
     expect(new Set(ids).size).toBe(rows.length);
     probe.enable();
     await expenses.afterCommit();
-    const financeDuty = await expenses.approvalStatus(first.claim.id, reviewer.id, 0);
-    const projectDuty = await expenses.approvalStatus(first.claim.id, reviewer.id, 1);
+    const financeDuty = await expenses.approvalStatus(first.claim.id, reviewer.id, 0, first.round.id);
+    const projectDuty = await expenses.approvalStatus(first.claim.id, reviewer.id, 1, first.round.id);
+    const wrongRoundId = randomUUID();
+    expect(await expenses.approvalStatus(first.claim.id, reviewer.id, 0, wrongRoundId)).toBeNull();
+    expect(await expenses.approvalStatus(first.claim.id, reviewer.id, undefined, first.round.id)).toBeNull();
     expect(financeDuty).toMatchObject({ status: "failed", canRetry: true });
     expect(projectDuty).toMatchObject({ status: "failed", canRetry: true });
     expect(projectDuty!.attemptId).not.toBe(financeDuty!.attemptId);
     expect(probe.sends.filter(phone => phone === reviewer.phone)).toHaveLength(2);
-    await expect(expenses.retryApproval(first.claim.id, reviewer.id, financeDuty!.attemptId, 1))
+    await expect(expenses.retryApproval(first.claim.id, reviewer.id, financeDuty!.attemptId, 1, first.round.id))
       .rejects.toThrow("短信记录已更新");
+    await expect(expenses.retryApproval(first.claim.id, reviewer.id, financeDuty!.attemptId, 0, wrongRoundId))
+      .rejects.toThrow("当前待办或短信记录已变化");
     probe.setOutcome("accepted");
-    expect(await expenses.retryApproval(first.claim.id, reviewer.id, financeDuty!.attemptId, 0))
-      .toMatchObject({ status: "accepted", canRetry: false });
-    expect(await expenses.retryApproval(first.claim.id, reviewer.id, projectDuty!.attemptId, 1))
+    const retryFinance = () => expenses.retryApproval(first.claim.id, reviewer.id, financeDuty!.attemptId, 0, first.round.id);
+    const retried = await retryFinance();
+    expect(retried).toMatchObject({ status: "accepted", canRetry: false });
+    expect(await retryFinance()).toEqual(retried);
+    await expect(expenses.retryApproval(first.claim.id, reviewer.id, financeDuty!.attemptId, 0, wrongRoundId))
+      .rejects.toThrow("当前待办或短信记录已变化");
+    expect(await expenses.retryApproval(first.claim.id, reviewer.id, projectDuty!.attemptId, 1, first.round.id))
       .toMatchObject({ status: "accepted", canRetry: false });
     expect(probe.sends.filter(phone => phone === reviewer.phone)).toHaveLength(4);
     probe.disable();
 
+    const roundsByClaim = new Map<string, string>();
     const reject = async ({ claim, round }: typeof first) => {
+      roundsByClaim.set(claim.id, round.id);
       const result = await service.review(claim.id, reviewer.id, { decision: "reject", comment: "补充合成材料",
         approvalInstanceId: round.id, approvalDutyIndex: 0 });
       expect(result.status).toBe("draft");
@@ -138,7 +149,8 @@ pg("费用报销并联逐人入队及退回修改持久化", async () => {
     await verifyIssue430CorrectionDelivery({
       scenario: "expense_claim", deliveryKey: first.claim.id,
       applicant, otherActorId: secondReviewer.id, probe, sendPending: () => expenses.afterCommit(),
-      status: (key, actor) => expenses.approvalStatus(key, actor), retry: (key, actor, attempt) => expenses.retryApproval(key, actor, attempt),
+      status: (key, actor) => expenses.approvalStatus(key, actor, undefined, roundsByClaim.get(key)),
+      retry: (key, actor, attempt) => expenses.retryApproval(key, actor, attempt, undefined, roundsByClaim.get(key)),
       queueUnknown: async () => { const unknown = await createCase(); await reject(unknown); return unknown.claim.id; }
     });
     const resubmitted = await createCase();
@@ -158,6 +170,7 @@ pg("费用报销并联逐人入队及退回修改持久化", async () => {
     await expenses.afterCommit();
     expect(probe.sends).toHaveLength(before);
     expect(await db.auditLog.count({ where: { ...queued(resubmitted.claim.id), action: "cancelled" } })).toBe(1);
+    expect(await expenses.approvalStatus(resubmitted.claim.id, applicant.id, undefined, resubmitted.round.id)).toBeNull();
   } finally { await db.$disconnect(); }
 }, 30_000);
 

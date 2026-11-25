@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import { useAuthStore } from "../auth/auth.store";
+import DutySmsStatusPanel from "./DutySmsStatusPanel.vue";
 import ApprovalDocumentDownload from "./approval/ApprovalDocumentDownload.vue";
 import { fetchApprovalProgress, fetchRelatedApprovals, remindApprovalBySms, ApprovalProgressApiError, type ApprovalProgress, type ApprovalPerson } from "../api/approval-progress.api";
 
 const props = defineProps<{ instanceId?: string; businessType?: string; businessId?: string; refreshKey?: string; viewer?: boolean }>();
+const auth = useAuthStore();
+const transitionSmsTypes = new Set([
+  "project_expense_request", "project_financing_quota", "project_settlement_exception_quota", "fund_execution_case"
+]);
+const correctionStatuses = new Set(["rejected", "returned", "returned_to_applicant"]);
 const progressView = () => props.viewer ? "viewable" as const : "participant" as const;
 const flows = ref<ApprovalProgress[]>([]);
 const loading = ref(false);
@@ -41,6 +48,14 @@ async function load() {
     }
   } catch (cause) { if (own === generation) error.value = cause instanceof Error ? cause.message : "审批进度读取失败"; }
   finally { if (own === generation) loading.value = false; }
+}
+
+function isOwnPendingDuty(flow: ApprovalProgress, node: ApprovalProgress["nodes"][number]) {
+  return !flow.viewerOnly && flow.canHandle && node.pending.some(person => person.id === auth.user?.id);
+}
+
+function isOwnCorrection(flow: ApprovalProgress) {
+  return !flow.viewerOnly && correctionStatuses.has(flow.status) && flow.applicant.id === auth.user?.id;
 }
 
 function eligibleRecipients(flow: ApprovalProgress) {
@@ -153,8 +168,35 @@ watch(() => [props.instanceId, props.businessType, props.businessId, props.refre
             未签（审批中，审批单对应位置留空）
           </p>
           <small v-if="node.legacyRoster">此历史节点未保存人员名单，以上为当前岗位人员；实际处理人以处理记录为准。</small>
+          <DutySmsStatusPanel
+            v-if="flow.businessType === 'expense_claim' && isOwnPendingDuty(flow, node)"
+            domain="expense-claim-approvals"
+            :business-id="flow.businessId"
+            :expected-approval-instance-id="flow.id"
+            :duty-key="String(index)"
+            :label="`${node.name}待办短信`"
+          />
+          <DutySmsStatusPanel
+            v-if="transitionSmsTypes.has(flow.businessType) && index === flow.currentNodeIndex && isOwnPendingDuty(flow, node)"
+            domain="approval-progress"
+            :business-id="flow.id"
+            :label="`${node.name}待办短信`"
+          />
         </li>
       </ol>
+      <DutySmsStatusPanel
+        v-if="flow.businessType === 'expense_claim' && isOwnCorrection(flow)"
+        domain="expense-claim-approvals"
+        :business-id="flow.businessId"
+        :expected-approval-instance-id="flow.id"
+        label="退回修改短信"
+      />
+      <DutySmsStatusPanel
+        v-if="transitionSmsTypes.has(flow.businessType) && isOwnCorrection(flow)"
+        domain="approval-progress"
+        :business-id="flow.id"
+        label="退回修改短信"
+      />
       <div
         v-if="flow.businessType && flow.businessId"
         class="approval-progress__document"

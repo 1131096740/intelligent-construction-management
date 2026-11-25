@@ -3,7 +3,7 @@ import { ref, watch } from "vue";
 import { formatUnknownApiError } from "../api/error-message";
 import { fetchDutySms, retryDutySms, type DutySmsDomain, type DutySmsStatus } from "../api/duty-sms.api";
 
-const props = defineProps<{ domain: DutySmsDomain; businessId: string; expectedApprovalInstanceId?: string; dutyKey?: string }>();
+const props = defineProps<{ domain: DutySmsDomain; businessId: string; expectedApprovalInstanceId?: string; dutyKey?: string; label?: string }>();
 const notice = ref<DutySmsStatus | null>(null);
 const busy = ref(false);
 const message = ref("");
@@ -18,7 +18,7 @@ const labels = {
 
 async function refresh() {
   const request = ++generation;
-  const next = await fetchDutySms(props.domain, props.businessId, props.dutyKey).catch(() => null);
+  const next = await fetchDutySms(props.domain, props.businessId, props.dutyKey, props.expectedApprovalInstanceId).catch(() => null);
   if (request === generation) notice.value = next;
 }
 
@@ -48,9 +48,9 @@ watch(() => [props.domain, props.businessId, props.expectedApprovalInstanceId, p
   <section
     v-if="notice"
     class="duty-sms-status"
-    aria-label="待办短信"
+    :aria-label="label ?? '待办短信'"
   >
-    <strong>待办短信</strong>
+    <strong>{{ label ?? "待办短信" }}</strong>
     <span aria-live="polite">{{ labels[notice.status] }}</span>
     <t-button
       v-if="notice.canRetry && notice.status === 'failed'"

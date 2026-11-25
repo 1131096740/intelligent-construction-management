@@ -108,8 +108,9 @@ it("按审批职责读取和重试短信，并在访问 outbox 前拒绝越界�
   expect(notifications.approvalStatus).not.toHaveBeenCalled();
   expect(notifications.retryApproval).not.toHaveBeenCalled();
 
-  await controller.approvalDutySmsStatus("claim-1", actor, 0);
-  await controller.retryApprovalDutySms("claim-1", actor, attempt, 1);
-  expect(notifications.approvalStatus).toHaveBeenCalledWith("claim-1", "current-user", 0);
-  expect(notifications.retryApproval).toHaveBeenCalledWith("claim-1", "current-user", attempt.attemptId, 1);
+  await expect(controller.approvalDutySmsStatus("claim-1", actor, 0, "")).rejects.toThrow("审批轮次无效");
+  await controller.approvalDutySmsStatus("claim-1", actor, 0, "round-1");
+  await controller.retryApprovalDutySms("claim-1", actor, attempt, 1, "round-1");
+  expect(notifications.approvalStatus).toHaveBeenCalledWith("claim-1", "current-user", 0, "round-1");
+  expect(notifications.retryApproval).toHaveBeenCalledWith("claim-1", "current-user", attempt.attemptId, 1, "round-1");
 });

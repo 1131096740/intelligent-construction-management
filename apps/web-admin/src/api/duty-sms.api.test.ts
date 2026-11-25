@@ -6,7 +6,7 @@ vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
 const transport = vi.mocked(apiFetch);
 
 describe("待办短信重试接口", () => {
-  it.each([["expense-claims", "claim/1"], ["spot-procurement-payments", "payment/1"], ["payment-executions", "registered/1"], ["payments", "payment/1"], ["fund-account-transfers", "transfer/1"], ["contract-bank-verifications", "bank/1"], ["contract-economic-reviews", "economic/1"], ["contract-proxy-executions", "proxy/1"], ["upward-contract-amount-revisions", "amount/1"], ["upward-receipt-matches", "receipt/1"]] as const)(
+  it.each([["approval-progress", "round/1"], ["expense-claims", "claim/1"], ["spot-procurement-payments", "payment/1"], ["payment-executions", "registered/1"], ["payments", "payment/1"], ["fund-account-transfers", "transfer/1"], ["contract-bank-verifications", "bank/1"], ["contract-economic-reviews", "economic/1"], ["contract-proxy-executions", "proxy/1"], ["upward-contract-amount-revisions", "amount/1"], ["upward-receipt-matches", "receipt/1"]] as const)(
     "状态读取与重试使用同一授权业务资源和明确失败标识：%s", async (domain, businessId) => {
     transport.mockClear();
     const failed = { attemptId: "a".repeat(64), status: "failed", canRetry: true };
@@ -19,6 +19,24 @@ describe("待办短信重试接口", () => {
     expect(transport.mock.calls[1]).toEqual([`${statusPath}/retry`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ attemptId: failed.attemptId })
     }]);
+  });
+
+  it("报销审批入队记录按轮次和职责隔离，退回修改仅使用轮次", async () => {
+    transport.mockClear();
+    await expect(fetchDutySms("expense-claim-approvals", "claim/id", "0")).rejects.toThrow("当前费用审批轮次无法确认");
+    expect(transport).not.toHaveBeenCalled();
+    transport.mockResolvedValueOnce(Response.json({ notice: null }));
+    transport.mockResolvedValueOnce(Response.json({ attemptId: "next", status: "queued", canRetry: false }));
+    transport.mockResolvedValueOnce(Response.json({ notice: null }));
+    await fetchDutySms("expense-claim-approvals", "claim/id", "0", "round/1");
+    await retryDutySms("expense-claim-approvals", "claim/id", "original", "round/1", "0");
+    await fetchDutySms("expense-claim-approvals", "claim/id", undefined, "round/2");
+    const path = "/expense-claims/claim%2Fid/approval-duty-sms";
+    expect(transport.mock.calls[0]).toEqual([`${path}?approvalInstanceId=round%2F1&approvalDutyIndex=0`]);
+    expect(transport.mock.calls[1]).toEqual([`${path}/retry?approvalInstanceId=round%2F1&approvalDutyIndex=0`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ attemptId: "original" })
+    }]);
+    expect(transport.mock.calls[2]).toEqual([`${path}?approvalInstanceId=round%2F2`]);
   });
 
   it("余额复核重试保留原短信及准确轮次，缺少轮次不发请求", async () => {

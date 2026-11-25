@@ -2,6 +2,8 @@ import { apiFetch } from "./api-fetch";
 import { formatApiErrorMessage } from "./error-message";
 
 export type DutySmsDomain =
+  | "approval-progress"
+  | "expense-claim-approvals"
   | "contract-bank-verifications"
   | "contract-economic-reviews"
   | "contract-proxy-executions"
@@ -24,6 +26,8 @@ export interface DutySmsStatus {
 
 function path(domain: DutySmsDomain, id: string, dutyKey?: string) {
   const resource = encodeURIComponent(id);
+  if (domain === "approval-progress") return `/approval-progress/${resource}/duty-sms`;
+  if (domain === "expense-claim-approvals") return `/expense-claims/${resource}/approval-duty-sms`;
   if (domain === "contract-bank-verifications") return `/contract-bank-verifications/${resource}/duty-sms`;
   if (domain === "contract-economic-reviews") return `/contract-economic-reviews/${resource}/duty-sms`;
   if (domain === "contract-proxy-executions") return `/contract-proxy-executions/${resource}/duty-sms`;
@@ -43,8 +47,17 @@ function path(domain: DutySmsDomain, id: string, dutyKey?: string) {
   throw new Error("短信待办业务类型无法核对");
 }
 
-export async function fetchDutySms(domain: DutySmsDomain, id: string, dutyKey?: string): Promise<DutySmsStatus | null> {
-  const response = await apiFetch(path(domain, id, dutyKey));
+function requestPath(domain: DutySmsDomain, id: string, dutyKey?: string, expectedApprovalInstanceId?: string, retry = false) {
+  const endpoint = path(domain, id, dutyKey) + (retry ? "/retry" : "");
+  if (domain !== "expense-claim-approvals") return endpoint;
+  if (!expectedApprovalInstanceId) throw new Error("当前费用审批轮次无法确认，请刷新状态");
+  const scope = new URLSearchParams({ approvalInstanceId: expectedApprovalInstanceId });
+  if (dutyKey !== undefined) scope.set("approvalDutyIndex", dutyKey);
+  return `${endpoint}?${scope}`;
+}
+
+export async function fetchDutySms(domain: DutySmsDomain, id: string, dutyKey?: string, expectedApprovalInstanceId?: string): Promise<DutySmsStatus | null> {
+  const response = await apiFetch(requestPath(domain, id, dutyKey, expectedApprovalInstanceId));
   if (!response.ok) return null;
   return ((await response.json()) as { notice: DutySmsStatus | null }).notice;
 }
@@ -54,7 +67,7 @@ export async function retryDutySms(domain: DutySmsDomain, id: string, attemptId:
     throw new Error("当前余额复核轮次无法确认，请刷新状态");
   }
   const body = domain === "fund-accounts/registrations" ? { attemptId, expectedApprovalInstanceId } : { attemptId };
-  const response = await apiFetch(`${path(domain, id, dutyKey)}/retry`, {
+  const response = await apiFetch(requestPath(domain, id, dutyKey, expectedApprovalInstanceId, true), {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
   });
   if (!response.ok) {
