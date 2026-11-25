@@ -16,10 +16,11 @@ scope=expense-$lane
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const count=source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
+  if(count===332) require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
   console.log(count);
-'  "$prepared/source.json" "$sha")
+'  "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs")
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -81,18 +82,19 @@ for mode in "${modes[@]}"; do
   node -e '
     const row=require(process.argv[1]); const [mode,lane,sha,code,count,sourceFile]=process.argv.slice(2);
     console.log(JSON.stringify(row));
-    if(count==="331"&&mode!=="negative"){
+    if(Number(count)>=331&&mode!=="negative"){
       const {predecessor330}=require(sourceFile);
       for(const [predecessor,expected] of [[row.textDirectPredecessor,329],[row.paymentRemainderPredecessor,330]]){
         if(predecessor?.count!==expected||predecessor.sameIdentity!==true||predecessor.sameBaseB7!==true)process.exit(1);
       }
       if(row.paymentRemainderPredecessor.ledgerSha256!==predecessor330.ledgerSha256)process.exit(1);
     }
+    if(count==="332"&&mode!=="negative") require(process.argv[8]).assertInstallation(row,require(sourceFile));
     const status={app:"ORIGINAL_EXPENSE_"+count+"_APPLICATION_PASSED",valid:"ORIGINAL_EXPENSE_"+count+"_RETAINED_VALID_PASSED",
       negative:"ORIGINAL_EXPENSE_HISTORICAL_NEGATIVES_PASSED",recovery:"ORIGINAL_EXPENSE_"+count+"_SAME_INSTANCE_RECOVERY_PASSED"}[mode];
     if(code!=="0"||row.status!==status||row.lane!==lane||row.sourceSha!==sha||
       row.cleanup!=="POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT"||
       (mode!=="negative"&&(row.installOnly295?.count!==295||row.combinedAfterBusiness?.count!==Number(count)||row.combinedAfterBusiness?.exactB7!==true)))process.exit(1);
-  ' "$work/$mode.json" "$mode" "$lane" "$sha" "$exit_code" "$count" "$prepared/source.json" ||
+  ' "$work/$mode.json" "$mode" "$lane" "$sha" "$exit_code" "$count" "$prepared/source.json" "$plan/upward-archive-332-profile.cjs" ||
     { printf 'EXPENSE_%s_STOPPED %s %s %s\n' "$count" "$lane" "$mode" "$work" >&2; exit 1; }
 done

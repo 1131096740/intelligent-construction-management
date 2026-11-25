@@ -297,7 +297,7 @@
        }
      }
      let cleanupLegacy;
-@@ -835,22 +972,23 @@
+@@ -835,28 +972,29 @@
            throw error;
          }
          current=await jsonSql(control.inspectSql());
@@ -319,6 +319,14 @@
            need(digest==='12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f' &&
              equal(await jsonSql(finalSql),final),'PAYMENT_REMAINDER_330_PREDECESSOR_CONTINUITY');
            receipt.paymentRemainderPredecessor={count:330,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true};
+         }
+-        if (forward320.upwardArchive && current.ledger.length===331) {
++        if (forward320.upwardArchive && qualifiedLedger.length===331) {
+-          const digest=hash(JSON.stringify(current.ledger));
++          const digest=hash(JSON.stringify(qualifiedLedger));
+           need(digest==='0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014' &&
+             equal(await jsonSql(finalSql),final),'UPWARD_ARCHIVE_331_PREDECESSOR_CONTINUITY');
+           receipt.upwardArchivePredecessor={count:331,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true};
          }
        }
 -      receipt.forward320={count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
@@ -398,7 +406,7 @@
      receipt.adjacentPostconsume={count:289,exactB7:true};
      receipt[resultKey]=result;
    },outsideRelease);
-@@ -1423,3 +1569,47 @@
+@@ -1423,3 +1569,48 @@
    withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'cleanup');
  module.exports.withCombined330MultiWitnessForProfile=(receipt,consume,material)=>
    withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'profile');
@@ -413,6 +421,7 @@
 +    'current-320':module.exports.withCombined320ContractPayment,
 +    'text-direct-330':module.exports.withCombined330TextAgreement,
 +    'payment-remainder-331':module.exports.withCombined331PaymentRemainder,
++    'upward-archive-332':module.exports.withCombined332UpwardArchive,
 +  })[material.mode] : module.exports.withCombined295MultiWitness;
 +  need(typeof install==='function','EXPENSE_295_INSTALL_MODE');
 +  need(!material || mode!=='ORIGINAL_EXPENSE_HISTORICAL_NEGATIVES_295_SOURCE','EXPENSE_320_NEGATIVE_MUST_RETAIN_HISTORY');
