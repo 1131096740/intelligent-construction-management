@@ -121,7 +121,13 @@ BEGIN
       'public.jg_execute_contract_direct_archive_outside_v1(uuid,text,text,text,text,integer,text,text,jsonb)')
       AND p.proowner=binding."executorOwnerOid" AND p.pronamespace=binding."namespaceOid" AND p.prosecdef
       AND has_function_privilege(binding."runtimeSessionOid",p.oid,'EXECUTE')
-      AND NOT has_function_privilege(binding."ordinaryApplicationRoleOid",p.oid,'EXECUTE')) THEN
+      AND NOT has_function_privilege(binding."ordinaryApplicationRoleOid",p.oid,'EXECUTE'))
+    OR NOT EXISTS(SELECT FROM pg_proc p WHERE p.oid=to_regprocedure('public.jg_file_business_binding_columns()')
+      AND p.proowner=anchor_oid AND NOT p.prosecdef AND p.proconfig=ARRAY['search_path=pg_catalog, public']
+      AND encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')='2a2b941651afd8763a7932f8ea110e845eb0851783ea86726b1da78ed20ded85')
+    OR NOT EXISTS(SELECT FROM pg_proc p WHERE p.oid=to_regprocedure('public.jg_file_business_collision_columns()')
+      AND p.proowner=anchor_oid AND NOT p.prosecdef
+      AND encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')='59bcdff6d8e5026d8619a3fd7cf0d8796091e61f41ea4eb1543c9d1e0b530012') THEN
     RAISE EXCEPTION 'OUTSIDE_ARCHIVE_FILE_BINDING_OWNER' USING ERRCODE='55000';
   END IF;
   SELECT rolname INTO STRICT executor_name FROM pg_roles WHERE oid=binding."executorOwnerOid";
@@ -138,8 +144,10 @@ BEGIN
         AND c.relkind='r' AND c.relpersistence='p' AND NOT(c.relispartition OR c.relrowsecurity OR c.relforcerowsecurity)
         AND a.attname=target.column_name AND a.attnum>0 AND NOT a.attisdropped AND a.attnotnull
         AND a.atttypid='pg_catalog.text'::regtype AND a.attgenerated='' AND a.attidentity='';
-    IF NOT EXISTS(SELECT FROM public.jg_file_business_collision_columns() c
-        WHERE c."tableName"=target.relation_name AND c."columnName"=target.column_name)
+    -- The collision reader inherits its caller's search path. Read the pinned
+    -- underlying registry with its own fixed path and leave this migration's path alone.
+    IF NOT EXISTS(SELECT FROM public.jg_file_business_binding_columns() c
+        WHERE c."tableName"=target.relation_name AND c."columnName"=target.column_name AND c."exclusive")
       OR has_column_privilege(binding."executorOwnerOid",relation_oid,column_no,'SELECT')
       OR EXISTS(SELECT FROM unnest(login_ids) login(oid)
         WHERE has_table_privilege(login.oid,relation_oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
