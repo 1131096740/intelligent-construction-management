@@ -70,7 +70,7 @@ if (( count >= 330 )); then
     fi
     if [[ $count == 332 ]]; then
       patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-332.patch"
-      [[ $(runner_sha) == cfadb8d99c42bca952fa8ef76ee2f080df4f8cdd43db5455d8db14b7e4fc492a ]] || exit 65
+      [[ $(runner_sha) == e2d5eaf37ebcae4671dcbf8c4b26ddc14983baf70dc32c5d7861789b979dc0a6 ]] || exit 65
     fi
   elif (( count >= 331 )); then
     patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-standard-331.patch"
@@ -84,11 +84,11 @@ if (( count >= 330 )); then
       [[ $(sha256sum "$spec" | cut -d' ' -f1) == 05bfdec5b4e12815b6ca7c3ea9345d44b4c27ab77a52223f62ccbda18187ad1c ]] || exit 65
       if [[ $count == 332 ]]; then
         patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-competition-runner-332.patch"
-        [[ $(runner_sha) == 1aed99cf7cdb95d1e1821204727df5f46b0d56fa184287363929dd565615eaf8 ]] || exit 65
+        [[ $(runner_sha) == 8dd3e349a089e994d2b04af05a80a19c88034a71d450d530db4463172a867bfe ]] || exit 65
       fi
     elif [[ $count == 332 ]]; then
       patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-standard-332.patch"
-      [[ $(runner_sha) == f2330ca2d87085803692c508fbb1643522901b84a5595141ed342fb54a18be4f ]] || exit 65
+      [[ $(runner_sha) == c190e958f13e4a8ddb438d0e0b462f4b74fb9ad7a883cbad670ed97b8754c29a ]] || exit 65
       if [[ -z $variant ]]; then
         relative=services/api/src/database/task16-text-agreement-payments.http.pg.spec.ts
         spec="$work/$relative"

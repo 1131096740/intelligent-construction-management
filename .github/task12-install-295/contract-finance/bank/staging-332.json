@@ -1,8 +1,8 @@
 {
   "bank/overlay/services/api/src/database/contract-finance-owned.test-support.ts": {
     "kind": "full",
-    "material": "1a56fad12fac5b933327b8dd7a231f9753fee9f8807214d3f08619036ac49e54.gz",
-    "sha256": "1a56fad12fac5b933327b8dd7a231f9753fee9f8807214d3f08619036ac49e54"
+    "material": "c242ae813e80ad1e7731c3a4e69b0d5b96016bd0da44b780774d7929d2727e68.gz",
+    "sha256": "c242ae813e80ad1e7731c3a4e69b0d5b96016bd0da44b780774d7929d2727e68"
   },
   "bank/overlay/services/api/src/database/project-affiliate-company-contract-db.spec.ts": {
     "kind": "full",

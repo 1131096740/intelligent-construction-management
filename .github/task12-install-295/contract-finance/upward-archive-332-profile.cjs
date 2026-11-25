@@ -2,13 +2,13 @@
 
 const assert = require('node:assert/strict');
 const mode = 'upward-archive-332';
-const ledgerSha256 = 'fa7de95de902e97fda3a8d01de042ac11d1ce6421345d8edc71d9ca97c1f18ce';
+const ledgerSha256 = 'da5e425d3160952d733fd84f4c5852b6951181fdcb8d37efd2763c32097930e8';
 const predecessor329 = '3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2';
 const predecessor330 = '12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f';
 const predecessor331 = '0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014';
 const terminal = {
   name: '20261129001000_contract_upward_archive_verifier_pin_forward',
-  sha256: '61ed04c79086124df2a379a5651494ed4efa797169f6937b4dad549a31732788'
+  sha256: '42538d9f925438e3be99e4a4fbd0721dbf93f65bae1c801101cd4e5aa64a8087'
 };
 
 function assertSource(source, sourceSha, base295Sha256) {

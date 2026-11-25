@@ -75,14 +75,14 @@ function run(index,lane,fault){
   const ledger329='3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2';
   const ledger330='12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f';
   const ledger331='0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014';
-  const ledger332='fa7de95de902e97fda3a8d01de042ac11d1ce6421345d8edc71d9ca97c1f18ce';
+  const ledger332='da5e425d3160952d733fd84f4c5852b6951181fdcb8d37efd2763c32097930e8';
   const ledgerSha256=[base295,ledger329,ledger330,ledger331,ledger332][index];
   const source={sourceSha:'a'.repeat(40),sourceTree:'b'.repeat(40),migrationCount:count,ledgerSha256,
     mode:mode?.slice(2),predecessor:{migrationCount:295,ledgerSha256:base295},
     predecessor330:{migrationCount:330,ledgerSha256:ledger330},predecessor331:{migrationCount:331,ledgerSha256:ledger331},
     tails:[...Array.from({length:Math.max(0,count-296)},()=>({name:'synthetic',sha256:'a'.repeat(64)})),
       {name:'20261129001000_contract_upward_archive_verifier_pin_forward',
-        sha256:'61ed04c79086124df2a379a5651494ed4efa797169f6937b4dad549a31732788',finished:true,rolledBack:false}]};
+        sha256:'42538d9f925438e3be99e4a4fbd0721dbf93f65bae1c801101cd4e5aa64a8087',finished:true,rolledBack:false}]};
   if(!mode) delete source.sourceTree;
   const receipt={releaseTree:'67644d9465a0ab4ee80ede099139d9c129d66f14',business:'CALLBACK_COMPLETED',
     orderedTails:[{size:295}],installOnly295:{count:295,ledgerSha256:base295},

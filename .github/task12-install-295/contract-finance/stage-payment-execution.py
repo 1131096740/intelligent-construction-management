@@ -56,7 +56,7 @@ if options == ['--upward-archive-332']:
         ('payment-execution-concurrency.spec.ts', 'payment-execution-332-payment-execution-concurrency.spec.ts.patch',
          '0cd8ebc9938760d0af40b4825cd00d23d4bcdf733df65a5cc96e7b178e20e020', '60fadabef257b2eab2eb359f8add2e8c2455a1b44be09aba4bcf8d8bece1b56e'),
         ('contract-finance-owned.test-support.ts', 'payment-execution-332-contract-finance-owned.test-support.ts.patch',
-         '2c3ab7ebeedc7da20ae1a1b1c189fb3e36781b9b6fd6e69e62c59a1d00d70377', '1801de35588da4a1628e55042cb8f0839f492ee66065b880ccb274381a3d49ba'),
+         '2c3ab7ebeedc7da20ae1a1b1c189fb3e36781b9b6fd6e69e62c59a1d00d70377', '6859cac4c6e0613641409657fd9bf74b1cba34115af2b6d3ef28a5295451fa3a'),
     ]:
         target = stage / name
         if hashlib.sha256(target.read_bytes()).hexdigest() != before:

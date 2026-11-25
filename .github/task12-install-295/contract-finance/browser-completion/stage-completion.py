@@ -72,6 +72,6 @@ for name in sorted(partial_pins.keys() | completion_pins.keys()):
             upward_archive = Path(__file__).with_name('completion332.patch')
             subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                             str(target), str(upward_archive)], check=True)
-            check(target.read_bytes(), '5e88f8c75ef5b18da3f9fae1089d4090f8d648405b12f2ff0efe4ae426492f89', target.name)
+            check(target.read_bytes(), 'd9d655cff4e55b659efe9fabf7bae58f4228a310b11306084191f03ee4f7e5b6', target.name)
     target.chmod(0o644)
     print(name)

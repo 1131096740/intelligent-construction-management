@@ -76,10 +76,10 @@ if [[ $lane == warm ]]; then
 else
   install -m 0644 "$pol/collision-observation.cjs" "$work/collision-observation.cjs"
 fi
-check "$common/installer.cjs" 298f163d1c8b5495cae25176cc3c242c2595ccf531e08d071e6036b970b87b93
+check "$common/installer.cjs" a0e1583bac5131303b88f2210ed9d8cd924e1ae98fdfb34d3441ce9de4cb864a
 cp "$common/installer.cjs" "$work/installer.cjs"
 patch -f -F 0 -s "$work/installer.cjs" "$plan/installer-pol275.patch"
-check "$work/installer.cjs" 6f0e092d648a5d4a9855d64a068399e7f5750ef5db8318c4c65332781fceb8ae
+check "$work/installer.cjs" 3d0e482d9d88bacb8df74f0ccfc3b8e2dc62d0cec6aa1c172d9b4c0e8e7e5890
 chmod 644 "$work/installer.cjs"
 node --check "$work/installer.cjs"
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL

@@ -34,7 +34,7 @@ if(count!==295){
       count:331,ledgerSha256:'0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014',
       sameIdentity:true,sameBaseB7:true
     });
-    assert.equal(outer.forward320.ledgerSha256,'fa7de95de902e97fda3a8d01de042ac11d1ce6421345d8edc71d9ca97c1f18ce');
+    assert.equal(outer.forward320.ledgerSha256,'da5e425d3160952d733fd84f4c5852b6951181fdcb8d37efd2763c32097930e8');
   }
 }
 assert.equal(evidence.status,'BROWSER_PARTIAL_CASE_RETURNED_NOT_FULL_ACCEPTANCE');

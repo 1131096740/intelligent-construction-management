@@ -43,7 +43,7 @@
 + if(count>=331&&(receipt.paymentRemainderPredecessor?.count!==330||!receipt.paymentRemainderPredecessor.sameIdentity||!receipt.paymentRemainderPredecessor.sameBaseB7))
    throw Error("TASK410_COMPANY_PROXY_331_PREDECESSOR");
 + if(exact332&&(receipt.upwardArchivePredecessor?.count!==331||receipt.upwardArchivePredecessor.sameIdentity!==true
-+   ||receipt.upwardArchivePredecessor.sameBaseB7!==true||forward.ledgerSha256!=="fa7de95de902e97fda3a8d01de042ac11d1ce6421345d8edc71d9ca97c1f18ce"))
++   ||receipt.upwardArchivePredecessor.sameBaseB7!==true||forward.ledgerSha256!=="da5e425d3160952d733fd84f4c5852b6951181fdcb8d37efd2763c32097930e8"))
 +  throw Error("TASK410_COMPANY_PROXY_332_PREDECESSOR");
   if(exact295&&(receipt?.purpose!=="TASK410_COMPANY_PROXY_EXACT_295"||receipt.lane!=="company-proxy-repayment"))
    throw Error("TASK410_COMPANY_PROXY_295_SCOPE");
