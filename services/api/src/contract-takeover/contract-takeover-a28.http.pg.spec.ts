@@ -75,6 +75,9 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
       const actor = await prisma.user.create({ data: { name: role, phone, passwordHash, mustChangePassword: false } });
       const position = await prisma.position.upsert({ where: { key: role }, create: { key: role, name: role }, update: {} });
       await prisma.userPosition.create({ data: { userId: actor.id, positionId: position.id } });
+      if (role === "finance_director") {
+        await prisma.userPosition.create({ data: { userId: actor.id, positionId: position.id, projectId } });
+      }
       await prisma.projectRosterMember.create({ data: { projectId, userId: actor.id } });
       const login = await fetch(`${baseUrl}/auth/login`, {
         method: "POST",
