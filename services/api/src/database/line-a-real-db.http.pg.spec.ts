@@ -32,10 +32,10 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     contractG: "linea-contract-g", versionG: "linea-contract-g-v1",
     contractH: "linea-contract-h", versionH: "linea-contract-h-v1",
     staff: "linea-user-staff", director: "linea-user-director",
-    manager: "linea-user-manager", finance: "linea-user-finance"
+    manager: "linea-user-manager", finance: "linea-user-finance", managerPeer: "linea-user-manager-peer"
   };
   const phones: Record<string, string> = {
-    staff: "13900001601", director: "13900001602", manager: "13900001603", finance: "13900001604"
+    staff: "13900001601", director: "13900001602", manager: "13900001603", finance: "13900001604", managerPeer: "13900001605"
   };
   const tokens = new Map<string, string>();
   let app: INestApplication;
@@ -131,6 +131,7 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { projectId: ids.project, userId: ids.staff, positionKey: "contract_staff" },
       { projectId: ids.project, userId: ids.staff, positionKey: "comprehensive_director" },
       { projectId: ids.project, userId: ids.manager, positionKey: "project_manager" },
+      { projectId: ids.project, userId: ids.managerPeer, positionKey: "project_manager" },
       { projectId: ids.project, userId: ids.finance, positionKey: "finance_staff" },
       { projectId: ids.project, userId: ids.director, positionKey: "chairman" }
     ] });
@@ -692,12 +693,13 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     approvalInstanceId = submitted.body.approvalInstanceId;
 
     const duties: Array<[keyof typeof phones, number]> = [["director", 0], ["manager", 1], ["finance", 2]];
-    for (const [actor, dutyIndex] of duties) {
-      const result = await call(actor, `/contracts/${ids.versionB}/work-completions/${workCompletionId}/approval`, {
+    const reviews = await Promise.all(duties.map(([actor, dutyIndex]) =>
+      call(actor, `/contracts/${ids.versionB}/work-completions/${workCompletionId}/approval`, {
         approvalInstanceId, dutyIndex, decision: "approve"
-      });
-      expect(result.status).toBe(201);
-    }
+      })
+    ));
+    expect(reviews.map(result => result.status)).toEqual([201, 201, 201]);
+    expect(reviews.filter(result => result.body.status === "confirmed")).toHaveLength(1);
     const view = await call("staff", `/contracts/${ids.versionB}/work-completions`);
     expect(view.body.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: workCompletionId, status: "confirmed" })
@@ -863,6 +865,54 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       .find(row => row.label === "合同金额提示");
     expect(prompt?.value).toContain("累计生效结算");
     expect(prompt?.value).toContain("累计实付");
+  });
+
+  it("records one signature for a competing duty and one final decision (A03)", async () => {
+    const path = `/contracts/${ids.versionB}`;
+    const draft = await call("staff", `${path}/work-completion-drafts`, {
+      work: "隔离履约并联审批竞争", amountYuan: "3500.0000", requestKey: "linea-work-a03"
+    });
+    const completionId = draft.body.id;
+    const completionPath = `${path}/work-completions/${completionId}`;
+    const submitted = await call("staff", `${completionPath}/submission`, undefined, "POST");
+    const roundId = submitted.body.approvalInstanceId;
+    const review = (actor: keyof typeof phones, dutyIndex: number, decision: "approve" | "reject") =>
+      callRaw(actor, `${completionPath}/approval`, {
+        approvalInstanceId: roundId, dutyIndex, decision,
+        ...(decision === "reject" ? { comment: "隔离复核需补事实" } : {})
+      });
+
+    const sameDuty = await Promise.all([review("manager", 1, "approve"), review("managerPeer", 1, "approve")]);
+    expect(sameDuty.map(result => result.status).sort()).toEqual([201, 409]);
+    expect(await owner.approvalActionLog.count({
+      where: { approvalInstanceId: roundId, action: "approve", metadata: { path: ["nodeIndex"], equals: 1 } }
+    })).toBe(1);
+    expect(await review("director", 0, "approve")).toMatchObject({ status: 201, body: { status: "in_approval" } });
+    expect(await owner.contractWorkCompletionFact.count({ where: { completionId } })).toBe(0);
+
+    const finalDecisions = ["approve", "reject"] as const;
+    const operatingBefore = await owner.operatingFact.count({ where: { projectId: ids.project, sourceType: "contract_work_completion" } });
+    const terminal = await Promise.all(finalDecisions.map(decision => review("finance", 2, decision)));
+    expect(terminal.map(result => result.status).sort()).toEqual([201, 409]);
+    const winningDecision = finalDecisions[terminal.findIndex(result => result.status === 201)];
+    const approved = winningDecision === "approve";
+    const finalLogs = await owner.approvalActionLog.findMany({
+      where: { approvalInstanceId: roundId, metadata: { path: ["nodeIndex"], equals: 2 } }
+    });
+    expect(finalLogs).toHaveLength(1);
+    expect(finalLogs[0]).toMatchObject({ action: winningDecision, actorUserId: ids.finance });
+    if (!approved) expect(finalLogs[0]).toMatchObject({
+      signatureFileIdSnapshot: null, signatureSha256Snapshot: null, signatureVersionIdSnapshot: null
+    });
+    expect(await owner.approvalInstance.findUniqueOrThrow({ where: { id: roundId } }))
+      .toMatchObject({ status: approved ? "approved" : "rejected" });
+    expect(await owner.contractWorkCompletionFact.count({ where: { completionId } })).toBe(approved ? 1 : 0);
+    expect(await owner.operatingFact.count({ where: { projectId: ids.project, sourceType: "contract_work_completion" } }))
+      .toBe(operatingBefore + (approved ? 1 : 0));
+    expect((await review("finance", 2, "approve")).status).toBe(409);
+    expect(await owner.approvalActionLog.count({
+      where: { approvalInstanceId: roundId, metadata: { path: ["nodeIndex"], equals: 2 } }
+    })).toBe(1);
   });
 
   it("keeps the original tax value until a correction passes supervisor review", async () => {

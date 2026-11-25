@@ -14,7 +14,7 @@ const root = '/qualification';
 const api = path.join(root, 'workspace/services/api');
 const spec = 'src/database/line-a-real-db.http.pg.spec.ts';
 const textDirect = source.mode === 'text-direct-330';
-const tests = textDirect ? 15 : 14;
+const tests = textDirect ? 16 : 15;
 const receipt = {
   schemaVersion: 1, purpose: textDirect ? 'LINE_A_TEXT_DIRECT_330' : 'LINE_A_EXACT_329', sourceSha: source.sourceSha,
   stages: ['INPUTS'], status: 'STOPPED'
