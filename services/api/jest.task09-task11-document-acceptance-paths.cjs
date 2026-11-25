@@ -4,6 +4,7 @@ const { resolve } = require("node:path");
 const documentFiles = Object.freeze([
   "contract-template/task09-draft-template-type-native.http.spec.ts",
   "contract-template/task09-new-selection-browser.http.spec.ts",
+  "contract-template/task426-approved-compact-template.http.spec.ts",
   "contract-template/template-browser.http.spec.ts",
   "contract-template/template-mapping-native.http.spec.ts",
   "contract-template/template-selection-browser.http.spec.ts",
