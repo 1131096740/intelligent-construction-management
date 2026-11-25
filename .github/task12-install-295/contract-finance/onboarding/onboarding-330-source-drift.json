@@ -39,6 +39,7 @@
   "services/api/src/database/direct-payment-capacity-concurrency.spec.ts": "a29c42e5969183edbf80cb0677db37f45efe11cedc1704b1826af95da0be92c7",
   "services/api/src/database/task16-shared-standard-fixture.ts": "9a596a48851f73b80d45eccd2ffcf95d5c52b5af0f8df86f16c3d35148065cb3",
   "services/api/src/fund-movement/fund-movement.service.ts": "d34592585082c223b383520253e32e289551d28e9ca604ea9e1415b8cf2976de",
+  "services/api/src/me/me.service.ts": "cdccd68bde81f461dc4bbe7cd1b6d94f8a399eb4465ddf9c84f0c0c727aa6ae3",
   "services/api/src/organization/organization-role.service.spec.ts": "3242c75e3f80f5eab9232688cf7526174e5d44cc469b0358b7133e837ab08576",
   "services/api/src/organization/organization-role.service.ts": "27cd2a2e45c0ab5fcaf7725a612fb08082820253b93fb45c08a737344f28629a",
   "services/api/src/organization/organization.module.ts": "da420a9a7eed7a31d5fb3915680e8e95e1e5bde7b99f4cd179d7e6006a8c95e7",

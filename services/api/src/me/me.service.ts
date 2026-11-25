@@ -13,7 +13,8 @@ import { IndependentApprovalProgressService } from "../approval/independent-appr
 import { isPureExpenseReimbursement, projectIncidentalExpenseWhere, pureExpenseReimbursementWhere, resolveExpenseParallelDutyIdentity, supportsExpenseParallelApproval } from "../expense-claim/expense-claim-parallel-approval";
 import { expenseClaimFundingDuty, expenseFundingFacets } from "../expense-claim/expense-claim-funding-duty";
 import { workItemNoticeAt } from "./work-item-notice-order";
-import { contractRoundSubmissionSnapshot, hasActiveContractGlobalRole } from "../contract/contract-parallel-duty-access";
+import { contractParallelDutyIdentity, contractRoundSubmissionSnapshot, hasActiveContractGlobalRole } from "../contract/contract-parallel-duty-access";
+import { resolveContractOriginators } from "../contract/contract-originators";
 import { resolveGovernedFinalArchiveAccess } from "../contract/contract-final-archive-access";
 import { readContractV2LifecycleContext } from "../contract/contract-v2-lifecycle-context";
 import { RegisteredPaymentExecutionService } from "../payment/registered-payment-execution.service";
@@ -29,7 +30,7 @@ import {contractHandlingWorkItems} from "../contract-ledger/contract-handling-wo
 import { addContractRelationshipSummaries } from "../contract-ledger/contract-relationship-summary";
 import { generalProcurementActor } from "../general-procurement/general-procurement-access";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
-import { BadRequestException, ForbiddenException, Injectable, Optional } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Optional } from "@nestjs/common";
 import { Prisma, type ContractVersion } from "@prisma/client";
 import { createHash, randomBytes } from "node:crypto";
 import {
@@ -287,6 +288,7 @@ type ApprovalInstanceForWorkItem = {
 interface ApprovalBusinessDetail {
   historicalEmployeeLoan?: boolean;
   requestProtocolVersion?: number;
+  contractApprovalVersion?: Pick<ContractVersion, "status" | "documentContentRevision" | "documentContentFingerprint">;
   expenseApproval?: {
     status: string;
     approvalInstanceId: string | null;
@@ -2657,20 +2659,23 @@ export class MeService {
           : activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex);
         if (expenseDuties.length === 0) continue;
       }
+      const currentContractDuty = mode === "pending" && detail?.contractApprovalVersion !== undefined;
+      const currentContractNode = currentContractDuty ? await this.currentContractApprovalTodo(instance, detail, userId) : null;
+      if (currentContractDuty && !currentContractNode) continue;
       const scopedDelegateNode = detail ? await this.scopedSpotDelegateNode(instance, detail.projectId ?? undefined, userId) : null;
       const scopedContractNode = detail ? await this.scopedContractDutyNode(instance, detail.projectId ?? undefined, userId) : null;
       const delegatedNode = scopedDelegateNode ?? scopedContractNode;
-      const node = expenseDuties && Array.isArray(instance.frozenNodes)
+      const node = currentContractNode ?? (expenseDuties && Array.isArray(instance.frozenNodes)
         ? instance.frozenNodes[expenseDuties[0]] as ApprovalNode
-        : this.currentApprovalNode(instance.frozenNodes, instance.currentNodeIndex, roleKeysByProject.get(detail?.projectId ?? "") ?? []) ?? delegatedNode;
+        : this.currentApprovalNode(instance.frozenNodes, instance.currentNodeIndex, roleKeysByProject.get(detail?.projectId ?? "") ?? []) ?? delegatedNode);
       if (!detail || !node) {
         continue;
       }
       const roleKeys = (detail.projectId ? roleKeysByProject.get(detail.projectId) : undefined) ?? [];
       const supportsIndirect = this.supportsIndirectApproval(instance.businessType);
-      const hasRoleTodo = expenseApproval ? mode === "pending" : ["general_procurement", "expense_claim"].includes(instance.businessType)
+      const hasRoleTodo = currentContractDuty || (expenseApproval ? mode === "pending" : ["general_procurement", "expense_claim"].includes(instance.businessType)
         ? await this.canActOnProcurementNode(node, userId, detail.projectId)
-        : supportsIndirect ? this.canActOnApprovalNode(node, roleKeys, userId) : this.hasDirectRoleTodo(node, roleKeys);
+        : supportsIndirect ? this.canActOnApprovalNode(node, roleKeys, userId) : this.hasDirectRoleTodo(node, roleKeys));
       const hasDirectTodo =
         hasRoleTodo &&
         this.canShowSpotApplicantTodo(instance, node, roleKeys, userId);
@@ -2848,7 +2853,8 @@ export class MeService {
       contractVersionIds.length
         ? this.prisma.contractVersion.findMany({
             where: { id: { in: contractVersionIds } },
-            select: { id: true, contractId: true, amountCents: true }
+            select: { id: true, contractId: true, amountCents: true, numericProtocolVersion: true, status: true,
+              documentContentRevision: true, documentContentFingerprint: true }
           })
         : Promise.resolve([]),
       settlementIds.length
@@ -2910,7 +2916,7 @@ export class MeService {
     const contracts = contractIds.length
       ? await this.prisma.contract.findMany({
           where: { id: { in: [...new Set(contractIds)] } },
-          select: { id: true, projectId: true, code: true, temporaryCode: true, name: true, counterparty: true }
+          select: { id: true, projectId: true, code: true, temporaryCode: true, name: true, counterparty: true, voidedAt: true }
         })
       : [];
     const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
@@ -2949,6 +2955,11 @@ export class MeService {
         businessCode: code,
         title: `合同审批：${contract.name}`,
         amountCents: version.amountCents,
+        ...(version.numericProtocolVersion === 2 ? { contractApprovalVersion: {
+          status: contract.voidedAt ? "voided" : version.status,
+          documentContentRevision: version.documentContentRevision,
+          documentContentFingerprint: version.documentContentFingerprint
+        } } : {}),
         targetPath: `/合同管理/${code}`
       });
     }
@@ -3334,6 +3345,28 @@ export class MeService {
     for (const index of activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex)) {
       const node = instance.frozenNodes[index] as ApprovalNode;
       if (await this.hasDelegatedApprovalTodo(userId, projectId, node, new Date())) return node;
+    }
+    return null;
+  }
+
+  private async currentContractApprovalTodo(instance: ApprovalInstanceForWorkItem, detail: ApprovalBusinessDetail, userId: string) {
+    const version = detail.contractApprovalVersion;
+    const nodes = instance.frozenNodes;
+    const snapshot = contractRoundSubmissionSnapshot(nodes);
+    if (!detail.projectId || version?.status !== "in_approval" || instance.flowType !== "contract.approve" ||
+        !isParallelApprovalRound(nodes) || snapshot?.contractVersionId !== instance.businessId ||
+        snapshot.documentContentRevision !== version.documentContentRevision ||
+        snapshot.documentContentFingerprint !== version.documentContentFingerprint) return null;
+
+    const originators = await resolveContractOriginators(this.prisma, instance.businessId, nodes).catch(error => {
+      if (error instanceof ConflictException) return null;
+      throw error;
+    });
+    if (!originators) return null;
+    const selfReview = instance.applicantUserId === userId || originators.includes(userId);
+    for (const index of activeApprovalNodeIndexes(nodes, instance.currentNodeIndex)) {
+      const identity = await contractParallelDutyIdentity(this.prisma, instance, detail.projectId, userId, index, false);
+      if (identity && (!selfReview || identity.representedUserId === userId)) return nodes[index] as ApprovalNode;
     }
     return null;
   }

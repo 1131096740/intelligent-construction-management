@@ -200,6 +200,11 @@
     "candidate": "d34592585082c223b383520253e32e289551d28e9ca604ea9e1415b8cf2976de"
   },
   {
+    "path": "services/api/src/me/me.service.ts",
+    "expected": "439db3745de0160d9db7dc5819bdf2f73c2ac0c595d8f8b5250e83d54aba5b25",
+    "candidate": "cdccd68bde81f461dc4bbe7cd1b6d94f8a399eb4465ddf9c84f0c0c727aa6ae3"
+  },
+  {
     "path": "services/api/src/organization/organization-role.service.spec.ts",
     "expected": "1e0d1dded333444f35e3d0ca33d6f4c4f588de05c53e50f4d7af018bf24f31a9",
     "candidate": "3242c75e3f80f5eab9232688cf7526174e5d44cc469b0358b7133e837ab08576"
