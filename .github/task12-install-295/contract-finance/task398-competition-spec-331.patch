@@ -1,6 +1,6 @@
 --- original
 +++ revised
-@@ -614,0 +615,32 @@
+@@ -614,0 +615,54 @@
 +    expect(await observeRace()).toEqual(recorded);
 +    expect(await json("/fund-accounts","GET",undefined,finance)).toEqual(accounts);
 +    const expectSharedQueues=async()=>{
@@ -25,11 +25,33 @@
 +    });
 +    expect(uploaded.status).toBe(201);
 +    const file=await uploaded.json();
-+    expect(await json(`/payment-executions/${executionId}/voucher`,"POST",{fileId:file.id},winnerChoice.token)).toMatchObject({status:201});
-+    const ticket=await json(`/payment-executions/${executionId}/voucher-ticket`,"GET",undefined,winnerChoice.token);
-+    expect(ticket.status).toBe(200);
-+    const download=await fetch(new URL(ticket.body.downloadUrl,origin));
-+    expect(download.status).toBe(200);
-+    expect(Buffer.from(await download.arrayBuffer())).toEqual(png);
-+    expect(await getResult(winner.key,winnerChoice.token)).toMatchObject({status:200,body:{execution:{voucherPending:false}}});
++    const approvalRounds=()=>observer.approvalInstance.findMany({
++     where:{businessType:"payment_request",businessId:plan.ids.payment},
++     select:{id:true,status:true},orderBy:{id:"asc"}
++    });
++    const beforeVoucherApproval=await approvalRounds();
++    expect(beforeVoucherApproval).toEqual([{id:round.id,status:"approved"}]);
++    const route=`/payment-executions/${executionId}/voucher`;
++    const digest=createHash("sha256").update(png).digest("hex");
++    await activateOwned281VoucherCheck(owner,runId,executionId,plan.ids.payment,plan.ids.project,winnerChoice.actor,file.id,digest,png.length);
++    try {
++     expect(await json(route,"POST",{fileId:file.id},outsider)).toMatchObject({status:403});
++     expect(await json(route,"POST",{fileId:file.id},winnerChoice.token)).toMatchObject({status:201});
++     expect(await json(route,"POST",{fileId:file.id},winnerChoice.token)).toMatchObject({status:201});
++     expect(await owner.registeredPaymentVoucher.findUniqueOrThrow({where:{executionId}})).toMatchObject({
++      executionId,fileId:file.id,uploadedByUserId:winnerChoice.actor,contentSha256:digest
++     });
++     expect(await owner.auditLog.count({where:{businessId:plan.ids.payment,action:"payment.execution.voucher.attach"}})).toBe(1);
++     await activateOwned282VoucherRead(owner,executionId,file.id,winnerChoice.actor);
++     expect(await json(`${route}-ticket`,"GET",undefined,outsider)).toMatchObject({status:403});
++     const ticket=await json(`${route}-ticket`,"GET",undefined,winnerChoice.token);
++     expect(ticket.status).toBe(200);
++     const download=await fetch(new URL(ticket.body.downloadUrl,origin));
++     expect(download.status).toBe(200);
++     expect(Buffer.from(await download.arrayBuffer())).toEqual(png);
++     expect(await getResult(winner.key,winnerChoice.token)).toMatchObject({status:200,body:{execution:{voucherPending:false}}});
++    } finally {
++     await releaseOwned281VoucherCheck(owner,executionId,file.id);
++    }
 +    await expectSharedQueues();
++    expect(await approvalRounds()).toEqual(beforeVoucherApproval);
