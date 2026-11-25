@@ -401,7 +401,7 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     expect(audit?.actorUserId).toBe(ids.director);
   });
 
-  it("registers, returns and confirms a signed settlement from a real uploaded original", async () => {
+  it("registers, returns and confirms a signed settlement with private originals (A10)", async () => {
     const pdf = await PDFDocument.create();
     pdf.addPage();
     const pdfBytes = Buffer.from(await pdf.save());
@@ -412,10 +412,19 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     });
     expect(upload.status).toBe(201);
     const uploaded = await upload.json();
+    const photo = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=", "base64");
+    const photoForm = new FormData();
+    photoForm.append("file", new Blob([photo], { type: "image/png" }), "已签结算照片.png");
+    const photoUpload = await fetch(`${base}${settlementPath}/files`, {
+      method: "POST", headers: { authorization: `Bearer ${tokens.get("staff")}` }, body: photoForm
+    });
+    expect(photoUpload.status).toBe(201);
+    const uploadedPhoto = await photoUpload.json();
+    const fileIds = [uploaded.id, uploadedPhoto.id];
 
     const created = await call("staff", `/projects/${ids.project}/signed-contract-settlements`, {
       contractKind: "downstream", contractId: ids.contractA, number: "LINEA-JS-001",
-      amountYuan: "1000.0000", fileIds: [uploaded.id]
+      amountYuan: "1000.0000", fileIds
     });
     expect(created.status).toBe(201);
     expect(created.body.state).toBe("draft");
@@ -431,7 +440,7 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
 
     const resaved = await call("staff", `/projects/${ids.project}/signed-contract-settlements/${settlementId}`, {
       revision: returned.body.revision, contractKind: "downstream", contractId: ids.contractA,
-      number: "LINEA-JS-001", amountYuan: "1000.0000", fileIds: [uploaded.id]
+      number: "LINEA-JS-001", amountYuan: "1000.0000", fileIds
     }, "PATCH");
     expect(resaved.body.state).toBe("draft");
     const resubmitted = await call("staff", `/projects/${ids.project}/signed-contract-settlements/${settlementId}/submission`,
@@ -440,6 +449,32 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { revision: resubmitted.body.revision, decision: "confirm" });
     expect(confirmed.body.state).toBe("confirmed");
     expect(confirmed.body.confirmationNo).toBe("1");
+
+    const duplicate = await newSignedDraft(ids.contractA, "LINEA-JS-001", "0.0000");
+    expect(duplicate.duplicateNumber).toBe(true);
+    const zero = await callRaw("staff", `${settlementPath}/${duplicate.id}/submission`, { revision: duplicate.revision });
+    expect(zero).toMatchObject({ status: 400, body: { message: expect.stringContaining("非零本期金额") } });
+    const editedDuplicate = await call("staff", `${settlementPath}/${duplicate.id}`, {
+      revision: duplicate.revision, contractKind: "downstream", contractId: ids.contractA,
+      number: "LINEA-JS-001", amountYuan: "1.0000", fileIds: [duplicate.fileId]
+    }, "PATCH");
+    const submittedDuplicate = await call("staff", `${settlementPath}/${duplicate.id}/submission`, {
+      revision: editedDuplicate.body.revision
+    });
+    expect(submittedDuplicate.body).toMatchObject({ state: "pending_review", duplicateNumber: true });
+    const replaceConfirmed = await callRaw("staff", `${settlementPath}/${settlementId}`, {
+      revision: confirmed.body.revision, contractKind: "downstream", contractId: ids.contractA,
+      number: "LINEA-JS-001", amountYuan: "1000.0000", fileIds: [uploaded.id]
+    }, "PATCH");
+    expect(replaceConfirmed.status).toBe(409);
+    const originals = await owner.signedContractSettlementAttachment.findMany({
+      where: { settlementId }, select: { fileId: true, sha256: true }
+    });
+    expect(originals).toHaveLength(2);
+    expect(originals).toEqual(expect.arrayContaining([
+      { fileId: uploaded.id, sha256: sha(pdfBytes) },
+      { fileId: uploadedPhoto.id, sha256: sha(photo) }
+    ]));
 
     const basis = await call("staff", `/projects/${ids.project}/signed-contract-settlements/payment-basis?contractKind=downstream&contractId=${ids.contractA}`);
     expect(basis.status).toBe(200);
@@ -477,7 +512,10 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     });
     expect(created.status).toBe(201);
     expect(created.body.state).toBe("draft");
-    return { id: created.body.id as string, revision: created.body.revision as number };
+    return {
+      id: created.body.id as string, revision: created.body.revision as number,
+      duplicateNumber: created.body.duplicateNumber as boolean, fileId: fileId as string
+    };
   }
 
   it("serializes two -8 yuan settlements at both submission and review (A11)", async () => {
