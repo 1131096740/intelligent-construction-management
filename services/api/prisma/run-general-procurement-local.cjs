@@ -8,7 +8,6 @@ const { tmpdir } = require("node:os");
 const { createCommandRuntime } = require("./money-bigint-runner-runtime.cjs");
 const { CI_DYNAMIC_MIGRATION_LABEL, createCiDynamicMigrationFixture } = require("./local-staged-ci-dynamic.cjs");
 const { renderGeneralProcurementFileGuardGrant } = require("./contract-bank-runtime-fixture.cjs");
-const storageRoot = mkdtempSync(path.join(tmpdir(), "general-procurement-files-"));
 
 const root = path.resolve(__dirname, "../../..");
 const password = randomUUID();
@@ -31,6 +30,7 @@ if (process.env.DOCKER_HOST && !process.env.DOCKER_HOST.startsWith("unix://")) t
 const endpoint = process.env.DOCKER_HOST || command("docker", ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"], process.env, true);
 if (!endpoint.startsWith("unix://")) throw new Error("只允许本机 Docker");
 const docker = (args, env = process.env, quiet = false) => command("docker", ["--host", endpoint, ...args], env, quiet);
+const storageRoot = mkdtempSync(path.join(tmpdir(), "general-procurement-files-"));
 
 async function verify() {
   containerId = docker(["run", "--detach", "--rm", "--pull=never", "--name", name,

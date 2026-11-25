@@ -141,11 +141,17 @@ describePg("A05 综合采购同案身份与委托公开 HTTP / PostgreSQL 16", (
     expect(options.status).toBe(200);
     const option = options.body.find(choice => choice.value === `${round.id}:0`);
     expect(option).toMatchObject({ actionKey: "general_procurement.approve", resourceType: "general_procurement_approval_duty" });
-    const assignment = await request<{ id: string }>(director.token, "/approval-delegations", "POST", {
-      toUserId: delegate.id, startsAt: new Date(Date.now() - 1_000).toISOString(),
+    const assignDuty = (toUserId: string) => request<{ id: string }>(director.token, "/approval-delegations", "POST", {
+      toUserId, startsAt: new Date(Date.now() - 1_000).toISOString(),
       endsAt: new Date(Date.now() + 120_000).toISOString(), actionKey: option!.actionKey,
       resourceType: option!.resourceType, resourceId: option!.value
     });
+    expect((await assignDuty(technical.id)).status).toBe(201);
+    expect(await openApproval(technical.token)).toEqual([]);
+    expect((await review(technical.token, 3, 0)).status).toBe(403);
+    expect(await approvals()).toEqual([selfAction]);
+
+    const assignment = await assignDuty(delegate.id);
     expect(assignment).toMatchObject({ status: 201, body: { id: expect.any(String) } });
     for (const token of [director.token, delegate.token]) {
       expect(await duties(token)).toMatchObject({ status: 200, body: { reviewDuties: [{ nodeIndex: 0 }] } });

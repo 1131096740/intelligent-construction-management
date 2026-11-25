@@ -29,20 +29,24 @@ export async function generalRequestDutyIdentity(tx: Prisma.TransactionClient, v
   if (!isParallelApprovalRound(round.frozenNodes) || !activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex).includes(index)) return null;
   const node = round.frozenNodes[index];
   const roles = node.roleKeys as RoleKey[];
-  const directRole = async (userId: string) => {
+  const currentActor = async (userId: string) => {
     if (lock) await lockCurrentAuthority(tx, userId, row.projectId);
-    let actor: Awaited<ReturnType<typeof generalRequestActor>>;
-    try { actor = await generalRequestActor(tx, visibility, userId, row.projectId); }
+    try { return await generalRequestActor(tx, visibility, userId, row.projectId); }
     catch (error) { if (error instanceof ForbiddenException) return undefined; throw error; }
-    return roles.find(role => role === "project_manager" ? Boolean(row.projectId && actor.projectRoleKeys.includes(role))
-      : role === "comprehensive_director" && (actor.globalRoleKeys.includes(role) || Boolean(row.projectId && actor.projectRoleKeys.includes(role))));
   };
-  const role = await directRole(actorUserId);
+  const directRole = (actor: Awaited<ReturnType<typeof generalRequestActor>>) =>
+    roles.find(role => role === "project_manager" ? Boolean(row.projectId && actor.projectRoleKeys.includes(role))
+      : role === "comprehensive_director" && (actor.globalRoleKeys.includes(role) || Boolean(row.projectId && actor.projectRoleKeys.includes(role))));
+  const actor = await currentActor(actorUserId);
+  if (!actor) return null;
+  const role = directRole(actor);
   if (role) return { approvedRoleKey: role, representedUserId: actorUserId, delegationId: null };
-  if (!delegated) return null;
+  const actorRoles = [...actor.globalRoleKeys, ...actor.projectRoleKeys];
+  if (!delegated || (actorRoles.includes("super_admin") && actorRoles.every(key => key === "super_admin"))) return null;
   const ids = await activeScopedApprovalDelegatorIds(tx, actorUserId, { actionKey: "general_procurement.approve", resourceType: GENERAL_REQUEST_DUTY_RESOURCE, resourceId: generalRequestDutyId(round.id, index) });
   for (const id of ids) {
-    const originalRole = await directRole(id);
+    const represented = await currentActor(id);
+    const originalRole = represented && directRole(represented);
     if (originalRole) {
       const mandate = await tx.approvalDelegation.findFirst({ where: { fromUserId: id, toUserId: actorUserId, enabled: true,
         actionKey: "general_procurement.approve", resourceType: GENERAL_REQUEST_DUTY_RESOURCE, resourceId: generalRequestDutyId(round.id, index), startsAt: { lte: new Date() }, endsAt: { gt: new Date() } }, select: { id: true } });
