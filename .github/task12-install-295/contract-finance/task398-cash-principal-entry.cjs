@@ -5,7 +5,7 @@ const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined33
 const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run-task398-shared-standard-local.cjs');
 
 const [lane] = process.argv.slice(2);
-assert.ok(process.argv.length===3&&['cash-handover','principal-return'].includes(lane));
+assert.ok(process.argv.length===3&&['cash-handover','principal-return','cash-transfer','project-advance'].includes(lane));
 const textDirect=source.mode==='text-direct-330';
 const upwardArchive=source.mode==='upward-archive-332';
 const paymentRemainder=source.mode==='payment-remainder-331';
@@ -15,6 +15,8 @@ const purpose='TASK398_CASH_PRINCIPAL_EXACT_'+count;
 const receipt = {schemaVersion:1,sourceSha:source.sourceSha,lane,purpose,business:'NOT_ENTERED',stages:[]};
 async function main(){
   assert.equal(source.migrationCount,count);
+  const extended=lane==='cash-transfer'||lane==='project-advance';
+  if(extended) assert.equal(count,332);
   assert.equal((current320?source.predecessor:source).ledgerSha256,require('./multi-witness.cjs').final);
   const validate332=upwardArchive?require('./upward-archive-332-profile.cjs'):undefined;
   validate332?.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
@@ -40,7 +42,7 @@ async function main(){
   assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
   assert.equal(receipt.installOnly295?.count,295);
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
-  assert.deepEqual(receipt.original,{business:1,passed:1,skipped:0});
+  assert.deepEqual(receipt.original,{business:1,passed:extended?8:1,skipped:0});
   assert.equal(receipt.combinedAfterBusiness?.exactB7,true);
   assert.equal(receipt.combinedAfterBusiness?.balance.keyUnprovisioned,true);
   assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);

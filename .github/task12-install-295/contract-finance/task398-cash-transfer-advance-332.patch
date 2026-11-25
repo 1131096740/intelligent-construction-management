@@ -1,0 +1,27 @@
+--- runner
++++ runner
+@@ -327,6 +327,8 @@
+  const reportFile=path.join(privateLogDir,"standard-290-jest.json");
+  try{
+   const knownCase=standard290?.lane==="cash-handover"?["hands over real registered cash without rewriting balances, and takes over a departed custodian's held transfers",1]:
++    standard290?.lane==="cash-transfer"?["shares one cash transfer across receipt, rejection, return and actual payment contention",8]:
++    standard290?.lane==="project-advance"?["preserves actual advance origins and records one confirmed own-company payment gap",8]:
+     standard290?.lane==="principal-return"?["locks four-place principal reservations, records a partial and one competing final payment, and recovers the original key",1]:
+     ["rejects a project source gap, then shares three valid instalments and supplements the voucher",8];
+   const [knownTitle,expected]=knownCase;
+@@ -501,13 +503,13 @@
+  `);
+ }
+ async function runTask398Owned282Voucher(context, mode="standard", receipt){
+- const modes=new Map([["cash-handover-332",["--cash-handover-real"]],["principal-return-332",["--principal-return-real"]],["cash-handover-331",["--cash-handover-real"]],["principal-return-331",["--principal-return-real"]],["cash-handover-330",["--cash-handover-real"]],["principal-return-330",["--principal-return-real"]],["cash-handover-329",["--cash-handover-real"]],["principal-return-329",["--principal-return-real"]],["cash-handover-295",["--cash-handover-real"]],["principal-return-295",["--principal-return-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["cash-transfer-332",["--transfer-real"]],["project-advance-332",["--project-advance-real"]],["cash-handover-332",["--cash-handover-real"]],["principal-return-332",["--principal-return-real"]],["cash-handover-331",["--cash-handover-real"]],["principal-return-331",["--principal-return-real"]],["cash-handover-330",["--cash-handover-real"]],["principal-return-330",["--principal-return-real"]],["cash-handover-329",["--cash-handover-real"]],["principal-return-329",["--principal-return-real"]],["cash-handover-295",["--cash-handover-real"]],["principal-return-295",["--principal-return-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+  if(!modes.has(mode))throw new Error("TASK398_OWNED_282_SCENARIO");
+  const exact295=mode==="cash-handover-295"||mode==="principal-return-295";
+  const exact320=mode==="cash-handover-329"||mode==="principal-return-329";
+  const exact330=mode==="cash-handover-330"||mode==="principal-return-330";
+  const exact331=mode==="cash-handover-331"||mode==="principal-return-331";
+- const exact332=mode==="cash-handover-332"||mode==="principal-return-332";
++ const exact332=["cash-handover-332","principal-return-332","cash-transfer-332","project-advance-332"].includes(mode);
+  const count=exact332?332:exact331?331:exact330?330:329;
+  const forward=exact332||exact331||exact330||exact320?receipt?.forward320:undefined;
+  if((exact332||exact331||exact330||exact320)&&(receipt?.purpose!=="TASK398_CASH_PRINCIPAL_EXACT_"+count||mode!==receipt.lane+"-"+count

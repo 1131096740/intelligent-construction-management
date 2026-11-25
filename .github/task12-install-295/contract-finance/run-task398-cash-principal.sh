@@ -11,7 +11,7 @@ build=$(cd "$4" && pwd -P)
 plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$plan/common"
 scope=$5
-[[ $scope == cash-handover || $scope == principal-return ]] || exit 64
+case "$scope" in cash-handover|principal-return|cash-transfer|project-advance) ;; *) exit 64 ;; esac
 
 count=$(node -e '
   const source=require(process.argv[1]);
@@ -20,6 +20,11 @@ count=$(node -e '
   if(count===332) require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
   console.log(count);
 ' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs")
+extended=false
+if [[ $scope == cash-transfer || $scope == project-advance ]]; then
+  [[ $count == 332 ]] || exit 64
+  extended=true
+fi
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -32,6 +37,14 @@ python3 "$plan/stage-task398-cash-principal.py" \
 overlay_files=()
 while IFS= read -r file; do overlay_files+=("$file"); done < "$work/overlay-files.txt"
 [[ ${#overlay_files[@]} == 7 ]] || exit 65
+if [[ $extended == true ]]; then
+  python3 "$plan/stage-task398-standard.py" \
+    "$repo/.github/task12-install-290/standard/fixtures" "$prepared/prepared/context/workspace" "$work/standard" > "$work/standard-files.txt"
+  coordinate=services/api/src/database/task16-shared-standard.http.pg.spec.ts
+  [[ $(shasum -a 256 "$work/standard/$coordinate" | cut -d' ' -f1) == e70aa4d7364f7232f694881bb96fce88bfa57a89bd24fc6f527b4d85dfa6b901 ]] || exit 65
+  install -m 0644 "$work/standard/$coordinate" "$work/$coordinate"
+  overlay_files+=("$coordinate")
+fi
 if (( count >= 330 )); then
   runner="$work/services/api/prisma/run-task398-shared-standard-local.cjs"
   runner_sha() { node -e 'const fs=require("node:fs"),{createHash}=require("node:crypto"); console.log(createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$runner"; }
@@ -46,6 +59,11 @@ fi
 if [[ $count == 332 ]]; then
   patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-principal-332.patch"
   [[ $(runner_sha) == 1d46ecbe7796b613e996fe8652d7147f68147ae6f43adb53c1c37d902f675471 ]] || exit 65
+fi
+
+if [[ $extended == true ]]; then
+  patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-transfer-advance-332.patch"
+  [[ $(runner_sha) == 660f0f60e2bf7bcd83f453d35fc1aa78cfa5f84bee827c39bbe42188783a4947 ]] || exit 65
 fi
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
