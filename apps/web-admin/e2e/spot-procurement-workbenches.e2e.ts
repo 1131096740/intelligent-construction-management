@@ -1065,7 +1065,7 @@ test("fails closed when switching A5 payment routes and discards stale merchant 
   expect(localDrafts).not.toMatch(/6222000011112222|A银行|attachmentFiles/u);
 });
 
-test("routes an enabled refund task to the real receipt workflow and preserves frozen archive facts", async ({ page }) => {
+test("opens the enabled refund form on the payment and preserves frozen archive facts", async ({ page }) => {
   await mockLogin(page);
   await page.route("**/api/spot-procurement-payments/payment-refund", (route) => {
     const base = paymentDetail();
@@ -1089,6 +1089,7 @@ test("routes an enabled refund task to the real receipt workflow and preserves f
           enabled: true,
           disabledReason: null
         },
+        discrepancy: { status: "awaiting_refund", refundExpectedAmountCents: "44000" },
         availableActions: [],
         archives: [{
           id: "archive-1",
@@ -1122,9 +1123,6 @@ test("routes an enabled refund task to the real receipt workflow and preserves f
       })
     });
   });
-  await page.route("**/api/spot-procurements/procurement-1/receipt", (route) =>
-    route.fulfill({ contentType: "application/json", body: JSON.stringify(receiptDetail()) })
-  );
   await page.route("**/api/spot-procurements/procurement-1", (route) =>
     route.fulfill({ contentType: "application/json", body: JSON.stringify(procurementDetail()) })
   );
@@ -1151,7 +1149,8 @@ test("routes an enabled refund task to the real receipt workflow and preserves f
 
   await page.locator(".t-tabs").getByText("当前办理", { exact: true }).click();
   await taskPanel.getByRole("button", { name: "办理退款", exact: true }).click();
-  await expect.poll(() => decodeURIComponent(new URL(page.url()).pathname)).toBe("/零星采购收货/procurement-1");
+  await expect(page.locator(".payment-refund-form").getByText("待退款整笔差额", { exact: true })).toBeInViewport();
+  expect(decodeURIComponent(new URL(page.url()).pathname)).toBe("/零星材料付款/payment-refund");
 
   await page.goto("/零星材料付款/payment-refund-disabled?tab=current");
   await expect(page.getByRole("button", { name: "办理退款", exact: true })).toHaveCount(0);
@@ -1161,6 +1160,10 @@ test("routes an enabled refund task to the real receipt workflow and preserves f
 test("records two controlled executions from the frozen channel and refreshes server payment facts", async ({ page }) => {
   await mockLogin(page);
   await mockApprovalProgress(page, [{ businessType: "spot_procurement_payment", businessId: "payment-execution" }]);
+  await page.route("**/api/approval-forms/spot_procurement_payment/payment-execution/capability",
+    route => route.fulfill({ json: { available: false } }));
+  await page.route("**/api/spot-procurement-payments/payment-execution/duty-sms",
+    route => route.fulfill({ json: { notice: null } }));
   let paidCents = 0;
   let uploadNo = 0;
   const executionPayloads: Array<Record<string, unknown>> = [];
@@ -1259,9 +1262,10 @@ test("records two controlled executions from the frozen channel and refreshes se
     await expect(page.getByText(`已关联 1 份`, { exact: true })).toHaveCount(expectedExecutionNo);
     if (expectedExecutionNo === 1) {
       await expect(page.getByText("部分已付", { exact: true }).first()).toBeVisible();
-      await page.locator(".t-tabs").getByText("历史收货与发票", { exact: true }).click();
-      await expect(page.getByText("待确认收货", { exact: true })).toBeVisible();
-      await page.locator(".t-tabs").getByText("当前办理", { exact: true }).click();
+      await expect(page.locator(".payment-composition-card__facts > div").filter({ hasText: "剩余待付" })
+        .getByText("¥2,200.00", { exact: true })).toBeVisible();
+      await page.getByRole("tab", { name: "当前办理", exact: true }).click();
+      await expect(page.getByRole("button", { name: "登记实际付款", exact: true })).toBeVisible();
     }
   }
 
@@ -1550,7 +1554,7 @@ test("opens one responsive A5 approval drawer, confirms facts, and posts the fro
   await expect(drawer.getByText("审批金额", { exact: true })).toBeVisible();
   await expect(drawer.getByText("云南建工测试公司", { exact: true })).toBeVisible();
   await expect(drawer.getByText("利民建材店", { exact: true })).toBeVisible();
-  await expect(drawer.getByText("董事长/总经理审批", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("董事长/总经理或签审批", { exact: true })).toBeVisible();
   await drawer.getByText("退回申请人修改", { exact: true }).click();
   await drawer.getByRole("button", { name: "继续确认", exact: true }).click();
   await expect(drawer.getByText("退回原因不能为空", { exact: true })).toBeVisible();
@@ -1583,12 +1587,9 @@ test("opens one responsive A5 approval drawer, confirms facts, and posts the fro
   await expect(drawer.getByText("¥4,400.00", { exact: true })).toBeVisible();
   await expect(drawer.getByText("云南建工测试公司", { exact: true })).toBeVisible();
   await expect(drawer.getByText("利民建材店", { exact: true })).toBeVisible();
-  await expect(drawer.getByText("董事长/总经理审批", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("董事长/总经理或签审批", { exact: true })).toBeVisible();
   await drawer.getByRole("button", { name: "确认提交", exact: true }).click();
-  await expect.poll(() => approvalPayload).toEqual({
-    decision: "approve",
-    comment: ""
-  });
+  await expect.poll(() => approvalPayload).toEqual({ decision: "approve" });
 });
 
 test("closes payer and approval editors on an SPA payment switch without writing to either record", async ({ page }) => {
@@ -1730,7 +1731,7 @@ test("refreshes the completed payer task after a stale shared-role save gets 409
   await page.route("**/api/spot-procurement-payments/payment-payer", (route) => {
     detailReads += 1;
     const base = paymentDetail();
-    const completed = detailReads > 1;
+    const completed = payerWrites > 0;
     return route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -1767,7 +1768,7 @@ test("refreshes the completed payer task after a stale shared-role save gets 409
           disabledReason: null
         },
         availableActions: completed ? [] : [{
-          key: "complete_payer",
+          key: "manage_payer",
           label: "维护付款主体",
           kind: "primary",
           enabled: true,
@@ -1798,7 +1799,7 @@ test("refreshes the completed payer task after a stale shared-role save gets 409
   await page.locator(".t-tabs").getByText("付款申请", { exact: true }).click();
   await expect(page.locator(".detail-panel").getByText("其他岗位已选主体", { exact: true })).toBeVisible();
   expect(payerWrites).toBe(1);
-  expect(detailReads).toBeGreaterThanOrEqual(2);
+  expect(detailReads).toBeGreaterThanOrEqual(3);
 });
 
 test("keeps the latest spot payment detail and reloads a replacement draft", async ({ page }) => {
@@ -1945,7 +1946,7 @@ test("keeps only the latest payment workbench request when views resolve out of 
 
   pendingRequests[1]!.release("success");
   await pendingRequests[1]!.completed;
-  await expect(page.getByText("NEW-ALL", { exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByText("NEW-ALL", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "全部申请 1", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "处理", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "查看", exact: true })).toHaveCount(2);
@@ -1961,10 +1962,10 @@ test("keeps only the latest payment workbench request when views resolve out of 
   expect(pendingRequests[3]!.view).toBe("closed");
   pendingRequests[3]!.release("success");
   await pendingRequests[3]!.completed;
-  await expect(page.getByText("NEW-CLOSED", { exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByText("NEW-CLOSED", { exact: true })).toBeVisible();
   pendingRequests[2]!.release("failure");
   await pendingRequests[2]!.completed;
-  await expect(page.getByText("NEW-CLOSED", { exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByText("NEW-CLOSED", { exact: true })).toBeVisible();
   await expect(page.getByText("零星材料付款暂不可用", { exact: true })).toHaveCount(0);
 });
 
@@ -2053,6 +2054,11 @@ test("posts frozen spot procurement review coordinates after a fresh preflight",
     name: "物资主管甲",
     roleKeys: ["material_director"]
   });
+  await mockApprovalProgress(page, ["approve", "reject", "return", "return-draft"].map(suffix => ({
+    businessType: "spot_procurement_version", businessId: `version-procurement-review-${suffix}`
+  })));
+  await page.route(/\/api\/approval-forms\/spot_procurement_version\/version-procurement-review-(?:approve|reject|return(?:-draft)?)\/capability$/u,
+    route => route.fulfill({ json: { available: false } }));
   const requests: Array<{
     procurementId: string;
     method: string;
@@ -2276,6 +2282,11 @@ test("withdraws one exact spot procurement approval after a fresh preflight", as
     name: "申请人甲",
     roleKeys: ["material_staff"]
   });
+  await mockApprovalProgress(page, ["desktop", "desktop-draft", "mobile", "mobile-draft"].map(suffix => ({
+    businessType: "spot_procurement_version", businessId: `version-procurement-withdraw-${suffix}`
+  })));
+  await page.route(/\/api\/approval-forms\/spot_procurement_version\/version-procurement-withdraw-(?:(?:desktop|mobile)(?:-draft)?)\/capability$/u,
+    route => route.fulfill({ json: { available: false } }));
   const requests: Array<{
     procurementId: string;
     method: string;
@@ -2646,6 +2657,7 @@ test("executes server-owned procurement and A5 payment draft lifecycle actions",
   await page.getByPlaceholder("请输入手机号").fill("13900000000");
   await page.getByPlaceholder("请输入密码").fill("Spot@2026");
   await page.getByRole("button", { name: "登录" }).click();
+  await expect(page).not.toHaveURL(/\/login(?:\?|$)/u);
 
   await page.goto("/零星采购/procurement-1");
   await page.getByText("审批与动作", { exact: true }).click();
@@ -2657,7 +2669,7 @@ test("executes server-owned procurement and A5 payment draft lifecycle actions",
   await page.getByText("审批进度", { exact: true }).click();
   await page.getByRole("button", { name: "放弃付款草稿" }).click();
   await page.getByPlaceholder("说明本次操作原因").fill("付款对象需要重新确认");
-  await page.getByRole("button", { name: "确认放弃付款草稿" }).click();
+  await page.getByRole("button", { name: "确认删除付款草稿" }).click();
   await expect.poll(() => requests.some((request) => request.path.endsWith("/payment-1/abandonment"))).toBe(true);
 
   expect(requests).toEqual(expect.arrayContaining([
@@ -2746,6 +2758,8 @@ test("spot procurement request SMS retry uses its own current duty and original 
     businessType: "spot_procurement_version", businessId
   })));
   const path = "/api/spot-procurements/procurement-1";
+  await page.route(url => url.pathname === "/api/actual-purchase-batches" && url.searchParams.get("procurementId") === "procurement-1",
+    route => route.fulfill({ json: { items: [] } }));
   const original = procurementDetail();
   let record = { ...original, currentVersion: { ...original.currentVersion, requestProtocolVersion: 2 },
     purchaseTask: { pending: true, canHandle: true }, availableActions: [] as Array<{ key: string; enabled: boolean; label: string }> };
