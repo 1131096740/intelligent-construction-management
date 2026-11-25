@@ -21,6 +21,9 @@ const { BusinessPartyController } = load("business-party/business-party.controll
 const { ContractBillExcelService } = load("contract-bill/contract-bill-excel.service");
 const { ContractDraftBillExcelController } = load("contract-bill/contract-draft-bill-excel.controller");
 const { ContractService } = load("contract/contract.service");
+const { ContractV2SubmissionService } = load("contract/contract-v2-submission.service");
+const { ContractApprovalRouteService } = load("contract/contract-approval-route.service");
+const { BusinessNumberingService } = load("business-number/business-numbering.service");
 const { ContractController } = load("contract/contract.controller");
 const { ContractReadService } = load("contract/contract-read.service");
 const { ContractFormalFileService } = load("contract/contract-formal-file.service");
@@ -46,7 +49,7 @@ const contract = { id: "grid-contract", projectId: project.id, ownerUserId: acto
 const bill = { id: "grid-bill", contractVersionId: "grid-version", billKey: "main", name: "合成四位材料清单", revision: 1, numericProtocolVersion: 2, pricingMode: "tax_inclusive", amountRole: "included", quantityScale: 4, unitPriceScale: 4, schemaSnapshot: { key: "main", name: "合成四位材料清单", columns: [] }, sourceExcelFileId: null, taxInclusiveAmountCents: 307n, taxExclusiveAmountCents: 307n, taxAmountCents: 0n, taxInclusiveAmountYuan: D("3.0680"), taxExclusiveAmountYuan: D("3.0680"), taxAmountYuan: D(0) };
 const version = { id: "grid-version", contractId: contract.id, versionNo: 1, status: "draft", changeType: "original", baseVersionId: null, firstSubmittedAt: null, abandonedAt: null, abandonedByUserId: null, abandonReason: null, numericProtocolVersion: 2, contractGovernanceVersion: null, draftRevision: 1, documentContentRevision: 1, documentContentFingerprint: null, amountLimitType: "capped", pricingNature: "unit_price", amountSource: "bill_sum", amountCents: 307n, amountYuan: D("3.0680"), estimatedAmountCents: null, amountAdjustmentReason: null, invoiceType: "vat_special", taxMode: "single_rate", defaultTaxRatePercent: D(0), taxFactStatus: "draft", taxFactSource: "contract_document", taxFactRevision: 1, taxFactsFrozenAt: null, settlementMode: "settlement_required", settlementModeConfirmedAt: null, businessTemplateVersionId: null, layoutTemplateVersionId: null, readinessSnapshot: null, clauseSnapshot: [], templateSnapshot: { fieldSchema: [], billSchema: [bill.schemaSnapshot], clauseSchema: [], attachmentSchema: [], validationSchema: [] }, draftData: { fieldValues: {}, contractName: "本地合成合同" }, createdAt: now, updatedAt: now };
 const rows = ["级配碎石", "长名称材料用于核验表格与局部滚动"].map((name, index) => ({ id: `grid-row-${index}`, contractBillId: bill.id, rowKey: `grid-row-key-${index}`, sortOrder: index, itemCode: "", itemName: name, specification: "合成规格", unit: "吨", quantity: D(1), unitPrice: D("1.5340"), taxExclusiveUnitPrice: D("1.5340"), taxInclusiveAmountYuan: D("1.5340"), taxExclusiveAmountYuan: D("1.5340"), taxAmountYuan: D(0), taxInclusiveAmountCents: 153n, taxExclusiveAmountCents: 153n, taxAmountCents: 0n, taxRateSource: "version_default", taxRatePercent: D(0), precisionPolicy: "four_decimal", numericProtocolVersion: 2, numericSource: "decimal_input", numericReviewStatus: "verified", taxRate: D(0), pricingFactStatus: "confirmed", isProvisional: false, settlementBasis: "", customData: {}, lineageId: null, remainderDisposition: null }));
-let state = { contract: [contract], contractVersion: [version], contractBill: [bill], contractBillRow: rows, project: [project], user: [{ ...actor, isActive: true }, { ...otherActor, isActive: true }], userPosition: [], position: [], contractDraftEditLease: [], contractDraftSaveRequest: [] };
+let state = { contract: [contract], contractVersion: [version], contractBill: [bill], contractBillRow: rows, project: [project], user: [{ ...actor, isActive: true }, { ...otherActor, isActive: true }], userPosition: [], position: [], contractDraftEditLease: [], contractDraftSaveRequest: [], contractDraftSubmissionRequest: [] };
 for (const name of ["approvalInstance", "approvalActionLog", "contractFormalFile", "contractAuthorization", "contractVersionAuthorizationLink", "contractSealTask", "contractArchiveFile", "settlement", "paymentRequest", "contractTakeover", "contractDraftCheckpoint", "contractGeneratedDocument", "contractPartySnapshot", "paymentTermsVersion", "paymentTermsStage", "contractDraftAttachment", "contractNegotiationRound", "contractOfflineRevision", "auditLog", "contractBillRowLineage", "contractBillRowTransition", "fileObject", "businessEntrySubmissionSnapshot"]) state[name] = [];
 // All unseeded generated models are explicitly empty synthetic tables. This
 // enables the real file ACL to reject absent business bindings, not bypass it.
@@ -170,10 +173,13 @@ async function main() {
   const workbench = new ContractWorkbenchService(db, audit);
   const parties = new BusinessPartyService(db, audit);
   const aggregate = new ContractDraftAggregateService(db, workbench, new ContractBillService(db, audit), parties, files, audit);
-  const lease = new ContractDraftEditLeaseService(db, { confirmPassword: async () => { throw Error("Password actions outside grid acceptance"); } }, audit);
+  const auth = { confirmPassword: async () => { throw Error("Password actions outside grid acceptance"); } };
+  const lease = new ContractDraftEditLeaseService(db, auth, audit);
+  const submission = new ContractV2SubmissionService(db, files, new ContractApprovalRouteService(), new BusinessNumberingService(), audit, auth);
   const excel = new ContractBillExcelService(db, audit, files);
   const module = await Test.createTestingModule({ controllers: [ContractDraftController, ContractDraftBillExcelController, BusinessPartyController, ContractController], providers: [
     { provide: ContractService, useValue: new ContractService(db, audit) },
+    { provide: ContractV2SubmissionService, useValue: submission },
     { provide: ContractReadService, useValue: {} },
     { provide: ContractFormalFileService, useValue: new ContractFormalFileService(db, audit, files) },
     { provide: ProjectVisibilityService, useValue: {} },

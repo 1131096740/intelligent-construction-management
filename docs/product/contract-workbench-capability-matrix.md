@@ -7,21 +7,21 @@
 | 证据 | 状态 |
 | --- | --- |
 | Controller 源码路由 | 已扫描 270 条 |
-| Web API 请求 | 已扫描 180 条 |
+| Web API 请求 | 已扫描 177 条 |
 | 实际 Nest route manifest | 已通过 `app.init()` 读取，共 879 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
-| route-usage 候选退出 | 已读取 55 条合同专项候选；物理删除授权固定为否 |
+| route-usage 候选退出 | 已读取 58 条合同专项候选；物理删除授权固定为否 |
 
 ## 分类汇总
 
 | 分类 | 数量 |
 | --- | ---: |
-| matched | 132 |
+| matched | 128 |
 | frontend_without_backend | 0 |
-| backend_without_frontend | 83 |
+| backend_without_frontend | 84 |
 | backend_internal_only | 0 |
 | legacy_candidate | 0 |
-| exit_candidate | 55 |
+| exit_candidate | 58 |
 
 ## 不存在的页面 API wrapper
 
@@ -194,11 +194,11 @@
 | POST | `/contracts/:param/formal-files/final/confirmation` | confirmMutuallySignedContract | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/formal-files/final/return` | returnMutuallySignedContractForCorrection | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/pdf-generation` | generateContractPdfArchive | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
-| POST | `/contracts/:param/readiness` | checkContractSubmissionReadiness | apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue | matched | 保留 | 否 | — |
-| POST | `/contracts/:param/seal-approval` | approveContractSeal | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
+| POST | `/contracts/:param/readiness` | checkContractSubmissionReadiness |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/contracts/:param/seal-approval` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contracts/:param/seal-confirmation` | confirmContractSealV2 | apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts | matched | 保留 | 否 | — |
-| POST | `/contracts/:param/seal/approve` | approveGovernedContractSeal | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
-| POST | `/contracts/:param/seal/complete` | completeContractSeal | apps/web-admin/src/pages/contracts/ContractDetailPage.vue | matched | 保留 | 否 | — |
+| POST | `/contracts/:param/seal/approve` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
+| POST | `/contracts/:param/seal/complete` | — |  | exit_candidate | 候选退出 | 否 | production_exit_candidate_zero_calls, independent_deletion_authorization |
 | POST | `/contracts/:param/signed-archive` | archiveSignedContractV2 | apps/web-admin/src/pages/contracts/use-contract-signed-archive.ts<br>apps/web-admin/src/pages/contracts/workbench/use-direct-contract-registration.ts | matched | 保留 | 否 | — |
 | GET | `/contracts/:param/signed-changes` | fetchSignedContractChanges | apps/web-admin/src/pages/contracts/SignedContractChanges.vue | matched | 保留 | 否 | — |
 | POST | `/contracts/:param/signed-changes` | submitSignedContractChange | apps/web-admin/src/pages/contracts/SignedContractChanges.vue | matched | 保留 | 否 | — |

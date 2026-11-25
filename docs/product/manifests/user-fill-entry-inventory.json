@@ -8,10 +8,10 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 426,
+    "activeBusinessActionCount": 422,
     "technicalActionCount": 8,
-    "activeBindingCount": 520,
-    "retiredWriteEntryCount": 120,
+    "activeBindingCount": 516,
+    "retiredWriteEntryCount": 123,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
@@ -1523,54 +1523,6 @@
       "causalVerified": true
     },
     {
-      "id": "contract-seal.approve-governed",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/合同管理/:contractId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /contracts/:param/seal/approve"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "contract-seal.approve-legacy",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/合同管理/:contractId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /contracts/:param/seal-approval"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "contract-seal.complete",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/合同管理/:contractId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /contracts/:param/seal/complete"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
       "id": "contract-signed-change.download-original",
       "status": "unified_candidate",
       "usage": "page_action",
@@ -2303,22 +2255,6 @@
       "capabilityKind": "available_action_string",
       "bindingKeys": [
         "POST /contract-workbench/:param/type-change"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "contract-workbench.check-submission-readiness",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/合同工作台/:contractId"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
-      "capabilityKind": "available_action_string",
-      "bindingKeys": [
-        "POST /contracts/:param/readiness"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,
@@ -7475,6 +7411,27 @@
       "path": "/contracts/:contractVersionId/formal-files/approval",
       "controller": "ContractController",
       "handler": "uploadFormalApprovalFile",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/seal-approval",
+      "controller": "ContractController",
+      "handler": "approveSeal",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/seal/approve",
+      "controller": "ContractController",
+      "handler": "approveGovernedSeal",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/contracts/:contractVersionId/seal/complete",
+      "controller": "ContractController",
+      "handler": "completeGovernedSeal",
       "status": "gone"
     },
     {

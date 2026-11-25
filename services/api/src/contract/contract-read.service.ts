@@ -8,7 +8,7 @@ import { ContractEffectiveTaxService } from "./contract-effective-tax.service";
 import { paymentExecutionVoucherFileId } from "../payment/payment-execution-voucher";
 import { sensitiveBusinessReadAllowed, hasSensitiveLedgerReadRole } from "../auth/sensitive-business-read";
 import { Prisma } from "@prisma/client";
-import { assertContractDraftNumericProtocol, CONTRACT_PRECISE_SUBMISSION_REASON } from "../contract-workbench/contract-draft-numeric-protocol";
+import { assertContractDraftNumericProtocol } from "../contract-workbench/contract-draft-numeric-protocol";
 import { businessAmountFromLegacyCents, downstreamContractRelationship, sumBusinessAmounts, CONTRACT_RELATIONSHIP_LABELS, type ContractSigningIdentity } from "@jiangkong/shared-domain";
 import {
   BadRequestException,
@@ -2755,8 +2755,10 @@ export class ContractReadService {
           kind: "primary",
           roleKeys,
           requiredAction: "contract.submit",
-          enabled: context?.numericProtocolVersion !== 2,
-          disabledReason: CONTRACT_PRECISE_SUBMISSION_REASON
+          enabled: false,
+          disabledReason: context?.numericProtocolVersion === 2
+            ? "请在合同工作台生成当前正文后提交审批"
+            : "旧版草稿提交已停止，请联系合同部核对原记录"
         }),
         ...workflowActions
       ];
@@ -2790,8 +2792,8 @@ export class ContractReadService {
           kind: "primary",
           roleKeys,
           requiredAction: "contract.seal",
-          enabled: true,
-          requiresPassword: true
+          enabled: false,
+          disabledReason: "旧用章办理已停止，请联系合同部核对原记录"
         }),
         ...signingMaterialChangeActions,
         ...workflowActions
@@ -2806,8 +2808,8 @@ export class ContractReadService {
           kind: "primary",
           roleKeys,
           skipRoleCheck: true,
-          enabled: Boolean(context?.actorUserId && context.sealTask?.handlerUserId === context.actorUserId),
-          disabledReason: "仅冻结经办人可确认线下签署盖章完成"
+          enabled: false,
+          disabledReason: "旧用章办理已停止，请联系合同部核对原记录"
         }),
         ...signingMaterialChangeActions,
         ...workflowActions

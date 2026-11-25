@@ -7,31 +7,31 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `0227dbadedb7c9b2c24d91e769749093ac6afa276034dbccef0b5988dd9ca853` |
-| webApiWrappers | ready | `814d8286fb58a5dc27037f37ed1b210f30bda473ba3d2834053c826459e6b80d` |
-| webPageActions | ready | `61d112a9abd9022a90748e1e3855dec47be3e318de3fe82f8077f752e6aeb041` |
-| routeUsage | ready | `b4ffb7addcf49a2cf54982117830340d6742cd0449759313802366ff49f244cc` |
+| webApiWrappers | ready | `2b7a456e5762c8573e2c7043871d675b90a0d1b75e5ddf25e314acc7b9a30b56` |
+| webPageActions | ready | `4370fae090b80a4c349f974eec8af0cc2d1cfa15b776d6dc85df20a26e28b264` |
+| routeUsage | ready | `9ed5c1e9a0fe64c9365af0ece46f4e08a2e0886b4c394e02490aed8a24e47269` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 879 |
-| pageRouteCount | 603 |
+| pageRouteCount | 599 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 133 |
-| internalTaskRouteCount | 73 |
+| exitCandidateRouteCount | 136 |
+| internalTaskRouteCount | 74 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 817 |
+| mainRequestBindingCount | 814 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 438 |
-| actionBindingCount | 533 |
-| acceptedActionBindingCount | 488 |
+| registeredActionCount | 434 |
+| actionBindingCount | 529 |
+| acceptedActionBindingCount | 484 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 429 |
-| coveredProductionMutationConsumerPairCount | 429 |
+| productionMutationConsumerPairCount | 425 |
+| coveredProductionMutationConsumerPairCount | 425 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -526,11 +526,11 @@
 | POST | /contracts/:contractVersionId/formal-files/final | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#uploadMutuallySignedContract | contract-final.associate | covered | — |
 | POST | /contracts/:contractVersionId/formal-files/final/return | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#returnMutuallySignedContractForCorrection | contract-final.return | covered | — |
 | POST | /contracts/:contractVersionId/pdf-generation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#generateContractPdfArchive | contract-archive.generate-pdf | covered | — |
-| POST | /contracts/:contractVersionId/readiness | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#checkContractSubmissionReadiness | contract-workbench.check-submission-readiness | covered | — |
-| POST | /contracts/:contractVersionId/seal-approval | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#approveContractSeal | contract-seal.approve-legacy | covered | — |
+| POST | /contracts/:contractVersionId/readiness | internal_task | operator_endpoint | apps/web-admin/src/api/contract-workbench.api.ts#checkContractSubmissionReadiness | — | not_applicable | — |
+| POST | /contracts/:contractVersionId/seal-approval | exit_candidate | none | — | — | not_applicable | — |
 | POST | /contracts/:contractVersionId/seal-confirmation | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#confirmContractSealV2 | contract-seal-v2.confirm<br>contract-seal-v2.resume-original | covered | — |
-| POST | /contracts/:contractVersionId/seal/approve | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#approveGovernedContractSeal | contract-seal.approve-governed | covered | — |
-| POST | /contracts/:contractVersionId/seal/complete | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#completeContractSeal | contract-seal.complete | covered | — |
+| POST | /contracts/:contractVersionId/seal/approve | exit_candidate | none | — | — | not_applicable | — |
+| POST | /contracts/:contractVersionId/seal/complete | exit_candidate | none | — | — | not_applicable | — |
 | POST | /contracts/:contractVersionId/signed-archive | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#archiveSignedContractV2 | contract-direct-registration.confirm<br>contract-direct-registration.resume-original<br>contract-generated-archive.confirm<br>contract-generated-archive.resume-original | covered | — |
 | POST | /contracts/:contractVersionId/signed-changes/:changeId/review | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#reviewSignedContractChange | contract-signed-change.review | covered | — |
 | POST | /contracts/:contractVersionId/signed-changes | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#submitSignedContractChange | contract-signed-change.submit | covered | — |

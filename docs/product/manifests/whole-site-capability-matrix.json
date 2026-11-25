@@ -22,17 +22,17 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "814d8286fb58a5dc27037f37ed1b210f30bda473ba3d2834053c826459e6b80d",
+      "sha256": "2b7a456e5762c8573e2c7043871d675b90a0d1b75e5ddf25e314acc7b9a30b56",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
-        "exportedFunctionCount": 767,
-        "transportWrapperCount": 746,
+        "exportedFunctionCount": 764,
+        "transportWrapperCount": 743,
         "pureExportCount": 21,
-        "mainRequestBindingCount": 817,
+        "mainRequestBindingCount": 814,
         "ticketFollowupCount": 6,
-        "requestEdgeCount": 775,
-        "productionConsumerCount": 635,
+        "requestEdgeCount": 772,
+        "productionConsumerCount": 631,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,51 +42,51 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "61d112a9abd9022a90748e1e3855dec47be3e318de3fe82f8077f752e6aeb041",
+      "sha256": "4370fae090b80a4c349f974eec8af0cc2d1cfa15b776d6dc85df20a26e28b264",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 438,
+        "registeredActionCount": 434,
         "pageActionCount": 108,
-        "backgroundActionCount": 330,
+        "backgroundActionCount": 326,
         "reachableVueFileCount": 235,
         "routeRootCount": 80,
         "totalVueFileCount": 255,
         "parsedVueFileCount": 255,
         "reachableProductionModuleCount": 405,
-        "templateEventDirectiveCount": 1532,
+        "templateEventDirectiveCount": 1528,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 429,
-        "candidateProductionMutationConsumerCount": 429,
-        "acceptedProductionMutationConsumerCount": 429,
-        "productionMutationConsumerPairCount": 429,
+        "coveredProductionMutationConsumerCount": 425,
+        "candidateProductionMutationConsumerCount": 425,
+        "acceptedProductionMutationConsumerCount": 425,
+        "productionMutationConsumerPairCount": 425,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "b4ffb7addcf49a2cf54982117830340d6742cd0449759313802366ff49f244cc",
+      "sha256": "9ed5c1e9a0fe64c9365af0ece46f4e08a2e0886b4c394e02490aed8a24e47269",
       "status": "ready",
       "summary": {
         "routeCount": 879,
         "exactRouteCount": 879,
         "normalizedRouteCount": 879,
-        "classificationOverrideCount": 295,
-        "consumerSurfaceOverrideCount": 75,
-        "classificationOverrideSha256": "d0218f3175688bcb435902f16e9800c398af3a21947f90edb1637765cd1a2394",
-        "consumerSurfaceOverrideSha256": "dea6162a4df6bfd3c8398e7441e0815ff7bfb1c31dd74531567afcdac09046c6",
-        "derivedProductionPageCount": 584,
-        "pageRouteCount": 603,
+        "classificationOverrideCount": 299,
+        "consumerSurfaceOverrideCount": 76,
+        "classificationOverrideSha256": "269b58c52bda4e786da705eb64c08b6ce803b6d42bf4520e65efa9e68b8c9b43",
+        "consumerSurfaceOverrideSha256": "c14620f08f076d0b1bc3a7ecfb258a147bdeb7ca120f68c23cdb9ce10521ad49",
+        "derivedProductionPageCount": 580,
+        "pageRouteCount": 599,
         "externalTakeoverCount": 70,
-        "exitCandidateCount": 133,
-        "internalTaskCount": 73,
+        "exitCandidateCount": 136,
+        "internalTaskCount": 74,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 655,
+          "web_api_wrapper": 651,
           "auth_store": 5,
           "signed_ticket_delivery": 2,
           "machine_probe": 2,
-          "operator_endpoint": 71,
-          "none": 144
+          "operator_endpoint": 72,
+          "none": 147
         },
         "blockerCount": 0
       }
@@ -94,22 +94,22 @@
   },
   "summary": {
     "routeCount": 879,
-    "pageRouteCount": 603,
+    "pageRouteCount": 599,
     "externalTakeoverRouteCount": 70,
-    "exitCandidateRouteCount": 133,
-    "internalTaskRouteCount": 73,
+    "exitCandidateRouteCount": 136,
+    "internalTaskRouteCount": 74,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 817,
+    "mainRequestBindingCount": 814,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 438,
-    "actionBindingCount": 533,
-    "acceptedActionBindingCount": 488,
+    "registeredActionCount": 434,
+    "actionBindingCount": 529,
+    "acceptedActionBindingCount": 484,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 429,
-    "coveredProductionMutationConsumerPairCount": 429,
+    "productionMutationConsumerPairCount": 425,
+    "coveredProductionMutationConsumerPairCount": 425,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -26010,8 +26010,8 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
       "wrapperRequests": [
         {
           "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
@@ -26020,44 +26020,15 @@
           "path": "/contracts/:param/readiness",
           "normalizedKey": "POST /contracts/:param/readiness",
           "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-          ],
+          "productionConsumers": [],
           "testConsumers": [
             "apps/web-admin/src/api/contract-workbench.api.test.ts"
           ]
         }
       ],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "contract-workbench.check-submission-readiness",
-          "bindingIndex": 0,
-          "identity": "contract-workbench.check-submission-readiness\u0000apps/web-admin/src/api/contract-workbench.api.ts\u0000checkContractSubmissionReadiness\u0000POST\u0000POST /contracts/:param/readiness\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
-          "capability": {
-            "kind": "available_action_string",
-            "source": "operationCapabilities.draftOperationAvailableActions",
-            "key": "check_contract_submission_readiness",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-          "wrapper": "checkContractSubmissionReadiness",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -26079,54 +26050,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "approveContractSeal",
-          "method": "POST",
-          "path": "/contracts/:param/seal-approval",
-          "normalizedKey": "POST /contracts/:param/seal-approval",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "contract-seal.approve-legacy",
-          "bindingIndex": 0,
-          "identity": "contract-seal.approve-legacy\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000approveContractSeal\u0000POST\u0000POST /contracts/:param/seal-approval\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-          "capability": {
-            "kind": "available_action_string",
-            "source": "capability.availableActionKeys",
-            "key": "approve_seal",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "approveContractSeal",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -26241,54 +26170,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "approveGovernedContractSeal",
-          "method": "POST",
-          "path": "/contracts/:param/seal/approve",
-          "normalizedKey": "POST /contracts/:param/seal/approve",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "contract-seal.approve-governed",
-          "bindingIndex": 0,
-          "identity": "contract-seal.approve-governed\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000approveGovernedContractSeal\u0000POST\u0000POST /contracts/:param/seal/approve\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-          "capability": {
-            "kind": "available_action_string",
-            "source": "capability.availableActionKeys",
-            "key": "approve_seal",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "approveGovernedContractSeal",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -26310,54 +26197,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "completeContractSeal",
-          "method": "POST",
-          "path": "/contracts/:param/seal/complete",
-          "normalizedKey": "POST /contracts/:param/seal/complete",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/core-flow-read.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "contract-seal.complete",
-          "bindingIndex": 0,
-          "identity": "contract-seal.complete\u0000apps/web-admin/src/api/core-flow-read.api.ts\u0000completeContractSeal\u0000POST\u0000POST /contracts/:param/seal/complete\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
-          "capability": {
-            "kind": "available_action_string",
-            "source": "capability.availableActionKeys",
-            "key": "complete_seal",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-          "wrapper": "completeContractSeal",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {

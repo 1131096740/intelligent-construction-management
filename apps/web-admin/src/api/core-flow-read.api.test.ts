@@ -131,9 +131,6 @@ import {
   generateContractPdfArchive,
   generatePaymentPdfArchive,
   generateSettlementPdfArchive,
-  approveContractSeal,
-  approveGovernedContractSeal,
-  completeContractSeal,
   executeContractSigningMaterialChange,
   uploadMutuallySignedContract,
   returnMutuallySignedContractForCorrection,
@@ -638,13 +635,6 @@ describe("core flow read API client", () => {
       json: async () => ({ status: "ok" })
     } as Response);
 
-    await approveGovernedContractSeal("version/1", { confirmationPassword: "current-password" });
-    await completeContractSeal("version/1", {
-      firstPartySignedOrStamped: true,
-      companySealCompleted: true,
-      crossPageSealCompleted: true,
-      signingDateCompleted: true
-    });
     await uploadMutuallySignedContract("version/1", {
       fileId: "file-1",
       sourceRevision: 3,
@@ -670,8 +660,6 @@ describe("core flow read API client", () => {
     });
 
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
-      "/api/contracts/version%2F1/seal/approve",
-      "/api/contracts/version%2F1/seal/complete",
       "/api/contracts/version%2F1/formal-files/final",
       "/api/contracts/version%2F1/formal-files/final/return",
       "/api/contracts/version%2F1/formal-files/final/confirmation"
@@ -2974,17 +2962,14 @@ describe("core flow read API client", () => {
     await delegateContractApproval("contract-version-1", {
       toUserId: "contract-delegate-user"
     });
-    await approveContractSeal("contract-version-1");
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "/api/contract-number-rules",
       "/api/contracts/contract-version-1/approval-reminder",
       "/api/contracts/contract-version-1/approval-transfer",
-      "/api/contracts/contract-version-1/approval-delegation",
-      "/api/contracts/contract-version-1/seal-approval"
+      "/api/contracts/contract-version-1/approval-delegation"
     ]);
     expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
     expect(fetchMock.mock.calls.slice(1).every((call) => call[1]?.method === "POST")).toBe(true);
-
   });
 
   it.each([

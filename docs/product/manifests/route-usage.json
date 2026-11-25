@@ -13,29 +13,29 @@
     "routeCount": 879,
     "exactRouteCount": 879,
     "normalizedRouteCount": 879,
-    "classificationOverrideCount": 295,
-    "consumerSurfaceOverrideCount": 75,
-    "classificationOverrideSha256": "d0218f3175688bcb435902f16e9800c398af3a21947f90edb1637765cd1a2394",
-    "consumerSurfaceOverrideSha256": "dea6162a4df6bfd3c8398e7441e0815ff7bfb1c31dd74531567afcdac09046c6",
-    "derivedProductionPageCount": 584,
-    "pageRouteCount": 603,
+    "classificationOverrideCount": 299,
+    "consumerSurfaceOverrideCount": 76,
+    "classificationOverrideSha256": "269b58c52bda4e786da705eb64c08b6ce803b6d42bf4520e65efa9e68b8c9b43",
+    "consumerSurfaceOverrideSha256": "c14620f08f076d0b1bc3a7ecfb258a147bdeb7ca120f68c23cdb9ce10521ad49",
+    "derivedProductionPageCount": 580,
+    "pageRouteCount": 599,
     "externalTakeoverCount": 70,
-    "exitCandidateCount": 133,
-    "internalTaskCount": 73,
+    "exitCandidateCount": 136,
+    "internalTaskCount": 74,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 655,
+      "web_api_wrapper": 651,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 2,
-      "operator_endpoint": 71,
-      "none": 144
+      "operator_endpoint": 72,
+      "none": 147
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 655,
+    "productionWrapperRouteCount": 651,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -20335,26 +20335,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_legacy_contract_readiness_retained_for_controlled_diagnostics",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/contract-workbench.api.ts",
-            "wrapper": "checkContractSubmissionReadiness",
-            "method": "POST",
-            "normalizedPath": "/contracts/:param/readiness",
-            "normalizedKey": "POST /contracts/:param/readiness",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_425_legacy_contract_readiness_retained_for_controlled_diagnostics"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -20376,29 +20365,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_independent_contract_seal_write_closed_use_parallel_approval_seal_confirmation",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "approveContractSeal",
-            "method": "POST",
-            "normalizedPath": "/contracts/:param/seal-approval",
-            "normalizedKey": "POST /contracts/:param/seal-approval",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -20458,29 +20436,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_independent_contract_seal_write_closed_use_parallel_approval_seal_confirmation",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "approveGovernedContractSeal",
-            "method": "POST",
-            "normalizedPath": "/contracts/:param/seal/approve",
-            "normalizedKey": "POST /contracts/:param/seal/approve",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -20499,29 +20466,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_independent_contract_seal_write_closed_use_parallel_approval_seal_confirmation",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/core-flow-read.api.ts",
-            "wrapper": "completeContractSeal",
-            "method": "POST",
-            "normalizedPath": "/contracts/:param/seal/complete",
-            "normalizedKey": "POST /contracts/:param/seal/complete",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/contracts/ContractDetailPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",

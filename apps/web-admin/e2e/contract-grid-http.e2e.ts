@@ -1469,7 +1469,7 @@ test("saves declared net draft amounts over guarded HTTP and keeps unknown tax a
   const read = await (await request.get("/api/contract-drafts/grid-version/workbench", { headers })).json();
   expect(read.bills[0]).toMatchObject({ pricingMode: "tax_exclusive", taxExclusiveAmountYuan: "1.5240", taxInclusiveAmountYuan: null, taxAmountYuan: null });
   expect(read.bills[0].rows[0]).toMatchObject({ unitPrice: "1.2345", taxExclusiveAmountYuan: "1.5240", taxInclusiveAmountYuan: null, taxAmountYuan: null });
-  expect(read.draftOperationAvailableActions).not.toContain("submit_contract_draft");
+  expect(read.draftOperationAvailableActions).toContain("submit_contract_draft");
 });
 
 
@@ -1563,14 +1563,41 @@ test("creates new v2 contracts for all independent relations and five types with
     expect(read.bills).toHaveLength(1);
     expect(read.bills[0]).toMatchObject({ numericProtocolVersion: 2, quantityScale: 4, unitPriceScale: 4, rows: [] });
     expect(read.paymentTerms).toMatchObject({ originalText: "", stages: [] });
-    expect(read.draftOperationAvailableActions).not.toContain("submit_contract_draft");
+    expect(read.draftOperationAvailableActions).toContain("submit_contract_draft");
     const refused = await request.post(`/api/contract-drafts/${body.version.id}/submission`, { headers, data: { expectedRevision: 1, idempotencyKey: randomUUID() } });
-    expect(refused.status()).toBe(409);
-    expect((await refused.json()).message).toContain("四位金额草稿尚不能提交审批");
+    expect(refused.status()).toBe(410);
+    expect(await refused.json()).toMatchObject({ code: "OLD_WRITE_ENTRY_RETIRED" });
     const after = await (await request.get(`/api/contract-drafts/${body.version.id}/workbench`, { headers })).json();
     expect(after.version.status).toBe("draft");
     expect(after.contract.code).toBeNull();
   }
+});
+
+test("rejects current V2 submission without a confirmed document layout and leaves the saved draft intact", async ({ request }) => {
+  const session = await (await request.get("/api/__grid_fixture/session")).json();
+  const headers = { authorization: `Bearer ${session.accessToken}`, "x-contract-numeric-protocol": "2" };
+  const grant = await (await request.post("/api/contract-drafts/grid-version/edit-lease", { headers })).json();
+  const writeHeaders = { ...headers, "x-contract-draft-lease": grant.token };
+  const input = gridApiSave(1, 1, []);
+  input.draft.draftData = { ...input.draft.draftData, contractName: "本地合成合同待生成正文" };
+  expect((await request.put("/api/contract-drafts/grid-version", { headers: writeHeaders, data: input })).status()).toBe(200);
+  const read = () => request.get("/api/contract-drafts/grid-version/workbench", { headers });
+  const { version } = await (await read()).json();
+  expect(version.layoutTemplateVersionId).toBeNull();
+  expect(version.documentContentFingerprint).toMatch(/^[a-f0-9]{64}$/u);
+  const response = await request.post("/api/contract-drafts/grid-version/submission", {
+    headers: writeHeaders,
+    data: {
+      expectedRevision: version.draftRevision, idempotencyKey: randomUUID(), submissionProtocolVersion: 2,
+      documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint,
+      generatedDocumentId: randomUUID(), sourceSha256: "a".repeat(64), blanksReviewed: true
+    }
+  });
+  expect(response.status()).toBe(409);
+  expect(await response.json()).toMatchObject({ message: "请先检查当前正文的空位，再确认继续提交" });
+  const after = await (await read()).json();
+  expect(after.version).toMatchObject({ status: "draft", draftRevision: version.draftRevision });
+  expect(after.contract.code).toBeNull();
 });
 
 

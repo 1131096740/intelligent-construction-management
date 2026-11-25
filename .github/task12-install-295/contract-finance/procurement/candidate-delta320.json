@@ -20,9 +20,24 @@
     "candidate": "4ccd36821609902e15d2410679962867ef54138f9f9981a9462c440ff0b42334"
   },
   {
+    "path": "apps/web-admin/e2e/contract-governance.e2e.ts",
+    "expected": "9b676d7330c9d5c7da7c60b341d1e0e0b5d76bc0e8905559ca8e25c444d7c543",
+    "candidate": "5450d001c94988adb50ca923bf3a86428cc02261738e5c222b3c5f1546b9b3d2"
+  },
+  {
+    "path": "apps/web-admin/e2e/contract-grid-http.e2e.ts",
+    "expected": "73121ea29fa725a68ab593bc4c1b6c07117db05b8046f4f780b033679f53a44f",
+    "candidate": "f33f4ec2a9bc0224488ae5a9372b7ec61c2b22dcfa7093b0c3104fd0656d22f0"
+  },
+  {
     "path": "apps/web-admin/e2e/contract-takeover-responsive.e2e.ts",
     "expected": "a1cfbf7ecfc2a943edab5c1c95fb4e2e55f0de3f595c5f66fb83cbcb3554591f",
     "candidate": "eeca6404316cb5a86ba058edbdf2aae4aace2d0b308a0dc1a6018debb5fc5374"
+  },
+  {
+    "path": "apps/web-admin/e2e/contract-workbench-canvas.e2e.ts",
+    "expected": "2857fc772c701c32f65cb53857665ba0264a30f6c43c49c75f9183fdf003db8b",
+    "candidate": "27ec3dbf7769fa61a5aeaee9102d8c43757c6569402c02b1293c125e8c25f18e"
   },
   {
     "path": "apps/web-admin/e2e/detail-route-switch-regression.e2e.ts",
@@ -53,6 +68,11 @@
     "path": "apps/web-admin/e2e/helpers/approval-progress-mocks.ts",
     "expected": "25aaafe0f1445a86370c2d8c54caa4d5b133230af0cc22b8daa56257fbfa7d85",
     "candidate": "19ec360d66a4206b4286f3a6c112e94cfc1f65f7da8cbf3c00eb417c331446e7"
+  },
+  {
+    "path": "apps/web-admin/e2e/helpers/contract-grid-synthetic-server.cjs",
+    "expected": "e607d332a42c6bc36e9cd5096d3e585eda6b5ee0cdc4b0eba0cf10158fb8fbfd",
+    "candidate": "2fe000f1a5beb1b24799ef8311b69b2e63af4c1b4b832ba91794fe13967cf8f9"
   },
   {
     "path": "apps/web-admin/e2e/layout-preview-real.e2e.ts",
@@ -157,12 +177,12 @@
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.test.ts",
     "expected": "33395aaa091223d42dd2e7cd1ddcb2a5d80af7277189ec688d8d0e1eabfc5469",
-    "candidate": "bd8853c4734bfdc407dc4ddc218105ee4fffe1a92a8a30e0b2c2b7936127cef0"
+    "candidate": "0a8e780556ebe200490c854d455d30fe15276accc5241eda80233286e4037c50"
   },
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.ts",
     "expected": "c83128b15dbd395bae3875c5994c11e54b13ec426b6959b3e677371bb49a303f",
-    "candidate": "1a77982c400a28d85ddb3a9368156d0cfa55feb59d7a6e04767940644169b722"
+    "candidate": "9c80811e5dd011631c69b4dc6ed05caffe3e75233d26b7e5f6948685cd126701"
   },
   {
     "path": "apps/web-admin/src/api/duty-sms.api.test.ts",
@@ -317,7 +337,7 @@
   {
     "path": "apps/web-admin/src/pages/contracts/ContractDetailPage.vue",
     "expected": "864df0187f7eb464eda10efa406ca50f6b4a0559c8ef35cc4c8ce205ffdf4986",
-    "candidate": "fff9a53967e1a2f1c17939f1c48dca98a1ca87a9b1eadf91dbfbdfa9b98311bc"
+    "candidate": "5bef10464a09b68b37f1dd89688fff56790adcc733b1e4a0c502c1cdf0caa865"
   },
   {
     "path": "apps/web-admin/src/pages/contracts/ContractListPage.vue",
@@ -328,6 +348,11 @@
     "path": "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
     "expected": "5a8a9089ee2fac4aa07a36c0ce2a6c3081a92c41b1b1b69bdb7133a5d38cb470",
     "candidate": "52bc15b8480e9a4ae93463c2c23ae8849c58949ac78452f5384109dc8197afaf"
+  },
+  {
+    "path": "apps/web-admin/src/pages/contracts/ContractWorkbenchPage.vue",
+    "expected": "56ce06d90cc483c434da09647c7d1cb97df3aa3e61123e28c4f397cb64ad4584",
+    "candidate": "01689cb7028fd03dea4d667585dd37607bd7921bc54acef07e090c0044766706"
   },
   {
     "path": "apps/web-admin/src/pages/contracts/components/ContractTakeoverDualConfirmationCard.vue",
@@ -357,7 +382,7 @@
   {
     "path": "apps/web-admin/src/pages/contracts/contract-lifecycle-capability-gates.structure.test.ts",
     "expected": "ee29f234ac85b020f4779557630d6b9d062e59318d610ce5b9de7d3575f1c789",
-    "candidate": "a9d085a29b3c0e83d02930afaf67dca4528dc9f9c7f88181804301aca542c5ae"
+    "candidate": "0f8fbb28b77b31bd43b7579a02184c4863990f95487e92d71d10cbc2c8d781da"
   },
   {
     "path": "apps/web-admin/src/pages/contracts/contract-takeover.config.test.ts",
@@ -1080,6 +1105,26 @@
     "candidate": "00b656e854280efcae5645d7a3061bf406d008f69d49045233345c871882beef"
   },
   {
+    "path": "services/api/src/contract-workbench/contract-draft-aggregate.service.spec.ts",
+    "expected": "1a42781d25260d79a9b7d9051ccd803cb54aa834e0ec5853599645b727976302",
+    "candidate": "6b626f8b7ff5fd293cd908226b86f84060421d02e44ff34b0b6dcfb177d36ea8"
+  },
+  {
+    "path": "services/api/src/contract-workbench/contract-draft-aggregate.service.ts",
+    "expected": "50e2aba9ac23c10d3a26491820839f409b6375fee1502f16aaaa6f203c3238d7",
+    "candidate": "e7a2122cae6bfc42642a931193f259d78474fa6bd43ece88201b1e9af73a8e24"
+  },
+  {
+    "path": "services/api/src/contract-workbench/contract-draft.controller.spec.ts",
+    "expected": "35ad480f4e4dc606e0cfc77b0c389087aa9ab6bbc6f9f8096f132cd150f22240",
+    "candidate": "5f03beb7e949055ec870d56eea3ed87d510fadcde6476dbf2843ad806d9c9d92"
+  },
+  {
+    "path": "services/api/src/contract-workbench/contract-draft.controller.ts",
+    "expected": "f46ea679020dfa54706b60384f0949069baeaad88d871f1ea71e70983216d6cb",
+    "candidate": "ab345d044791b36e0c740e1854be764a4162b6e3cc6d66ee595cc7161d1cdc84"
+  },
+  {
     "path": "services/api/src/contract-workbench/contract-mutation-authority.ts",
     "expected": "31d7f8f9a8d49bc8e2c3031428e14e8d56d99d3e434d3166bff0b9cadc7225ad",
     "candidate": "ddf54971132fa8ef8bb1fc919a13854f3b89aef032ad5acf5947de866088d1e5"
@@ -1137,7 +1182,7 @@
   {
     "path": "services/api/src/contract/contract-read.service.ts",
     "expected": "40ebfc93d098ef6d715843cff509d50ae26cccbb11a5e903f8415fb18570d6bb",
-    "candidate": "aafe377222b4bd84723541e112bdb3d42a0f2dafeb8f9ecde99dce37808234f9"
+    "candidate": "380482b0af9e0c6c468e794b74f4bd05d7a23fc8dd3967bf3861c09082113899"
   },
   {
     "path": "services/api/src/contract/contract-takeover-lifecycle-read.regression.spec.ts",
@@ -1197,7 +1242,7 @@
   {
     "path": "services/api/src/database/contract-business-entry-http.spec.ts",
     "expected": "e4475a9bfb2a08fecaca0ca6f89d2e631b0355e6c58a4f2418dc612651ef73d9",
-    "candidate": "530935849d1e2b78675379d485cdc60721cfddea062d92443f707f01c2cbbd6f"
+    "candidate": "bfc6fb500ec2be35345e4c2db0a7d99b9183b7a873647ed15e15ffb5c7878b4c"
   },
   {
     "path": "services/api/src/database/contract-lifecycle-route.spec.ts",
@@ -1520,12 +1565,12 @@
   {
     "path": "services/api/src/me/me.service.spec.ts",
     "expected": "682eeebac883267ff89882c2b63b8853bdb88d4163dd8527da496f8c85e6d755",
-    "candidate": "245fc49df691ebcc38440983d96cdb0dfad6033d895f7f4a7462d5eb05395fd5"
+    "candidate": "0d9610c51c02adb2ec87938ba017d69dba659e8fac6e95b06a15d7018733fd5f"
   },
   {
     "path": "services/api/src/me/me.service.ts",
     "expected": "439db3745de0160d9db7dc5819bdf2f73c2ac0c595d8f8b5250e83d54aba5b25",
-    "candidate": "6185b2b58ad6df3e54cb1590b76e7db383f9dcc8de642c2e2a7fd51204c39a76"
+    "candidate": "32ba78d494091237a4586d8eaf8df42b78d6e97c0afb488e4345062c81235de5"
   },
   {
     "path": "services/api/src/necessary-expense-reserve/necessary-expense-reserve-file-access.spec.ts",
@@ -1788,9 +1833,14 @@
     "candidate": "f5bf743c02e19a71ce4a2a0868ed1c0659bcdb3b27f787fe2cdba757b2338225"
   },
   {
+    "path": "services/api/src/retired-write-entry/retired-write-entry.guard.spec.ts",
+    "expected": "d7be97e459f611089794d787577eec12937cbbdb93daa867825484eaaa0038d4",
+    "candidate": "d21b5437daee12dd27cd3bb832d4db5e0b1c7dede2974eb1363f9317fe91575d"
+  },
+  {
     "path": "services/api/src/retired-write-entry/retired-write-entry.guard.ts",
     "expected": "958e7639f5740b4e08af17be0a7040d69863f29d37c2ed185839dacd20c3c329",
-    "candidate": "82dcd090d63c9884bab2a26dbf4f1673b7a7749aad33da64bb96a69d018f7ea2"
+    "candidate": "9a24a63a8558318a6bf9fffb4e0303d831523cf579e9f177afd0b50abca40eea"
   },
   {
     "path": "services/api/src/settlement/settlement-approval-withdrawal.spec.ts",

@@ -6796,10 +6796,6 @@ export function delegateContractApproval(
   return postJson<unknown>(`/contracts/${contractVersionId}/approval-delegation`, body);
 }
 
-export function approveContractSeal(contractVersionId: string) {
-  return postJson<unknown>(`/contracts/${contractVersionId}/seal-approval`);
-}
-
 export interface CompleteContractSealPayload {
   firstPartySignedOrStamped: boolean;
   companySealCompleted: boolean;
@@ -6827,24 +6823,6 @@ export interface ConfirmMutuallySignedContractPayload extends CompleteContractSe
 
 function governedContractPath(contractVersionId: string, suffix: string) {
   return `/contracts/${encodeURIComponent(contractVersionId)}/${suffix}`;
-}
-
-export interface ApproveContractSealPayload {
-  confirmationPassword: string;
-}
-
-export function approveGovernedContractSeal(
-  contractVersionId: string,
-  body: ApproveContractSealPayload
-) {
-  return postJson<unknown>(governedContractPath(contractVersionId, "seal/approve"), body);
-}
-
-export function completeContractSeal(
-  contractVersionId: string,
-  body: CompleteContractSealPayload
-) {
-  return postJson<unknown>(governedContractPath(contractVersionId, "seal/complete"), body);
 }
 
 export function uploadMutuallySignedContract(

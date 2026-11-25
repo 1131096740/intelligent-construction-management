@@ -405,41 +405,10 @@
               class="action-group"
             >
               <div class="action-title">
-                <strong>用章与归档文件生成</strong>
+                <strong>签署材料与归档文件</strong>
                 <span>只执行后端已授权的当前动作</span>
               </div>
-              <t-checkbox-group
-                v-if="isContractActionEnabled('complete_seal')"
-                v-model="sealCompletionConfirmations"
-                class="confirmation-list"
-              >
-                <t-checkbox
-                  v-for="item in sealCompletionOptions"
-                  :key="item.value"
-                  :value="item.value"
-                >
-                  {{ item.label }}
-                </t-checkbox>
-              </t-checkbox-group>
               <div class="action-buttons action-buttons--end">
-                <t-button
-                  v-if="isContractActionEnabled('approve_seal')"
-                  :theme="buttonTheme('approve_seal')"
-                  :variant="buttonVariant('approve_seal')"
-                  :loading="archiveActionBusy === 'seal'"
-                  @click="requestContractSealApproval"
-                >
-                  {{ displayContractActionLabel('approve_seal') }}
-                </t-button>
-                <t-button
-                  v-if="isContractActionEnabled('complete_seal')"
-                  :theme="buttonTheme('complete_seal')"
-                  :variant="buttonVariant('complete_seal')"
-                  :loading="archiveActionBusy === 'sealComplete'"
-                  @click="requestContractSealCompletion"
-                >
-                  {{ displayContractActionLabel('complete_seal') }}
-                </t-button>
                 <t-button
                   v-if="signingMaterialChangeActionEnabled()"
                   theme="danger"
@@ -1068,31 +1037,6 @@
     />
 
     <SensitiveActionDialog
-      v-if="sensitiveAction.kind === 'governedSealApprove' && isContractActionEnabled('approve_seal')"
-      v-model="sensitiveAction.visible"
-      :title="sensitiveAction.title"
-      :description="sensitiveAction.description"
-      :confirm-text="sensitiveAction.confirmText"
-      :confirm-theme="sensitiveAction.confirmTheme"
-      :require-password="sensitiveAction.requirePassword"
-      :loading="Boolean(archiveActionBusy)"
-      :error="sensitiveAction.error"
-      @confirm="confirmContractSealApproval"
-    />
-
-    <SensitiveActionDialog
-      v-if="sensitiveAction.kind === 'governedSealComplete' && isContractActionEnabled('complete_seal')"
-      v-model="sensitiveAction.visible"
-      :title="sensitiveAction.title"
-      :description="sensitiveAction.description"
-      :confirm-text="sensitiveAction.confirmText"
-      :confirm-theme="sensitiveAction.confirmTheme"
-      :loading="Boolean(archiveActionBusy)"
-      :error="sensitiveAction.error"
-      @confirm="confirmContractSealCompletion"
-    />
-
-    <SensitiveActionDialog
       v-if="sensitiveAction.kind === 'finalUpload' && isContractActionEnabled('upload_final_contract')"
       v-model="sensitiveAction.visible"
       :title="sensitiveAction.title"
@@ -1205,9 +1149,6 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch 
 import { useRoute, useRouter } from "vue-router";
 import { formatUnknownApiError } from "../../api/error-message";
 import {
-  approveContractSeal,
-  approveGovernedContractSeal,
-  completeContractSeal,
   confirmContractArchive,
   confirmMutuallySignedContract,
   createPrivateFileDownloadTicket,
@@ -1341,50 +1282,6 @@ async function delegateContractApprovalWithCapability(
   const operationAllowed = capability.availableActionKeys.includes("delegate_approval");
   if (!operationAllowed) throw new Error("当前用户不能委托合同审批");
   return delegateContractApproval(contractVersionId, body);
-}
-
-async function approveLegacyContractSealWithCapability(
-  contractId: string,
-  contractVersionId: string
-) {
-  const capability = await fetchContractDetail(contractId);
-  const matchesRequestedContract = capability.id === contractId;
-  if (!matchesRequestedContract) throw new Error("合同编号已变化，请刷新后重试");
-  const matchesRequestedVersion = capability.contractVersionId === contractVersionId;
-  if (!matchesRequestedVersion) throw new Error("合同版本已变化，请刷新后重试");
-  const operationAllowed = capability.availableActionKeys.includes("approve_seal");
-  if (!operationAllowed) throw new Error("当前用户不能批准合同用章");
-  return approveContractSeal(contractVersionId);
-}
-
-async function approveGovernedContractSealWithCapability(
-  contractId: string,
-  contractVersionId: string,
-  confirmationPassword: string
-) {
-  const capability = await fetchContractDetail(contractId);
-  const matchesRequestedContract = capability.id === contractId;
-  if (!matchesRequestedContract) throw new Error("合同编号已变化，请刷新后重试");
-  const matchesRequestedVersion = capability.contractVersionId === contractVersionId;
-  if (!matchesRequestedVersion) throw new Error("合同版本已变化，请刷新后重试");
-  const operationAllowed = capability.availableActionKeys.includes("approve_seal");
-  if (!operationAllowed) throw new Error("当前用户不能批准合同用章");
-  return approveGovernedContractSeal(contractVersionId, { confirmationPassword });
-}
-
-async function completeContractSealWithCapability(
-  contractId: string,
-  contractVersionId: string,
-  body: Parameters<typeof completeContractSeal>[1]
-) {
-  const capability = await fetchContractDetail(contractId);
-  const matchesRequestedContract = capability.id === contractId;
-  if (!matchesRequestedContract) throw new Error("合同编号已变化，请刷新后重试");
-  const matchesRequestedVersion = capability.contractVersionId === contractVersionId;
-  if (!matchesRequestedVersion) throw new Error("合同版本已变化，请刷新后重试");
-  const operationAllowed = capability.availableActionKeys.includes("complete_seal");
-  if (!operationAllowed) throw new Error("当前用户不能确认合同用章完成");
-  return completeContractSeal(contractVersionId, body);
 }
 
 async function uploadContractArchivePrivateFileWithCapability(
@@ -1575,8 +1472,6 @@ type SensitiveActionKind =
   | "fileDownload"
   | "formalFileDownload"
   | "formalFilePreview"
-  | "governedSealApprove"
-  | "governedSealComplete"
   | "finalUpload"
   | "finalReturn"
   | "finalConfirm";
@@ -1666,8 +1561,6 @@ const finalConfirmationOptions = [
   { value: "onlyPermittedSignatureChanges", label: "审批后仅发生允许的签署信息变化" },
   { value: "documentOrderConfirmed", label: "正文、附件、授权书和签署页顺序完整" }
 ] as const;
-const sealCompletionOptions = finalConfirmationOptions.slice(0, 4);
-const sealCompletionKeys = sealCompletionOptions.map((item) => item.value);
 const finalConfirmationKeys = finalConfirmationOptions.map((item) => item.value);
 const assignmentUsers = ref<Array<{ id: string; name: string }>>([]);
 const archiveActionBusy = ref("");
@@ -1689,10 +1582,12 @@ watch(() => [auth.user?.id, route.params.contractId, route.query.versionId], () 
 watch(() => contractDetail.value?.contractVersionId, versionId => {
   if (versionId && v2ConfirmedReceipt.value && versionId !== v2ConfirmedReceipt.value.versionId) v2ConfirmedReceipt.value = null;
 });
-const legacySigningActions = new Set(["approve_seal", "complete_seal", "upload_archive", "upload_final_contract", "confirm_archive", "confirm_final_contract", "return_final_contract", "report_signing_material_change", "generate_pdf_archive"]);
+const retiredContractSealActions = new Set(["approve_seal", "complete_seal"]);
+const legacySigningActions = new Set(["upload_archive", "upload_final_contract", "confirm_archive", "confirm_final_contract", "return_final_contract", "report_signing_material_change", "generate_pdf_archive"]);
 const v2SigningActions = new Set(["confirm_seal_v2", "archive_signed_v2"]);
 const contractTaskCardActions = computed(() => (contractDetail.value?.availableActions ?? []).filter(action =>
-  !contractDetail.value?.v2Lifecycle || !legacySigningActions.has(action.key) && !v2SigningActions.has(action.key)
+  !retiredContractSealActions.has(action.key) &&
+  (!contractDetail.value?.v2Lifecycle || !legacySigningActions.has(action.key) && !v2SigningActions.has(action.key))
 ).map(action => v2LifecycleLocked.value && !action.key.startsWith("download_") ? { ...action, enabled: false, disabledReason: "本次办理结果待核对，请先查询原结果" } : action));
 const signingMaterialChangeDialogVisible = ref(false);
 const signingMaterialChangeDialogError = ref("");
@@ -1778,7 +1673,6 @@ const stagedFinalAssociation = computed(() => {
   const contractVersionId = contractDetail.value?.contractVersionId;
   return contractVersionId ? stagedFinalAssociations.value[contractVersionId] ?? null : null;
 });
-const sealCompletionConfirmations = ref<string[]>([]);
 const finalUploadConfirmations = ref<string[]>([]);
 const finalArchiveConfirmations = ref<string[]>([]);
 const sensitiveAction = reactive<SensitiveActionState>({
@@ -1913,7 +1807,8 @@ const contractActionByKey = computed(() =>
 );
 const contractHeaderPrimaryAction = computed(() => {
   const primaryAction = contractDetail.value?.primaryAction;
-  if (!primaryAction || contractDetail.value?.v2Lifecycle && (legacySigningActions.has(primaryAction) || v2SigningActions.has(primaryAction))) return null;
+  if (!primaryAction || retiredContractSealActions.has(primaryAction) ||
+    contractDetail.value?.v2Lifecycle && (legacySigningActions.has(primaryAction) || v2SigningActions.has(primaryAction))) return null;
   const action = contractActionByKey.value.get(primaryAction);
   return action?.enabled ? action : null;
 });
@@ -1948,9 +1843,7 @@ const showContractAssistanceActions = computed(
     isContractActionEnabled("delegate_approval")
 );
 const showContractSealActions = computed(
-  () => isContractActionEnabled("approve_seal") ||
-    isContractActionEnabled("complete_seal") ||
-    signingMaterialChangeActionEnabled() ||
+  () => signingMaterialChangeActionEnabled() ||
     isContractActionEnabled("generate_pdf_archive")
 );
 const showContractEvidenceActions = computed(
@@ -2074,6 +1967,7 @@ const actionFeedbackState = computed<"success" | "error">(() =>
 );
 
 function isContractActionEnabled(key: string) {
+  if (retiredContractSealActions.has(key)) return false;
   if (v2LifecycleLocked.value && !key.startsWith("download_")) return false;
   if (contractDetail.value?.v2Lifecycle && legacySigningActions.has(key)) return false;
   return Boolean(
@@ -2296,7 +2190,6 @@ function clearContractActionTransientState() {
   contractFinalUploadFiles.value = [];
   finalUploadConfirmations.value = [];
   finalArchiveConfirmations.value = [];
-  sealCompletionConfirmations.value = [];
 }
 
 function approvalRouteLabel(roleKeys: string[]) {
@@ -2551,20 +2444,6 @@ function requireConfirmations(selected: readonly string[], required: readonly st
   if (!required.every((key) => selected.includes(key))) throw new Error(message);
 }
 
-function sealCompletionPayload() {
-  requireConfirmations(
-    sealCompletionConfirmations.value,
-    sealCompletionKeys,
-    "请确认我方签署、公章、骑缝章和签署日期均已完成"
-  );
-  return {
-    firstPartySignedOrStamped: true,
-    companySealCompleted: true,
-    crossPageSealCompleted: true,
-    signingDateCompleted: true
-  };
-}
-
 function finalDeclarationPayload(selected: readonly string[]) {
   requireConfirmations(
     selected,
@@ -2579,41 +2458,6 @@ function finalDeclarationPayload(selected: readonly string[]) {
     onlyPermittedSignatureChanges: true,
     documentOrderConfirmed: true
   };
-}
-
-function requestContractSealApproval() {
-  try {
-    const contractVersionId = currentContractVersionId();
-    const governed = Boolean(contractDetail.value?.sealTask);
-    openSensitiveAction("governedSealApprove", {
-      title: governed ? "确认同意用章？" : "确认用章通过？",
-      description: governed
-        ? "同意后合同进入线下签署盖章环节；该操作不代表合同已经生效。"
-        : "确认后进入合同归档环节；该操作不代表合同已经生效。",
-      confirmText: governed ? "确认同意用章" : "确认用章通过",
-      requirePassword: governed,
-      targetContractVersionId: contractVersionId
-    });
-  } catch (error) {
-    setActionError(error, "无法提交用章同意，请刷新后重试。");
-    return;
-  }
-}
-
-function requestContractSealCompletion() {
-  try {
-    const contractVersionId = currentContractVersionId();
-    sealCompletionPayload();
-    openSensitiveAction("governedSealComplete", {
-      title: "确认已完成我方签署与盖章？",
-      description: "确认后将进入双方最终版上传环节，请确保线下签署、公章、骑缝章和日期均已完成。",
-      confirmText: "确认已完成",
-      targetContractVersionId: contractVersionId
-    });
-  } catch (error) {
-    setActionError(error, "请补全我方签署盖章确认后重试。");
-    return;
-  }
 }
 
 function captureSigningMaterialChangeContext() {
@@ -2963,47 +2807,6 @@ async function confirmContractArchiveAction(values: { password: string }) {
         archiveFileId: requiredText(contractArchiveForm.archiveFileId, "归档文件"),
         confirmationPassword: values.password
       }
-    );
-    return finishSensitiveContractAction(await completeContractLifecycleAction());
-  } catch (error) {
-    return finishSensitiveContractAction(failContractLifecycleAction(error));
-  } finally {
-    finishContractLifecycleAction(key);
-  }
-}
-
-async function confirmContractSealApproval(values: { password: string }) {
-  const key = "seal";
-  beginContractLifecycleAction(key);
-  try {
-    if (sensitiveAction.requirePassword) {
-      await approveGovernedContractSealWithCapability(
-        routeContractId(),
-        sensitiveAction.targetContractVersionId,
-        values.password
-      );
-    } else {
-      await approveLegacyContractSealWithCapability(
-        routeContractId(),
-        sensitiveAction.targetContractVersionId
-      );
-    }
-    return finishSensitiveContractAction(await completeContractLifecycleAction());
-  } catch (error) {
-    return finishSensitiveContractAction(failContractLifecycleAction(error));
-  } finally {
-    finishContractLifecycleAction(key);
-  }
-}
-
-async function confirmContractSealCompletion() {
-  const key = "sealComplete";
-  beginContractLifecycleAction(key);
-  try {
-    await completeContractSealWithCapability(
-      routeContractId(),
-      sensitiveAction.targetContractVersionId,
-      sealCompletionPayload()
     );
     return finishSensitiveContractAction(await completeContractLifecycleAction());
   } catch (error) {
