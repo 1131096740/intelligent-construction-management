@@ -50,7 +50,9 @@ if (mode==='--current-320' && profile.legacySeed) {
     const bytes=execFileSync('git',['-C',repo,'show',revision+':'+dir+source]);
     assert.equal(digest(bytes),sha256,'V7_PRE_CUTOVER_SOURCE');
     const local=work+'/'+fixture;
-    fs.writeFileSync(local,bytes,{flag:'wx',mode:0o644});
+    fs.writeFileSync(local,bytes,{flag:'wx'});
+    // The work directory stays private; Docker mounts this file for its non-root PostgreSQL user.
+    fs.chmodSync(local,0o644);
     console.log(local+'\t'+'/qualification/workspace/'+dir+fixture);
   }
 }
