@@ -85,6 +85,8 @@ V7 工资出款退役候选 `280de6c7703f75654f168a3b440070f709394345` 在精确
 
 330 具名银行分片补齐容器内旧账本摘要后，精确 `9ba063e5f9f8099aaebd73d506bcdd19af8cacf3` 在 PostgreSQL 16 通过原 12 项、零跳过和角色撤权，回执 SHA-256 为 `37ad0e0f52325e4ef30aa806319716587f6ba050a252f30eff47bfc4d2e8fa76`。第二轮 330 托管候选 `d21ea1d1` 已通过部分付款浏览器和 Line A；本机按 CI 的 Node 20 自检通过 2,389 项，另 1 项按原条件跳过。更正后的已签结算汇总、银行完整复验和恢复仍待托管结果。[第二轮 330 CI](https://github.com/1131096740/intelligent-construction-management/actions/runs/45575717620)
 
+`944452ea958c3fd5a095287e19b1e5212f129bb1` 的托管 CI 已结束。52 项通过，合同资金完整分片通过。融资额度、POL113 浏览器及剩余真库失败，发布汇总随之失败。融资额度备料改用精确补丁和前后摘要。原额度并发用例已改为调用现行服务，保留原竞争金额、额度及锁断言。POL113 原 23 项应执行浏览器用例中通过 22 项，当前补记失败位置和错误类别，待下一轮定位。相同 SHA 的本地银行 12 项、独立备份恢复和合同资金核心通过，回执 SHA-256 依次为 `d25fc0f3e48ab7fa56cfbff042618a9927be66a3747a828fb0b66fd95a88d078`、`4b12e86119b19fad90877be62d39175d7f2b3c7fb1c118b4bdd563ba48931ba3`、`e306e216b7619e19ef4945db3d56d47597c19de36e5540ab48a2bf2e0aabf82f`。[精确托管 CI](https://github.com/1131096740/intelligent-construction-management/actions/runs/45577162924)
+
 ## 2026-11-24 #382 集成与 #424 验收接续
 
 [恢复与切换证据索引](docs/progress/2026-11-24-issue-424.md#恢复与切换证据索引)记录 197 → 329 的脱敏恢复、25 条附件的同时间点版本核对、两笔项目报销及两笔零星费用的具名接续、迁移续跑、事务回滚和成都非生产 COS 的误删恢复。集成候选 `110024325a303fe986dcf3019f22fdffe306c503` 的[同提交 CI 重跑](https://github.com/1131096740/intelligent-construction-management/actions/runs/45360888523/attempts/2)结束，56 项全部通过。本节其余段落保留对应历史候选的结果。
