@@ -1,6 +1,7 @@
 {
+  "apps/web-admin/e2e/contract-grid-http.e2e.ts": "f8b5e3b667434a83936f971a27b1e90dd92066fca548a20cd93ebbd9c3d9a41d",
   "apps/web-admin/e2e/flow-detail-responsive.e2e.ts": "145a2a01176eb0ef365c4c2d8aaf0ebc680d7379424206f7eb22fad42dea598d",
-  "apps/web-admin/e2e/helpers/contract-grid-synthetic-server.cjs": "3709e228e8071a52eadcfb0d135098873d470c8b00e6f48e1e7db161ea66dc9b",
+  "apps/web-admin/e2e/helpers/contract-grid-synthetic-server.cjs": "6d4b9ceb1f2c682ede094842ffef700786ceaa9510b7501369f5c0d6d55925a3",
   "apps/web-admin/e2e/helpers/responsive-viewports.ts": "bb9a1ee5422c29812901be76175b8f39fe5889c4f34ab6785388301bcf315f23",
   "apps/web-admin/e2e/ledger-responsive.e2e.ts": "3f88256435bca5871cb74c655af7790e4eea952db30ce71e2da5226848127783",
   "apps/web-admin/e2e/responsive-layout-foundation.e2e.ts": "f6b96ff83bb111e85639a54a9d5d265cb5599083c03e2de43935a3b54e836750",

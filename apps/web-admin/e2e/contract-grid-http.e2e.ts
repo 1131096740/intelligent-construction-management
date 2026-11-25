@@ -286,14 +286,22 @@ test("does not clear dirty state or replace Chinese composition when an older sa
   await grid.locator("revogr-edit input").fill("组字开始前的已发草稿");
   await grid.locator("revogr-edit input").press("Enter");
   await expect.poll(async () => (await (await request.get("/api/contract-drafts/grid-version/workbench", { headers })).json()).version.draftRevision).toBe(2);
-  await grid.getByRole("gridcell", { name: "组字开始前的已发草稿", exact: true }).dblclick();
   const input = grid.locator("revogr-edit input");
+  // Enter opens the next row. Close it, then wait for RevoGrid to bind the
+  // editor to the original row before starting composition there.
+  await expect(input).toHaveValue("长名称材料用于核验表格与局部滚动");
+  await input.press("Escape");
+  await expect(input).toHaveCount(0);
+  await grid.getByRole("gridcell", { name: "组字开始前的已发草稿", exact: true }).dblclick();
+  await expect(input).toHaveValue("组字开始前的已发草稿");
   await input.dispatchEvent("compositionstart");
   await input.fill("旧回执不能盖掉的中文组字");
   await expect(input).toHaveValue("旧回执不能盖掉的中文组字");
+  const editor = await input.elementHandle();
   expect((await request.post("/api/__grid_fixture/release-save-response", { headers })).status()).toBe(200);
   await expect(page.getByTestId("contract-draft-save-status")).not.toContainText("保存中");
   await expect(input).toBeFocused();
+  expect(await input.evaluate((current, original) => current === original, editor)).toBe(true);
   await expect(input).toHaveValue("旧回执不能盖掉的中文组字");
   await expect(page.getByTestId("contract-draft-save-status")).not.toContainText("已保存");
   await input.dispatchEvent("compositionend", { data: "旧回执不能盖掉的中文组字" });

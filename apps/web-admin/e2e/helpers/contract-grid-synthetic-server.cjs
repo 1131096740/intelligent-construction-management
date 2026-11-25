@@ -183,6 +183,11 @@ async function main() {
   fixtureSheet.addRow(["项目编号", "项目名称", "规格型号", "单位", "数量", "含税单价(元)", "不含税单价(元)", "税率(%)", "是否暂定", "结算依据"]);
   fixtureSheet.addRow(["", "有权读取的导入材料", "", "吨", "1", "1.2345", "", "0", "否", ""]);
   const fixtureBuffer = Buffer.from(await fixtureWorkbook.xlsx.writeBuffer());
+  const layoutSource = new (req("pizzip"))();
+  layoutSource.file("[Content_Types].xml", '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+  layoutSource.file("_rels/.rels", '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="doc" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+  layoutSource.file("word/document.xml", '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>已停用的合成合同版式</w:t></w:r></w:p></w:body></w:document>');
+  const layoutBuffer = layoutSource.generate({ type: "nodebuffer" });
   const workbench = new ContractWorkbenchService(db, audit);
   const parties = new BusinessPartyService(db, audit);
   const aggregate = new ContractDraftAggregateService(db, workbench, new ContractBillService(db, audit), parties, files, audit);
@@ -190,6 +195,7 @@ async function main() {
   const lease = new ContractDraftEditLeaseService(db, auth, audit);
   const submission = new ContractV2SubmissionService(db, files, new ContractApprovalRouteService(), new BusinessNumberingService(), audit, auth);
   const excel = new ContractBillExcelService(db, audit, files);
+  const documents = new ContractDocumentService(db, audit, files);
   const module = await Test.createTestingModule({ controllers: [ContractDraftController, ContractDraftBillExcelController, BusinessPartyController, ContractController], providers: [
     { provide: ContractService, useValue: new ContractService(db, audit) },
     { provide: ContractV2SubmissionService, useValue: submission },
@@ -199,7 +205,7 @@ async function main() {
     { provide: ContractWorkbenchService, useValue: workbench },
     { provide: BusinessPartyService, useValue: parties },
     { provide: ContractDraftAggregateService, useValue: aggregate }, { provide: ContractDraftEditLeaseService, useValue: lease }, { provide: ContractBillExcelService, useValue: excel },
-    { provide: ContractDocumentService, useValue: { queueDraftPreview: async () => { throw new (req("@nestjs/common").BadRequestException)("本地表格验收未接入文书生成，请在文书验收入口核对"); } } },
+    { provide: ContractDocumentService, useValue: { getDraftBody: documents.getDraftBody.bind(documents), queueDraftPreview: async () => { throw new (req("@nestjs/common").BadRequestException)("本地表格验收未接入文书生成，请在文书验收入口核对"); } } },
     ...[PristineDraftDeletionService].map(provide => ({ provide, useValue: {} }))
   ] }).compile();
   const app = module.createNestApplication();
@@ -229,7 +235,6 @@ async function main() {
       const preset = request.body?.preset;
       if (preset !== undefined && !["legacy-null-zero", "two-drafts", "prior-owner-deletion", "file-permissions", "existing-layout", "unit-search"].includes(preset)) return response.status(400).json({ message: "未知合成初始场景" });
       if (preset === "unit-search") state.businessParty = [{ id: "grid-existing-unit", name: "已有材料单位", type: "organization", status: "active", unifiedSocialCreditCode: null, createdAt: now, updatedAt: now }];
-      if (preset === "existing-layout") state.contractVersion[0].layoutTemplateVersionId = "grid-existing-retired-layout-version";
       if (preset === "legacy-null-zero") {
         const historical = { ...clone(rows[0]), itemName: "六位历史原事实", quantity: D("1.234567"), unitPrice: D("2.345678"), taxExclusiveUnitPrice: D("8.027106"), numericProtocolVersion: 1, numericSource: "legacy_cents", numericReviewStatus: "not_assessed", precisionPolicy: "legacy", taxInclusiveAmountYuan: null, taxExclusiveAmountYuan: null, taxAmountYuan: null, taxInclusiveAmountCents: 991n, taxExclusiveAmountCents: 991n, taxAmountCents: 0n };
         const unknown = { ...clone(rows[1]), itemName: "未知单价原事实", unitPrice: null, taxExclusiveUnitPrice: null, taxInclusiveAmountYuan: null, taxExclusiveAmountYuan: null, taxAmountYuan: null, taxInclusiveAmountCents: null, taxExclusiveAmountCents: null, taxAmountCents: null, pricingFactStatus: "unconfirmed" };
@@ -258,6 +263,24 @@ async function main() {
       }
       buffers.clear();
       storageReads = 0;
+      if (preset === "existing-layout") {
+        const id = "grid-existing-retired-layout-version";
+        const docxFileId = "grid-existing-layout-source";
+        const objectKey = "synthetic/grid-existing-layout-source.docx";
+        buffers.set(objectKey, layoutBuffer);
+        state.fileObject.push({
+          id: docxFileId, bucket: storage.bucketName(), objectKey, originalName: "合成既有版式.docx",
+          mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          sizeBytes: layoutBuffer.length, uploadedByUserId: actor.id,
+          contentSha256: createHash("sha256").update(layoutBuffer).digest("hex"), storageStatus: "active", createdAt: now
+        });
+        state.contractLayoutTemplate.push({ id: "grid-existing-layout", contractTypeKey: "material_purchase", name: "合成既有版式", createdAt: now, updatedAt: now });
+        state.contractLayoutTemplateVersion.push({
+          id, layoutTemplateId: "grid-existing-layout", versionNo: 1, status: "stopped", docxFileId,
+          placeholderSchema: {}, stoppedAt: now, createdAt: now, updatedAt: now
+        });
+        state.contractVersion[0].layoutTemplateVersionId = id;
+      }
       if (preset === "file-permissions") {
         for (const [id, uploader] of [["grid-own-file", actor.id], ["grid-foreign-file", otherActor.id], ["grid-bound-file", otherActor.id]]) {
           const objectKey = `synthetic/${id}.xlsx`;

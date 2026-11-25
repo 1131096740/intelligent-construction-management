@@ -71,8 +71,17 @@ describe("signed settlement payment capacity (PAY-03/PAY-04/PAY-07/PAY-08)", () 
 
   it("rounds the accumulated settlement to the nearest cent with symmetric negative rounding", () => {
     expect(settlementAmountYuanToCents(new Prisma.Decimal("0.005"))).toBe(1n);
-    expect(settlementAmountYuanToCents(new Prisma.Decimal("0.0100"))).toBe(1n);
-    expect(settlementAmountYuanToCents(new Prisma.Decimal("100.005"))).toBe(10_001n);
+    const accumulated = new Prisma.Decimal("0.0050").plus("0.0050");
+    expect(settlementAmountYuanToCents(accumulated)).toBe(1n);
+
+    const confirmedCents = settlementAmountYuanToCents(new Prisma.Decimal("100.005"));
+    expect(confirmedCents).toBe(10_001n);
+    expect(capacity({ confirmedCents, paidCents: 10_001n })).toMatchObject({
+      rawRemainingCents: 0n,
+      remainingCents: 0n,
+      overpayCents: 0n,
+      suspended: false
+    });
     expect(settlementAmountYuanToCents(new Prisma.Decimal("-0.005"))).toBe(-1n);
   });
 });
