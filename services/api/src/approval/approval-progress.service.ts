@@ -2,6 +2,7 @@ import { isRetiredWageOutflow } from "../fund-execution/fund-execution-wage-reti
 import { isLegacySettlementApproval } from "../settlement/legacy-settlement-approval";
 import { isRetiredProjectEmployeeLoan } from "../project-expense/project-employee-loan-retirement";
 import { resolveContractOriginators } from "../contract/contract-originators";
+import { CONTRACT_PARALLEL_DUTY_RESOURCE, contractParallelDutyId, contractParallelDutyIdentity, contractRoundSubmissionSnapshot } from "../contract/contract-parallel-duty-access";
 import { isLegacyContractParallelRound } from "../contract/contract-approval-cutover";
 import { isLiveOrdinaryPaymentDelegation, isOrdinaryPaymentParallelRound, paymentParallelRoundEvidence, resolveOrdinaryPaymentDuty } from "../payment/ordinary-payment-parallel";
 import { EXPENSE_CURRENT_ROLE_SCOPE, supportsExpenseParallelApproval, resolveExpenseParallelDutyIdentity } from "../expense-claim/expense-claim-parallel-approval";
@@ -240,9 +241,12 @@ export class ApprovalProgressService {
     const id = instance.businessId;
     switch (instance.businessType) {
       case "contract_version": {
-        const version = await db.contractVersion.findUnique({ where: { id }, select: { contractId: true, status: true, numericProtocolVersion: true } });
+        const version = await db.contractVersion.findUnique({ where: { id }, select: {
+          contractId: true, status: true, numericProtocolVersion: true, documentContentRevision: true, documentContentFingerprint: true
+        } });
         const contract = version && await db.contract.findUnique({ where: { id: version.contractId }, select: { projectId: true, code: true, voidedAt: true } });
-        return contract ? { ...contract, contractVersionStatus: version.status, numericProtocolVersion: version.numericProtocolVersion } : null;
+        return contract ? { ...contract, contractVersionStatus: version.status, numericProtocolVersion: version.numericProtocolVersion,
+          documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint } : null;
       }
       case "general_procurement": return db.generalProcurement.findUnique({ where: { id }, select: { projectId: true, code: true, status: true, approvalInstanceId: true, requestProtocolVersion: true, scope: true, applicantUserId: true } });
       case "company_transfer": {
@@ -290,6 +294,10 @@ export class ApprovalProgressService {
       business.status !== "approval_pending" || business.approvalInstanceId !== instance.id || instance.status !== "in_progress"
     );
     const parallelGeneral = instance.businessType === "general_procurement" && "requestProtocolVersion" in business && business.requestProtocolVersion === 2 && isParallelApprovalRound(instance.frozenNodes);
+    const contractRound = instance.businessType === "contract_version" && instance.flowType === "contract.approve" &&
+      instance.status === "in_progress" && "numericProtocolVersion" in business && business.numericProtocolVersion === 2;
+    const contractSnapshot = contractRound ? contractRoundSubmissionSnapshot(instance.frozenNodes) : null;
+    const contractDutyIndexes = contractSnapshot ? activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex) : [];
     const [users, positions, assignments, members, logs, delegations, project] = await Promise.all([
       db.user.findMany({ select: { id: true, name: true, phone: true, isActive: true } }),
       db.position.findMany({ select: { id: true, key: true } }),
@@ -300,6 +308,7 @@ export class ApprovalProgressService {
         { actionKey: null, resourceType: null, resourceId: null },
         ...(instance.businessType === "spot_procurement_version" && isParallelApprovalRound(instance.frozenNodes) ? activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex).map(index => ({actionKey: "spot_procurement.approve", resourceType: SPOT_APPROVAL_DUTY_RESOURCE, resourceId: spotApprovalDutyId(instance.id, index)})) : []),
         ...(parallelGeneral ? activeApprovalNodeIndexes(instance.frozenNodes, instance.currentNodeIndex).map(index => ({ actionKey: "general_procurement.approve", resourceType: GENERAL_REQUEST_DUTY_RESOURCE, resourceId: generalRequestDutyId(instance.id, index) })) : []),
+        ...contractDutyIndexes.map(index => ({ actionKey: "contract.approve", resourceType: CONTRACT_PARALLEL_DUTY_RESOURCE, resourceId: contractParallelDutyId(instance.id, index) })),
         ...(instance.businessType === "fund_execution_case" ? [{ actionKey: "fund_execution_case.approve", resourceType: "fund_execution_case", resourceId: instance.businessId }] : [])
       ] } }),
       projectId ? db.project.findUnique({ where: { id: projectId }, select: { name: true, isActive: true } }) : Promise.resolve(null)
@@ -383,8 +392,41 @@ export class ApprovalProgressService {
           Boolean(resolveExpenseParallelDutyIdentity({ node, actorUserId: user.id, actorRoleScopes: scopes }));
       });
     }) : null;
+    const contractPendingByDuty = contractRound ? rawNodes.map(() => [] as typeof users) : null;
+    if (contractPendingByDuty && projectId && project?.isActive && "contractVersionStatus" in business &&
+        business.contractVersionStatus === "in_approval" && !business.voidedAt && contractSnapshot?.contractVersionId === instance.businessId &&
+        contractSnapshot.documentContentRevision === business.documentContentRevision &&
+        contractSnapshot.documentContentFingerprint === business.documentContentFingerprint) {
+      const activeRounds = await db.approvalInstance.findMany({
+        where: { businessType: "contract_version", businessId: instance.businessId, flowType: "contract.approve", status: "in_progress" },
+        select: { id: true }, take: 2
+      });
+      const originators = activeRounds.length === 1 && activeRounds[0].id === instance.id
+        ? await resolveContractOriginators(db, instance.businessId, instance.frozenNodes).catch(error => {
+            if (error instanceof ConflictException) return null;
+            throw error;
+          })
+        : null;
+      if (originators) {
+        for (const index of contractDutyIndexes) {
+          const node = rawNodes[index];
+          const resourceId = contractParallelDutyId(instance.id, index);
+          const delegates = new Set(delegations.filter(d => d.actionKey === "contract.approve" &&
+            d.resourceType === CONTRACT_PARALLEL_DUTY_RESOURCE && d.resourceId === resourceId).map(d => d.toUserId));
+          for (const user of users) {
+            const roleKeys = allRoles(user.id);
+            if (!user.isActive || (!delegates.has(user.id) &&
+                !strings(node.roleKeys).some(role => roleKeys.includes(role as RoleKey)))) continue;
+            const identity = await contractParallelDutyIdentity(db, instance, projectId, user.id, index, false);
+            const selfReview = instance.applicantUserId === user.id || originators.includes(user.id);
+            if (identity && (!selfReview || identity.representedUserId === user.id)) contractPendingByDuty[index].push(user);
+          }
+        }
+      }
+    }
     const nodeIds = rawNodes.map((node, nodeIndex) => parallelGeneral ? generalNodeIds[nodeIndex] : isParallelApprovalRound(instance.frozenNodes) && isApprovalDutyComplete(node as unknown as Record<string, unknown>)
       ? [...new Set((effectiveApprovals ?? logs).filter(log => log.action === "approve" && strings(node.roleKeys).includes(log.approvedRoleKey ?? "")).map(log => log.actorUserId))]
+      : contractPendingByDuty ? contractPendingByDuty[nodeIndex].map(user => user.id)
       : expensePendingByDuty && object(node).candidatePolicy === EXPENSE_CURRENT_ROLE_SCOPE
         ? expensePendingByDuty[nodeIndex].map(user => user.id)
         : [...new Set([
@@ -457,8 +499,9 @@ export class ApprovalProgressService {
     const businessUnavailable = Boolean(retiredApprovalReason) || expenseUnavailable || (legacyContractParallel && !legacyOriginators) || (instance.businessType === "project_financing_quota" && project?.isActive !== true) || (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) && !this.pilot?.isEnabled(projectId)) ||
       (["general_procurement", "company_transfer", "fund_execution_case"].includes(instance.businessType) &&
         (!("status" in business) || business.status !== (instance.businessType === "general_procurement" ? "approval_pending" : "submitted") || !("approvalInstanceId" in business) || business.approvalInstanceId !== instance.id));
-    const expensePendingIds = expensePendingByDuty && new Set(expensePendingByDuty.flat().map(user => user.id));
-    const pending = expensePendingIds ? users.filter(user => expensePendingIds.has(user.id))
+    const currentPendingByDuty = contractPendingByDuty ?? expensePendingByDuty;
+    const currentPendingIds = currentPendingByDuty && new Set(currentPendingByDuty.flat().map(user => user.id));
+    const pending = currentPendingIds ? users.filter(user => currentPendingIds.has(user.id))
       : !businessUnavailable && ACTIVE.has(instance.status) && current ? users.filter(user => {
       if (!user.isActive || (legacyContractParallel && roles.get(user.id)?.globalRoleKeys.includes("super_admin"))) return false;
       if (parallelGeneral) return activeIndexes.some(index => generalNodeIds[index]?.includes(user.id));
@@ -490,7 +533,7 @@ export class ApprovalProgressService {
         throw error;
       }
     }) : [];
-    return { instance, business, project, rawNodes, nodeIds, byId, pending, logs, effectiveApprovals, businessUnavailable, retiredReminderReason, retiredWageReminder, participant, expensePendingByDuty };
+    return { instance, business, project, rawNodes, nodeIds, byId, pending, logs, effectiveApprovals, businessUnavailable, retiredReminderReason, retiredWageReminder, participant, expensePendingByDuty, currentPendingByDuty };
   }
 
   private project(context: Awaited<ReturnType<ApprovalProgressService["context"]>>, actorId: string) {
@@ -510,7 +553,7 @@ export class ApprovalProgressService {
         role: log.approvedRoleKey ?? "",
         signedAt: log.createdAt.toISOString()
       }));
-    const pendingByDuty = context.expensePendingByDuty ?? nodeIds.map((ids, index) =>
+    const pendingByDuty = context.currentPendingByDuty ?? nodeIds.map((ids, index) =>
       (parallel || index === instance.currentNodeIndex) && (!parallel || !isApprovalDutyComplete(rawNodes[index] as unknown as Record<string, unknown>))
         ? pending.filter(user => ids.includes(user.id)) : []);
     const now = Date.now();
@@ -565,7 +608,7 @@ export class ApprovalProgressService {
       nextRemindAt,
       reminderToken: createHash("sha256").update(JSON.stringify([
         instance.id, instance.status, instance.currentNodeIndex, instance.updatedAt.toISOString(),
-        context.expensePendingByDuty ? pendingByDuty.map(users => users.map(user => user.id).sort()) : pending.map(user => user.id).sort()
+        context.currentPendingByDuty ? pendingByDuty.map(users => users.map(user => user.id).sort()) : pending.map(user => user.id).sort()
       ])).digest("hex"),
       history: logs.filter(log => !["sms_result", "sms_recipient_result"].includes(String(object(log.metadata).kind)) &&
         !(isParallelDutyNotificationEvent(log) && ["queued", "dispatch_claimed"].includes(String(object(log.metadata).event)))).map(log => ({ id: log.id,

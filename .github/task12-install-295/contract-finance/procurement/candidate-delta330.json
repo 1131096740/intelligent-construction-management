@@ -145,6 +145,11 @@
     "candidate": "fabca21d3ca30c9878545c12e277be103d933329404eae287807c64eb3c50b80"
   },
   {
+    "path": "services/api/src/approval/approval-progress.service.ts",
+    "expected": "7db2f18e02d05e265173db1a012e2055d82f5db1a8a8543b45d7a95e2a5e6ff0",
+    "candidate": "a4d422229eed4cf9472dd95b43623a6013baadf10135281865aa23849ad6e91d"
+  },
+  {
     "path": "services/api/src/contract-document/contract-document.processor.spec.ts",
     "expected": "eed1b542cc8956faee043c48dd71a8778c94f758e0510190b31ba5fce3ec5eb2",
     "candidate": "7daf3e85e19a8ba4a70bd0f79ad15166f24ba4ad6c54052fe3a5e5de91fc9dcd"

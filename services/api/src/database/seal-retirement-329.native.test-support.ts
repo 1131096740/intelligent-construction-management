@@ -403,6 +403,11 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
       action: "queued", metadata: { path: ["recipientId"], equals: lateAssignment.userId }
     };
     expect(await owner.auditLog.count({ where: lateNotice })).toBe(0);
+    const approvalProgress = "/approval-progress/" + submitted.approvalInstanceId;
+    const financeDuty = async (actor: number) => (await get(actor, approvalProgress)).nodes
+      .find((node: Payload) => node.name === "财务主管");
+    stage = "LATE_APPROVAL_MISSING_PROGRESS";
+    expect(await financeDuty(0)).toMatchObject({ status: "待配置", pending: [] });
     const firstApproval = (await detail(1)).reviewApprovalContext;
     await post(1, contract + "/approval", { ...firstApproval, decision: "approve" });
     expect(await pending(6)).toBe(0);
@@ -422,6 +427,9 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     if (queued.length !== 1) throw new Error(queued.length === 0 ? "NATIVE_329_LATE_NOTICE_MISSING" : "NATIVE_329_LATE_NOTICE_DUPLICATED");
     stage = "LATE_APPROVAL_TODO";
     if (await pending(4) !== 1) throw new Error("NATIVE_329_LATE_PENDING_COUNT");
+    stage = "LATE_APPROVAL_ACTIVE_PROGRESS";
+    expect(await financeDuty(4)).toMatchObject({ status: "处理中", pending: [{ id: lateAssignment.userId }] });
+    expect((await get(0, approvalProgress)).parallelCompletion).toEqual({ completed: 1, total: 5 });
     stage = "LATE_APPROVAL_DELIVERY";
     const mockSend = jest.fn().mockResolvedValue({ status: "accepted", message: "合成接收" });
     const dispatcher = new ContractDutyNotificationService(app.get(PrismaService),
