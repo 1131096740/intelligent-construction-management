@@ -727,6 +727,10 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       expect(await request(`/approval-progress/${newId}`)).toMatchObject({
         status: 200, body: { canHandle: false, canRemind: false, pendingRecipients: [] }
       });
+      for (const roundId of [newId, finalId]) {
+        expect(await request(`/approval-progress/${roundId}?view=viewable`, undefined, strangerToken))
+          .toEqual({ status: 404, body: { statusCode: 404, message: "审批流程不存在或无权查看", error: "Not Found" } });
+      }
       expect((await request(`${formPath}/download`, downloadInput(newId))).status).toBe(409);
       expect(await downloadAudits()).toBe(2);
       await expectPdfSignatures(finalId, 0);

@@ -62,7 +62,7 @@
   {
     "path": "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts",
     "expected": "e99beb176be2538e9424ef558241f0720e59f812c6723f2006a8e08d71046de2",
-    "candidate": "09696483f30a672b0bc148f5b078ea09f6c82f9219beadaaab0a425abfc37a50"
+    "candidate": "197895045e62eef3f351e5bdbe625a4a4542f1d7c6ae1bc75b1599039e430b27"
   },
   {
     "path": "services/api/src/general-procurement/general-procurement-request-access.ts",
