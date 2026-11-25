@@ -1,9 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 umask 077
-[[ $# == 4 || ( $# == 5 && $4 == bank && ( $5 == --current-320 || $5 == --text-direct-330 ) ) ||
-  ( $# == 6 && $4 == restore && ( $5 == --current-320 || $5 == --text-direct-330 ) ) ||
-  ( $# == 7 && $4 == restore && $5 == --text-direct-330 && $7 == --host-only ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && $4 == bank && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 ) ) ||
+  ( $# == 6 && $4 == restore && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 ) ) ||
+  ( $# == 7 && $4 == restore && ( $5 == --text-direct-330 || $5 == --payment-remainder-331 ) && $7 == --host-only ) ]] || exit 64
 
 prepared=$(cd "$1" && pwd -P)
 sha=$2
@@ -29,7 +29,9 @@ node - "$prepared/source.json" "$sha" "$plan" ${bank_args[@]+"${bank_args[@]}"} 
 const [source,sha,plan,mode]=process.argv.slice(2);
 const candidate=require(source),m=require(plan+'/common/multi-witness.cjs');
 if(candidate.sourceSha!==sha)process.exit(65);
-if(mode==='--text-direct-330') {
+if(mode==='--payment-remainder-331') {
+  require(plan+'/payment-remainder-331-profile.cjs').assertSource(candidate,sha,m.final);
+} else if(mode==='--text-direct-330') {
   require(plan+'/text-direct-330-profile.cjs').assertSource(candidate,sha,m.final);
 } else if(mode==='--current-320') {
   if(candidate.mode!=='current-320'||candidate.migrationCount!==329||candidate.predecessor?.migrationCount!==295||
@@ -38,14 +40,18 @@ if(mode==='--text-direct-330') {
       candidate.ledgerSha256!=='3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2')process.exit(65);
 } else if(candidate.migrationCount!==295||candidate.ledgerSha256!==m.final) process.exit(65);
 JS
-if [[ $lane == restore && $mode == --text-direct-330 ]]; then
-  node - "$prepared/source.json" "$current_prepared/source.json" "$plan" <<'JS'
-const [oldFile,currentFile,plan]=process.argv.slice(2);
+if [[ $lane == restore && ( $mode == --text-direct-330 || $mode == --payment-remainder-331 ) ]]; then
+  node - "$prepared/source.json" "$current_prepared/source.json" "$plan" "$mode" <<'JS'
+const [oldFile,currentFile,plan,mode]=process.argv.slice(2);
 const assert=require('node:assert/strict');
 const old=require(oldFile),current=require(currentFile);
-require(plan+'/text-direct-330-profile.cjs').assertSource(current,current.sourceSha,old.ledgerSha256);
+assert.equal(current.mode,mode.slice(2));
+const paymentRemainder=current.mode==='payment-remainder-331';
+require(plan+(paymentRemainder?'/payment-remainder-331-profile.cjs':'/text-direct-330-profile.cjs'))
+  .assertSource(current,current.sourceSha,old.ledgerSha256);
 assert.notEqual(old.sourceSha,current.sourceSha);
-assert.equal(typeof require(plan+'/common/installer.cjs').withCombined330ContractPaymentForRestore,'function');
+const install=paymentRemainder?'withCombined331PaymentRemainderForRestore':'withCombined330ContractPaymentForRestore';
+assert.equal(typeof require(plan+'/common/installer.cjs')[install],'function');
 JS
 fi
 if [[ ${7-} != --host-only ]]; then
@@ -53,7 +59,7 @@ if [[ ${7-} != --host-only ]]; then
   image=$(cat "$image_dir/image.id")
   context_sha=$(cat "$image_dir/context.sha256")
   [[ $image =~ ^sha256:[a-f0-9]{64}$ && $context_sha =~ ^[a-f0-9]{64}$ ]] || exit 65
-  if [[ $mode == --text-direct-330 ]]; then
+  if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 ]]; then
     [[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$image_dir/Dockerfile" "$prepared/source.json") == "$context_sha" ]] || exit 65
   fi
   [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $context_sha" ]] || exit 65
@@ -71,12 +77,13 @@ const {readFileSync,writeFileSync}=require('node:fs');
 const {createHash}=require('node:crypto');
 const hash=file=>createHash('sha256').update(readFileSync(file)).digest('hex');
 const old=require(oldFile),current=require(currentFile);
-const receipt={status:'BACKUP330_HOST_INPUTS_VERIFIED',candidateSha:current.sourceSha,candidateTree:current.sourceTree,
+const profile=current.migrationCount===331?'payment-remainder-331-profile.cjs':'text-direct-330-profile.cjs';
+const receipt={status:'BACKUP'+current.migrationCount+'_HOST_INPUTS_VERIFIED',candidateSha:current.sourceSha,candidateTree:current.sourceTree,
   migrationCount:current.migrationCount,ledgerSha256:current.ledgerSha256,
   fixturePredecessorSha:old.sourceSha,fixturePredecessorSourceSha256:hash(oldFile),candidateSourceSha256:hash(currentFile),
   appInputsSha256:hash(out+'/overlay/restore/app-inputs.json'),
   relocatedLoanSha256:hash(out+'/overlay/restore/loan-relocated-manifest.json'),
-  wrappers:Object.fromEntries(['run.sh','run-bank-restore.sh','common/installer.cjs','text-direct-330-profile.cjs','restore/run.cjs',
+  wrappers:Object.fromEntries(['run.sh','run-bank-restore.sh','common/installer.cjs',profile,'restore/run.cjs',
     'restore/backup-fixture.cjs','restore/restore.cjs','restore/restore-profile.cjs','restore/settlement-history.cjs',
     'restore/text-direct-330.cjs','restore/extract-receipt.cjs'].map(relative=>[relative,hash(plan+'/'+relative)])),
   database:'NOT_STARTED'};
@@ -110,7 +117,10 @@ if [[ $lane == bank ]]; then
   for file in named-bank-ci.cjs original-titles.json failure-projection.cjs; do
     readonly_mount "$plan/bank/$file" "/qualification/$file"
   done
-  if [[ $mode == --text-direct-330 ]]; then
+  if [[ $mode == --payment-remainder-331 ]]; then
+    readonly_mount "$plan/payment-remainder-331-profile.cjs" /qualification/payment-remainder-331-profile.cjs
+    readonly_mount "$plan/bank/staging-331.json" /qualification/bank-staging-331.json
+  elif [[ $mode == --text-direct-330 ]]; then
     readonly_mount "$plan/text-direct-330-profile.cjs" /qualification/text-direct-330-profile.cjs
     readonly_mount "$plan/bank/staging-330.json" /qualification/bank-staging-330.json
   fi
@@ -124,7 +134,7 @@ else
 const [file,head,source,mode,predecessorSource]=process.argv.slice(2);
 const {ledgerSha256:ledger294}=require(source);
 const fs=require('node:fs');
-const predecessorSourceSha256=mode==='--text-direct-330'
+const predecessorSourceSha256=['--text-direct-330','--payment-remainder-331'].includes(mode)
   ? require('node:crypto').createHash('sha256').update(fs.readFileSync(predecessorSource)).digest('hex')
   : undefined;
 fs.writeFileSync(file,JSON.stringify({status:'FINANCE294_COMMITTED_MIGRATION_INPUTS_ADMITTED_OFFLINE',head,ledger294,predecessorSourceSha256}),
@@ -132,9 +142,10 @@ fs.writeFileSync(file,JSON.stringify({status:'FINANCE294_COMMITTED_MIGRATION_INP
 JS
   chmod 0644 "$out/committed-admission.json"
   readonly_mount "$out/committed-admission.json" /qualification/committed-admission.json
-  if [[ $mode == --text-direct-330 ]]; then
-    readonly_mount "$plan/text-direct-330-profile.cjs" /qualification/text-direct-330-profile.cjs
-  fi
+  case "$mode" in
+    --text-direct-330) readonly_mount "$plan/text-direct-330-profile.cjs" /qualification/text-direct-330-profile.cjs ;;
+    --payment-remainder-331) readonly_mount "$plan/payment-remainder-331-profile.cjs" /qualification/payment-remainder-331-profile.cjs ;;
+  esac
   if [[ -n $mode ]]; then
     readonly_mount "$current_prepared/source.json" /qualification/current320-source.json
     readonly_mount "$current_prepared/prepared/context/workspace/services/api/prisma/migrations" /qualification/current320/migrations
@@ -162,7 +173,7 @@ capture(){
     node - "$out/$mode.stdout" "$out/$mode.json" "$mode" "$sha" ${bank_args[@]+"${bank_args[@]}"} <<'JS' || proof_status=$?
 const [file,receipt,mode,sha,sourceMode]=process.argv.slice(2);
 const r=JSON.parse(require('node:fs').readFileSync(file,'utf8').trimEnd().split('\n').at(-1));
-const count=sourceMode==='--text-direct-330'?330:sourceMode==='--current-320'?329:295;
+const count=sourceMode==='--payment-remainder-331'?331:sourceMode==='--text-direct-330'?330:sourceMode==='--current-320'?329:295;
 const result=mode==='preflight'?'DIAGNOSTIC_NO_DATABASE_PREFLIGHT_PASSED':'ORIGINAL_FULL_12_PASSED';
 const expected='BANK_'+count+'_'+result;
 require('node:fs').writeFileSync(receipt,JSON.stringify(r,null,2)+'\n',{flag:'wx',mode:0o600});

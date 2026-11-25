@@ -5,7 +5,7 @@ const path=require('node:path');
 const {createHash}=require('node:crypto');
 const {spawnSync}=require('node:child_process');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder}=require('./installer.cjs');
 const tree=require('./tree-proof.json');
 const titles=require('./original-titles.json');
 const prefix='/qualification';
@@ -15,19 +15,21 @@ const file='src/database/project-affiliate-company-contract-db.spec.ts';
 const args=process.argv.slice(2);
 const current320=args[0]==='--current-320';
 const textDirect330=args[0]==='--text-direct-330';
-const forward=current320||textDirect330;
-const count=textDirect330?330:current320?329:295;
+const paymentRemainder331=args[0]==='--payment-remainder-331';
+const forward=current320||textDirect330||paymentRemainder331;
+const count=paymentRemainder331?331:textDirect330?330:current320?329:295;
 const runArgs=forward?args.slice(1):args;
-const profile330=textDirect330?require('./text-direct-330-profile.cjs'):undefined;
+const profile=paymentRemainder331?require('./payment-remainder-331-profile.cjs'):
+  textDirect330?require('./text-direct-330-profile.cjs'):undefined;
 const candidateDigest320='3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2';
 const receipt={status:'STOPPED',scope:'NAMED_BANK_ORIGINAL_FULL_12',backupRestore:'NOT_EXECUTED',business:'NOT_ENTERED',stages:[]};
 function verifyExecutionFiles(source) {
   const raw=fs.readFileSync(path.join(prefix,'execution-files.json'));
-  if(textDirect330) {
-    const expected=require('./bank-staging-330.json')['bank/execution-files.json'].sha256;
-    assert.equal(sha(raw),expected,'BANK_330_EXECUTION_MANIFEST');
+  if(profile) {
+    const expected=require('./bank-staging-'+count+'.json')['bank/execution-files.json'].sha256;
+    assert.equal(sha(raw),expected,'BANK_'+count+'_EXECUTION_MANIFEST');
     const witness=path.join(workspace,'services/api/src/database/contract-finance-owned.test-support.ts');
-    assert.ok(fs.readFileSync(witness,'utf8').includes(JSON.stringify(source.ledgerSha256)),'BANK_330_TEST_LEDGER');
+    assert.ok(fs.readFileSync(witness,'utf8').includes(JSON.stringify(source.ledgerSha256)),'BANK_'+count+'_TEST_LEDGER');
   } else assert.equal(sha(raw),current320?'bcd29f1064b9c63b30566a7d3902c40e923bb68c4aab2bd80b703dea7e6aaff7':'ae305b0e93201322da07825b47100c588c056a5a98e0a6ddccec8c62f62ce041','BANK_295_EXECUTION_MANIFEST');
   const files=JSON.parse(raw);
   assert.equal(files.length,forward?1946:1814,'BANK_295_EXECUTION_COUNT');
@@ -65,8 +67,8 @@ Promise.resolve().then(async()=>{
   const source=require('./hosted-source.json');
   receipt.candidateSha=source.sourceSha;
   assert.ok(runArgs.length===0||(runArgs.length===1&&runArgs[0]==='--preflight'),'BANK_RUN_MODE');
-  if(textDirect330) {
-    profile330.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
+  if(profile) {
+    profile.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
   } else if(current320) {
     assert.equal(source.mode,'current-320');
     assert.equal(source.migrationCount,329);
@@ -87,8 +89,8 @@ Promise.resolve().then(async()=>{
   }
   const {verifyNamedBank}=require('./workspace/services/api/prisma/contract-finance-owned-ci.cjs');
   const consume=async context=>{
-    if(textDirect330) {
-      profile330.assertInstallation(receipt,source);
+    if(profile) {
+      profile.assertInstallation(receipt,source);
     } else if(current320) {
       assert.equal(receipt.forward320?.count,329);
       assert.equal(receipt.forward320.ledgerSha256,candidateDigest320);
@@ -99,7 +101,8 @@ Promise.resolve().then(async()=>{
     return verifyNamedBank(context,receipt,titles,forward?{sourceTree:source.sourceTree,count}:undefined);
   };
   if(forward) {
-    const install=textDirect330?withCombined330TextAgreement:withCombined320ContractPayment;
+    const install=paymentRemainder331?withCombined331PaymentRemainder:
+      textDirect330?withCombined330TextAgreement:withCombined320ContractPayment;
     await install(receipt,consume,{
       sourceTree:source.sourceTree,migrations:path.join(workspace,'services/api/prisma/migrations'),tails:source.tails
     });
@@ -109,8 +112,8 @@ Promise.resolve().then(async()=>{
   assert.equal(receipt.releaseTree,tree.tree);
   assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
   if(forward) assert.equal(receipt.combinedAfterBusiness.exactB7,true);
-  if(textDirect330) {
-    assert.equal(receipt.combinedAfterBusiness.count,330);
+  if(profile) {
+    assert.equal(receipt.combinedAfterBusiness.count,count);
     assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
     assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);
   }

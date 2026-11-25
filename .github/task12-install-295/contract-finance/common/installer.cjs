@@ -1437,6 +1437,16 @@ module.exports.withCombined320RetainedCleanup=(receipt,consume,material)=>
 module.exports.withCombined320MultiWitnessForProfile=(receipt,consume,material)=>
   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'profile');
 
+module.exports.withCombined331PaymentRemainderForRestore = (receipt,prepare295,consume,material) => {
+  need(typeof prepare295==='function' && typeof consume==='function'
+    && material && typeof material==='object','PAYMENT_REMAINDER_331_RESTORE_ARGUMENTS');
+  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,true,{...readForward320(material,331),prepare295});
+};
+module.exports.withCombined331RetainedCleanup=(receipt,consume,material)=>
+  withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,331),'cleanup');
+module.exports.withCombined331MultiWitnessForProfile=(receipt,consume,material)=>
+  withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,331),'profile');
+
 module.exports.withCombined330RetainedCleanup=(receipt,consume,material)=>
   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'cleanup');
 module.exports.withCombined330MultiWitnessForProfile=(receipt,consume,material)=>

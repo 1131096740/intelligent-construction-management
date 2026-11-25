@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 [[ $# == 1 || ( $# == 3 && $2 == --current-320 && $3 =~ ^[a-f0-9]{40}$ ) ||
-  ( ${2-} == --text-direct-330 && ( $# == 2 ||
+  ( ( ${2-} == --text-direct-330 || ${2-} == --payment-remainder-331 ) && ( $# == 2 ||
     ( $# == 3 && ( $3 == --host-only || $3 =~ ^[a-f0-9]{40}$ ) ) ||
     ( $# == 4 && $3 =~ ^[a-f0-9]{40}$ && $4 == --host-only ) ) ) ]] || exit 64
 sha=$1
@@ -23,28 +23,30 @@ prepare_predecessor() {
   predecessor_worktree="$work/predecessor"
   bash "$plan/prepare.sh" "$predecessor_worktree" "$predecessor" "$work/predecessor-source"
 }
-restore330_predecessor=
-if [[ ${2-} == --text-direct-330 ]]; then
+mode=${2-}
+restore_predecessor=
+if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 ]]; then
   [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
   [[ -z $(git -C "$root" status --porcelain --untracked-files=all -- "$plan") ]] || exit 65
-  bash "$plan/prepare.sh" "$root" "$sha" "$work/source" --text-direct-330
+  bash "$plan/prepare.sh" "$root" "$sha" "$work/source" "$mode"
   if [[ ${3-} =~ ^[a-f0-9]{40}$ ]]; then
-    restore330_predecessor=$3
+    restore_predecessor=$3
     trap 'remove_predecessor' EXIT
-    prepare_predecessor "$restore330_predecessor"
+    prepare_predecessor "$restore_predecessor"
   fi
   if [[ ${3-} == --host-only || ${4-} == --host-only ]]; then
     node - "$plan" "$work/source/source.json" "$sha" <<'JS'
 const [plan,file,sha]=process.argv.slice(2);
 const source=require(file);
-require(plan+'/text-direct-330-profile.cjs').assertSource(source,sha,require(plan+'/common/multi-witness.cjs').final);
+const profile=source.mode==='payment-remainder-331'?'payment-remainder-331-profile.cjs':'text-direct-330-profile.cjs';
+require(plan+'/'+profile).assertSource(source,sha,require(plan+'/common/multi-witness.cjs').final);
 JS
     workspace="$work/source/prepared/context/workspace"
-    python3 "$plan/stage-overlays.py" "$workspace" "$work/bank" bank --text-direct-330
-    bash "$plan/stage-core-payment.sh" "$workspace" "$work/core-payment" text-direct-330
-    if [[ -n $restore330_predecessor ]]; then
-      bash "$plan/run-bank-restore.sh" "$work/predecessor-source" "$restore330_predecessor" "$work/restore" \
-        restore --text-direct-330 "$work/source" --host-only
+    python3 "$plan/stage-overlays.py" "$workspace" "$work/bank" bank "$mode"
+    bash "$plan/stage-core-payment.sh" "$workspace" "$work/core-payment" "${mode#--}"
+    if [[ -n $restore_predecessor ]]; then
+      bash "$plan/run-bank-restore.sh" "$work/predecessor-source" "$restore_predecessor" "$work/restore" \
+        restore "$mode" "$work/source" --host-only
     else
       node "$plan/text-direct-330-host-receipt.cjs" "$work" "$plan"
     fi
@@ -62,17 +64,17 @@ trap 'cleanup "$?"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if [[ ${2-} == --text-direct-330 ]]; then
+if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 ]]; then
   bash "$plan/build.sh" "$work/source" "$sha" browser "$work/browser"
-  if [[ -n $restore330_predecessor ]]; then
-    bash "$plan/build.sh" "$work/predecessor-source" "$restore330_predecessor" restore "$work/restore"
+  if [[ -n $restore_predecessor ]]; then
+    bash "$plan/build.sh" "$work/predecessor-source" "$restore_predecessor" restore "$work/restore"
   fi
-  bash "$plan/run-bank-restore.sh" "$work/source" "$sha" "$work/browser" bank --text-direct-330
-  if [[ -n $restore330_predecessor ]]; then
-    bash "$plan/run-bank-restore.sh" "$work/predecessor-source" "$restore330_predecessor" "$work/restore" \
-      restore --text-direct-330 "$work/source"
+  bash "$plan/run-bank-restore.sh" "$work/source" "$sha" "$work/browser" bank "$mode"
+  if [[ -n $restore_predecessor ]]; then
+    bash "$plan/run-bank-restore.sh" "$work/predecessor-source" "$restore_predecessor" "$work/restore" \
+      restore "$mode" "$work/source"
   else
-    printf '%s\n' 'CONTRACT_FINANCE_330_RESTORE_PREDECESSOR_NOT_SUPPLIED'
+    printf 'CONTRACT_FINANCE_%s_RESTORE_PREDECESSOR_NOT_SUPPLIED\n' "${mode##*-}"
   fi
   bash "$plan/run-core-payment.sh" "$work/source" "$sha" "$work/browser" core
   bash "$plan/run-core-payment.sh" "$work/source" "$sha" "$work/browser" payment

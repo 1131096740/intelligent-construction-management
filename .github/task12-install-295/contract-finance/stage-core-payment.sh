@@ -17,9 +17,9 @@ for relative in "${tests[@]}"; do
   cp "$workspace/$relative" "$work/$relative"
 done
 case "$mode" in
-  current-320|text-direct-330)
+  current-320|text-direct-330|payment-remainder-331)
     gzip -dc "$plan/core-payment-tests-current329.patch.gz" | patch --batch --forward --fuzz=0 --silent -p1 -d "$work"
-    if [[ $mode == text-direct-330 ]]; then
+    if [[ $mode != current-320 ]]; then
       payment=payment-concurrency-330.patch
     else
       payment=payment-concurrency-320.patch
@@ -33,7 +33,7 @@ case "$mode" in
 esac
 for relative in "${tests[@]}"; do chmod 0644 "$work/$relative"; done
 
-if [[ $mode == text-direct-330 ]]; then
+if [[ $mode == text-direct-330 || $mode == payment-remainder-331 ]]; then
   node - "$workspace" "$work" "$plan/core-payment-330-fixtures.json" <<'JS'
 const {readFileSync}=require('node:fs');
 const {createHash}=require('node:crypto');
@@ -48,5 +48,25 @@ for (const [relative,{input,output}] of Object.entries(fixtures)) {
   assert.equal(checksum(workspace,relative),input,'CORE_PAYMENT_330_PREIMAGE');
   assert.equal(checksum(overlays,relative),output,'CORE_PAYMENT_330_POSTIMAGE');
 }
+JS
+fi
+
+if [[ $mode == payment-remainder-331 ]]; then
+  fixtures="$work/services/api/src/database"
+  cp "$plan/contract-finance-owned.test-support.ts" "$fixtures/"
+  for file in payment-execution-concurrency.spec.ts contract-finance-owned.test-support.ts; do
+    patch --batch --forward --fuzz=0 --silent -p0 -d "$fixtures" < "$plan/payment-execution-331-$file.patch"
+  done
+  chmod 0644 "$fixtures/contract-finance-owned.test-support.ts"
+  node - "$plan" "$fixtures" <<'JS'
+const {readFileSync}=require('node:fs');
+const {createHash}=require('node:crypto');
+const assert=require('node:assert/strict');
+const path=require('node:path');
+const [plan,overlays]=process.argv.slice(2);
+const {materials,fixtures}=require(path.join(plan,'core-payment-331-fixtures.json'));
+const checksum=(root,relative)=>createHash('sha256').update(readFileSync(path.join(root,relative))).digest('hex');
+for (const [relative,expected] of Object.entries(materials)) assert.equal(checksum(plan,relative),expected,'CORE_PAYMENT_331_MATERIAL');
+for (const [relative,expected] of Object.entries(fixtures)) assert.equal(checksum(overlays,relative),expected,'CORE_PAYMENT_331_POSTIMAGE');
 JS
 fi

@@ -11,11 +11,15 @@ workspace, destination = map(Path, sys.argv[1:3])
 lane = sys.argv[3]
 assert lane in ('bank', 'restore')
 mode = sys.argv[4:]
-assert mode == [] or (lane == 'bank' and mode in (['--current-320'], ['--text-direct-330']))
+bank_profiles = {
+    '--current-320': ('staging-320.json',),
+    '--text-direct-330': ('staging-330.json',),
+    '--payment-remainder-331': ('staging-330.json', 'staging-331.json'),
+}
+assert mode == [] or (lane == 'bank' and len(mode) == 1 and mode[0] in bank_profiles)
 os.umask(0o022)
 rows = json.loads((plan / 'staging-manifest.json').read_bytes())
-if mode:
-    manifest = 'staging-330.json' if mode == ['--text-direct-330'] else 'staging-320.json'
+for manifest in bank_profiles[mode[0]] if mode else ():
     current = json.loads((plan / 'bank' / manifest).read_bytes())
     assert all(name.startswith('bank/') and name in rows for name in current)
     rows.update(current)

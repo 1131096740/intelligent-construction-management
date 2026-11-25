@@ -7,10 +7,12 @@ const path = require('node:path');
 
 const [work,plan] = process.argv.slice(2);
 assert.equal(process.argv.length,4);
-const {withCombined330TextAgreement} = require(path.join(plan,'common/installer.cjs'));
-assert.equal(typeof withCombined330TextAgreement,'function','CONTRACT_FINANCE_330_INSTALLER_REQUIRED');
 const sourceFile = path.join(work,'source/source.json');
 const source = require(sourceFile);
+const paymentRemainder = source.mode==='payment-remainder-331';
+const count=paymentRemainder?331:330;
+const method=paymentRemainder?'withCombined331PaymentRemainder':'withCombined330TextAgreement';
+assert.equal(typeof require(path.join(plan,'common/installer.cjs'))[method],'function');
 const bankFiles = path.join(work,'bank/bank/execution-files.json');
 const bank = require(bankFiles);
 const {fixtures} = require(path.join(plan,'core-payment-330-fixtures.json'));
@@ -21,10 +23,11 @@ const wrapperInputs = [
   'bank/named-bank-ci.cjs','bank/original-titles.json','bank/staging-330.json',
   'core-payment-entry.cjs','core-payment-runner.cjs','contract-finance-owned.test-support.ts',
   'core-payment-330-fixtures.json','contract-finance-stage-web.cjs','task12-pol109-stage-browser.cjs',
-  'task12-owned-280.test-support.ts','company-transfer-finite-reporter.cjs'
+  'task12-owned-280.test-support.ts','company-transfer-finite-reporter.cjs',
+  ...(paymentRemainder?['payment-remainder-331-profile.cjs','bank/staging-331.json','core-payment-331-fixtures.json']:[])
 ];
 const receipt = {
-  status:'CONTRACT_FINANCE_330_HOST_INPUTS_VERIFIED',
+  status:'CONTRACT_FINANCE_'+count+'_HOST_INPUTS_VERIFIED',
   sourceSha:source.sourceSha,sourceTree:source.sourceTree,
   migrationCount:source.migrationCount,ledgerSha256:source.ledgerSha256,
   sourceManifestSha256:hash(sourceFile),

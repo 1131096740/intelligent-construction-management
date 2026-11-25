@@ -3,12 +3,14 @@
 const {readFileSync,writeFileSync,statSync}=require('node:fs');
 const {scope}=require('../common/successor.cjs');
 const {legacy,successor,textDirect}=require('./restore-profile.cjs');
-const profile330=require('../text-direct-330-profile.cjs');
 const path=require('node:path');
 const {paymentCatalogChecks}=require('./text-direct-330.cjs');
 const current=process.argv[7]?require(process.argv[7]):undefined;
-const textDirect330=current?.mode==='text-direct-330';
-const count=textDirect330?330:current?329:295;
+const paymentRemainder331=current?.mode==='payment-remainder-331';
+const textDirect330=paymentRemainder331||current?.mode==='text-direct-330';
+const count=paymentRemainder331?331:textDirect330?330:current?329:295;
+const paymentProfile=paymentRemainder331?require('../payment-remainder-331-profile.cjs'):
+  textDirect330?require('../text-direct-330-profile.cjs'):undefined;
 const {technical,businessCount}=textDirect330?textDirect:current?successor:legacy;
 
 const identity=row=>row&&row.schemaVersion===1&&row.purpose==='NTF04_NAMED_RESTORE_EXACT_'+count&&row.candidateSha===(current?.sourceSha??require(process.argv[6]).head)&&
@@ -20,7 +22,7 @@ const restoreStages=[
   'BACKUP292_RESTORE_BUSINESS_DATA','BACKUP292_RESTORE_BUSINESS_POST_DATA',
   'BACKUP292_RESTORE_OWNER_PRE_DATA','BACKUP292_RESTORE_OWNER_POST_DATA',
 ];
-const namedExportStage=textDirect330?'BACKUP330_NAMED_EXPORT_IMPORT':current?'BACKUP320_NAMED_EXPORT_IMPORT':restoreStages[0];
+const namedExportStage=textDirect330?'BACKUP'+count+'_NAMED_EXPORT_IMPORT':current?'BACKUP320_NAMED_EXPORT_IMPORT':restoreStages[0];
 const positive=value=>Number.isSafeInteger(value)&&value>0;
 const exactlyTrue=(row,names)=>row&&names.every(name=>row[name]===true);
 
@@ -47,22 +49,27 @@ function qualified(row,mode){
   const data=row.restore;
   if(textDirect330) {
     try {
-      profile330.assertSource(current,row.candidateSha,require('../common/multi-witness.cjs').final);
-      profile330.assertInstallation(row,current);
+      paymentProfile.assertSource(current,row.candidateSha,require('../common/multi-witness.cjs').final);
+      paymentProfile.assertInstallation(row,current);
     } catch {
       return false;
     }
     const proof=data?.textDirect330;
-    const terminal=current.tails.at(-1);
+    const terminal=current.tails[34];
     const migration=path.join(path.dirname(process.argv[7]),'prepared/context/workspace/services/api/prisma/migrations',terminal.name,'migration.sql');
     const {allocationWriterSha256}=paymentCatalogChecks(readFileSync(migration),terminal.sha256);
     if(proof?.allocationWriterSha256!==allocationWriterSha256) return false;
     if(!exactlyTrue(proof,['oldColumnProjectionMatched','newColumnNull','sourceAndRestoredCatalogMatched','sourceAndRestoredNamedExecutionDenied'])||
       !positive(proof.historical?.count)||proof.historical.count!==row.historicalPayment295?.count||
       !/^[a-f0-9]{64}$/u.test(proof.historical.sha256)||proof.historical.sha256!==row.historicalPayment295?.sha256||
-      !/^[a-f0-9]{64}$/u.test(proof.ddlAclSha256)||row.combinedAfterBusiness?.count!==330||
+      !/^[a-f0-9]{64}$/u.test(proof.ddlAclSha256)||row.combinedAfterBusiness?.count!==count||
       row.combinedAfterBusiness?.sameIdentity!==true||row.multiWitnessCatalogAfterBusiness!==true) return false;
   }
+  if(paymentRemainder331&&(!exactlyTrue(data?.paymentRemainder331,['historicalRowsUnchanged','validatedConstraint'])||
+    JSON.stringify(data.paymentRemainder331.enabledGuards)!==JSON.stringify([
+      ['PaymentExecution_withdrawn_remainder_guard','jg_guard_withdrawn_payment_execution_v1',true],
+      ['PaymentRequest_remaining_withdrawal_guard','jg_guard_payment_remaining_withdrawal_v1',false]
+    ]))) return false;
   const forwardValid=!current||(row.forward320?.count===count&&row.forward320.sameIdentity===true&&
     row.forward320.sameBaseB7===true&&row.forward320.sourceTree===current.sourceTree&&
     row.forward320.ledgerSha256===current.ledgerSha256&&row.combinedAfterBusiness?.ledgerSha256===current.ledgerSha256&&

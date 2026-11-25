@@ -30,7 +30,7 @@ async function verifyLease(context,forward320,textDirectSource) {
   `);
   const observed=JSON.parse(stdout);
   assert.equal(observed.ownedTls,true);
-  const count=textDirectSource?330:forward320?329:295;
+  const count=textDirectSource?.migrationCount??(forward320?329:295);
   assert.equal(observed.ledger.length,count);
   const ledger=observed.ledger.map(({name,sha256,finished,rolledBack})=>({name,sha256,finished,rolledBack}));
   assert.equal(sha(JSON.stringify(ledger.slice(0,295))),finalLedger,'BACKUP294_LIVE_LEDGER');
@@ -83,11 +83,13 @@ async function runNamedBackup(context,receipt,namedRoles,forward320,textDirectSo
   const profile=textDirectSource?textDirect:forward320?successor:legacy;
   const enter=stage=>receipt.stages.push(stage);
   await verifyLease(context,forward320,textDirectSource);
-  enter(textDirectSource?'BACKUP330_NAMED_EXPORT_IMPORT':forward320?'BACKUP320_NAMED_EXPORT_IMPORT':'BACKUP294_NAMED_EXPORT_IMPORT');
+  enter(textDirectSource?'BACKUP'+textDirectSource.migrationCount+'_NAMED_EXPORT_IMPORT':
+    forward320?'BACKUP320_NAMED_EXPORT_IMPORT':'BACKUP294_NAMED_EXPORT_IMPORT');
   const named=await namedRoles(context);
   try {
     receipt.restore=await restoreBusinessDatabase(context,named.credentials,enter,forward320,
-      textDirectSource?{historical:receipt.historicalPayment295,terminal:textDirectSource.tails.at(-1)}:undefined);
+      textDirectSource?{historical:receipt.historicalPayment295,
+        terminal:textDirectSource.tails[34],paymentRemainder:textDirectSource.migrationCount===331}:undefined);
     assert.equal(receipt.restore.businessTables,profile.businessCount);
     assert.equal(receipt.restore.restoredDataPayloads,profile.businessCount);
     assert.equal(receipt.restore.protectedTables,profile.technical.length);

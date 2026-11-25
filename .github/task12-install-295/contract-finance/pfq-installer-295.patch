@@ -197,7 +197,7 @@
 +  if(migration.recovery)await migration.recovery.verify();
 +  return (await sql(retained?retained.bindArchiveLedger(statement,ledger):statement)).stdout;
 + };
-@@ -1443,0 +1543,47 @@
+@@ -1453,0 +1553,47 @@
 +
 +async function withPfq(receipt,mode,material) {
 +  const current320=material!==undefined;

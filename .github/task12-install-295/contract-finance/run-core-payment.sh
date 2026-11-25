@@ -19,7 +19,9 @@ workspace="$prepared/prepared/context/workspace"
 mode=$(node - "$prepared/source.json" "$sha" "$plan" <<'JS'
 const [file,sha,plan]=process.argv.slice(2);
 const source=require(file);
-if(source.mode==='text-direct-330') {
+if(source.mode==='payment-remainder-331') {
+  require(plan+'/payment-remainder-331-profile.cjs').assertSource(source,sha,require(plan+'/common/multi-witness.cjs').final);
+} else if(source.mode==='text-direct-330') {
   require(plan+'/text-direct-330-profile.cjs').assertSource(source,sha,require(plan+'/common/multi-witness.cjs').final);
 } else if(source.sourceSha!==sha||source.migrationCount!==(source.mode==='current-320'?329:295)) {
   process.exit(1);
@@ -54,6 +56,8 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$plan/core-payment-entry.cjs,dst=/qualification/core-payment-entry.cjs,readonly")
 if [[ $mode == text-direct-330 ]]; then
   args+=(--mount "type=bind,src=$plan/text-direct-330-profile.cjs,dst=/qualification/text-direct-330-profile.cjs,readonly")
+elif [[ $mode == payment-remainder-331 ]]; then
+  args+=(--mount "type=bind,src=$plan/payment-remainder-331-profile.cjs,dst=/qualification/payment-remainder-331-profile.cjs,readonly")
 fi
 for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
@@ -61,9 +65,12 @@ done
 for file in core-payment-runner.cjs contract-finance-stage-web.cjs task12-pol109-stage-browser.cjs; do
   args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/workspace/services/api/prisma/$file,readonly")
 done
-for file in contract-finance-owned.test-support.ts task12-owned-280.test-support.ts; do
-  args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/workspace/services/api/src/database/$file,readonly")
-done
+ledger_support="$plan/contract-finance-owned.test-support.ts"
+if [[ $mode == payment-remainder-331 ]]; then
+  ledger_support="$work/services/api/src/database/contract-finance-owned.test-support.ts"
+fi
+args+=(--mount "type=bind,src=$ledger_support,dst=/qualification/workspace/services/api/src/database/contract-finance-owned.test-support.ts,readonly"
+  --mount "type=bind,src=$plan/task12-owned-280.test-support.ts,dst=/qualification/workspace/services/api/src/database/task12-owned-280.test-support.ts,readonly")
 args+=(--mount "type=bind,src=$plan/company-transfer-finite-reporter.cjs,dst=/qualification/workspace/apps/web-admin/company-transfer-finite-reporter.cjs,readonly")
 for relative in "${tests[@]}"; do
   args+=(--mount "type=bind,src=$work/$relative,dst=/qualification/workspace/$relative,readonly")

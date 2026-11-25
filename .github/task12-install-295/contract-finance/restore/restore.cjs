@@ -295,7 +295,7 @@ function importAsNamedBackup(sql,invoke,tables,sequences,dataArchive,dataList,pr
 
 async function restoreBusinessDatabase(context,credentials,enter,forward320,textDirectInputs) {
   const profile=textDirectInputs?textDirect:forward320?successor:legacy;
-  assert.equal(forward320?.count===330,Boolean(textDirectInputs),'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
+  assert.equal([330,331].includes(forward320?.count),Boolean(textDirectInputs),'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
   const expectedTree=forward320?.sourceTree ?? scope.tree;
   assert.match(expectedTree,/^[a-f0-9]{40}$/u);
   const {technical}=profile;
@@ -321,6 +321,24 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
       terminal.sha256);
   }
   const paymentProof=paymentChecks?readTextDirect330(source):undefined;
+  const paymentRemainderProof=textDirectInputs?.paymentRemainder?readPaymentRemainder331(source):undefined;
+  function readPaymentRemainder331(db) {
+    const proof=JSON.parse(sql(owner,db,`SELECT jsonb_build_object(
+      'historicalRowsUnchanged', NOT EXISTS(SELECT FROM public."PaymentRequest" WHERE "remainingWithdrawnCents" IS NOT NULL),
+      'validatedConstraint', (SELECT convalidated FROM pg_catalog.pg_constraint
+        WHERE conrelid='public."PaymentRequest"'::regclass AND conname='PaymentRequest_remaining_withdrawn_cents_check'),
+      'enabledGuards', (SELECT coalesce(jsonb_agg(jsonb_build_array(t.tgname,p.proname,p.prosecdef) ORDER BY t.tgname), '[]'::jsonb)
+        FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid
+        WHERE t.tgenabled='O' AND (
+          (t.tgrelid='public."PaymentRequest"'::regclass AND t.tgname='PaymentRequest_remaining_withdrawal_guard') OR
+          (t.tgrelid='public."PaymentExecution"'::regclass AND t.tgname='PaymentExecution_withdrawn_remainder_guard')))
+    );`));
+    assert.deepEqual(proof,{historicalRowsUnchanged:true,validatedConstraint:true,enabledGuards:[
+      ['PaymentExecution_withdrawn_remainder_guard','jg_guard_withdrawn_payment_execution_v1',true],
+      ['PaymentRequest_remaining_withdrawal_guard','jg_guard_payment_remaining_withdrawal_v1',false]
+    ]});
+    return proof;
+  }
   function readTextDirect330(db) {
     const historical=paymentRows(sql(owner,db,paymentRowsSql(true)),true);
     assert.deepEqual(historical,textDirectInputs.historical,'BACKUP330_HISTORICAL_PAYMENTS_CHANGED');
@@ -436,6 +454,10 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
       assert.deepEqual(readTextDirect330(source),paymentProof,'BACKUP330_SOURCE_PAYMENT_CATALOG');
       verifyTextDirect330NamedDenials(restoreDb);
     }
+    if(paymentRemainderProof){
+      assert.deepEqual(readPaymentRemainder331(restoreDb),paymentRemainderProof);
+      assert.deepEqual(readPaymentRemainder331(source),paymentRemainderProof);
+    }
     if (forward320) {
       for (const role of [backupRole,bankRuntime])
         for (const table of profile.technical)
@@ -452,6 +474,7 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
       businessTables:dataCount.tables,restoredDataPayloads:dataCount.payloads,
       protectedTables:technicalCount.tables,protectedPayloads:technicalCount.payloads,
       history,sourceKeyRows:beforeKeys.keyCount,ownerOnlyRekeyed:true,namedNegativeTests:true,probes,
+      ...(paymentRemainderProof?{paymentRemainder331:paymentRemainderProof}:{}),
       ...(paymentProof?{textDirect330:{...paymentProof,oldColumnProjectionMatched:true,newColumnNull:true,
         sourceAndRestoredCatalogMatched:true,sourceAndRestoredNamedExecutionDenied:true}}:{})};
   } finally {

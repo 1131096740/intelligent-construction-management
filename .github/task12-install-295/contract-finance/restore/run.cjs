@@ -8,19 +8,21 @@ const {runBackup295,prepareBackup295,runBackup320,verifyLease} = require('./back
 const admission=require('./committed-admission.json');
 const {admitSource} = require('./install-only292.cjs');
 const {checkClosure} = require('./verify-behavior.cjs');
-const {withCombined295MultiWitnessForRestore,withCombined320ContractPaymentForRestore,withCombined330ContractPaymentForRestore} = require('./installer.cjs');
+const {withCombined295MultiWitnessForRestore,withCombined320ContractPaymentForRestore,withCombined330ContractPaymentForRestore,withCombined331PaymentRemainderForRestore} = require('./installer.cjs');
 const bank = require('./named-roles/contract-finance-owned-ci.cjs');
 const correctionRoot='/qualification/workspace', loanRoot='/qualification/loan-workspace';
 const correction=require(correctionRoot+'/services/api/prisma/run-task398-shared-standard-local.cjs').runTask398Owned282Voucher;
 const loan=require(loanRoot+'/services/api/prisma/contract-finance-owned-ci.cjs').verify;
 const args=process.argv.slice(2);
 const current320=args[0]==='--current-320';
-const textDirect330=args[0]==='--text-direct-330';
+const paymentRemainder331=args[0]==='--payment-remainder-331';
+const textDirect330=paymentRemainder331||args[0]==='--text-direct-330';
 const forward=current320||textDirect330;
-const count=textDirect330?330:current320?329:295;
+const count=paymentRemainder331?331:textDirect330?330:current320?329:295;
 const runArgs=forward?args.slice(1):args;
 const source=forward?require('./current320-source.json'):undefined;
-const profile330=textDirect330?require('./text-direct-330-profile.cjs'):undefined;
+const paymentProfile=paymentRemainder331?require('./payment-remainder-331-profile.cjs'):
+  textDirect330?require('./text-direct-330-profile.cjs'):undefined;
 const receipt={schemaVersion:1,purpose:'NTF04_NAMED_RESTORE_EXACT_'+count,
   candidateSha:source?.sourceSha??admission.head,...(forward?{fixturePredecessorSha:admission.head}:{}),
   ...(textDirect330?{candidateTree:source.sourceTree,fixturePredecessorSourceSha256:admission.predecessorSourceSha256}:{}),
@@ -72,7 +74,7 @@ async function namedRoles(context,forward320){
 async function main(){
   assert.ok(runArgs.length===0||(runArgs.length===1&&runArgs[0]==='--preflight'));
   if(textDirect330){
-    profile330.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
+    paymentProfile.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
     assert.match(admission.head,/^[a-f0-9]{40}$/u);
     assert.notEqual(source.sourceSha,admission.head);
     assert.match(admission.predecessorSourceSha256,/^[a-f0-9]{64}$/u);
@@ -111,11 +113,12 @@ async function main(){
     loan:async ctx=>{ await verifyLease(ctx); return loan('affiliate',ctx); },
   };
   if(forward){
-    const install=textDirect330?withCombined330ContractPaymentForRestore:withCombined320ContractPaymentForRestore;
+    const install=paymentRemainder331?withCombined331PaymentRemainderForRestore:
+      textDirect330?withCombined330ContractPaymentForRestore:withCombined320ContractPaymentForRestore;
     await install(receipt,
       context=>prepareBackup295(context,receipt,admission,{...fixtures,textDirect330}),
       context=>{
-        if(textDirect330) profile330.assertInstallation(receipt,source);
+        if(textDirect330) paymentProfile.assertInstallation(receipt,source);
         return runBackup320(context,receipt,{namedRoles:ctx=>namedRoles(ctx,receipt.forward320),
           textDirectSource:textDirect330?source:undefined});
       },
@@ -124,7 +127,7 @@ async function main(){
     assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
     assert.equal(receipt.combinedAfterBusiness.exactB7,true);
     if(textDirect330) {
-      assert.equal(receipt.combinedAfterBusiness.count,330);
+      assert.equal(receipt.combinedAfterBusiness.count,count);
       assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
       assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);
     }
