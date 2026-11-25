@@ -12,7 +12,7 @@
   "bank/execution-files.json": {
     "kind": "execution-manifest",
     "material": "db8782be2783ac8c1b21d9026ea45ccd0eb4f8c81298ebbb9a898ca37e4c29b2.gz",
-    "sha256": "4f5827cf420c8350d104ece827ae4905fd78268c0158f8d424f7075f4ea01487"
+    "sha256": "0420f9904e2d7382fb6cdf46a3010d8cd3ef1448e219e1323408613e939a6fe5"
   },
   "bank/overlay/services/api/src/database/project-affiliate-company-contract-db.spec.ts": {
     "kind": "full",

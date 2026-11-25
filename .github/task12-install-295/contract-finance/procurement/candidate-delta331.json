@@ -15,6 +15,11 @@
     "candidate": "b2a444f14a3cd2be34e47a9f44203d88d40d18b5aab16e0700f4e558d36fcaa0"
   },
   {
+    "path": "services/api/prisma/run-general-procurement-local.cjs",
+    "expected": "389f233eed384d4df8d545806144cd84270e13ac78b47c7fbe47584f9bf30e0d",
+    "candidate": "a0e31ebf60a62d326eb2f414140b3edd4cb894928584d1c9a9c64669e36b4af7"
+  },
+  {
     "path": "services/api/prisma/schema.prisma",
     "expected": "8154b5a52bee19a0a105ea949f2fb272f6876f7c92fbf1e0b57b0104d93b87be",
     "candidate": "bf8b928aa96efab0190163b1fefc9a3807ae1851466d6dadd2881e99ac748cd3"
@@ -33,6 +38,16 @@
     "path": "services/api/src/auth/guards/permission.guard.ts",
     "expected": "8ccc2c3808ddd45837ed115202395a4f87dcc51aa4e015f4590b4f97e40021f1",
     "candidate": "df71d511cf467d0ff93124590b4e71d6ee951d527d089f934879a3033c4b8655"
+  },
+  {
+    "path": "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts",
+    "expected": "e99beb176be2538e9424ef558241f0720e59f812c6723f2006a8e08d71046de2",
+    "candidate": "15624976dfb386833ba27bc3178da644b3873c950d87b2b769f9c134a298da23"
+  },
+  {
+    "path": "services/api/src/general-procurement/general-procurement-request-access.ts",
+    "expected": "49c07fa69ddf3d4d518a15b97aba45782e79482549afd6d41f012ce7eeadbd2a",
+    "candidate": "dbc611ed6488fa32c8794a0244a087e5239b2fd22117704ba38fbd2c0bbeb456"
   },
   {
     "path": "services/api/src/me/me.service.ts",
