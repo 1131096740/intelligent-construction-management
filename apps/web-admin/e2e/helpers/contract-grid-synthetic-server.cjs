@@ -233,7 +233,24 @@ async function main() {
       heldSaveRequest = null;
       state = clone(initialState);
       const preset = request.body?.preset;
-      if (preset !== undefined && !["legacy-null-zero", "two-drafts", "prior-owner-deletion", "file-permissions", "existing-layout", "unit-search"].includes(preset)) return response.status(400).json({ message: "未知合成初始场景" });
+      if (preset !== undefined && !["legacy-null-zero", "two-drafts", "prior-owner-deletion", "file-permissions", "existing-layout", "unit-search", "net-framework", "net-fixed"].includes(preset)) return response.status(400).json({ message: "未知合成初始场景" });
+      if (preset === "net-framework" || preset === "net-fixed") {
+        const draftVersion = state.contractVersion[0];
+        draftVersion.draftData.contractBasics = { amountBasis: "tax_exclusive", invoiceStatus: "pending" };
+        Object.assign(draftVersion, { invoiceType: null, defaultTaxRatePercent: null });
+        const unknownBillTotals = {
+          taxExclusiveAmountYuan: null, taxInclusiveAmountYuan: null, taxAmountYuan: null,
+          taxExclusiveAmountCents: null, taxInclusiveAmountCents: null, taxAmountCents: null
+        };
+        Object.assign(state.contractBill[0], { pricingMode: "tax_exclusive", defaultTaxRatePercent: null, ...unknownBillTotals });
+        if (preset === "net-framework") {
+          Object.assign(draftVersion, { pricingNature: "framework", amountLimitType: "unlimited", amountCents: 0n, amountYuan: null });
+          state.contractBillRow = [{ ...state.contractBillRow[0], quantity: null, taxRate: null, ...unknownBillTotals }];
+        } else {
+          Object.assign(draftVersion, { pricingNature: "fixed_total", amountSource: "manual", amountCents: 153n, amountYuan: D("1.5340") });
+          state.contractBillRow = [];
+        }
+      }
       if (preset === "unit-search") state.businessParty = [{ id: "grid-existing-unit", name: "已有材料单位", type: "organization", status: "active", unifiedSocialCreditCode: null, createdAt: now, updatedAt: now }];
       if (preset === "legacy-null-zero") {
         const historical = { ...clone(rows[0]), itemName: "六位历史原事实", quantity: D("1.234567"), unitPrice: D("2.345678"), taxExclusiveUnitPrice: D("8.027106"), numericProtocolVersion: 1, numericSource: "legacy_cents", numericReviewStatus: "not_assessed", precisionPolicy: "legacy", taxInclusiveAmountYuan: null, taxExclusiveAmountYuan: null, taxAmountYuan: null, taxInclusiveAmountCents: 991n, taxExclusiveAmountCents: 991n, taxAmountCents: 0n };

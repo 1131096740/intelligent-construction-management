@@ -859,6 +859,41 @@ test("keeps unknown totals distinct from an explicitly zero selected row", async
   await expect(page.getByTestId("bill-selected-total")).toContainText("0.0000 元");
 });
 
+test("uses the selected tax basis for a framework without quantities and a lump sum without rows (A09)", async ({ page, request }) => {
+  const session = await (await request.get("/api/__grid_fixture/session")).json();
+  const headers = { authorization: `Bearer ${session.accessToken}`, "x-contract-numeric-protocol": "2" };
+  const read = async () => {
+    const response = await request.get("/api/contract-drafts/grid-version/workbench", { headers });
+    expect(response.status()).toBe(200);
+    return response.json();
+  };
+  const openDraft = async (preset: string) => {
+    expect((await request.post("/api/__grid_fixture/reset", { headers, data: { preset } })).status()).toBe(200);
+    await page.goto("/合同工作台/grid-contract?versionId=grid-version");
+  };
+  const pricing = page.locator('section[data-section-id="bill_tax"]');
+  await openDraft("net-framework");
+  const framework = await read();
+  expect(framework.version).toMatchObject({
+    pricingNature: "framework", amountYuan: null,
+    taxFacts: { invoiceType: null, defaultTaxRatePercent: null },
+    draftData: { contractBasics: { amountBasis: "tax_exclusive", invoiceStatus: "pending" } }
+  });
+  expect(framework.bills[0].rows[0]).toMatchObject({ quantity: null, taxInclusiveAmountYuan: null, taxAmountYuan: null });
+  await expect(pricing.getByText("不设合同总价；按实际发生量结算", { exact: true })).toBeVisible();
+  await expect(pricing.getByText("清单中的不含税单价是合同事实，预计数量和预计金额仅供参考，不形成合同上限。", { exact: true })).toBeVisible();
+
+  await openDraft("net-fixed");
+  const fixed = await read();
+  expect(fixed.version).toMatchObject({
+    pricingNature: "fixed_total", amountSource: "manual", amountYuan: "1.5340",
+    taxFacts: { invoiceType: null, defaultTaxRatePercent: null }
+  });
+  expect(fixed.bills.every((bill: { rows: unknown[] }) => bill.rows.length === 0)).toBe(true);
+  await expect(pricing.getByText("手工录入不含税总价", { exact: true })).toBeVisible();
+  await expect(pricing.getByPlaceholder("请输入不含税合同金额，未知可留空", { exact: true })).toHaveValue("1.5340");
+});
+
 test("uses select-all and Escape only inside the row checkbox while native text selection stays native", async ({ page }) => {
   await page.clock.install();
   await page.goto("/合同工作台/grid-contract?versionId=grid-version");

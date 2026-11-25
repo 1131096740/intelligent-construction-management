@@ -277,9 +277,9 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     await owner?.$disconnect();
   });
 
-  if (process.env.RUN_LINE_A_TEXT_DIRECT_330 === "1") it("serializes the actual text agreement cap and freezes the reviewed supplement fingerprint", async () => {
+  if (process.env.RUN_LINE_A_TEXT_DIRECT_330 === "1") it("preserves contract amounts and payment history after reviewed supplements (A09)", async () => {
     const agreement = "完成服务经双方确认后支付";
-    const supplement = "补充协议约定每月核对实际服务后付款";
+    const supplement = "补充协议约定按合同总价的 5% 核对付款";
     const actualDays = new Date();
     actualDays.setUTCDate(actualDays.getUTCDate() - 1);
     const seed = async (name: string, knownLimit: boolean) => {
@@ -332,16 +332,25 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       approvedAmountCents: null, contractDueBasis: "text_agreement_v1", paymentTermsStageId: null, settlementId: null
     });
     const firstId = approvedCapacity[0].id;
+    const firstPath = "/payments/" + firstId;
+    const before = await call("staff", firstPath);
+    expect(before.status).toBe(200);
+    expect(readBaseInfo(before.body, "付款约定原文")).toBe(agreement);
     expect(await owner.paymentRequestAgreementSnapshot.findUnique({ where: { paymentRequestId: firstId } })).toMatchObject({ agreementText: agreement });
 
     const pdf = await PDFDocument.create();
     pdf.addPage();
     const bytes = Buffer.from(await pdf.save());
-    const objectKey = "uploads/line-a/text-agreement-supplement.pdf";
-    await writeFile(join(process.env.FILE_STORAGE_ROOT!, objectKey), bytes, { mode: 0o600 });
-    const appendix = await owner.fileObject.create({ data: { bucket: "private-local", objectKey,
-      originalName: "零阶段合同已签补充协议.pdf", mimeType: "application/pdf", sizeBytes: bytes.length,
-      uploadedByUserId: ids.staff, contentSha256: sha(bytes), storageStatus: "active" } });
+    const uploadAppendix = async (name: string) => {
+      const form = new FormData();
+      form.append("file", new Blob([bytes], { type: "application/pdf" }), name);
+      const upload = await fetch(`${base}/files`, {
+        method: "POST", headers: { authorization: `Bearer ${tokens.get("staff")}` }, body: form
+      });
+      expect(upload.status).toBe(201);
+      return await upload.json() as { id: string };
+    };
+    const appendix = await uploadAppendix("零阶段合同已签补充协议.pdf");
     const pending = await call("staff", "/contracts/" + capped.version.id + "/signed-changes", {
       fileId: appendix.id, summary: "核对零阶段服务合同付款约定",
       amountDeltaYuan: "0.0000", paymentAgreementText: supplement
@@ -350,6 +359,12 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     expect((await call("director", "/contracts/" + capped.version.id + "/signed-changes/" + pending.body.id + "/review", {
       decision: "approve"
     })).body.status).toBe("approved");
+    const after = await call("staff", firstPath);
+    expect(after.body.meta).toContainEqual({ label: "付款约定", value: "约定已更新，请核对提交时和最新约定" });
+    expect(readBaseInfo(after.body, "提交时付款约定")).toBe(agreement);
+    expect(readBaseInfo(after.body, "最新付款约定")).toBe(supplement);
+    expect(readBaseInfo(after.body, "申请金额")).toBe(readBaseInfo(before.body, "申请金额"));
+    expect(await owner.paymentRequest.findUnique({ where: { id: firstId } })).toEqual(approvedCapacity[0]);
     expect(await owner.paymentRequestAgreementSnapshot.findUnique({ where: { paymentRequestId: firstId } })).toMatchObject({ agreementText: agreement });
     const stale = await callRaw("staff", "/payments", { ...input, code: "LINEA-TEXT-STALE", requestedAmountCents: "10000" });
     expect(stale.status).toBe(409);
@@ -363,6 +378,20 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     expect(current.status).toBe(201);
     const request = await owner.paymentRequest.findUniqueOrThrow({ where: { code: "LINEA-TEXT-FRESH" } });
     expect(await owner.paymentRequestAgreementSnapshot.findUnique({ where: { paymentRequestId: request.id } })).toMatchObject({ agreementText: supplement });
+    const framework = "/contracts/" + uncapped.version.id + "/signed-changes";
+    const frameworkAppendix = await uploadAppendix("框架服务范围补充协议.pdf");
+    const submitted = await call("staff", framework, {
+      fileId: frameworkAppendix.id, summary: "增补巡检服务范围，单价变更为每次六十元", amountDeltaYuan: "0.0000"
+    });
+    expect(submitted.body).toMatchObject({ status: "pending_review", precedingAmountYuan: null, effectiveAmountYuan: null });
+    expect((await call("director", `${framework}/${submitted.body.id}/review`, { decision: "approve" })).body.status).toBe("approved");
+    expect((await call("staff", framework)).body).toMatchObject({
+      originalAmountYuan: null, effectiveAmountYuan: null,
+      changes: [expect.objectContaining({ id: submitted.body.id, status: "approved", effectiveAmountYuan: null })]
+    });
+    expect((await preview(uncapped.version.id)).body.genericContractCapacity).toMatchObject({
+      contractAmountCents: null, contractRemainingCents: null
+    });
     expect(await owner.paymentTermsStage.count({ where: { paymentTermsVersionId: { in: [capped.terms.id, uncapped.terms.id] } } })).toBe(0);
     expect(await owner.settlement.count({ where: { contractId: { in: [capped.contract.id, uncapped.contract.id] } } })).toBe(0);
   });

@@ -56,7 +56,7 @@
       class="framework-note"
     >
       <strong>不设合同总价；按实际发生量结算</strong>
-      <span>清单中的含税单价是合同事实，预计数量和预计金额仅供参考，不形成合同上限。</span>
+      <span>清单中的{{ amountBasisLabel }}单价是合同事实，预计数量和预计金额仅供参考，不形成合同上限。</span>
     </div>
   </div>
 </template>
@@ -86,11 +86,6 @@ const pricingNatureOptions = [
   { label: "单价计量", value: "unit_price" },
   { label: "框架协议", value: "framework" }
 ];
-const amountSourceOptions = [
-  { label: "手工录入含税总价", value: "manual" },
-  { label: "由计价清单汇总", value: "bill_sum" }
-];
-
 const amountLimitType = computed(() => {
   const version = props.workbench?.version as unknown as { amountLimitType?: unknown } | undefined;
   return version?.amountLimitType === "unlimited" ? "unlimited" : "capped";
@@ -114,9 +109,9 @@ const amountBasisLabel = computed(() =>
 const amountSourceLabel = computed(() =>
   policyKind.value === "unlimited_framework"
     ? "不形成合同总价"
-    : amountSourceOptions.find(
-        (option) => option.value === amountSourceFor(policyKind.value)
-      )?.label ?? "—"
+    : policyKind.value === "fixed_total_without_bill"
+      ? `手工录入${amountBasisLabel.value}总价`
+      : "由计价清单汇总"
 );
 
 function pricingPolicyFor(pricingNature: string): PricingPolicyKind {
