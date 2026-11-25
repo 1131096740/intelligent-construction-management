@@ -10,6 +10,11 @@
     "candidate": "54a26a0ca0b43b5aeafb0b7be05629af8eef6bf06f936983db7344dac2cc79a5"
   },
   {
+    "path": "services/api/src/contract-template/template-management.test-support.ts",
+    "expected": "a456d498881dddabcfbf987fa46ce69fb9b3f9c3e41f39d3ec7fc9758da5852f",
+    "candidate": "03f0a6360cf7cd2a806e3cb1bf7a5a5933d1e8c1cd6a57f8568bad066fbfca4b"
+  },
+  {
     "path": "services/api/src/contract/contract-direct-outside-operating-executor-qualification.ts",
     "expected": "5c468d12c0b3c7511155df89af688dd35de86093397f6e20e099f4a379dbb7a9",
     "candidate": "e8dfaed6e34613de8d9abe47fa5f450bcb837d08a861c60b4a461591c7a19bd1"
@@ -48,5 +53,15 @@
     "path": "services/api/src/contract/contract-upward-pending-save.ts",
     "expected": "a6bc604f99e17ef8f68b39d01a3d8df787b11cc9560297e0aa6ad2f26b7cd648",
     "candidate": "7fd73c7e91985e51ec269bb31a7acf1674d3958ad04ed67612eab7c695dc4c31"
+  },
+  {
+    "path": "services/api/src/spot-procurement/spot-procurement-access.service.spec.ts",
+    "expected": "4b39e2a90b52ca8b5c81ba08336cf86d5e5aba9c2071df59a562d17ae934a602",
+    "candidate": "c91350d9082fa465c4bbd3571ec119375c33f70a0294ada20b006ff89b67b627"
+  },
+  {
+    "path": "services/api/src/spot-procurement/spot-procurement-access.service.ts",
+    "expected": "cc0b83829977687ee812966ca232ee885362fc257d5e824adbeb0b9a7b9e6c9d",
+    "candidate": "d304f142d01a8aaa2b6accc0509b843f62ad651dd9509c09cfe5130ff56526bb"
   }
 ]
