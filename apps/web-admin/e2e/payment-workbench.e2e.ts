@@ -105,7 +105,15 @@ function paymentApprovalDetail(
   };
 }
 
+async function mockPaymentDetailReaders(page: Page) {
+  await page.route("**/api/projects", route =>
+    route.fulfill({ json: [{ id: "project-1", code: "P001", name: "科技园项目" }] }));
+  await page.route("**/api/approval-forms/payment_request/*/capability", route =>
+    route.fulfill({ json: { available: false } }));
+}
+
 async function mockPaymentApprovalShell(page: Page) {
+  await mockPaymentDetailReaders(page);
   await page.route("**/api/auth/login", (route) =>
     route.fulfill({
       contentType: "application/json",
@@ -240,6 +248,7 @@ function paymentExecutionDetail(paymentId: string) {
 }
 
 async function mockPaymentExecutionShell(page: Page) {
+  await mockPaymentDetailReaders(page);
   await page.route("**/api/auth/login", (route) =>
     route.fulfill({
       contentType: "application/json",

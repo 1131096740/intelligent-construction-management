@@ -484,8 +484,8 @@ test("renders A4 application, A5 payment and historical receipt without legacy b
   ]) {
     await expect(page.getByRole("columnheader", { name: heading, exact: true })).toBeVisible();
   }
-  await expect(page.getByText("实付 ¥2,200.00 / 退款 ¥0.00 / 剩余 ¥2,200.00", { exact: true })).toBeVisible();
-  await expect(page.getByText("待确认收货 / 待补发票", { exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByText("实付 ¥2,200.00 / 退款 ¥0.00 / 剩余 ¥2,200.00", { exact: true })).toBeVisible();
+  await expect(page.getByRole("table").getByText("待确认收货 / 待补发票", { exact: true })).toBeVisible();
   await expect(page.getByText("收货与发票", { exact: true })).toHaveCount(0);
   await expect(page.getByText("转商户余额", { exact: true })).toHaveCount(0);
   const paymentLedgerRow = page.getByRole("row").filter({ hasText: "LXFK-E2E-001" });
@@ -527,7 +527,10 @@ test("renders A4 application, A5 payment and historical receipt without legacy b
   expect(taskGridColumns.trim().split(/\s+/)).toHaveLength(1);
   await expectNoDocumentHorizontalOverflow(page);
   await expectNoNestedHorizontalScrollers(page);
-  await expectHorizontalScrollOwner(page.locator(".jg-table-region .t-table__content"));
+  await expect(page.locator(".jg-table-region .t-table__content")).toBeHidden();
+  const mobilePayment = page.locator("article.business-mobile-card").filter({ hasText: "LXFK-E2E-001" });
+  await expect(mobilePayment).toBeVisible();
+  await expect(mobilePayment.getByText("实付 ¥2,200.00 / 退款 ¥0.00 / 剩余 ¥2,200.00", { exact: true })).toBeVisible();
   await page.screenshot({
     path: path.join(testInfo.outputDir, "spot-procurement-payment-workbench-390x844.png"),
     fullPage: true
@@ -546,9 +549,10 @@ test("renders A4 application, A5 payment and historical receipt without legacy b
   await expect(page.getByText("材料摘要", { exact: true })).toBeVisible();
   await expect(page.getByText("已付金额", { exact: true })).toBeVisible();
   await expect(page.getByText("收货责任人/受托人", { exact: true })).toBeVisible();
-  await expect(page.getByText("免烧砖（240×115×53）", { exact: true })).toBeVisible();
-  await expect(page.getByText("物资员甲（委托：受托人乙）", { exact: true })).toBeVisible();
-  await expect(page.getByText("待确认收货", { exact: true })).toBeVisible();
+  const receiptLedger = page.getByRole("table");
+  await expect(receiptLedger.getByText("免烧砖（240×115×53）", { exact: true })).toBeVisible();
+  await expect(receiptLedger.getByText("物资员甲（委托：受托人乙）", { exact: true })).toBeVisible();
+  await expect(receiptLedger.getByText("待确认收货", { exact: true })).toBeVisible();
 
   await page.goto("/零星采购收货/procurement-1");
   await expect(page.getByText("历史收货明细", { exact: true })).toBeVisible();
@@ -934,7 +938,7 @@ test("fails closed when switching A5 payment routes and discards stale merchant 
     paymentBSubmits += 1;
     await route.fulfill({ contentType: "application/json", body: "{}" });
   });
-  await page.route("**/api/files", (route) => { pendingUploads.push(route); });
+  await page.route(/\/api\/spot-procurement-payments\/payment-[AB]\/draft-file-uploads$/u, (route) => { pendingUploads.push(route); });
   await page.route("**/api/spot-procurement-payments?*", async (route) => {
     const projectId = new URL(route.request().url()).searchParams.get("projectId");
     if (projectId === "project-A") {

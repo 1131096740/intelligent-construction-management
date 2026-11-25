@@ -331,7 +331,7 @@ test("已批待付款报销只通过受权接口调整实际付款主体并显�
   await login(page);
 
   await page.goto("/费用与报销工作台");
-  await page.getByText("BX-20260723-001", { exact: true }).click();
+  await page.getByRole("table").getByText("BX-20260723-001", { exact: true }).click();
   await expect(page.getByRole("button", { name: "调整", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "调整", exact: true }).click();
   await expect(page.getByText("调整实际付款主体", { exact: true })).toBeVisible();
@@ -664,7 +664,8 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
     });
   });
   await page.route(url => url.pathname === "/api/expense-claims/expense-claim-1/capability", route => route.fulfill({ json: {
-    claimId: "expense-claim-1", availableActions: ["record_expense_claim_payment"],
+    claimId: "expense-claim-1",
+    availableActions: ["record_expense_claim_payment", ...(canAdjustPaymentSubject ? ["adjust_expense_claim_payment_subject"] : [])],
   } }));
   await page.route(url => url.pathname === "/api/expense-claims/expense-claim-1/payment-voucher-file-uploads", route =>
     route.fulfill({ status: 201, json: { id: "expense-file-1" } }));
