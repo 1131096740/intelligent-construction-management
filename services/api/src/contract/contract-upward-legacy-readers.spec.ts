@@ -2,7 +2,8 @@ import { Prisma } from "@prisma/client";
 import { matchesDirectOutsideOperatingReader } from "./contract-direct-outside-operating-reader-catalog";
 import { qualifiedUpwardConstraintOid, qualifiedUpwardConstraintSha, type UpwardLegacyProjection } from "./contract-upward-archive-catalog";
 import { observeTask12DirectSourceDiagnostic } from "./task12-direct-source-diagnostic";
-import { UPWARD_NORMAL_GENERATED_PROJECTION_SHA256, UPWARD_NORMAL_VOUCHER_PROJECTION_SHA256, UPWARD_OUTSIDE_CHECK_PROJECTION_SHA256, UPWARD_PROJECTION_SOURCE_SHA256, UPWARD_SOURCE_DEFINERS } from "./contract-upward-direct-source-pins";
+import { UPWARD_NORMAL_GENERATED_PROJECTION_SHA256, UPWARD_NORMAL_VOUCHER_PROJECTION_SHA256, UPWARD_OUTSIDE_CHECK_PROJECTION_SHA256, UPWARD_PROJECTION_SOURCE_SHA256, UPWARD_SIGNED_CHANGE_FILE_ADMISSION_SHA256, UPWARD_SIGNED_CHANGE_FILE_PROJECTION_SHA256, UPWARD_SOURCE_DEFINERS } from "./contract-upward-direct-source-pins";
+import { readUpwardArchiveAdmission } from "./contract-upward-direct-archive-native";
 import { assertUpwardPendingSaveContinuity, qualifyUpwardPendingSave } from "./contract-upward-pending-save-profile";
 
 // Existing pre-closure qualification fixture; the new source may not silently replace it.
@@ -71,7 +72,8 @@ function syntheticProjection() {
 function successorClient(current: () => ReturnType<typeof syntheticProjection>, profile = legacyProfile, projectionSource = UPWARD_PROJECTION_SOURCE_SHA256) {
   return { $queryRaw: async (query: Prisma.Sql) => {
     const text = query.strings.join("?");
-    if (text.includes("contract_upward_archive_projection_probe_v2")) return [{ status: "qualified", projectionSource, projectionOid: "49001", closureOid: "49002",
+    if (text.includes("contract_upward_archive_projection_probe_v2")) return [{ status: query.values.includes(projectionSource) ? "qualified" : "invalid",
+      projectionSource, projectionOid: "49001", closureOid: "49002",
       databaseOid: "13000", namespaceOid: "2200", anchorOwnerOid: "9001", currentRoleOid: "7001", sessionRoleOid: "7001",
       backendPid: 71201, transactionId: "500003" }];
     if (text.includes("contract_upward_archive_projection_read_v2")) return [{ projection: current() }];
@@ -119,6 +121,21 @@ describe("已核后继来源在原保存入口的连续性", () => {
   it("拒绝来自另一事务的后继目录响应", async () => {
     await expect(qualifyUpwardPendingSave(successorClient(() => ({ ...syntheticProjection(), transactionId: "500004" }))))
       .rejects.toMatchObject({ status: 503 });
+  });
+  it("接受签署资料后继的精确投影和准入正文，保留同一事务校验", async () => {
+    const projection = syntheticProjection();
+    const definer = projection.definers.find(row => row.signature === "public.jg_upward_archive_catalog_projection_v2()")!;
+    definer.bodySha256 = UPWARD_SIGNED_CHANGE_FILE_PROJECTION_SHA256;
+    const candidate = successorClient(() => projection, legacyProfile, UPWARD_SIGNED_CHANGE_FILE_PROJECTION_SHA256);
+    await expect(qualifyUpwardPendingSave(candidate)).resolves.toMatchObject(legacyProfile);
+    projection.transactionId = "500004";
+    await expect(qualifyUpwardPendingSave(candidate)).rejects.toMatchObject({ status: 503 });
+
+    const admission = { nonce: "10000000-0000-4000-8000-000000000001", databaseOid: "13000", roleOid: "7001",
+      backendPid: 71201, transactionId: "500003" };
+    const client = { $queryRaw: async (query: Prisma.Sql) => query.values.includes(UPWARD_SIGNED_CHANGE_FILE_ADMISSION_SHA256)
+      ? [admission] : [] } as unknown as Prisma.TransactionClient;
+    await expect(readUpwardArchiveAdmission(client)).resolves.toEqual(admission);
   });
 });
 
