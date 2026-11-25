@@ -5,7 +5,8 @@ umask 077
 [[ $# == 2 || ( $# == 3 && ( $3 == --current-320 || $3 == --text-direct-330 ) && $2 != pol275 ) ||
   ( $# == 3 && $3 == --payment-remainder-331 && $2 != pol275 ) ||
   ( $# == 3 && $3 == --upward-archive-332 && ( $2 == line-a || $2 == pol115-workbench || $2 == onboarding || $2 == procurement || $2 == cash-handover || $2 == principal-return ||
-    $2 == settlement || $2 == template || $2 == draft || $2 == v7 || $2 == invoice || $2 == pol279 || $2 == pol280 || $2 == company-proxy || $2 == expense-execution || $2 == expense-finance || $2 == expense-receipt || $2 == payment-execution ) ) ||
+    $2 == settlement || $2 == template || $2 == draft || $2 == v7 || $2 == invoice || $2 == pol279 || $2 == pol280 || $2 == company-proxy || $2 == expense-execution || $2 == expense-finance || $2 == expense-receipt || $2 == payment-execution ||
+    $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts || $2 == pol109 || $2 == task398-standard || $2 == task398-ledger-loss ) ) ||
   ( $# == 4 && $2 == pol275 && ( $3 == --current-320 || $3 == --text-direct-330 || $3 == --payment-remainder-331 ) && $4 =~ ^[a-f0-9]{40}$ ) ]] || exit 64
 sha=$1
 lane=$2
@@ -22,7 +23,7 @@ if [[ ${3:-} == --payment-remainder-331 ]]; then
     *) exit 64 ;;
   esac
 fi
-if [[ $lane == task398-ledger-loss && ${3:-} != --text-direct-330 && ${3:-} != --payment-remainder-331 ]]; then exit 64; fi
+if [[ $lane == task398-ledger-loss && ${3:-} != --text-direct-330 && ${3:-} != --payment-remainder-331 && ${3:-} != --upward-archive-332 ]]; then exit 64; fi
 root=$(git rev-parse --show-toplevel)
 plan=$(cd "$(dirname "$0")" && pwd -P)
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-contract-adjacent.XXXXXXXX")
@@ -47,13 +48,18 @@ case "$lane" in
   line-a) bash "$plan/run-line-a.sh" "$work/source" "$sha" "$work/browser" ;;
   task398-ledger-loss)
     variant=ledger-loss-330
-    if [[ $3 == --payment-remainder-331 ]]; then variant=ledger-loss-331; fi
+    case "$3" in
+      --payment-remainder-331) variant=ledger-loss-331 ;;
+      --upward-archive-332) variant=ledger-loss-332 ;;
+    esac
     bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work/browser" "$variant" ;;
   task398-standard)
     if [[ ${3:-} == --text-direct-330 ]]; then
       bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work/browser" standard-330
     elif [[ ${3:-} == --payment-remainder-331 ]]; then
       bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work/browser" standard-331
+    elif [[ ${3:-} == --upward-archive-332 ]]; then
+      bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work/browser" standard-332
     fi
     bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work/browser"
     ;;
