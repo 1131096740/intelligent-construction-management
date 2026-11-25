@@ -15,7 +15,7 @@ scope=$5
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const count=source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
   console.log(count);
 ' "$prepared/source.json" "$sha")
@@ -31,12 +31,16 @@ python3 "$plan/stage-task398-cash-principal.py" \
 overlay_files=()
 while IFS= read -r file; do overlay_files+=("$file"); done < "$work/overlay-files.txt"
 [[ ${#overlay_files[@]} == 7 ]] || exit 65
-if [[ $count == 330 ]]; then
+if (( count >= 330 )); then
   runner="$work/services/api/prisma/run-task398-shared-standard-local.cjs"
   runner_sha() { node -e 'const fs=require("node:fs"),{createHash}=require("node:crypto"); console.log(createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$runner"; }
   [[ $(runner_sha) == feb96f723d58b7108add5b193c710fc61f1f3280469d7e3766dbfdcf3fdd7b6d ]] || exit 65
   patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-principal-330.patch"
   [[ $(runner_sha) == df3fb0d359512f3a85ebb907b4c7b71fa72034b2c2ed2f5ee4b479c03db1ebbb ]] || exit 65
+  if [[ $count == 331 ]]; then
+    patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-principal-331.patch"
+    [[ $(runner_sha) == 6dacd1f230b28d13a76dc42e510affe8230f4fa8c87339624d1a4993814afb74 ]] || exit 65
+  fi
 fi
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL

@@ -1,14 +1,15 @@
 'use strict';
 const assert = require('node:assert/strict');
 const source = require('./contract-finance-source.json');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement} = require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder} = require('./installer.cjs');
 const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run-task398-shared-standard-local.cjs');
 
 const [lane] = process.argv.slice(2);
 assert.ok(process.argv.length===3&&['cash-handover','principal-return'].includes(lane));
 const textDirect=source.mode==='text-direct-330';
-const current320=textDirect||source.mode==='current-320';
-const count=textDirect?330:current320?329:295;
+const paymentRemainder=source.mode==='payment-remainder-331';
+const current320=paymentRemainder||textDirect||source.mode==='current-320';
+const count=paymentRemainder?331:textDirect?330:current320?329:295;
 const purpose='TASK398_CASH_PRINCIPAL_EXACT_'+count;
 const receipt = {schemaVersion:1,sourceSha:source.sourceSha,lane,purpose,business:'NOT_ENTERED',stages:[]};
 async function main(){
@@ -16,12 +17,18 @@ async function main(){
   assert.equal((current320?source.predecessor:source).ledgerSha256,require('./multi-witness.cjs').final);
   const consume=context=>runTask398Owned282Voucher(context,lane+'-'+count,receipt);
   if(current320){
-    const install=textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
+    const install=paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
     await install(receipt,consume,{sourceTree:source.sourceTree,
       migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails});
     assert.equal(receipt.forward320.sourceTree,source.sourceTree);
     assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
     assert.equal(receipt.forward320.sameBaseB7,true);
+    if(paymentRemainder) {
+      assert.deepEqual(receipt.paymentRemainderPredecessor,{
+        count:330,ledgerSha256:'12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f',
+        sameIdentity:true,sameBaseB7:true
+      });
+    }
   } else {
     await withCombined295MultiWitness(receipt,consume);
   }
