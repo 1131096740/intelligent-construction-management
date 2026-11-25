@@ -506,16 +506,25 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       where: { id: rejectedDraft.id },
       data: { state: "pending_review", submittedAt: new Date(), revision: { increment: 1 } }
     });
-    const review = await Promise.all([
+    const reviewInputs = [
       { id: accepted.id, revision: submitted.find(result => result.status === 201)!.body.revision as number },
       { id: inherited.id, revision: inherited.revision }
-    ].map(draft =>
-      callRaw("director", `${settlementPath}/${draft.id}/review`, { revision: draft.revision, decision: "confirm" })
-    ));
+    ];
+    const confirm = (draft: typeof reviewInputs[number]) =>
+      callRaw("director", `${settlementPath}/${draft.id}/review`, { revision: draft.revision, decision: "confirm" });
+    const review = await Promise.all(reviewInputs.map(confirm));
     expect(review.map(result => result.status).sort()).toEqual([201, 409]);
-    expect(review.find(result => result.status === 409)?.body.message).toContain("累计结算不得小于零");
-    const basis = await call("staff", `${settlementPath}/payment-basis?contractKind=downstream&contractId=${ids.contractG}`);
-    expect(basis.body).toMatchObject({ confirmedYuan: "2.0000", latestConfirmed: { amountYuan: "-8.0000" } });
+    const pending = reviewInputs[review.findIndex(result => result.status === 409)]!;
+    // The racing request can first hit a transaction conflict. Once the
+    // winner has settled, the losing original revision must fail the cap.
+    const confirmation = await confirm(pending);
+    expect(confirmation.status).toBe(409);
+    expect(confirmation.body.message).toContain("累计结算不得小于零");
+    expect(await owner.signedContractSettlement.findUniqueOrThrow({ where: { id: pending.id } }))
+      .toMatchObject({ state: "pending_review", revision: pending.revision, reviewedAt: null });
+    const overview = await call("staff", `${settlementPath}/contract-overview?contractKind=downstream&contractId=${ids.contractG}`);
+    expect(overview.body.confirmedYuan).toBe("2.0000");
+    expect(review.find(result => result.status === 201)?.body).toMatchObject({ state: "confirmed", amountYuan: "-8.0000" });
     expect(await owner.auditLog.count({
       where: { action: "settlement.signed_confirmed", businessId: { in: drafts.map(draft => draft.id) } }
     })).toBe(1);
@@ -528,20 +537,18 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       code: "LINEA-JS-LEGACY-H", periodLabel: "隔离历史一期", status: "effective",
       amountCents: 6_000n, payableAmountCents: 6_000n, paidAmountCents: 0n
     } });
-    const basisPath = `${settlementPath}/payment-basis?contractKind=downstream&contractId=${ids.contractH}`;
-    expect((await call("staff", basisPath)).body.confirmedYuan).toBe("60.0000");
+    const overviewPath = `${settlementPath}/contract-overview?contractKind=downstream&contractId=${ids.contractH}`;
+    expect((await call("staff", overviewPath)).body.confirmedYuan).toBe("60.0000");
 
     const draft = await newSignedDraft(ids.contractH, "LINEA-H-NEW-10", "10.0000");
     const submitted = await call("staff", `${settlementPath}/${draft.id}/submission`, { revision: draft.revision });
     expect(submitted.body.state).toBe("pending_review");
-    expect((await call("staff", basisPath)).body.confirmedYuan).toBe("60.0000");
+    expect((await call("staff", overviewPath)).body.confirmedYuan).toBe("60.0000");
     const reviewed = await call("director", `${settlementPath}/${draft.id}/review`, {
       revision: submitted.body.revision, decision: "confirm"
     });
-    expect(reviewed.body.state).toBe("confirmed");
-    expect((await call("staff", basisPath)).body).toMatchObject({
-      confirmedYuan: "70.0000", latestConfirmed: { id: draft.id, amountYuan: "10.0000" }
-    });
+    expect(reviewed.body).toMatchObject({ id: draft.id, state: "confirmed", amountYuan: "10.0000" });
+    expect((await call("staff", overviewPath)).body.confirmedYuan).toBe("70.0000");
     expect(await owner.settlement.findUniqueOrThrow({ where: { id: legacy.id } })).toEqual(legacy);
     expect(await owner.signedContractSettlement.count({ where: { contractId: ids.contractH, state: "confirmed" } })).toBe(1);
   });
