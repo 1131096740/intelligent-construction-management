@@ -4,6 +4,7 @@
   "services/api/prisma/database-dynamic-gate-manifest.json": "b2a444f14a3cd2be34e47a9f44203d88d40d18b5aab16e0700f4e558d36fcaa0",
   "services/api/prisma/migrations/20261129000000_payment_remaining_withdrawal/migration.sql": "67593637957ba372cbba7633334fb9896ba6adf472b0c1b9b6f1482c0d645fc2",
   "services/api/prisma/schema.prisma": "bf8b928aa96efab0190163b1fefc9a3807ae1851466d6dadd2881e99ac748cd3",
+  "services/api/prisma/task16-current259-payment-competition.test.cjs": "30e45e5d6e7cddc8f743b6ba55313f5efa13b77d708e51cbdeda6236ec467efa",
   "services/api/src/auth/guards/permission.guard.spec.ts": "fe875ba9595dcfa52bacf37a5b4e0c266947b4108800548a2742cfce2355d40c",
   "services/api/src/auth/guards/permission.guard.ts": "df71d511cf467d0ff93124590b4e71d6ee951d527d089f934879a3033c4b8655",
   "services/api/src/database/line-a-real-db.http.pg.spec.ts": "359dd87ba894ac23bafc866b7650b3b416542143ec097c7c891ab5ea623fc858",

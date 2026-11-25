@@ -20,6 +20,11 @@
     "candidate": "bf8b928aa96efab0190163b1fefc9a3807ae1851466d6dadd2881e99ac748cd3"
   },
   {
+    "path": "services/api/prisma/task16-current259-payment-competition.test.cjs",
+    "expected": "5108c9559b69513a1302af4e65e49f3a7ba7980a3e7993967068f2d4cbf6eb5f",
+    "candidate": "30e45e5d6e7cddc8f743b6ba55313f5efa13b77d708e51cbdeda6236ec467efa"
+  },
+  {
     "path": "services/api/src/auth/guards/permission.guard.spec.ts",
     "expected": "55a3f0503efcc1ad1282636fccbea839c3ba2e952e3cea59c3313f36414c6eaa",
     "candidate": "fe875ba9595dcfa52bacf37a5b4e0c266947b4108800548a2742cfce2355d40c"

@@ -41,7 +41,7 @@ shutil.copyfile(common/'installer.cjs',installer)
 if sha(installer)!='56f1bf763ccbd43485728c11784c8f2f58e970344582f4546cd13edb661e5432':
     raise SystemExit('PFQ_COMBINED_INSTALLER_PREIMAGE')
 subprocess.run(['git','apply','--unidiff-zero','-p0',str((plan/'pfq-installer-295.patch').resolve())],cwd=out,check=True)
-if sha(installer)!='5abc72ccbc382dbba75ab99e0ea84e8395b3144844d5332845654575bf1f272d':
+if sha(installer)!='f0d8e83e508c3f8c55ce2e5f56a3406f7ed517d49ee139ab0f5384b8f11b01c8':
     raise SystemExit('PFQ_COMBINED_INSTALLER_POSTIMAGE')
 patch(entry,plan/'pfq-entry-modes.patch')
 for file in out.iterdir():

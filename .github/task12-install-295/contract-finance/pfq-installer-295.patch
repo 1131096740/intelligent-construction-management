@@ -155,6 +155,11 @@
 -          const digest=hash(JSON.stringify(current.ledger));
 +        if (forward320.textDirect && qualifiedLedger.length===329) {
 +          const digest=hash(JSON.stringify(qualifiedLedger));
+@@ -846,2 +928,2 @@
+-        if (forward320.paymentRemainder && current.ledger.length===330) {
+-          const digest=hash(JSON.stringify(current.ledger));
++        if (forward320.paymentRemainder && qualifiedLedger.length===330) {
++          const digest=hash(JSON.stringify(qualifiedLedger));
 @@ -853 +935 @@
 -      receipt.forward320={count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
 +      receipt.forward320={count:qualifiedLedger.length,ledgerSha256:hash(JSON.stringify(qualifiedLedger)),observedLedgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
