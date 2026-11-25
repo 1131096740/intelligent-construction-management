@@ -84,6 +84,20 @@ for target in [owned_http,out/'task12-pol109-ci.cjs']:
         text=exactly(text,old_spec,sha(out/'project-close-profit.owned282.http.pg.spec.ts'))
         text=exactly(text,'a1be083076018686dd8afba68c44ff9c75502014',source_tree)
         text=exactly(text,"path.join(context.workDir,'prefixes/combined289/schema.prisma')",'context.combinedSchemaPath')
+        if count == 332:
+            anchor = "      receipt.toolFailure={stage,code,signal,overflow,"
+            diagnostics = r"""      if(stage==='JEST'){
+        let report;
+        try { report=JSON.parse(stdout); } catch {}
+        const failure=report?.testResults?.flatMap(suite=>suite.assertionResults??[])
+          .find(test=>test.status==='failed');
+        const message=failure?.failureMessages?.join('\n')??'';
+        const frame=/\b(project-close-profit(?:\.owned282\.http\.pg|-postgresql)\.spec\.ts):(\d+):(\d+)\b/u.exec(message);
+        receipt.jestFailure={passed:report?.numPassedTests,failed:report?.numFailedTests,
+          skipped:report?.numPendingTests,frame:frame?.slice(1)};
+      }
+"""
+            text=exactly(text,anchor,diagnostics+anchor)
     target.write_text(text)
 
 # The labeled image binds the complete input context before this runtime readback.
