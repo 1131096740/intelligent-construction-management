@@ -75,6 +75,11 @@
     "candidate": "70b52722b3dfa7ec4aacc70d02b19e5fa11bdbaa728b66dccf0dc9716f11ee77"
   },
   {
+    "path": "services/api/src/database/direct-payment-capacity-concurrency.spec.ts",
+    "expected": "de31ee9d13952de4b0a03e239e490703bc2787662bdb7f167f0a39b1535e0f6d",
+    "candidate": "a29c42e5969183edbf80cb0677db37f45efe11cedc1704b1826af95da0be92c7"
+  },
+  {
     "path": "services/api/src/database/task16-shared-standard-fixture.ts",
     "expected": "a89ccc4373a973d88c67b93c75b2d0072aa745a81c6b9c47401febdcf0822dc7",
     "candidate": "9a596a48851f73b80d45eccd2ffcf95d5c52b5af0f8df86f16c3d35148065cb3"

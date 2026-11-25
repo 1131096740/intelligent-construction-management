@@ -14,6 +14,7 @@
   "services/api/prisma/task16-current259-payment-competition.cjs": "5c97b492291a8d1c44834329d801d14703b7e3483087304f006faf92dd23d13c",
   "services/api/src/approval/approval-form.service.ts": "fabca21d3ca30c9878545c12e277be103d933329404eae287807c64eb3c50b80",
   "services/api/src/contract/contract-read.service.ts": "70b52722b3dfa7ec4aacc70d02b19e5fa11bdbaa728b66dccf0dc9716f11ee77",
+  "services/api/src/database/direct-payment-capacity-concurrency.spec.ts": "a29c42e5969183edbf80cb0677db37f45efe11cedc1704b1826af95da0be92c7",
   "services/api/src/database/task16-shared-standard-fixture.ts": "9a596a48851f73b80d45eccd2ffcf95d5c52b5af0f8df86f16c3d35148065cb3",
   "services/api/src/fund-movement/fund-movement.service.ts": "d34592585082c223b383520253e32e289551d28e9ca604ea9e1415b8cf2976de",
   "services/api/src/payment/dto/create-payment-request.dto.ts": "01129e70d4f798fc9def706cc4b3fe6301260326e80d8ddfab9629b430786d6c",

@@ -13,11 +13,12 @@ common="$plan/common"
 archive="$repo/.github/task12-install-289"
 scope=direct-capacity
 
-node -e '
+count=$(node -e '
   const source=require(process.argv[1]);
   const expected=source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==expected)process.exit(1);
-' "$prepared/source.json" "$sha"
+  console.log(expected);
+' "$prepared/source.json" "$sha")
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -26,11 +27,28 @@ fingerprint=$(cat "$build/context.sha256")
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 fixture="$archive/fixtures/direct-payment-capacity-concurrency.spec.ts"
+runner="$archive/remaining-direct-capacity.cjs"
 original="$prepared/prepared/context/workspace/services/api/src/database/direct-payment-capacity-concurrency.spec.ts"
-printf '%s  %s\n' \
-  '735b7c13cafc6a54930d9c6d862fb0fe4d04467329cc5f7fce83436ca0612f31' "$fixture" \
-  'de31ee9d13952de4b0a03e239e490703bc2787662bdb7f167f0a39b1535e0f6d' "$original" |
+archived_sha=735b7c13cafc6a54930d9c6d862fb0fe4d04467329cc5f7fce83436ca0612f31
+original_sha=de31ee9d13952de4b0a03e239e490703bc2787662bdb7f167f0a39b1535e0f6d
+if [[ $count == 330 ]]; then
+  original_sha=a29c42e5969183edbf80cb0677db37f45efe11cedc1704b1826af95da0be92c7
+fi
+printf '%s  %s\n' "$archived_sha" "$fixture" "$original_sha" "$original" |
   shasum -a 256 -c >/dev/null
+
+if [[ $count == 330 ]]; then
+  expected=7cfdc723eda2e728e82d58a8890d320a34b1be6d7745652058b32e10927eeddc
+  printf '%s  %s\n' d4fcf288002d404e86b7782ac6d9ce5c9795facf8cf2d8e424d3d02f33c521b9 "$runner" |
+    shasum -a 256 -c >/dev/null
+  install -m 0644 "$fixture" "$work/direct-payment-capacity-concurrency.spec.ts"
+  fixture="$work/direct-payment-capacity-concurrency.spec.ts"
+  (cd "$work" && git apply --unidiff-zero -p0 "$plan/direct-capacity-330.patch")
+  printf '%s  %s\n' "$expected" "$fixture" | shasum -a 256 -c >/dev/null
+  sed "s/$archived_sha/$expected/" "$runner" > "$work/remaining-direct-capacity.cjs"
+  runner="$work/remaining-direct-capacity.cjs"
+  chmod 0644 "$runner"
+fi
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
   --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory 4g
@@ -46,7 +64,7 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
 for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
-args+=(--mount "type=bind,src=$archive/remaining-direct-capacity.cjs,dst=/qualification/remaining-direct-capacity.cjs,readonly"
+args+=(--mount "type=bind,src=$runner,dst=/qualification/remaining-direct-capacity.cjs,readonly"
   --mount "type=bind,src=$fixture,dst=/qualification/workspace/services/api/src/database/direct-payment-capacity-concurrency.spec.ts,readonly")
 
 [[ -z $(docker ps -q) ]] || exit 65
