@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "2b7a456e5762c8573e2c7043871d675b90a0d1b75e5ddf25e314acc7b9a30b56",
+      "sha256": "ba5340eb5152ff2df50c5818c5da37ba6996e4dbf68a99b4f109e06a62426bfa",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "4370fae090b80a4c349f974eec8af0cc2d1cfa15b776d6dc85df20a26e28b264",
+      "sha256": "238df76960573257209faf114a21986af23b27f34b3a24d95f8fed6ba739069e",
       "status": "ready",
       "summary": {
         "registeredActionCount": 434,
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "9ed5c1e9a0fe64c9365af0ece46f4e08a2e0886b4c394e02490aed8a24e47269",
+      "sha256": "072544a2160add2a3d3ce305e61df8c193159596aab8a66070feec971fb39e3a",
       "status": "ready",
       "summary": {
         "routeCount": 879,
