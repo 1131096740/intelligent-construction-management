@@ -352,7 +352,7 @@ test("CI fans out independent static and database gates behind one stable summar
   assert.match(dynamic, /--candidate-sha "\$candidate_sha"/u);
   assert.match(dynamic, /--confirm LOCAL_PG16_DYNAMIC_GATE/u);
   assert.match(dynamic, /pnpm check:migration-baseline/u);
-  assert.match(dynamic, /329\) mode_args=\(--current-320\) ;;\s+330\) mode_args=\(--text-direct-330\) ;;/u);
+  assert.match(dynamic, /329\) mode_args=\(--current-320\) ;;\s+330\) mode_args=\(--text-direct-330\) ;;\s+331\) mode_args=\(--payment-remainder-331\) ;;\s+332\) mode_args=\(--upward-archive-332\) ;;/u);
   assert.match(
     dynamic,
     /"\$DYNAMIC_GROUP" == contract_finance_acceptance[^\n]*\n\s+if \(\( \$\{#mode_args\[@\]\} \)\); then\n\s+exec bash \.github\/task12-install-295\/contract-finance\/run\.sh "\$CI_SOURCE_SHA" "\$\{mode_args\[@\]\}" "\$predecessor"\n\s+fi\n\s+exec bash \.github\/task12-install-295\/contract-finance\/run\.sh "\$CI_SOURCE_SHA"/u
