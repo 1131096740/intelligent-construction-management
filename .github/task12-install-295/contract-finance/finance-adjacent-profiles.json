@@ -7,7 +7,7 @@
     "suite": "src/fund-execution/fund-execution-service.pg.spec.ts",
     "runnerSha256": "9341877301d1bd6268cb3a4871884666e3c835b0c748f0c485dd8f4eca546917",
     "fixture": false,
-    "suiteSha256": "b6e5c620eaf67a6f7617af1f8b3ea9f86f9dc9fd7127efe6e8a910698202ac79",
+    "suiteSha256": "536bf5d7ffa627e3720e4398539e0db24ec8d91d86e301d5cfe5d5157b103b8f",
     "legacySeed": {
       "revision": "704ab8220c9f66e9726d2b7a119a714a6e34e366",
       "files": {

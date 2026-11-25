@@ -211,6 +211,44 @@ it.each(["expense_claim", "project_expense_request"])(
   expect(sms.sendDutyIntent).not.toHaveBeenCalled();
 });
 
+it.each([
+  ["bank_transaction", "outflow", false],
+  ["bank_transaction", "inflow", true],
+  ["reversal", "outflow", true]
+])("only stops fresh reminders for the historical initial wage outflow (%s, %s)", async (executionKind, direction, canRemind) => {
+  const { service, db, sms, logs, instance } = fixture();
+  Object.assign(instance, { businessType: "fund_execution_case", businessId: "case-key",
+    flowType: "fund_execution_case.approve", frozenNodes: [
+      { name: "财务主管", mode: "any", roleKeys: ["finance_director"], candidateUserIdsByRole: { finance_director: ["first"] } }
+    ] });
+  db.position.findMany.mockResolvedValue([{ id: "p1", key: "finance_director" }]);
+  Object.assign(db, { fundExecutionCase: { findFirst: jest.fn().mockResolvedValue({
+    status: "submitted", approvalInstanceId: "flow", fundExecutionId: "execution"
+  }) }, fundExecution: { findUnique: jest.fn().mockResolvedValue({ executionKind, direction }) } });
+  const detail = await service.detail("flow", "first");
+  expect(detail).toMatchObject({ canHandle: true, canRemind, pendingRecipients: [{ id: "first" }] });
+  if (canRemind) {
+    await expect(service.remind("flow", "owner", requestId, detail.reminderToken)).resolves.toMatchObject({ id: "flow" });
+    expect(sms.send).toHaveBeenCalledTimes(1);
+    return;
+  }
+
+  const original = "22222222-2222-4222-8222-222222222222";
+  logs.push({ id: original, approvalInstanceId: "flow", actorUserId: "owner", action: "remind",
+    createdAt: new Date(0), metadata: { kind: "sms_request", currentNodeIndex: 0, recipientIds: ["first"] }
+  } as ApprovalActionLog);
+  expect(detail.remindableRecipients).toEqual([]);
+  await expect(service.remind("flow", "owner", requestId, detail.reminderToken)).rejects.toMatchObject({ status: 410 });
+  await expect(service.remind("flow", "stranger", original, detail.reminderToken)).rejects.toMatchObject({ status: 404 });
+  await expect(service.remind("flow", "first", original, detail.reminderToken)).rejects.toMatchObject({ status: 409 });
+  await expect(service.remind("flow", "owner", original, "original-token", ["later"])).rejects.toMatchObject({ status: 409 });
+  await expect(service.remind("flow", "owner", original, "original-token", ["first"])).resolves
+    .toMatchObject({ reminders: [{ id: original }] });
+  expect(db.approvalActionLog.create).not.toHaveBeenCalled();
+  expect(sms.send).not.toHaveBeenCalled();
+  expect(sms.sendDutyIntent).not.toHaveBeenCalled();
+});
+
 it("retains historical settlement progress but retires live serial approval reminders", async () => {
   const { service, db, sms, instance } = fixture();
   Object.assign(instance, { businessType: "settlement", flowType: "settlement.approve", status: "in_progress" });

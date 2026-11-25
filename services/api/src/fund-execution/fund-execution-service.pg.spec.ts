@@ -2,6 +2,8 @@ import { ConflictException, ForbiddenException } from "@nestjs/common";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
 
+import { ApprovalFormService } from "../approval/approval-form.service";
+import { ApprovalProgressService } from "../approval/approval-progress.service";
 import { AuditService } from "../audit/audit.service";
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
@@ -1450,6 +1452,18 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
     await expect(service.submitCase(ACTOR_USER_ID, submitInput)).rejects.toMatchObject({ status: 410 });
     const submitted = await archiveService.submitCase(ACTOR_USER_ID, submitInput);
     await expect(service.submitCase(ACTOR_USER_ID, submitInput)).resolves.toEqual(submitted);
+    const approvalInstanceId = submitted.approvalInstanceId!;
+    const sms = { available: () => true, send: jest.fn(), sendDutyIntent: jest.fn() };
+    const progress = new ApprovalProgressService(prisma as never, sms as never);
+    const progressBefore = await progress.detail(approvalInstanceId, REVIEWER_USER_ID, true);
+    expect(progressBefore).toMatchObject({ canHandle: true, canRemind: false, remindableRecipients: [] });
+    const reminderRequest = randomUUID();
+    await expect(progress.remind(approvalInstanceId, ACTOR_USER_ID, reminderRequest, progressBefore.reminderToken))
+      .rejects.toMatchObject({ status: 410 });
+    await expect(prisma.approvalActionLog.count({ where: { id: reminderRequest } })).resolves.toBe(0);
+    expect(sms.send).not.toHaveBeenCalled();
+    expect(sms.sendDutyIntent).not.toHaveBeenCalled();
+
     await expect(service.getCase(REVIEWER_USER_ID, created.caseId)).resolves.toMatchObject({
       actions: expect.arrayContaining([
         expect.objectContaining({ key: "approve", enabled: false }),
@@ -1462,6 +1476,13 @@ describePostgres("FundExecutionService PostgreSQL 16 command boundary", () => {
     await archiveService.reviewApproval(CHAIRMAN_USER_ID, {
       caseId: created.caseId, action: "approve", comment: "董事长同意 applied project_fund 出账"
     });
+    const files = { uploadPrivateFile: jest.fn() };
+    const forms = new ApprovalFormService(prisma as never, files as never);
+    await expect(forms.generateForInstance(approvalInstanceId, REVIEWER_USER_ID)).rejects.toMatchObject({ status: 410 });
+    await expect(prisma.approvalFormGenerationClaim.count({ where: { approvalInstanceId } })).resolves.toBe(0);
+    await expect(prisma.pdfDocument.count({ where: { approvalInstanceId } })).resolves.toBe(0);
+    expect(files.uploadPrivateFile).not.toHaveBeenCalled();
+
     const confirmInput = { caseId: created.caseId, expectedRevision: submitted.revision, idempotencyKey: randomUUID() };
     await expect(service.confirmCase(CONFIRMER_USER_ID, confirmInput)).rejects.toMatchObject({ status: 410 });
     const confirmed = await archiveService.confirmCase(CONFIRMER_USER_ID, confirmInput);

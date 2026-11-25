@@ -1,3 +1,4 @@
+import { isRetiredWageOutflow } from "../fund-execution/fund-execution-wage-retirement";
 import { isLegacySettlementApproval } from "../settlement/legacy-settlement-approval";
 import { isRetiredProjectEmployeeLoan } from "../project-expense/project-employee-loan-retirement";
 import { resolveContractOriginators } from "../contract/contract-originators";
@@ -120,7 +121,12 @@ export class ApprovalProgressService {
       const context = await this.context(tx, id, actorId, true);
       const existing = context.logs.find(l => l.id === requestId);
       if (existing) {
-        if (existing.actorUserId !== actorId || object(existing.metadata).kind !== "sms_request") throw new ConflictException("催办请求已被使用，请刷新后重试");
+        const metadata = object(existing.metadata);
+        if (existing.actorUserId !== actorId || metadata.kind !== "sms_request") throw new ConflictException("催办请求已被使用，请刷新后重试");
+        if (context.retiredWageReminder && selectedRecipientIds !== undefined &&
+            JSON.stringify([...selectedRecipientIds].sort()) !== JSON.stringify(strings(metadata.recipientIds).sort())) {
+          throw new ConflictException("催办请求已绑定不同接收人，请核对原记录");
+        }
         return null;
       }
       if (context.retiredReminderReason) throw new GoneException(context.retiredReminderReason);
@@ -244,7 +250,7 @@ export class ApprovalProgressService {
         return row ? { ...row, projectId: null } : null;
       }
       case "fund_execution_case": {
-        const row = await db.fundExecutionCase.findFirst({ where: { caseKey: id }, orderBy: { revision: "desc" }, select: { status: true, approvalInstanceId: true } });
+        const row = await db.fundExecutionCase.findFirst({ where: { caseKey: id }, orderBy: { revision: "desc" }, select: { status: true, approvalInstanceId: true, fundExecutionId: true } });
         return row ? { ...row, projectId: null, code: "资金执行申请" } : null;
       }
       case "settlement": return db.settlement.findUnique({ where: { id }, select: { projectId: true, code: true } });
@@ -439,10 +445,16 @@ export class ApprovalProgressService {
       (instance.businessType === "expense_claim" && "claimType" in business && business.claimType === "loan") ||
       (instance.businessType === "project_expense_request" && "expenseType" in business &&
         "expenseSubtype" in business && isRetiredProjectEmployeeLoan(business));
-    const retiredReminderReason = isLegacySettlementApproval(instance)
+    const retiredWageReminder = instance.businessType === "fund_execution_case" && "fundExecutionId" in business &&
+      isRetiredWageOutflow(await db.fundExecution.findUnique({
+        where: { id: business.fundExecutionId },
+        select: { executionKind: true, direction: true }
+      }));
+    const retiredApprovalReason = isLegacySettlementApproval(instance)
       ? "旧结算审批催办已停止办理"
       : retiredExpenseApproval ? "员工借款审批催办已停止办理" : null;
-    const businessUnavailable = Boolean(retiredReminderReason) || expenseUnavailable || (legacyContractParallel && !legacyOriginators) || (instance.businessType === "project_financing_quota" && project?.isActive !== true) || (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) && !this.pilot?.isEnabled(projectId)) ||
+    const retiredReminderReason = retiredWageReminder ? "历史工资出款审批催办已停止办理" : retiredApprovalReason;
+    const businessUnavailable = Boolean(retiredApprovalReason) || expenseUnavailable || (legacyContractParallel && !legacyOriginators) || (instance.businessType === "project_financing_quota" && project?.isActive !== true) || (["spot_procurement_version", "spot_procurement_payment"].includes(instance.businessType) && !this.pilot?.isEnabled(projectId)) ||
       (["general_procurement", "company_transfer", "fund_execution_case"].includes(instance.businessType) &&
         (!("status" in business) || business.status !== (instance.businessType === "general_procurement" ? "approval_pending" : "submitted") || !("approvalInstanceId" in business) || business.approvalInstanceId !== instance.id));
     const expensePendingIds = expensePendingByDuty && new Set(expensePendingByDuty.flat().map(user => user.id));
@@ -478,7 +490,7 @@ export class ApprovalProgressService {
         throw error;
       }
     }) : [];
-    return { instance, business, project, rawNodes, nodeIds, byId, pending, logs, effectiveApprovals, businessUnavailable, retiredReminderReason, participant, expensePendingByDuty };
+    return { instance, business, project, rawNodes, nodeIds, byId, pending, logs, effectiveApprovals, businessUnavailable, retiredReminderReason, retiredWageReminder, participant, expensePendingByDuty };
   }
 
   private project(context: Awaited<ReturnType<ApprovalProgressService["context"]>>, actorId: string) {
@@ -512,7 +524,7 @@ export class ApprovalProgressService {
         if (typeof index === "number" && pendingByDuty[index]?.length) cooldowns.set(index, Math.max(expiry, cooldowns.get(index) ?? 0));
       }
     }
-    const remindableRecipients = pending.filter(user => !pendingByDuty.some((people, index) =>
+    const remindableRecipients = context.retiredReminderReason ? [] : pending.filter(user => !pendingByDuty.some((people, index) =>
       cooldowns.has(index) && people.some(person => person.id === user.id))).map(user => person(user.id));
     const nextRemindAt = cooldowns.size ? new Date(Math.min(...cooldowns.values())).toISOString() : null;
     return {
