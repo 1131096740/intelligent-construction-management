@@ -14,7 +14,7 @@ scope=payment-execution
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="current-320"?329:295;
+  const count=source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
   console.log(count);
 '  "$prepared/source.json" "$sha")
@@ -26,7 +26,9 @@ fingerprint=$(cat "$build/context.sha256")
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 material="$work/material"
-python3 "$plan/stage-payment-execution.py" "$repo/.github/task12-install-290/payment" "$common" "$material"
+portable_args=()
+if [[ $count == 330 ]]; then portable_args=(--text-direct-330); fi
+python3 "$plan/stage-payment-execution.py" "$repo/.github/task12-install-290/payment" "$common" "$material" ${portable_args[@]+"${portable_args[@]}"}
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
   --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory 4g

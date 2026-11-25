@@ -5,17 +5,17 @@
  const fs=require("node:fs");
  const path=require("node:path");
 -const {withPayment290}=require("./installer.cjs");
-+const {withCombined295MultiWitness,withCombined320ContractPayment}=require("./installer.cjs");
++const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement}=require("./installer.cjs");
  const workspace="/qualification/workspace";
 -const tree="a1be083076018686dd8afba68c44ff9c75502014";
 +const tree="67644d9465a0ab4ee80ede099139d9c129d66f14";
  const suite="src/database/payment-execution-concurrency.spec.ts";
 -const receipt={schemaVersion:1,purpose:"PAYMENT_EXECUTION_ORIGINAL_FRESH_290",status:"STOPPED",stages:[]};
 +const source=require('./contract-finance-source.json');
-+const current320=source.mode==='current-320';
-+const count=current320?329:295;
-+const install=(receipt,consume)=>current320
-+  ? withCombined320ContractPayment(receipt,consume,{sourceTree:source.sourceTree,
++const forward=source.mode==='current-320'||source.mode==='text-direct-330';
++const count=source.mode==='text-direct-330'?330:forward?329:295;
++const install=(receipt,consume)=>forward
++  ? (count===330?withCombined330TextAgreement:withCombined320ContractPayment)(receipt,consume,{sourceTree:source.sourceTree,
 +    migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails})
 +  : withCombined295MultiWitness(receipt,consume);
 +const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:"PAYMENT_EXECUTION_ORIGINAL_FRESH_295",status:"STOPPED",stages:[]};
@@ -39,7 +39,7 @@
 +    const diagnostics=phase==="PAYMENT_FRESH_JEST" ? {
 +      kind:/migration baseline drift/u.test(message)?"MIGRATION_BASELINE_DRIFT":
 +        /Cannot find module|MODULE_NOT_FOUND/u.test(message)?"MODULE_NOT_FOUND":
-+        /PAYMENT_CONCURRENCY_OWNED_(?:295|320)_IDENTITY/u.test(message)?"OWNED_IDENTITY":
++        /PAYMENT_CONCURRENCY_OWNED_(?:295|320|330)_IDENTITY/u.test(message)?"OWNED_IDENTITY":
 +        /Test suite failed to run/u.test(message)?"SUITE_LOAD":
 +        /exceeded timeout|timed out/u.test(message)?"TIMEOUT":
 +        first?"TEST_FAILURE":"JEST_FAILURE",
@@ -62,7 +62,7 @@
 -withPayment290(receipt,async context=>{
 -  if(context.candidateTree!==tree)throw new Error("PAYMENT_FRESH_TREE");
 +install(receipt,async context=>{
-+  if(context.candidateTree!==(current320?source.sourceTree:tree))throw new Error("PAYMENT_FRESH_TREE");
++  if(context.candidateTree!==(forward?source.sourceTree:tree))throw new Error("PAYMENT_FRESH_TREE");
    const {ownerUrl,runId,workDir}=context;
    const target=new URL(ownerUrl);
    if(!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(runId) ||
@@ -70,7 +70,7 @@
      PATH:"/usr/local/bin:/usr/bin:/bin",HOME:workDir,TMPDIR:workDir,COREPACK_HOME:"/opt/corepack",
      COREPACK_ENABLE_NETWORK:"0",COREPACK_DEFAULT_TO_LATEST:"0",NODE_ENV:"test",CI:"true",
      DATABASE_URL:ownerUrl,FILE_STORAGE_DRIVER:"local", FILE_STORAGE_ROOT:path.join(workDir,"storage","private"),
-+    ...(current320?{JG_CONTRACT_FINANCE_LEDGER:"329",JG_CONTRACT_FINANCE_SCOPE:"payment"}:{}),
++    ...(forward?{JG_CONTRACT_FINANCE_LEDGER:String(count),JG_CONTRACT_FINANCE_SCOPE:"payment"}:{}),
      RUN_PAYMENT_EXECUTION_CONCURRENCY:"1",JG_TASK12_OWNED_280_RUN_ID:runId,
      OPERATING_LEDGER_DB_WRITE_SECRET:randomUUID(),SEED_PASSWORD:randomUUID()
    }};
@@ -89,8 +89,8 @@
    receipt.scope={suites:1,tests:2,skips:0,reportSha256:createHash("sha256").update(raw).digest("hex")};
 -}).then(()=>{receipt.status="PAYMENT_EXECUTION_FRESH_290_PASSED";}).catch(error=>{
 +}).then(()=>{
-+  if(current320 && (receipt.forward320?.ledgerSha256!==source.ledgerSha256 ||
-+    receipt.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256 || receipt.combinedAfterBusiness?.count!==329))
++  if(forward && (receipt.forward320?.ledgerSha256!==source.ledgerSha256 ||
++    receipt.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256 || receipt.combinedAfterBusiness?.count!==count))
 +    throw new Error("PAYMENT_FORWARD_320_LEDGER");
 +  receipt.status="PAYMENT_EXECUTION_FRESH_"+count+"_PASSED";
 +}).catch(error=>{
