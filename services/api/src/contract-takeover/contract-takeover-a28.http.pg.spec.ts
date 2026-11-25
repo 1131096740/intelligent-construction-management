@@ -7,6 +7,7 @@ import { PDFDocument } from "pdf-lib";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { AppModule } from "../app.module";
 import { PrismaService } from "../database/prisma.service";
+import { openSignedSettlementQualification } from "../database/signed-settlement-qualification.test-support";
 import { createApiValidationPipe } from "../validation/api-validation";
 
 const enabled = process.env.RUN_CONTRACT_TAKEOVER_A28_PG16 === "1";
@@ -15,12 +16,15 @@ type Role = (typeof roles)[number];
 type Actor = { id: string; token: string };
 type Revision = { revision: number; financeBasisRevision: number };
 type ContractOption = {
+  contractId: string;
   contractNo: string;
   contractVersionId: string | null;
   source: string;
   canCreateSettlement: boolean;
   settlements: Array<{ amountCents: string; paidAmountCents: string }>;
 };
+type SignedSettlementOption = { id: string; kind: string; relationship: string };
+type SignedSettlementRecord = { id: string; revision: number };
 const signedAt = "2026-09-01";
 const cutoff = "2026-10-31";
 const contractTypeKey = "material_purchase";
@@ -30,6 +34,7 @@ const constructionEnterprise = "A28 合成施工企业";
 describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let signedQualification: Awaited<ReturnType<typeof openSignedSettlementQualification>> | undefined;
   let baseUrl: string;
   let projectId: string;
   let companyEntityId: string;
@@ -48,7 +53,7 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
       && url.searchParams.get("sslaccept") === "strict"
       && Boolean(url.searchParams.get("sslcert"));
     if (process.env.NODE_ENV !== "test" || url.hostname !== "127.0.0.1"
-        || (url.pathname !== "/jiangkong_contract_takeover_a28" && !nativeDatabase)
+        || !nativeDatabase
         || process.env.FILE_STORAGE_DRIVER !== "local" || !process.env.FILE_STORAGE_ROOT
         || process.env.SMS_ENABLED !== "false" || process.env.APPROVAL_SMS_ENABLED !== "false") {
       throw new Error("历史合同 A28 验收只允许本机专用数据库、独立文件存储和关闭短信的测试环境");
@@ -93,11 +98,12 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
   });
 
   afterAll(async () => {
-    await app?.close();
+    try { await signedQualification?.close(); }
+    finally { await app?.close(); }
   });
 
-  async function request<T = unknown>(role: Role, route: string, method = "GET", body?: unknown) {
-    const response = await fetch(`${baseUrl}${route}`, {
+  async function request<T = unknown>(role: Role, route: string, method = "GET", body?: unknown, target = baseUrl) {
+    const response = await fetch(`${target}${route}`, {
       method,
       headers: { authorization: `Bearer ${actors[role].token}`, "content-type": "application/json" },
       ...(body === undefined ? {} : { body: JSON.stringify(body) })
@@ -105,13 +111,13 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     return { status: response.status, body: await response.json() as T };
   }
 
-  async function uploadPdf(role: Role, name: string) {
+  async function uploadPdf(role: Role, name: string, uploadPath = path, target = baseUrl) {
     const pdf = await PDFDocument.create();
     pdf.addPage().drawText(`Synthetic A28 ${randomUUID()}`);
     const form = new FormData();
     form.append("file", new Blob([Buffer.from(await pdf.save())], { type: "application/pdf" }), `${name}.pdf`);
-    form.append("idempotencyKey", randomUUID());
-    const response = await fetch(`${baseUrl}${path}/files`, {
+    if (uploadPath === path) form.append("idempotencyKey", randomUUID());
+    const response = await fetch(`${target}${uploadPath}/files`, {
       method: "POST",
       headers: { authorization: `Bearer ${actors[role].token}` },
       body: form
@@ -353,15 +359,64 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
       expect(afterMoney).toEqual(beforeMoney);
     }
 
-    const continuation = await request("contract_staff", `/projects/${projectId}/settlement-drafts`, "POST", {
-      contractVersionId: confirmedOption?.contractVersionId,
-      settlementTemplateVersionId: "a28-continuation-preview",
-      code: `${code}-NEXT`,
-      periodLabel: "接管后第一期结算",
-      settlementLines: [{ sourceType: "manual_adjustment", adjustmentKind: "ordinary", name: "接管后新增结算", amountCents: "1000", reason: "本期新增履约" }]
+    const retired = await request("contract_staff", `/projects/${projectId}/settlement-drafts`, "POST", {});
+    expect(retired).toMatchObject({ status: 410, body: { code: "OLD_WRITE_ENTRY_RETIRED" } });
+
+    signedQualification ??= await openSignedSettlementQualification(prisma, process.env.DATABASE_URL!);
+    const signedPath = `/projects/${projectId}/signed-contract-settlements`;
+    const signedTarget = signedQualification.baseUrl;
+    const picker = await request<SignedSettlementOption[]>("contract_staff", `${signedPath}/contracts`, "GET", undefined, signedTarget);
+    expect(picker.status).toBe(200);
+    const sameContract = picker.body.find((item) => item.id === confirmedOption?.contractId);
+    expect(sameContract).toMatchObject({ relationship, kind: expect.any(String) });
+
+    const selection = { contractKind: sameContract?.kind, contractId: sameContract?.id };
+    const overviewPath = `${signedPath}/contract-overview?${new URLSearchParams({
+      contractKind: selection.contractKind!, contractId: selection.contractId!
+    })}`;
+    expect(await request("contract_staff", overviewPath, "GET", undefined, signedTarget))
+      .toMatchObject({ status: 200, body: { confirmedYuan: zero ? "0.0000" : "60.0000" } });
+
+    const nextNumber = `${code}-NEXT`;
+    const fileId = await uploadPdf("contract_staff", "接管后首期合成已签结算", signedPath, signedTarget);
+    const saved = await request<SignedSettlementRecord>("contract_staff", signedPath, "POST", {
+      ...selection, number: nextNumber, amountYuan: "10.0000", fileIds: [fileId]
+    }, signedTarget);
+    expect(saved).toMatchObject({ status: 201, body: { ...selection, number: nextNumber, state: "draft", amountYuan: "10.0000" } });
+    const signedEntry = `${signedPath}/${saved.body.id}`;
+    const submitted = await request<SignedSettlementRecord>("contract_staff", `${signedEntry}/submission`, "POST", {
+      revision: saved.body.revision
+    }, signedTarget);
+    expect(submitted).toMatchObject({ status: 201, body: { ...selection, state: "pending_review" } });
+    expect(await request("contract_director", `${signedEntry}/review`, "POST", {
+      revision: submitted.body.revision, decision: "confirm"
+    }, signedTarget)).toMatchObject({
+      status: 201,
+      body: { ...selection, state: "confirmed", confirmedContractSource: {
+        relationship, sourceRecordId: confirmedOption?.contractVersionId
+      } }
     });
-    expect(continuation).toMatchObject({
-      status: 201, body: { status: "draft", contractVersionId: confirmedOption?.contractVersionId }
+    const confirmedYuan = zero ? "10.0000" : "70.0000";
+    expect(await request("contract_staff", overviewPath, "GET", undefined, signedTarget))
+      .toMatchObject({ status: 200, body: { confirmedYuan } });
+    const paymentBasis = await request("contract_staff", overviewPath.replace("/contract-overview?", "/payment-basis?"),
+      "GET", undefined, signedTarget);
+    expect(paymentBasis).toMatchObject({
+      status: 200,
+      body: {
+        confirmedYuan,
+        latestConfirmed: { id: saved.body.id, amountYuan: "10.0000", source: "signed_registration" },
+        downstreamCapacity: relationship === "upward" ? null : {
+          recordedPaidYuan: zero ? "0.0000" : "70.0000",
+          wholeCentLimit: zero ? "1000" : "0",
+          ...(zero ? {} : { advancePaidYuan: "10.0000", abnormalOverpayYuan: "0.0000" })
+        }
+      }
+    });
+
+    expect(await moneyWrites()).toEqual({
+      ...afterMoney,
+      operatingFacts: afterMoney.operatingFacts + (relationship === "upward" ? 1 : 0)
     });
   }, 60_000);
 });
