@@ -159,6 +159,8 @@ function grantApplication(sql, database, app, appPassword) {
   // migrations. Only the explicit contract, template and auth tables used by
   // the public workflow are added to this isolated qualification role.
   const { tables } = require("./task16-current259-ordinary-archive-acl.requirements.json");
+  const [, , userLoginColumns] = tables.User;
+  const userUpdateColumns = [...userLoginColumns, "signatureFileId"].map(identifier).join(", ");
   const known = Object.keys(tables).filter(table => !["OperatingFact", "OperatingImpactEntry"].includes(table));
   const writes = {
     INSERT: ["AuditLog", "AuthRateLimit", "RefreshToken", "FileObject", "BusinessDailySequence", "Contract", "ContractVersion", "ContractBill", "ContractBillRow",
@@ -186,7 +188,7 @@ function grantApplication(sql, database, app, appPassword) {
     "GRANT CONNECT ON DATABASE " + identifier(database) + " TO " + role + ";" +
     "GRANT USAGE ON SCHEMA public TO " + role + ";" + grant("SELECT", reads) +
     Object.entries(writes).map(([privilege, names]) => grant(privilege, names)).join("") +
-    'GRANT UPDATE ("lastLoginAt", "signatureFileId") ON public."User" TO ' + role + ";" +
+    'GRANT UPDATE (' + userUpdateColumns + ') ON public."User" TO ' + role + ";" +
     "COMMIT;");
 }
 
