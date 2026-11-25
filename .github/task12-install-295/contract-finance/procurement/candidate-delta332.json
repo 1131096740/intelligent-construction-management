@@ -7,7 +7,7 @@
   {
     "path": "services/api/prisma/task12-upward-projection-forward.test.cjs",
     "expected": "90da9c18626dc0fb8c6e4b5f4f939331c5f40b9a9a427e340f7810ff15735186",
-    "candidate": "54a26a0ca0b43b5aeafb0b7be05629af8eef6bf06f936983db7344dac2cc79a5"
+    "candidate": "75d19e9b91dd8b706f978c3a5d2c0127e9f7a0b9d0310a8c6f0e6574c42cf91d"
   },
   {
     "path": "services/api/src/contract-template/template-management.test-support.ts",

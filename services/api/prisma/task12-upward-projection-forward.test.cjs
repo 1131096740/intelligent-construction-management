@@ -19,7 +19,18 @@ test('signed-change verifier pin migration advances both readers and keeps the b
  assert.match(migration,new RegExp("'public.jg_upward_direct_archive_admission_v1\\(\\)',false,\\s*'[^']+',\\s*'"+admission+"'",'u'));
  assert.match(migration,/to_jsonb\(p\)-'prosrc'=actual\.metadata/u);
  assert.match(migration,/jg_require_contract_direct_upward_source_v2\(\) IS DISTINCT FROM closure_sha/u);
- assert.doesNotMatch(migration,/\b(?:GRANT|REVOKE|ALTER ROLE)\b/u);
+ const [readerMigration, outsideMigration] = migration.split('$forward$;');
+ assert.doesNotMatch(readerMigration,/\b(?:GRANT|REVOKE|ALTER ROLE)\b/u);
+ const references = [...outsideMigration.matchAll(/\('([^']+)','([^']+)'\)/gu)].map(match => match.slice(1));
+ assert.deepEqual(references,[
+   ['ContractSignedChange','appendixFormalFileId'],
+   ['SignedContractSettlementAttachment','fileId']
+ ]);
+ assert.deepEqual(outsideMigration.match(/\b(?:GRANT|REVOKE|ALTER ROLE)\b/gu),['GRANT']);
+ assert.match(outsideMigration,/GRANT SELECT \(%I\) ON public\.%I TO %I',target\.column_name,target\.relation_name,executor_name/u);
+ assert.match(outsideMigration,/r\.rolcanlogin=\(r\.oid=ANY\(login_ids\)\)/u);
+ assert.match(outsideMigration,/has_table_privilege\(binding\."executorOwnerOid",relation_oid,'SELECT'\)/u);
+ assert.match(outsideMigration,/UNION ALL SELECT anchor_oid,binding\."executorOwnerOid",'SELECT'::text,false/u);
 });
 
 test('the hosted catalog witness checks the repaired readers after 332 and the original readers after 331', () => {
