@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 022
 
-[[ $# == 3 || ( $# == 4 && ( $4 == --current-320 || $4 == --text-direct-330 || $4 == --payment-remainder-331 || $4 == --upward-archive-332 || $4 == --historical-takeover-333 ) ) ]] || exit 64
+[[ $# == 3 || ( $# == 4 && ( $4 == --current-320 || $4 == --text-direct-330 || $4 == --payment-remainder-331 || $4 == --upward-archive-332 || $4 == --historical-takeover-333 || $4 == --historical-settlement-334 ) ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 sha=$2
 out=$3

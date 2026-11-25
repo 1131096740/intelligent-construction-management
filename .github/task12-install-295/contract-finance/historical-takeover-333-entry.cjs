@@ -6,15 +6,18 @@ const path = require('node:path');
 const { createHash, randomBytes } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { admitSource } = require('./install-only292.cjs');
-const { withCombined333HistoricalTakeover } = require('./installer.cjs');
+const installer = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
-const profile = require('./historical-takeover-333-profile.cjs');
 const source = require('./contract-finance-source.json');
 
 const root = '/qualification';
 const api = path.join(root, 'workspace/services/api');
 const spec = 'src/contract-takeover/contract-takeover-a28.http.pg.spec.ts';
-const purpose = 'HISTORICAL_TAKEOVER_A28_333';
+const historicalSettlement = source.mode === 'historical-settlement-334';
+const count = historicalSettlement ? 334 : 333;
+const profile = historicalSettlement
+  ? require('./historical-settlement-334-profile.cjs') : require('./historical-takeover-333-profile.cjs');
+const purpose = 'HISTORICAL_TAKEOVER_A28_' + count;
 const receipt = { schemaVersion: 1, purpose, sourceSha: source.sourceSha, stages: ['INPUTS'], status: 'STOPPED' };
 
 async function consume({ ownerUrl, database, workDir, candidateTree }) {
@@ -85,21 +88,23 @@ async function main() {
   assert.equal(installerSha256, profile.installerSha256, 'A28_INSTALLER_RUNTIME_FINGERPRINT');
   receipt.installerSha256 = installerSha256;
   const baseline = require(path.join(api, 'prisma/migration-baseline.cjs')).loadCanonicalMigrationBaseline();
-  assert.equal(baseline.expectedDirectoryCount, 333);
+  assert.equal(baseline.expectedDirectoryCount, count);
   assert.equal(baseline.terminalMigration, profile.terminal.name);
   assert.equal(baseline.terminalMigrationChecksum, profile.terminal.sha256);
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
-  await withCombined333HistoricalTakeover(receipt, consume, {
+  const install = historicalSettlement ? installer.withCombined334HistoricalSettlement : installer.withCombined333HistoricalTakeover;
+  await install(receipt, consume, {
     sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails
   });
   assert.equal(receipt.historicalTakeoverPredecessor.ledgerSha256, profile.predecessor332);
   assert.equal(receipt.forward320.ledgerSha256, profile.ledgerSha256);
   assert.equal(receipt.combinedAfterBusiness.ledgerSha256, profile.ledgerSha256);
-  assert.equal(receipt.combinedAfterBusiness.count, 333);
+  assert.equal(receipt.combinedAfterBusiness.count, count);
   assert.equal(receipt.combinedAfterBusiness.sameIdentity, true);
   assert.equal(receipt.combinedAfterBusiness.exactB7, true);
   assert.equal(receipt.historicalTakeoverCatalogAfterBusiness, true);
   assert.equal(receipt.multiWitnessCatalogAfterBusiness, true);
+  if (historicalSettlement) assert.equal(receipt.historicalSettlementCatalogAfterBusiness, true);
   assert.equal(receipt.cleanup, 'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
   assert.ok(receipt.a28.complete, 'A28_333_HTTP_COVERAGE');
   receipt.status = purpose + '_PASSED';

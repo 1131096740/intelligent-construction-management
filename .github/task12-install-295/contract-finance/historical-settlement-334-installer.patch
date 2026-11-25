@@ -1,0 +1,48 @@
+diff --git a/installer.cjs b/installer.cjs
+--- a/installer.cjs
++++ b/installer.cjs
+@@ -823 +823,3 @@
+-      if (a28) batches.push(tails.slice(37));
++      const signed = forward320.historicalSettlement ? require('./historical-settlement-334-profile.cjs') : null;
++      if (a28) batches.push(tails.slice(37,38));
++      if (signed) batches.push(tails.slice(38));
+@@ -878,0 +881,12 @@
++          if (signed) {
++            const routineCatalog=await jsonSql(signed.catalogSql);
++            signed.assertCatalog(routineCatalog);
++            receipt.historicalSettlementPredecessor={count:333,ledgerSha256:a28.ledgerSha256,routineCatalog};
++          }
++        }
++        if (signed && current.ledger.length===334) {
++          need(hash(JSON.stringify(current.ledger))===signed.ledgerSha256,'A28_334_LEDGER_DIGEST');
++          need(equal(await jsonSql(a28.catalogSql),receipt.historicalTakeover333Catalog),'A28_334_333_CHECKS_PRESERVED');
++          const catalog=await jsonSql(signed.catalogSql);
++          signed.assertCatalog(catalog,receipt.historicalSettlementPredecessor.routineCatalog);
++          receipt.historicalSettlement334Catalog=catalog;
+@@ -980 +994,2 @@
+-        need(hash(JSON.stringify(afterConsumer.ledger))===a28.ledgerSha256,'A28_333_LEDGER_AFTER_CONSUMER');
++        const signed=forward320.historicalSettlement ? require('./historical-settlement-334-profile.cjs') : null;
++        need(hash(JSON.stringify(afterConsumer.ledger))===(signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
+@@ -982,0 +998,4 @@
++        if (signed) {
++          need(equal(await jsonSql(signed.catalogSql),receipt.historicalSettlement334Catalog),'A28_334_CATALOG_AFTER_CONSUMER');
++          receipt.historicalSettlementCatalogAfterBusiness=true;
++        }
+@@ -1382 +1401,2 @@
+-  const historicalTakeover=target===333;
++  const historicalTakeover=target>=333;
++  const historicalSettlement=target===334;
+@@ -1404,0 +1425,4 @@
++  if(historicalSettlement) {
++    const {terminal}=require('./historical-settlement-334-profile.cjs');
++    need(tails[38]?.name===terminal.name && tails[38]?.sha256===terminal.sha256,'A28_334_TERMINAL');
++  }
+@@ -1417 +1441 @@
+-  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover};
++  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement};
+@@ -1444,0 +1469,5 @@
++};
++
++module.exports.withCombined334HistoricalSettlement = (receipt,consume,material) => {
++  need(typeof consume==='function' && material && typeof material==='object','A28_334_ARGUMENTS');
++  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,334));

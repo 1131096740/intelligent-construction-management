@@ -13,11 +13,12 @@ source="$prepared/source.json"
 
 node -e '
   const source=require(process.argv[1]);
-  const count=({"current-320":329,"text-direct-330":330,"payment-remainder-331":331,"upward-archive-332":332,"historical-takeover-333":333})[source.mode];
+  const count=({"current-320":329,"text-direct-330":330,"payment-remainder-331":331,"upward-archive-332":332,"historical-takeover-333":333,"historical-settlement-334":334})[source.mode];
   if(!count||source.migrationCount!==count||source.sourceSha!==process.argv[2])process.exit(65);
 ' "$source" "$sha"
 entry=line-a-entry.cjs
-if [[ $(node -p 'require(process.argv[1]).mode' "$source") == historical-takeover-333 ]]; then
+mode=$(node -p 'require(process.argv[1]).mode' "$source")
+if [[ "$mode" == historical-takeover-333 || "$mode" == historical-settlement-334 ]]; then
   entry=historical-takeover-333-entry.cjs
 fi
 image=$(cat "$build/image.id")
@@ -29,7 +30,7 @@ fingerprint=$(cat "$build/context.sha256")
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-line-a.XXXXXXXX")
 installer="$common/installer.cjs"
 if [[ "$entry" == historical-takeover-333-entry.cjs ]]; then
-  node "$plan/stage-historical-takeover-333.cjs" "$work"
+  node "$plan/stage-historical-takeover-333.cjs" "$work" "$mode"
   installer="$work/installer.cjs"
 fi
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
@@ -50,6 +51,9 @@ done
 
 if [[ "$entry" == historical-takeover-333-entry.cjs ]]; then
   args+=(--mount "type=bind,src=$plan/historical-takeover-333-profile.cjs,dst=/qualification/historical-takeover-333-profile.cjs,readonly")
+  if [[ "$mode" == historical-settlement-334 ]]; then
+    args+=(--mount "type=bind,src=$plan/historical-settlement-334-profile.cjs,dst=/qualification/historical-settlement-334-profile.cjs,readonly")
+  fi
 fi
 
 [[ -z $(docker ps -q) ]] || exit 65
@@ -63,6 +67,6 @@ node -e '
   const source=require(process.argv[3]);
   const expected=({"current-320":"LINE_A_EXACT_329_PASSED","text-direct-330":"LINE_A_TEXT_DIRECT_330_PASSED",
     "payment-remainder-331":"LINE_A_PAYMENT_REMAINDER_331_PASSED",
-    "upward-archive-332":"LINE_A_UPWARD_ARCHIVE_332_PASSED","historical-takeover-333":"HISTORICAL_TAKEOVER_A28_333_PASSED"})[source.mode];
+    "upward-archive-332":"LINE_A_UPWARD_ARCHIVE_332_PASSED","historical-takeover-333":"HISTORICAL_TAKEOVER_A28_333_PASSED","historical-settlement-334":"HISTORICAL_TAKEOVER_A28_334_PASSED"})[source.mode];
   if(proof.status!==expected||proof.sourceSha!==process.argv[2])process.exit(65);
 ' "$work/receipt.json" "$sha" "$source"
