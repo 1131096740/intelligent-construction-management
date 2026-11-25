@@ -69,28 +69,6 @@ function legacyFileTransaction<T extends object>(transaction: T): T {
         } };
       }
 
-      if ((property === "projectNecessaryExpenseReserveEntry" || property === "projectFundDisputeEntry") &&
-        Reflect.get(target,property,target) == null && Reflect.get(target,"$queryRaw",target) == null) {
-        const relation = property === "projectNecessaryExpenseReserveEntry" ? "reserve" : "dispute";
-        // These legacy narrow fixtures explicitly had neither persistence port;
-        // the existing service therefore observed no such evidence. Preserve
-        // that empty fact rather than accidentally activating its raw fallback.
-        return new Proxy({}, {
-          get(_empty, method) {
-            if (method !== "findFirst") throw new Error("Unsupported legacy empty-evidence model method");
-            return async (query: unknown, ...extra: unknown[]) => {
-              const input = query && typeof query === "object" ? query as {where?: unknown; select?: unknown} : null;
-              const where = input?.where && typeof input.where === "object" ? input.where as {evidenceFileId?: unknown} : null;
-              if (extra.length !== 0 || !input || Object.keys(input).sort().join(",") !== "select,where" || !where || Object.keys(where).join(",") !== "evidenceFileId" ||
-                typeof where.evidenceFileId !== "string" || !where.evidenceFileId.trim() ||
-                JSON.stringify(input.select) !== JSON.stringify({[relation]:{select:{projectId:true}}})) {
-                throw new Error("Unsupported legacy empty-evidence query or file binding");
-              }
-              return null;
-            };
-          }
-        });
-      }
       if (property !== "$queryRaw") return Reflect.get(target, property, receiver);
       return async (query: unknown, ...args: unknown[]) => {
         const input = query && typeof query === "object"
@@ -130,14 +108,16 @@ function legacyFileTransaction<T extends object>(transaction: T): T {
         }
         if (sql?.startsWith("/* private_file_project_binding */")) {
           const shape = /SELECT "projectId"(, "businessType")? FROM public\."([A-Za-z]+)" WHERE "([A-Za-z]+)" = \?(?: OR "([A-Za-z]+)" = \?)? LIMIT 1$/u.exec(sql);
+          const joined = /SELECT (reserve|dispute)\."projectId" FROM public\."(ProjectNecessaryExpenseReserveEntry|ProjectFundDisputeEntry)" entry JOIN public\."(?:ProjectNecessaryExpenseReserve|ProjectFundDispute)" \1 ON \1\.id = entry\."(?:reserveId|disputeId)" WHERE entry\."evidenceFileId" = \? LIMIT 1$/u.exec(sql);
+          const table = shape?.[2] ?? joined?.[2];
           const values = input?.values;
-          if (args.length || !shape || !Array.isArray(values) ||
-            values.length !== (shape[4] ? 2 : 1) ||
+          if (args.length || !table || !Array.isArray(values) ||
+            values.length !== (shape?.[4] ? 2 : 1) ||
             typeof values[0] !== "string" || values.some(value => value !== values[0])) {
             throw new Error("Unsupported project binding projection");
           }
           const lookup = Reflect.get(target, "projectFileBinding", target);
-          return typeof lookup === "function" ? lookup(shape[2], values[0]) : [];
+          return typeof lookup === "function" ? lookup(table, values[0]) : [];
         }
         const original = Reflect.get(target, property, target);
         if (typeof original !== "function") throw new Error("Legacy file fixture has no adapter for this SQL query");
@@ -1718,13 +1698,19 @@ describe("FileService", () => {
     ).rejects.toThrow("当前账号无权下载该费用附件");
   });
 
-  it("requires a project finance role even when the requester uploaded the bank verification evidence", async () => {
+  it.each([
+    ["ContractBankVerificationRequest", "当前账号无权访问银行核验依据"],
+    ["ProjectNecessaryExpenseReserveEntry", "当前账号无权下载该必要费用准备依据"],
+    ["ProjectFundDisputeEntry", "当前账号无权下载该一般争议资金依据"]
+  ])("enforces the project role for %s even when the requester uploaded the evidence", async (table, message) => {
     const service = new FileService(
       {} as PrismaService,
       audit as unknown as AuditService,
       storage as unknown as PrivateFileStorage
     );
-    const projectFileBinding = jest.fn().mockResolvedValue([{ projectId: "project-1" }]);
+    const projectFileBinding = jest.fn(async (source: string) =>
+      source === table ? [{ projectId: "project-1" }] : []
+    );
     const tx = legacyFileTransaction({
       contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
       projectFileBinding,
@@ -1735,10 +1721,10 @@ describe("FileService", () => {
 
     await expect(service["assertCanDownloadFileObject"](
       tx as never,
-      { id: "bank-evidence-1", uploadedByUserId: "uploader-1" } as never,
+      { id: "project-evidence-1", uploadedByUserId: "uploader-1" } as never,
       "uploader-1"
-    )).rejects.toThrow("当前账号无权访问银行核验依据");
-    expect(projectFileBinding.mock.calls).toEqual([["ContractBankVerificationRequest", "bank-evidence-1"]]);
+    )).rejects.toThrow(message);
+    expect(projectFileBinding).toHaveBeenLastCalledWith(table, "project-evidence-1");
   });
 
   it("allows a receipt-only file after checking that no other business binding exists", async () => {

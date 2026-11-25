@@ -2919,45 +2919,19 @@ export class FileService {
       throw new ForbiddenException("当前账号无权下载该施工企业外部业务资料");
     }
 
-    const necessaryExpenseReserveClients = tx as unknown as {
-      projectNecessaryExpenseReserveEntry?: {
-        findFirst(args: {
-          where: { evidenceFileId: string };
-          select: { reserve: { select: { projectId: true } } };
-        }): Promise<{ reserve: { projectId: string } } | null>;
-      };
-      $queryRaw?: <T>(query: Prisma.Sql) => Promise<T>;
-    };
-    // A real Prisma transaction always exposes $queryRaw. Keep a raw-query
-    // fallback so a stale generated client cannot downgrade a bound reserve
-    // file to the uploader shortcut below. The final branch exists only for
-    // narrow structural unit doubles that expose neither Prisma seam.
-    const necessaryExpenseReserveEvidence =
-      necessaryExpenseReserveClients.projectNecessaryExpenseReserveEntry
-        ? await necessaryExpenseReserveClients.projectNecessaryExpenseReserveEntry.findFirst({
-            where: { evidenceFileId: file.id },
-            select: { reserve: { select: { projectId: true } } }
-          })
-        : necessaryExpenseReserveClients.$queryRaw
-          ? (await necessaryExpenseReserveClients.$queryRaw<Array<{ projectId: string }>>(
-              Prisma.sql`
-                SELECT reserve."projectId" AS "projectId"
-                FROM "ProjectNecessaryExpenseReserveEntry" entry
-                JOIN "ProjectNecessaryExpenseReserve" reserve ON reserve.id = entry."reserveId"
-                WHERE entry."evidenceFileId" = ${file.id}
-                LIMIT 1
-              `
-            ))[0] ?? null
-          : null;
+    const necessaryExpenseReserveEvidence = await readBinding<{ projectId: string }>(Prisma.sql`
+      SELECT reserve."projectId"
+      FROM public."ProjectNecessaryExpenseReserveEntry" entry
+      JOIN public."ProjectNecessaryExpenseReserve" reserve ON reserve.id = entry."reserveId"
+      WHERE entry."evidenceFileId" = ${file.id}
+      LIMIT 1
+    `);
     if (necessaryExpenseReserveEvidence) {
-      const projectId = "reserve" in necessaryExpenseReserveEvidence
-        ? necessaryExpenseReserveEvidence.reserve.projectId
-        : necessaryExpenseReserveEvidence.projectId;
       if (
         await this.hasProjectRole(
           tx,
           actorUserId,
-          projectId,
+          necessaryExpenseReserveEvidence.projectId,
           ACTION_REQUIRED_ROLES["necessary_expense_reserve.read"]
         )
       ) {
@@ -2966,42 +2940,19 @@ export class FileService {
       throw new ForbiddenException("当前账号无权下载该必要费用准备依据");
     }
 
-    const projectFundDisputeClients = tx as unknown as {
-      projectFundDisputeEntry?: {
-        findFirst(args: {
-          where: { evidenceFileId: string };
-          select: { dispute: { select: { projectId: true } } };
-        }): Promise<{ dispute: { projectId: string } } | null>;
-      };
-      $queryRaw?: <T>(query: Prisma.Sql) => Promise<T>;
-    };
-    // Bound dispute evidence must never fall through to the uploader shortcut,
-    // including when the generated Prisma client is stale during a migration.
-    const projectFundDisputeEvidence = projectFundDisputeClients.projectFundDisputeEntry
-      ? await projectFundDisputeClients.projectFundDisputeEntry.findFirst({
-          where: { evidenceFileId: file.id },
-          select: { dispute: { select: { projectId: true } } }
-        })
-      : projectFundDisputeClients.$queryRaw
-        ? (await projectFundDisputeClients.$queryRaw<Array<{ projectId: string }>>(
-            Prisma.sql`
-              SELECT dispute."projectId" AS "projectId"
-                FROM "ProjectFundDisputeEntry" entry
-                JOIN "ProjectFundDispute" dispute ON dispute.id = entry."disputeId"
-               WHERE entry."evidenceFileId" = ${file.id}
-               LIMIT 1
-            `
-          ))[0] ?? null
-        : null;
+    const projectFundDisputeEvidence = await readBinding<{ projectId: string }>(Prisma.sql`
+      SELECT dispute."projectId"
+      FROM public."ProjectFundDisputeEntry" entry
+      JOIN public."ProjectFundDispute" dispute ON dispute.id = entry."disputeId"
+      WHERE entry."evidenceFileId" = ${file.id}
+      LIMIT 1
+    `);
     if (projectFundDisputeEvidence) {
-      const projectId = "dispute" in projectFundDisputeEvidence
-        ? projectFundDisputeEvidence.dispute.projectId
-        : projectFundDisputeEvidence.projectId;
       if (
         await this.hasProjectRole(
           tx,
           actorUserId,
-          projectId,
+          projectFundDisputeEvidence.projectId,
           ACTION_REQUIRED_ROLES["project_fund_dispute.read"]
         )
       ) {
