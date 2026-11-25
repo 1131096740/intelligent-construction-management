@@ -4005,13 +4005,20 @@ export function copyAbandonedContractDraft(contractVersionId: string, expectedUp
 export function fetchContractLifecycleLedger(
   view: DraftLedgerView,
   page: number,
-  pageSize: number
+  pageSize: number,
+  formalFilters?: Pick<LedgerExportQueryParams, "projectId" | "dateFrom" | "dateTo" | "status" | "keyword" | "sort">
 ) {
   const query = new URLSearchParams({
     view,
     page: String(page),
     pageSize: String(pageSize)
   });
+  if (formalFilters) {
+    query.set("scope", "formal_ledger");
+    for (const [key, value] of Object.entries(formalFilters)) {
+      if (value) query.set(key, value);
+    }
+  }
   return readJson<LifecycleLedgerPage<ContractLifecycleLedgerRow>>(
     `/contracts/lifecycle-ledger?${query.toString()}`,
     { "x-contract-numeric-protocol": "2" }
@@ -4048,8 +4055,9 @@ export interface LedgerExportQueryParams {
   sort?: string;
 }
 
-export function downloadContractLedgerExport(query?: LedgerExportQueryParams) {
+export function downloadContractLedgerExport(query?: LedgerExportQueryParams & { scope?: "formal_ledger" }) {
   const params = new URLSearchParams();
+  if (query?.scope) params.set("scope", query.scope);
   if (query?.projectId) params.set("projectId", query.projectId);
   if (query?.dateFrom) params.set("dateFrom", query.dateFrom);
   if (query?.dateTo) params.set("dateTo", query.dateTo);

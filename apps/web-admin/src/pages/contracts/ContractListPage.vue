@@ -60,7 +60,47 @@
         v-if="activeTab === 'ended' && canManageEndedRetention"
       />
 
+      <JgFilterBar v-if="formalLedgerOnly" title="合同台账筛选">
+        <template #actions>
+          <t-button v-if="canExportLedger" variant="outline" size="small" :disabled="ledgerLoading || Boolean(noticeMessage)"
+            :loading="exportLoading" @click="exportContractLedger">
+            导出当前筛选
+          </t-button>
+          <t-button variant="text" size="small" @click="showColumnSettings = !showColumnSettings">
+            {{ showColumnSettings ? "收起列设置" : "列设置" }}
+          </t-button>
+          <t-button size="small" :loading="ledgerLoading" @click="applyFormalFilters">查询</t-button>
+        </template>
+
+        <label class="filter-field">
+          <span>项目</span>
+          <t-select v-model="formalFilters.projectId" :options="formalProjectOptions" clearable />
+        </label>
+        <label class="filter-field">
+          <span>开始日期</span>
+          <t-date-picker v-model="formalFilters.dateFrom" value-type="YYYY-MM-DD" clearable />
+        </label>
+        <label class="filter-field">
+          <span>结束日期</span>
+          <t-date-picker v-model="formalFilters.dateTo" value-type="YYYY-MM-DD" clearable />
+        </label>
+        <label class="filter-field">
+          <span>状态</span>
+          <t-input v-model="formalFilters.status" placeholder="例如：履约中" clearable @enter="applyFormalFilters" />
+        </label>
+        <label class="filter-field">
+          <span>排序</span>
+          <t-select v-model="formalFilters.sort" :options="formalSortOptions" />
+        </label>
+        <label class="filter-field filter-field--keyword">
+          <span>关键词</span>
+          <t-input v-model="formalFilters.keyword" placeholder="合同编号、名称或业务双方"
+            clearable @enter="applyFormalFilters" />
+        </label>
+      </JgFilterBar>
+
       <JgFilterBar
+        v-else
         title="合同台账筛选"
         description="筛选作用于当前已加载记录；列设置按当前用户保存在本机。"
       >
@@ -319,6 +359,7 @@ import { useRoute, useRouter } from "vue-router";
 import {
   downloadContractLedgerExport,
   fetchContractLifecycleLedger,
+  fetchProjects,
   type ContractLifecycleLedgerRow
 } from "../../api/core-flow-read.api";
 import {
@@ -395,6 +436,16 @@ function routeLifecycleView(value: unknown): DraftLedgerView {
 const activeTab = ref<DraftLedgerView>(routeLifecycleView(route.query.view));
 const contractLedgerRows = ref<Array<ContractLedgerRow & ContractLifecycleLedgerRow>>([]);
 const contractFilters = reactive(emptyContractLedgerFilters());
+const formalFilters = reactive({ projectId: "", dateFrom: "", dateTo: "", status: "", keyword: "", sort: "" });
+const formalSortOptions = [
+  { label: "最近更新优先", value: "" },
+  { label: "合同编号顺序", value: "contractNo:asc" },
+  { label: "项目顺序", value: "project:asc" },
+  { label: "金额从高到低", value: "amountYuan:desc" },
+  { label: "金额从低到高", value: "amountYuan:asc" }
+];
+const formalApplied = ref({ ...formalFilters });
+const formalProjectOptions = ref<Array<{ label: string; value: string }>>([]);
 const ledgerLoading = ref(false);
 const exportLoading = ref(false);
 const showColumnSettings = ref(false);
@@ -428,8 +479,9 @@ const summaryValues = computed(() => {
     value: noticeMessage.value ? "—" : String(values[index] ?? 0)
   }));
 });
-const filteredContractLedgerRows = computed(() =>
-  filterContractLedgerRows(contractLedgerRows.value, contractFilters)
+const filteredContractLedgerRows = computed(() => props.formalLedgerOnly
+  ? contractLedgerRows.value
+  : filterContractLedgerRows(contractLedgerRows.value, contractFilters)
 );
 const filterOptions = computed(() => contractLedgerFilterOptions(contractLedgerRows.value));
 const contractPreferenceStorageKey = computed(() =>
@@ -465,24 +517,36 @@ function optionsForFilter(key: ContractFilterKey) {
   return filterOptions.value[key];
 }
 
+let ledgerRequestId = 0;
 async function loadContractLifecycleLedger() {
+  const requestId = ++ledgerRequestId;
+  const formal = props.formalLedgerOnly ? formalApplied.value : undefined;
   ledgerLoading.value = true;
   noticeMessage.value = "";
   try {
     const result = await fetchContractLifecycleLedger(
       activeTab.value,
       lifecycleMeta.value.page,
-      lifecycleMeta.value.pageSize
+      lifecycleMeta.value.pageSize,
+      formal
     );
+    if (requestId !== ledgerRequestId) return;
     contractLedgerRows.value = result.rows;
     lifecycleSummary.value = result.summary;
     lifecycleMeta.value = result.meta;
   } catch (error) {
+    if (requestId !== ledgerRequestId) return;
     const reason = formatUnknownApiError(error, "未知错误");
     noticeMessage.value = `合同记录读取失败：${reason}。这不代表当前没有合同记录；本页统计与台账暂不可用于判断，请检查网络与权限后重试。`;
   } finally {
-    ledgerLoading.value = false;
+    if (requestId === ledgerRequestId) ledgerLoading.value = false;
   }
+}
+
+function applyFormalFilters() {
+  formalApplied.value = { ...formalFilters, keyword: formalFilters.keyword.trim(), status: formalFilters.status.trim() };
+  lifecycleMeta.value.page = 1;
+  void loadContractLifecycleLedger();
 }
 
 const loadContractLedger = loadContractLifecycleLedger;
@@ -499,9 +563,13 @@ async function exportContractLedger() {
       (row) => row.project === contractFilters.project
     )?.projectId;
     await downloadContractLedgerExport({
-      ...(projectId ? { projectId } : {}),
-      ...(contractFilters.keyword ? { keyword: contractFilters.keyword } : {}),
-      ...(contractFilters.contractStatus ? { status: contractFilters.contractStatus } : {}),
+      ...(props.formalLedgerOnly
+        ? { ...formalApplied.value, scope: "formal_ledger" as const }
+        : {
+            ...(projectId ? { projectId } : {}),
+            ...(contractFilters.keyword ? { keyword: contractFilters.keyword } : {}),
+            ...(contractFilters.contractStatus ? { status: contractFilters.contractStatus } : {})
+          }),
       columns: visibleContractColumnKeys.value.filter((key) => key !== "operation")
     });
     await MessagePlugin.success(
@@ -628,10 +696,24 @@ function statusTagTheme(tone: ContractStatusTone) {
   return tone;
 }
 
+async function loadFormalProjects() {
+  try {
+    formalProjectOptions.value = (await fetchProjects()).map((project) => ({ label: project.name, value: project.id }));
+  } catch (error) {
+    if (props.formalLedgerOnly) MessagePlugin.error(formatUnknownApiError(error, "读取授权项目失败"));
+  }
+}
+
 watch(() => route.query.project, applyRouteProjectFilter, { immediate: true });
-watch([() => props.formalLedgerOnly, () => route.query.view], ([, value]) => {
+watch([() => props.formalLedgerOnly, () => route.query.view], ([formal, value], [previousFormal]) => {
   const next = routeLifecycleView(value);
-  if (activeTab.value !== next) activeTab.value = next;
+  if (activeTab.value !== next) {
+    activeTab.value = next;
+  } else if (formal !== previousFormal) {
+    lifecycleMeta.value.page = 1;
+    void loadContractLedger();
+  }
+  if (formal && !previousFormal) void loadFormalProjects();
 });
 watch(contractPreferenceStorageKey, loadContractColumnPreferences, { immediate: true });
 watch(activeTab, (tab) => {
@@ -651,6 +733,7 @@ onMounted(() => {
     void router.replace({ query: { ...route.query, view: activeTab.value } });
   }
   void loadContractLedger();
+  if (props.formalLedgerOnly) void loadFormalProjects();
 });
 </script>
 

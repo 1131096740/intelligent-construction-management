@@ -224,10 +224,9 @@ test("五类业务台账在手机、平板和电脑中只由数据区横向滚�
 
 test("合同与结算正式台账在各视口独立查询", async ({ page }) => {
   await mockSession(page);
-  const contractViews: Array<string | null> = [];
+  const contractQueries: URLSearchParams[] = [];
   await page.route((url) => url.pathname === "/api/contracts/lifecycle-ledger", (route) => {
-    const url = new URL(route.request().url());
-    contractViews.push(url.searchParams.get("view"));
+    contractQueries.push(new URL(route.request().url()).searchParams);
     return route.fulfill({
       json: {
         rows: [],
@@ -283,7 +282,19 @@ test("合同与结算正式台账在各视口独立查询", async ({ page }) => 
     await expectNoNestedHorizontalScrollers(page);
     await expectHorizontalScrollOwnerIfNeeded(page.locator(".jg-table-region .t-table__content"));
   }
-  expect(contractViews).toHaveLength(responsiveViewports.length);
-  expect(new Set(contractViews)).toEqual(new Set(["formal_ledger"]));
+  expect(contractQueries).toHaveLength(responsiveViewports.length);
+  expect(contractQueries.every(query => query.get("view") === "formal_ledger" &&
+    query.get("scope") === "formal_ledger")).toBe(true);
   expect(legacySettlements).toEqual([]);
+
+  await page.goto("/合同台账");
+  await page.getByPlaceholder("合同编号、名称或业务双方").fill("幕墙");
+  const matchingList = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === "/api/contracts/lifecycle-ledger" && url.searchParams.get("keyword") === "幕墙";
+  });
+  await page.getByRole("button", { name: "查询" }).click();
+  expect((await matchingList).status()).toBe(200);
+  expect(contractQueries.at(-1)?.get("scope")).toBe("formal_ledger");
+  expect(contractQueries.at(-1)?.get("page")).toBe("1");
 });

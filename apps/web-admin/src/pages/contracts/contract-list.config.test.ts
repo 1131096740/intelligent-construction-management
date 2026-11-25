@@ -25,7 +25,7 @@ describe("contract ledger page configuration", () => {
     expect(source).toContain("<BusinessFeedback");
     expect(source).toContain("<EmptyBusinessState");
     expect(source).not.toContain("<input");
-    expect(source).toContain('title="合同工作台"');
+    expect(source).toContain(":title=\"formalLedgerOnly ? '合同台账' : '合同工作台'\"");
     expect(source).toContain('router.push("/合同工作台/新建")');
   });
 

@@ -132,6 +132,15 @@ for (const table of Object.keys(state)) {
     upsert: async ({ where, create, update }) => find({ where }).length ? db[table].update({ where, data: update }) : db[table].create({ data: create })
   };
 }
+db.contractTakeoverCorrection.groupBy = async ({ by, orderBy, where, take }) => {
+  if (by.length !== 1 || by[0] !== "projectId" || orderBy.projectId !== "asc") {
+    throw Error("Unsupported synthetic takeover correction projection");
+  }
+  const projectIds = state.contractTakeoverCorrection
+    .filter(row => matches(row, where))
+    .map(row => row.projectId);
+  return [...new Set(projectIds)].sort().slice(0, take).map(projectId => ({ projectId }));
+};
 db.$transaction = async run => { const previous = clone(state); try { return await run(db); } catch (error) { state = previous; throw error; } };
 db.$queryRaw = async query => {
   const text = query.strings?.join(" ") ?? "";

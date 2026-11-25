@@ -1,3 +1,4 @@
+import { normalizeLedgerExportQuery } from "../core-flow/ledger-export-query";
 import { ContractWorkCompletionService } from "./contract-work-completion.service";
 import { ContractWorkCompletionApprovalService } from "./contract-work-completion-approval.service";
 import { ContractWorkCompletionNotificationService } from "./contract-work-completion-notification.service";
@@ -319,12 +320,16 @@ export class ContractController {
     @Query("view") rawView?: string,
     @Query("page") page?: string,
     @Query("pageSize") pageSize?: string,
-    @Headers("x-contract-numeric-protocol") protocol?: string
+    @Headers("x-contract-numeric-protocol") protocol?: string,
+    @Query() query?: Record<string, string | string[] | undefined>
   ) {
     const view = DRAFT_LEDGER_VIEWS.includes(rawView as DraftLedgerView)
       ? rawView as DraftLedgerView
       : "formal_ledger";
     const args = [view, page, pageSize, await this.projectVisibility.visibleProjectIds(user.id), user.id] as const;
+    if (query?.scope === "formal_ledger" && view === "formal_ledger") {
+      return this.contractRead.lifecycleLedger(...args, protocol, { query: normalizeLedgerExportQuery(query) });
+    }
     return protocol === undefined ? this.contractRead.lifecycleLedger(...args) : this.contractRead.lifecycleLedger(...args, protocol);
   }
 

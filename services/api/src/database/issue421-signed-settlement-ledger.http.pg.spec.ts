@@ -405,5 +405,22 @@ run("issue 421a signed settlement ledger and exports on real PostgreSQL and HTTP
     expect(framework.sheet!.getRow(2).getCell(frameworkMoney).value).toBe("不设合同总价");
     // 全部金额未知时合计保持空白，不写 0。
     expect(framework.sheet!.getRow(3).getCell(frameworkMoney).value).toBeNull();
+
+    const scope = "scope=formal_ledger&keyword=合同&sort=contractNo:asc";
+    const list = await callJson("director", `/contracts/lifecycle-ledger?${scope}&pageSize=1&page=2`);
+    expect(list).toMatchObject({
+      status: 200,
+      body: { rows: [{ contractNo: "HT-421-B" }], meta: { total: 2, totalPages: 2 } }
+    });
+    const formal = await callWorkbook("director", `/contracts/ledger-export?${scope}`);
+    expect(formal.status).toBe(200);
+    const codeColumn = headersOf(formal.sheet!).indexOf("合同编号") + 1;
+    expect([2, 3].map(row => formal.sheet!.getRow(row).getCell(codeColumn).value)).toEqual(["HT-421-A", "HT-421-B"]);
+
+    const limited = await callJson("staffA", `/contracts/lifecycle-ledger?${scope}&projectId=${ids.projectB}`);
+    expect(limited).toMatchObject({ status: 200, body: { rows: [], meta: { total: 0 } } });
+    const limitedExport = await callWorkbook("staffA", `/contracts/ledger-export?${scope}&projectId=${ids.projectB}`);
+    expect(limitedExport.status).toBe(200);
+    expect(limitedExport.sheet!.rowCount).toBeLessThanOrEqual(2);
   });
 });

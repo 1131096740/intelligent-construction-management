@@ -74,7 +74,8 @@ import {
   matchesLedgerExportQuery,
   normalizeLedgerExportQuery,
   resolveLedgerExportColumns,
-  sortLedgerRows
+  sortLedgerRows,
+  type NormalizedLedgerExportQuery
 } from "../core-flow/ledger-export-query";
 import { PrismaService } from "../database/prisma.service";
 import { MeService } from "../me/me.service";
@@ -726,7 +727,8 @@ export class ContractReadService {
     rawPageSize: string | number | undefined,
     visibleProjectIds: string[],
     actorUserId: string,
-    numericProtocol?: string
+    numericProtocol?: string,
+    formalOptions?: { query: NormalizedLedgerExportQuery; unpaged?: boolean }
   ): Promise<LifecycleLedgerPage<Record<string, unknown>>> {
     const page = this.page(rawPage);
     const pageSize = this.pageSize(rawPageSize);
@@ -875,12 +877,14 @@ export class ContractReadService {
         participantIds
       )
     };
+    const options = view === "formal_ledger" ? formalOptions : undefined;
+    const matching = options ? this.filterAndSortLedgerRows(classified, options.query) : classified;
     const start = (page - 1) * pageSize;
-    const pageRows = classified.slice(start, start + pageSize);
-    await this.projectDirectPendingRows(pageRows, versions);
+    const pageRows = options?.unpaged ? matching : matching.slice(start, start + pageSize);
+    if (!options?.unpaged) await this.projectDirectPendingRows(pageRows, versions);
     return {
       rows: pageRows,
-      meta: { page, pageSize, total: classified.length, totalPages: Math.ceil(classified.length / pageSize) },
+      meta: { page, pageSize, total: matching.length, totalPages: Math.ceil(matching.length / pageSize) },
       summary
     };
   }
@@ -1044,20 +1048,11 @@ export class ContractReadService {
     };
   }
 
-  async exportLedger(
-    visibleProjectIds: string[],
-    actorUserId: string,
-    rawQuery?: Record<string, unknown>,
-    numericProtocol?: string
+  private filterAndSortLedgerRows<Row extends Record<string, unknown>>(
+    rows: Row[],
+    query: NormalizedLedgerExportQuery
   ) {
-    const query = normalizeLedgerExportQuery(rawQuery);
-    const ledger = await this.listRecent(undefined, visibleProjectIds, {
-      unbounded: true,
-      actorUserId,
-      ...(numericProtocol === undefined ? {} : { numericProtocol })
-    });
-    // 筛选作用于「全部可见记录」，不是当前页；listRecent 已按行级可见性过滤。
-    const filtered = ledger.rows.filter((row) =>
+    const filtered = rows.filter((row) =>
       matchesLedgerExportQuery(
         {
           projectId: String(row.projectId ?? ""),
@@ -1079,8 +1074,8 @@ export class ContractReadService {
         query
       )
     );
-    const sorted = sortLedgerRows(
-      hasLedgerExportFilters(query) || query.sortField ? filtered : ledger.rows,
+    return sortLedgerRows(
+      hasLedgerExportFilters(query) || query.sortField ? filtered : rows,
       query.sortField,
       query.sortDirection,
       {
@@ -1091,6 +1086,25 @@ export class ContractReadService {
         contractNo: (row) => (typeof row.contractNo === "string" ? row.contractNo : "")
       }
     );
+  }
+
+  async exportLedger(
+    visibleProjectIds: string[],
+    actorUserId: string,
+    rawQuery?: Record<string, unknown>,
+    numericProtocol?: string
+  ) {
+    const query = normalizeLedgerExportQuery(rawQuery);
+    const sorted = rawQuery?.scope === "formal_ledger"
+      ? (await this.lifecycleLedger("formal_ledger", undefined, undefined, visibleProjectIds, actorUserId, numericProtocol, {
+          query,
+          unpaged: true
+        })).rows
+      : this.filterAndSortLedgerRows((await this.listRecent(undefined, visibleProjectIds, {
+          unbounded: true,
+          actorUserId,
+          ...(numericProtocol === undefined ? {} : { numericProtocol })
+        })).rows, query);
     const rows = sorted.map((row) => {
       const amountYuan = row.amountYuan;
       return {
