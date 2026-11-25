@@ -241,7 +241,7 @@ function grantApplication(sql, database, app, appPassword) {
     grantColumns("UPDATE", "User", userUpdateColumns) +
     grantColumns("SELECT", "ContractDocumentComparison", comparison.select) +
     grantColumns("UPDATE", "ContractDocumentComparison", comparison.update) +
-    grantColumns("SELECT", "ContractDraftCheckpoint", ["contractVersionId", "id", "sequenceNo", "name", "snapshot", "createdAt"]) +
+    grantColumns("SELECT", "ContractDraftCheckpoint", ["contractVersionId", "id", "sequenceNo", "name", "snapshot", "createdByUserId", "createdAt"]) +
     newBindingReads.map(([table, column]) => grantColumns("SELECT", table, [column])).join("") +
     locks.join("") +
     "COMMIT;");
