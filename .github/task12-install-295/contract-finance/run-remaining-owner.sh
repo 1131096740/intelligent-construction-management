@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && $6 == --current-320 ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 ) ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -10,7 +10,10 @@ build=$(cd "$4" && pwd -P)
 lane=$5
 mode_args=()
 count=295
-if [[ $# == 6 ]]; then mode_args=(--current-320); count=329; fi
+if [[ $# == 6 ]]; then
+  mode_args=("$6")
+  case "$6" in --current-320) count=329;; --text-direct-330) count=330;; esac
+fi
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 prior="$root/.github/task12-install-289"
@@ -22,9 +25,11 @@ node - "$prepared/source.json" "$sha" "$prior/remaining-owner-modes.json" "$lane
 const [sourceFile,sha,profilesFile,lane,terminalFile,mode]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||!Object.hasOwn(require(profilesFile),lane))process.exit(65);
-if(mode==='--current-320') {
-  if(source.mode!=='current-320'||source.migrationCount!==329||source.predecessor?.migrationCount!==295||
-     source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==34) process.exit(65);
+if(mode!==undefined) {
+  const textDirect=mode==='--text-direct-330';
+  const count=textDirect?330:329;
+  if(source.mode!==(textDirect?'text-direct-330':'current-320')||source.migrationCount!==count||source.predecessor?.migrationCount!==295||
+     source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==count-295) process.exit(65);
 } else if(source.migrationCount!==295||source.ledgerSha256!==terminal.final) process.exit(65);
 JS
 image=$(cat "$build/image.id")
@@ -36,18 +41,18 @@ profiles="$prior/remaining-owner-modes.json"
 node "$owner" --mounts "$lane" "$workspace" > "$work/fixture-mounts.tsv"
 spec=
 current_profile=
-if [[ $count == 329 && $lane == generic-batch ]]; then
+if [[ $count != 295 && $lane == generic-batch ]]; then
   spec=src/database/pol05-operating-source-facts.spec.ts
   expected=e22999bfe33cbab9b963e0d61d94ac5bd27762dadda606f7838274de74a8cd04
   fixture="$work/pol05-operating-source-facts.spec.ts"
   cp "$prior/remaining-fixtures/$spec" "$fixture"
   patch --batch --forward --fuzz=0 --silent "$fixture" < "$plan/pol05-owner-comparison-320.patch"
-elif [[ $count == 329 && $lane == takeover-task1 ]]; then
+elif [[ $count != 295 && $lane == takeover-task1 ]]; then
   spec=src/database/contract-takeover-confirmation-concurrency.spec.ts
   fixture="$work/contract-takeover-confirmation-concurrency.spec.ts"
   expected=$(git -C "$root" show "$sha:services/api/$spec" | shasum -a 256 | cut -d' ' -f1)
   cp "$workspace/services/api/$spec" "$fixture"
-elif [[ $count == 329 && $lane == payable-settlement ]]; then
+elif [[ $count != 295 && $lane == payable-settlement ]]; then
   spec=src/database/payable-settlement-concurrency.spec.ts
   fixture="$work/payable-settlement-concurrency.spec.ts"
   current_profile="$plan/payable-settlement-329-fixture.json"
@@ -80,7 +85,7 @@ JS
   profiles="$work/remaining-owner-modes.json"
   chmod 0644 "$fixture" "$profiles"
 fi
-if [[ $count == 329 ]]; then
+if [[ $count != 295 ]]; then
   cp "$owner" "$work/remaining-owner.cjs"
   owner="$work/remaining-owner.cjs"
   patch --batch --forward --fuzz=0 --silent "$owner" < "$plan/remaining-owner-320-observation.patch"

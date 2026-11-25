@@ -15,8 +15,8 @@ scope=cleanup
 
 node -e '
   const source=require(process.argv[1]);
-  const current=source.mode==="current-320";
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==(current?329:295))process.exit(1);
+  const count=source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
 ' "$prepared/source.json" "$sha"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
@@ -43,7 +43,7 @@ args+=(--mount "type=bind,src=$common/installer.cjs,dst=/qualification/installer
 node - "$archive" "$prepared/source.json" "$work" > "$work/cleanup-mounts.tsv" <<'JS'
 const fs=require('node:fs'), path=require('node:path'),{createHash}=require('node:crypto'),assert=require('node:assert/strict');
 const [archive,sourceFile,work]=process.argv.slice(2);
-const current=require(sourceFile).mode==='current-320';
+const current=['current-320','text-direct-330'].includes(require(sourceFile).mode);
 const lifecycle='fixtures/contract-lifecycle-route.spec.ts';
 const oldLifecycle='32b015b36b9093f8354281d4807edb4f304eb657902eeb22faa43a3e952f9d1f';
 const newLifecycle='9519497389690475b6b87a2b1d3daa13e57dac68951c3b4607e115b6527af48d';

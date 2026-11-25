@@ -2,14 +2,15 @@
 
 const assert = require('node:assert/strict');
 const {admitSource} = require('./install-only292.cjs');
-const {withCombined295RetainedCleanup,withCombined320RetainedCleanup} = require('./installer.cjs');
+const {withCombined295RetainedCleanup,withCombined320RetainedCleanup,withCombined330RetainedCleanup} = require('./installer.cjs');
 const {final, digest} = require('./multi-witness.cjs');
 const {runRetained} = require('./remaining-retained.cjs');
 
 const root = '/qualification';
 const source = require('./contract-finance-source.json');
-const current320=source.mode==='current-320';
-const count=current320?329:295;
+const textDirect=source.mode==='text-direct-330';
+const current=textDirect||source.mode==='current-320';
+const count=textDirect?330:current?329:295;
 const receipt = {schemaVersion:1,purpose:'REMAINING_RETAINED_CLEANUP_'+count,
   sourceSha:source.sourceSha,stages:['INPUTS'],status:'STOPPED'};
 
@@ -19,9 +20,9 @@ async function main() {
   assert.equal(process.env.DATABASE_URL,undefined);
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
   assert.equal(source.migrationCount,count);
-  assert.equal(current320?source.predecessor.ledgerSha256:source.ledgerSha256,final);
-  assert.equal((current320?source.predecessor.tails:source.tails).at(-1).sha256,digest);
-  if(current320){
+  assert.equal(current?source.predecessor.ledgerSha256:source.ledgerSha256,final);
+  assert.equal((current?source.predecessor.tails:source.tails).at(-1).sha256,digest);
+  if(current){
     assert.equal(source.predecessor.migrationCount,295);
     const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
     assert.equal(baseline.expectedDirectoryCount,count);
@@ -30,8 +31,9 @@ async function main() {
   }
   receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   const consume=context=>runRetained(context,receipt,'cleanup');
-  if(current320){
-    await withCombined320RetainedCleanup(receipt,consume,{sourceTree:source.sourceTree,
+  if(current){
+    const installCurrent=textDirect?withCombined330RetainedCleanup:withCombined320RetainedCleanup;
+    await installCurrent(receipt,consume,{sourceTree:source.sourceTree,
       migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails});
     assert.equal(receipt.forward320.count,count);
     assert.equal(receipt.forward320.sourceTree,source.sourceTree);

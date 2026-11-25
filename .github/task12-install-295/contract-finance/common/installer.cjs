@@ -1411,3 +1411,8 @@ module.exports.withCombined320RetainedCleanup=(receipt,consume,material)=>
   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'cleanup');
 module.exports.withCombined320MultiWitnessForProfile=(receipt,consume,material)=>
   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'profile');
+
+module.exports.withCombined330RetainedCleanup=(receipt,consume,material)=>
+  withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,true),'cleanup');
+module.exports.withCombined330MultiWitnessForProfile=(receipt,consume,material)=>
+  withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,true),'profile');

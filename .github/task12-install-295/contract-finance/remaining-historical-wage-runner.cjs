@@ -12,12 +12,12 @@ async function runHistoricalWage(context,receipt,source){
  const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
  const {ownerUrl,runId,database,workDir}=context;
  assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
- const current320=source.mode==='current-320';
- assert.equal(source.migrationCount,current320?329:295);
- if(current320) assert.equal(context.candidateTree,source.sourceTree);
+ const count=source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
+ assert.equal(source.migrationCount,count);
+ if(count!==295) assert.equal(context.candidateTree,source.sourceTree);
  assert.equal(receipt.installOnly295.count,295);
  assert.equal(receipt.installOnly295.sameIdentity,true);
- assert.equal(receipt.installOnly295.ledgerSha256,current320?source.predecessor.ledgerSha256:source.ledgerSha256);
+ assert.equal(receipt.installOnly295.ledgerSha256,count!==295?source.predecessor.ledgerSha256:source.ledgerSha256);
  const endpoint=new URL(ownerUrl);
  assert.ok(endpoint.protocol==='postgresql:'&&endpoint.hostname==='127.0.0.1'&&endpoint.username==='jg_task01_owner'&&
    endpoint.pathname==='/'+database&&database==='jg_task01_'+runId.replaceAll('-','')&&
