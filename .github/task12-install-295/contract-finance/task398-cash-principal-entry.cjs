@@ -1,13 +1,14 @@
 'use strict';
 const assert = require('node:assert/strict');
 const source = require('./contract-finance-source.json');
-const {withCombined295MultiWitness,withCombined320ContractPayment} = require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement} = require('./installer.cjs');
 const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run-task398-shared-standard-local.cjs');
 
 const [lane] = process.argv.slice(2);
 assert.ok(process.argv.length===3&&['cash-handover','principal-return'].includes(lane));
-const current320=source.mode==='current-320';
-const count=current320?329:295;
+const textDirect=source.mode==='text-direct-330';
+const current320=textDirect||source.mode==='current-320';
+const count=textDirect?330:current320?329:295;
 const purpose='TASK398_CASH_PRINCIPAL_EXACT_'+count;
 const receipt = {schemaVersion:1,sourceSha:source.sourceSha,lane,purpose,business:'NOT_ENTERED',stages:[]};
 async function main(){
@@ -15,7 +16,8 @@ async function main(){
   assert.equal((current320?source.predecessor:source).ledgerSha256,require('./multi-witness.cjs').final);
   const consume=context=>runTask398Owned282Voucher(context,lane+'-'+count,receipt);
   if(current320){
-    await withCombined320ContractPayment(receipt,consume,{sourceTree:source.sourceTree,
+    const install=textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
+    await install(receipt,consume,{sourceTree:source.sourceTree,
       migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails});
     assert.equal(receipt.forward320.sourceTree,source.sourceTree);
     assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
