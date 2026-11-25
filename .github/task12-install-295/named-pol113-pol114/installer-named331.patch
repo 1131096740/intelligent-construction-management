@@ -1,0 +1,30 @@
+--- installer.cjs
++++ installer.cjs
+@@ -281,2 +281,2 @@
+-  const named330=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_330';
+-  const named320=named330||(purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_329');
++  const named331=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_331';
++  const named320=named331||(purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_329');
+@@ -732,2 +732,3 @@
+-        need(named330&&material.migrationCount===330 && /^[0-9a-f]{40}$/u.test(material.sourceTree) &&
+-          Array.isArray(rows) && rows.length===35 && rows.at(-1)?.name==='20261128000000_text_agreement_direct_payment','NAMED_330_SOURCE');
++        need(named331&&material.migrationCount===331 && /^[0-9a-f]{40}$/u.test(material.sourceTree) &&
++          Array.isArray(rows) && rows.length===36 && rows.at(-2)?.name==='20261128000000_text_agreement_direct_payment' &&
++          rows.at(-1)?.name==='20261129000000_payment_remaining_withdrawal','NAMED_331_SOURCE');
+@@ -737 +738 @@
+-        for(const batch of [rows.slice(0,-1), rows.slice(-1)]){
++        for(const batch of [rows.slice(0,34), rows.slice(34,35), rows.slice(35)]){
+@@ -750,2 +751,3 @@
+-          const expected=count===329?material.ledger329:material.ledger320;
+-          need(hash(JSON.stringify(consumerLedger))===expected,'NAMED_330_LEDGER_SOURCE');
++          const expected=count===329?material.ledger329:count===330?material.ledger330:material.ledger320;
++          need(hash(JSON.stringify(consumerLedger))===expected,'NAMED_331_LEDGER_SOURCE');
++          enter('NAMED_COMPOSED_MIGRATE_'+count);
+@@ -755,0 +758 @@
++          if(count===330) receipt.paymentRemainderPredecessor={count,ledgerSha256:expected,sameIdentity:true,exactB7:true};
+@@ -787 +790 @@
+-      enter(named330?'EXACT_330_NAMED_FRESH_CONSUMER':named320?'EXACT_329_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
++      enter(named331?'EXACT_331_NAMED_FRESH_CONSUMER':named320?'EXACT_329_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
+@@ -1159 +1162 @@
+-module.exports.withNamedPol113Pol114330=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,330);
++module.exports.withNamedPol113Pol114331=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,331);

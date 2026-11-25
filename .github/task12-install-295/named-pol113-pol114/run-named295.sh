@@ -8,24 +8,31 @@ prepared=$(cd "$3" && pwd -P)
 ref=$4
 evidence=$5
 [[ "$ref" =~ ^[a-f0-9]{40}$ ]]
-node - "$generated/context/candidate-admission.json" "$prepared/source.json" "$ref" <<'JS'
-const [candidateFile,sourceFile,sha]=process.argv.slice(2);
+plan=$(cd "$(dirname "$0")" && pwd -P)
+node - "$generated/context/candidate-admission.json" "$prepared/source.json" "$ref" "$plan" <<'JS'
+const [candidateFile,sourceFile,sha,plan]=process.argv.slice(2);
 const a=require(candidateFile),s=require(sourceFile);
-const textDirect=s.mode==='text-direct-330';
+const paymentRemainder=s.mode==='payment-remainder-331';
+const textDirect=s.mode==='text-direct-330'||paymentRemainder;
 const current320=textDirect||s.mode==='current-320';
-const count=textDirect?330:current320?329:295;
+const count=paymentRemainder?331:textDirect?330:current320?329:295;
 if(a.candidateSha!==sha||s.sourceSha!==sha||s.migrationCount!==count||a.migrationCount!==count||
   a.ledger295!==(current320?s.predecessor.ledgerSha256:s.ledgerSha256))process.exit(65);
 if(current320&&(a.ledger320!==s.ledgerSha256||a.sourceTree!==s.sourceTree||
   JSON.stringify(a.tails)!==JSON.stringify(s.tails)))process.exit(65);
 if(textDirect&&a.ledger329!=="3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2")process.exit(65);
+if(paymentRemainder){
+  const finance=plan+'/../contract-finance';
+  require(finance+'/payment-remainder-331-profile.cjs').assertSource(s,sha,require(finance+'/common/multi-witness.cjs').final);
+  if(a.ledger330!==s.predecessor330.ledgerSha256)process.exit(65);
+}
 JS
 (cd "$generated/context" && shasum -a 256 -c ../context.sha256 >/dev/null)
 [[ -z $(docker ps -q) ]]
 if pgrep -x postgres >/dev/null; then exit 65; fi
 mkdir "$evidence"
 evidence=$(cd "$evidence" && pwd -P)
-source "$(dirname "$0")/../contract-finance/local-build-images.sh"
+source "$plan/../contract-finance/local-build-images.sh"
 qualification_image_scope "$evidence"
 trap 'qualification_image_exit "$?"' EXIT
 trap 'exit 130' INT
