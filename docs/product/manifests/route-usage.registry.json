@@ -4,23 +4,23 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 879,
-    "classificationOverrideCount": 293,
-    "derivedProductionPageCount": 586,
-    "classificationOverrideSha256": "5f071a545a7b35ceb1a73e0a44fc1c6f5cc3028801c974f96c5bc3e4fab6402d",
-    "consumerSurfaceOverrideSha256": "505b02d24585f9728dc28c9f86099d352a0f49ec9f22ad9b269849075062c91a",
+    "classificationOverrideCount": 295,
+    "derivedProductionPageCount": 584,
+    "classificationOverrideSha256": "d0218f3175688bcb435902f16e9800c398af3a21947f90edb1637765cd1a2394",
+    "consumerSurfaceOverrideSha256": "dea6162a4df6bfd3c8398e7441e0815ff7bfb1c31dd74531567afcdac09046c6",
     "usageCounts": {
-      "page": 605,
+      "page": 603,
       "external_takeover": 70,
       "exit_candidate": 133,
-      "internal_task": 71,
+      "internal_task": 73,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 657,
+      "web_api_wrapper": 655,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 2,
-      "operator_endpoint": 69,
+      "operator_endpoint": 71,
       "none": 144
     }
   },
@@ -1782,6 +1782,18 @@
       "path": "/payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates",
       "usage": "internal_task",
       "reason": "issue_425_historical_wage_settlement_revision_read"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/inter-entity-relationships/:relationshipEntryId/evidence",
+      "usage": "internal_task",
+      "reason": "issue_425_retained_inter_entity_return_api_web_routes_through_company_transfer"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/inter-entity-relationships/:relationshipEntryId/returns",
+      "usage": "internal_task",
+      "reason": "issue_425_retained_inter_entity_return_api_web_routes_through_company_transfer"
     }
   ],
   "consumerSurfaceOverrides": [
@@ -2238,6 +2250,18 @@
       "path": "/payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates",
       "consumerSurface": "operator_endpoint",
       "reason": "issue_425_historical_wage_settlement_revision_read"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/inter-entity-relationships/:relationshipEntryId/evidence",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_inter_entity_return_api_web_routes_through_company_transfer"
+    },
+    {
+      "method": "POST",
+      "path": "/payable-settlements/inter-entity-relationships/:relationshipEntryId/returns",
+      "consumerSurface": "operator_endpoint",
+      "reason": "issue_425_retained_inter_entity_return_api_web_routes_through_company_transfer"
     }
   ]
 }

@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 56,
-    "exportedFunctionCount": 769,
-    "transportWrapperCount": 748,
+    "exportedFunctionCount": 767,
+    "transportWrapperCount": 746,
     "pureExportCount": 21,
-    "mainRequestBindingCount": 819,
+    "mainRequestBindingCount": 817,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 777,
-    "productionConsumerCount": 637,
+    "requestEdgeCount": 775,
+    "productionConsumerCount": 635,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -18168,7 +18168,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 124,
+          "sourceLine": 77,
           "method": "GET",
           "path": "/payable-settlements/inter-entity-relationships",
           "normalizedPath": "/payable-settlements/inter-entity-relationships",
@@ -18198,7 +18198,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 124,
+          "sourceLine": 77,
           "method": "GET",
           "path": "/payable-settlements/capabilities",
           "normalizedPath": "/payable-settlements/capabilities",
@@ -18228,7 +18228,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 124,
+          "sourceLine": 77,
           "method": "GET",
           "path": "/payable-settlements/workbench",
           "normalizedPath": "/payable-settlements/workbench",
@@ -18258,7 +18258,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 124,
+          "sourceLine": 77,
           "method": "GET",
           "path": "/payable-settlements/wage-payable-cases",
           "normalizedPath": "/payable-settlements/wage-payable-cases",
@@ -18268,66 +18268,6 @@
             [
               "fetchWagePayableCases",
               "read"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/payable-settlement.api.test.ts"
-      ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-      ],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "returnInterEntityRelationship",
-      "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 128,
-          "method": "POST",
-          "path": "/payable-settlements/inter-entity-relationships/:param/returns",
-          "normalizedPath": "/payable-settlements/inter-entity-relationships/:param/returns",
-          "normalizedKey": "POST /payable-settlements/inter-entity-relationships/:param/returns",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "returnInterEntityRelationship",
-              "post"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/payable-settlement.api.test.ts"
-      ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-      ],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "uploadInterEntityRelationshipEvidence",
-      "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 136,
-          "method": "POST",
-          "path": "/payable-settlements/inter-entity-relationships/:param/evidence",
-          "normalizedPath": "/payable-settlements/inter-entity-relationships/:param/evidence",
-          "normalizedKey": "POST /payable-settlements/inter-entity-relationships/:param/evidence",
-          "bodyKind": "form_data",
-          "localCallChains": [
-            [
-              "uploadInterEntityRelationshipEvidence",
-              "postForm"
             ]
           ]
         }

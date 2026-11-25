@@ -126,8 +126,8 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
       { label: "资金执行案件", path: "/资金执行案件", access: "fund_execution_cases" },
       { label: "公司互转台账", path: "/公司互转台账", access: "company_transfer_ledger" },
       { label: "资金移动工作台", path: "/资金移动工作台", access: "fund_movement_workbench" },
-      { label: "工资承担工作台", path: "/工资承担工作台", access: "wage_assumption" },
-      { label: "工资应付核销工作台", path: "/工资应付核销工作台", access: "payable_settlement_workbench" },
+      { label: "历史工资承担", path: "/工资承担工作台", access: "wage_assumption" },
+      { label: "历史工资应付核销", path: "/工资应付核销工作台", access: "payable_settlement_workbench" },
       { label: "统一更正", path: "/更正中心", access: "correction_center" }
     ]
   },
@@ -369,7 +369,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       {
         path: "工资承担工作台",
         component: () => import("../pages/wage/WageStatementWorkbenchPage.vue"),
-        meta: { title: "工资承担工作台" }
+        meta: { title: "历史工资承担" }
       },
       {
         path: "全局发票与清分分配",
@@ -493,7 +493,7 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         component: () => import("../pages/payable-settlements/PayableSettlementWorkbenchPage.vue"),
         meta: {
           requiredGlobalRoleKeys: payableSettlementRoleKeys,
-          title: "工资应付核销工作台"
+          title: "历史工资应付核销"
         }
       },
       {

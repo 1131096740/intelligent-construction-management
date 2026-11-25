@@ -7,31 +7,31 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `0227dbadedb7c9b2c24d91e769749093ac6afa276034dbccef0b5988dd9ca853` |
-| webApiWrappers | ready | `8d55011abaf9e2b07f9755755970be5665363a30cbdb0ec2bffce408b943dafc` |
-| webPageActions | ready | `64c92e4d1c79e7531312bf37b90a5613ff43b85cbd7e24f96d24c3ee3e8c99e1` |
-| routeUsage | ready | `9662edf7f22b49f47d917683a2a8797fc98b70275f175a8854aa5957fbc4c723` |
+| webApiWrappers | ready | `814d8286fb58a5dc27037f37ed1b210f30bda473ba3d2834053c826459e6b80d` |
+| webPageActions | ready | `61d112a9abd9022a90748e1e3855dec47be3e318de3fe82f8077f752e6aeb041` |
+| routeUsage | ready | `b4ffb7addcf49a2cf54982117830340d6742cd0449759313802366ff49f244cc` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 879 |
-| pageRouteCount | 605 |
+| pageRouteCount | 603 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 133 |
-| internalTaskRouteCount | 71 |
+| internalTaskRouteCount | 73 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 819 |
+| mainRequestBindingCount | 817 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 440 |
-| actionBindingCount | 535 |
-| acceptedActionBindingCount | 490 |
+| registeredActionCount | 438 |
+| actionBindingCount | 533 |
+| acceptedActionBindingCount | 488 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 431 |
-| coveredProductionMutationConsumerPairCount | 431 |
+| productionMutationConsumerPairCount | 429 |
+| coveredProductionMutationConsumerPairCount | 429 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -647,8 +647,8 @@
 | POST | /payable-settlements/:settlementCaseId/confirm | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /payable-settlements/:settlementCaseId/return | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /payable-settlements/:settlementCaseId/submit | internal_task | operator_endpoint | — | — | not_applicable | — |
-| POST | /payable-settlements/inter-entity-relationships/:relationshipEntryId/evidence | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#uploadInterEntityRelationshipEvidence | payable-settlement.inter-entity-return.upload-evidence | covered | — |
-| POST | /payable-settlements/inter-entity-relationships/:relationshipEntryId/returns | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#returnInterEntityRelationship | payable-settlement.inter-entity-return | covered | — |
+| POST | /payable-settlements/inter-entity-relationships/:relationshipEntryId/evidence | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /payable-settlements/inter-entity-relationships/:relationshipEntryId/returns | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /payable-settlements/wage-payable-cases/:payableRef/allocations | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /payment-executions/:paymentId/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /payment-executions/:paymentId/recovery-proof | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#verifyRegisteredPaymentRecovery | registered-payment.lookup-original | covered | — |

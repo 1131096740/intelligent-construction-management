@@ -20,15 +20,15 @@ describe("payable settlement workbench structure", () => {
   });
 
   it("preserves current relationship entry and authorization independent of retired wage confirmation", () => {
-    expect(page).toContain('path:"/公司互转台账"');
+    expect(page).toContain('path: "/公司互转台账"');
     expect(page).toContain("row.status === 'open' && capabilities.returnRelationship");
-    expect(page).toContain("uploadInterEntityRelationshipEvidence");
-    expect(page).toContain("returnInterEntityRelationship");
-    expect(page.match(/const operationAllowed = capability\.returnRelationship/gu)).toHaveLength(2);
+    expect(page).toContain("originalInterEntityRelationshipId: row.relationshipEntryId");
+    expect(page).not.toContain("上传代付往来凭证");
+    expect(api).not.toContain('method: "POST"');
   });
 
   it("registers the finance-only navigation and canonical route", () => {
-    expect(routes).toContain('label: "工资应付核销工作台"');
+    expect(routes).toContain('label: "历史工资应付核销"');
     expect(routes).toContain('path: "/工资应付核销工作台"');
     expect(routes).toContain('path: "工资应付核销工作台"');
     expect(routes).toContain('ACTION_REQUIRED_ROLES["payable_settlement.read"]');

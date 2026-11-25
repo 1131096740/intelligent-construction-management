@@ -45,23 +45,10 @@ export interface InterEntityRelationshipReadModel {
   statusLabel: string;
 }
 
-export interface ReturnInterEntityRelationshipInput {
-  amountCents: string;
-  evidenceFileId: string;
-  evidenceClaimId: string;
-  reason: string;
-  idempotencyKey: string;
-}
-
-export interface InterEntityRelationshipEvidenceUploadResult {
-  id: string;
-  claimId: string;
-}
-
 export function fetchPayableSettlementWorkbench() {
   return read<PayableSettlementWorkbenchItem[]>(
     "/payable-settlements/workbench",
-    "加载工资应付核销工作台失败"
+    "加载历史工资应付核销失败"
   );
 }
 
@@ -86,57 +73,8 @@ export function fetchInterEntityRelationships() {
   );
 }
 
-export function returnInterEntityRelationship(
-  relationshipEntryId: string,
-  input: ReturnInterEntityRelationshipInput
-) {
-  return post<{
-    relationshipEntryId: string;
-    returnEntryId: string;
-    returnedAmountCents: string;
-    remainingAmountCents: string;
-    status: "open" | "returned";
-  }>(
-    `/payable-settlements/inter-entity-relationships/${encodeURIComponent(relationshipEntryId)}/returns`,
-    input,
-    "归还跨主体代付往来失败"
-  );
-}
-
-export function uploadInterEntityRelationshipEvidence(
-  relationshipEntryId: string,
-  file: Blob,
-  fileName: string,
-  idempotencyKey?: string
-) {
-  const form = new FormData();
-  form.append("file", file, fileName);
-  if (idempotencyKey !== undefined) {
-    form.append("idempotencyKey", idempotencyKey);
-  }
-  return postForm<InterEntityRelationshipEvidenceUploadResult>(
-    `/payable-settlements/inter-entity-relationships/${encodeURIComponent(relationshipEntryId)}/evidence`,
-    form
-  );
-}
-
 async function read<T>(path: string, fallback: string): Promise<T> {
   return readResponse<T>(await apiFetch(path), fallback);
-}
-
-async function post<T>(path: string, body: unknown, fallback: string): Promise<T> {
-  return readResponse<T>(await apiFetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  }), fallback);
-}
-
-async function postForm<T>(path: string, body: FormData): Promise<T> {
-  return readResponse<T>(await apiFetch(path, {
-    method: "POST",
-    body
-  }), "上传代付往来凭证失败");
 }
 
 async function readResponse<T>(response: Response, fallback: string): Promise<T> {

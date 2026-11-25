@@ -22,17 +22,17 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "8d55011abaf9e2b07f9755755970be5665363a30cbdb0ec2bffce408b943dafc",
+      "sha256": "814d8286fb58a5dc27037f37ed1b210f30bda473ba3d2834053c826459e6b80d",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
-        "exportedFunctionCount": 769,
-        "transportWrapperCount": 748,
+        "exportedFunctionCount": 767,
+        "transportWrapperCount": 746,
         "pureExportCount": 21,
-        "mainRequestBindingCount": 819,
+        "mainRequestBindingCount": 817,
         "ticketFollowupCount": 6,
-        "requestEdgeCount": 777,
-        "productionConsumerCount": 637,
+        "requestEdgeCount": 775,
+        "productionConsumerCount": 635,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,50 +42,50 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "64c92e4d1c79e7531312bf37b90a5613ff43b85cbd7e24f96d24c3ee3e8c99e1",
+      "sha256": "61d112a9abd9022a90748e1e3855dec47be3e318de3fe82f8077f752e6aeb041",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 440,
+        "registeredActionCount": 438,
         "pageActionCount": 108,
-        "backgroundActionCount": 332,
+        "backgroundActionCount": 330,
         "reachableVueFileCount": 235,
         "routeRootCount": 80,
         "totalVueFileCount": 255,
         "parsedVueFileCount": 255,
         "reachableProductionModuleCount": 405,
-        "templateEventDirectiveCount": 1533,
+        "templateEventDirectiveCount": 1532,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 431,
-        "candidateProductionMutationConsumerCount": 431,
-        "acceptedProductionMutationConsumerCount": 431,
-        "productionMutationConsumerPairCount": 431,
+        "coveredProductionMutationConsumerCount": 429,
+        "candidateProductionMutationConsumerCount": 429,
+        "acceptedProductionMutationConsumerCount": 429,
+        "productionMutationConsumerPairCount": 429,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "9662edf7f22b49f47d917683a2a8797fc98b70275f175a8854aa5957fbc4c723",
+      "sha256": "b4ffb7addcf49a2cf54982117830340d6742cd0449759313802366ff49f244cc",
       "status": "ready",
       "summary": {
         "routeCount": 879,
         "exactRouteCount": 879,
         "normalizedRouteCount": 879,
-        "classificationOverrideCount": 293,
-        "consumerSurfaceOverrideCount": 73,
-        "classificationOverrideSha256": "5f071a545a7b35ceb1a73e0a44fc1c6f5cc3028801c974f96c5bc3e4fab6402d",
-        "consumerSurfaceOverrideSha256": "505b02d24585f9728dc28c9f86099d352a0f49ec9f22ad9b269849075062c91a",
-        "derivedProductionPageCount": 586,
-        "pageRouteCount": 605,
+        "classificationOverrideCount": 295,
+        "consumerSurfaceOverrideCount": 75,
+        "classificationOverrideSha256": "d0218f3175688bcb435902f16e9800c398af3a21947f90edb1637765cd1a2394",
+        "consumerSurfaceOverrideSha256": "dea6162a4df6bfd3c8398e7441e0815ff7bfb1c31dd74531567afcdac09046c6",
+        "derivedProductionPageCount": 584,
+        "pageRouteCount": 603,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 133,
-        "internalTaskCount": 71,
+        "internalTaskCount": 73,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 657,
+          "web_api_wrapper": 655,
           "auth_store": 5,
           "signed_ticket_delivery": 2,
           "machine_probe": 2,
-          "operator_endpoint": 69,
+          "operator_endpoint": 71,
           "none": 144
         },
         "blockerCount": 0
@@ -94,22 +94,22 @@
   },
   "summary": {
     "routeCount": 879,
-    "pageRouteCount": 605,
+    "pageRouteCount": 603,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 133,
-    "internalTaskRouteCount": 71,
+    "internalTaskRouteCount": 73,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 819,
+    "mainRequestBindingCount": 817,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 440,
-    "actionBindingCount": 535,
-    "acceptedActionBindingCount": 490,
+    "registeredActionCount": 438,
+    "actionBindingCount": 533,
+    "acceptedActionBindingCount": 488,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 431,
-    "coveredProductionMutationConsumerPairCount": 431,
+    "productionMutationConsumerPairCount": 429,
+    "coveredProductionMutationConsumerPairCount": 429,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -34397,53 +34397,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
-          "wrapper": "uploadInterEntityRelationshipEvidence",
-          "method": "POST",
-          "path": "/payable-settlements/inter-entity-relationships/:param/evidence",
-          "normalizedKey": "POST /payable-settlements/inter-entity-relationships/:param/evidence",
-          "bodyKind": "form_data",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/payable-settlement.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "payable-settlement.inter-entity-return.upload-evidence",
-          "bindingIndex": 0,
-          "identity": "payable-settlement.inter-entity-return.upload-evidence\u0000apps/web-admin/src/api/payable-settlement.api.ts\u0000uploadInterEntityRelationshipEvidence\u0000POST\u0000POST /payable-settlements/inter-entity-relationships/:param/evidence\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
-          "capability": {
-            "kind": "server_boolean",
-            "source": "capability.returnRelationship",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
-          "wrapper": "uploadInterEntityRelationshipEvidence",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -34467,53 +34426,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
-          "wrapper": "returnInterEntityRelationship",
-          "method": "POST",
-          "path": "/payable-settlements/inter-entity-relationships/:param/returns",
-          "normalizedKey": "POST /payable-settlements/inter-entity-relationships/:param/returns",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/payable-settlement.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "internal_task",
+      "consumerSurface": "operator_endpoint",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "payable-settlement.inter-entity-return",
-          "bindingIndex": 0,
-          "identity": "payable-settlement.inter-entity-return\u0000apps/web-admin/src/api/payable-settlement.api.ts\u0000returnInterEntityRelationship\u0000POST\u0000POST /payable-settlements/inter-entity-relationships/:param/returns\u00000",
-          "usage": "background",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
-          "capability": {
-            "kind": "server_boolean",
-            "source": "capability.returnRelationship",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
-          "wrapper": "returnInterEntityRelationship",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {

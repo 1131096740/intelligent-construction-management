@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 428,
+    "activeBusinessActionCount": 426,
     "technicalActionCount": 8,
-    "activeBindingCount": 522,
+    "activeBindingCount": 520,
     "retiredWriteEntryCount": 120,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
@@ -4269,38 +4269,6 @@
       "capabilityKind": "server_boolean",
       "bindingKeys": [
         "PATCH /organization/users/:param"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "payable-settlement.inter-entity-return",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/工资应付核销工作台"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
-      "capabilityKind": "server_boolean",
-      "bindingKeys": [
-        "POST /payable-settlements/inter-entity-relationships/:param/returns"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "payable-settlement.inter-entity-return.upload-evidence",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/工资应付核销工作台"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
-      "capabilityKind": "server_boolean",
-      "bindingKeys": [
-        "POST /payable-settlements/inter-entity-relationships/:param/evidence"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

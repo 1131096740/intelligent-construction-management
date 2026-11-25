@@ -1,18 +1,14 @@
 <script setup lang="ts">
-import {useRouter} from "vue-router";
+import { useRouter } from "vue-router";
 import { computed, onMounted, ref } from "vue";
-import { MessagePlugin, type UploadFile } from "tdesign-vue-next";
 
-import SensitiveActionDialog from "../../components/SensitiveActionDialog.vue";
 import { formatUnknownApiError } from "../../api/error-message";
-import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
+import { centsTextToYuanText } from "../../lib/money";
 import {
   fetchInterEntityRelationships,
   fetchPayableSettlementCapabilities,
   fetchPayableSettlementWorkbench,
   fetchWagePayableCases,
-  uploadInterEntityRelationshipEvidence,
-  returnInterEntityRelationship,
   type PayableSettlementCapabilities,
   type PayableSettlementWorkbenchItem,
   type InterEntityRelationshipReadModel,
@@ -35,12 +31,6 @@ const capabilities = ref<PayableSettlementCapabilities>({ ...emptyCapabilities }
 const wageCases = ref<WagePayableCaseOption[]>([]);
 const workbench = ref<PayableSettlementWorkbenchItem[]>([]);
 const interEntityRelationships = ref<InterEntityRelationshipReadModel[]>([]);
-const relationshipDialogVisible = ref(false);
-const selectedRelationship = ref<InterEntityRelationshipReadModel | null>(null);
-const relationshipAmountYuan = ref("");
-const relationshipReason = ref("");
-const relationshipEvidenceFiles = ref<UploadFile[]>([]);
-const relationshipSubmitting = ref(false);
 
 const overSettledCases = computed(() => wageCases.value.filter(
   (item) => item.status === "over_settled_reconciliation_required"
@@ -83,86 +73,17 @@ async function loadInitial() {
     workbench.value = rows;
     interEntityRelationships.value = relationships;
   } catch (error) {
-    errorMessage.value = formatUnknownApiError(error, "加载工资应付核销工作台失败");
+    errorMessage.value = formatUnknownApiError(error, "加载历史工资应付核销失败");
   } finally {
     loading.value = false;
   }
 }
 
 function requestRelationshipReturn(row: InterEntityRelationshipReadModel) {
- void router.push({path:"/公司互转台账",query:{originalInterEntityRelationshipId:row.relationshipEntryId}});
-}
-
-async function uploadInterEntityRelationshipEvidenceWithCapability(
-  relationshipEntryId: string,
-  file: File,
-  fileName: string
-) {
-  const capability = await fetchPayableSettlementCapabilities();
-  const operationAllowed = capability.returnRelationship;
-  if (!operationAllowed) throw new Error("当前账号没有追加跨主体代付归还的权限");
-  return uploadInterEntityRelationshipEvidence(
-    relationshipEntryId,
-    file,
-    fileName,
-    crypto.randomUUID()
-  );
-}
-
-async function returnInterEntityRelationshipWithCapability(
-  relationshipEntryId: string,
-  input: Parameters<typeof returnInterEntityRelationship>[1]
-) {
-  const capability = await fetchPayableSettlementCapabilities();
-  const operationAllowed = capability.returnRelationship;
-  if (!operationAllowed) throw new Error("当前账号没有追加跨主体代付归还的权限");
-  return returnInterEntityRelationship(relationshipEntryId, input);
-}
-
-async function executeRelationshipReturn() {
-  const relationship = selectedRelationship.value;
-  if (relationshipSubmitting.value || !relationship || !capabilities.value.returnRelationship) return;
-  let amountCents: string;
-  try {
-    amountCents = yuanTextToCentsText(relationshipAmountYuan.value.trim());
-    if (BigInt(amountCents) <= 0n) throw new Error("金额必须大于零");
-  } catch {
-    errorMessage.value = "请输入正数归还金额";
-    return;
-  }
-  const file = relationshipEvidenceFiles.value[0]?.raw;
-  if (!(file instanceof File)) {
-    errorMessage.value = "请上传本次归还凭证";
-    return;
-  }
-  if (!relationshipReason.value.trim()) {
-    errorMessage.value = "请填写归还原因";
-    return;
-  }
-  relationshipSubmitting.value = true;
-  errorMessage.value = "";
-  try {
-    const uploaded = await uploadInterEntityRelationshipEvidenceWithCapability(
-      relationship.relationshipEntryId,
-      file,
-      file.name
-    );
-    await returnInterEntityRelationshipWithCapability(relationship.relationshipEntryId, {
-      amountCents,
-      evidenceFileId: uploaded.id,
-      evidenceClaimId: uploaded.claimId,
-      reason: relationshipReason.value.trim(),
-      idempotencyKey: crypto.randomUUID()
-    });
-    relationshipDialogVisible.value = false;
-    selectedRelationship.value = null;
-    MessagePlugin.success("跨主体代付归还已追加");
-    interEntityRelationships.value = await fetchInterEntityRelationships();
-  } catch (error) {
-    errorMessage.value = formatUnknownApiError(error, "归还跨主体代付往来失败");
-  } finally {
-    relationshipSubmitting.value = false;
-  }
+  void router.push({
+    path: "/公司互转台账",
+    query: { originalInterEntityRelationshipId: row.relationshipEntryId }
+  });
 }
 
 function formatDate(value: string) {
@@ -188,14 +109,13 @@ function formatCents(value: string) {
   <section class="payable-settlement-page">
     <header>
       <div>
-        <p class="eyebrow">工资应付核销</p>
-        <h1>工资应付核销工作台</h1>
+        <h1>历史工资应付核销</h1>
         <p>工资应付核销已停止办理，历史案件、核销记录和余额可查询。</p>
       </div>
       <t-button variant="outline" :loading="loading" @click="loadInitial">刷新</t-button>
     </header>
 
-    <t-alert v-if="errorMessage" theme="error" title="暂时无法办理" :message="errorMessage" />
+    <t-alert v-if="errorMessage" theme="error" title="暂时无法加载" :message="errorMessage" />
     <t-alert
       v-if="overSettledCases.length"
       theme="warning"
@@ -254,39 +174,6 @@ function formatCents(value: string) {
       </t-table>
     </t-card>
 
-    <t-card v-if="selectedRelationship" class="panel" title="追加往来归还">
-      <t-form label-align="top" @submit.prevent="relationshipDialogVisible = true">
-        <div class="form-grid">
-          <t-input
-            v-model="relationshipAmountYuan"
-            label="本次归还金额（元）"
-            :placeholder="`不超过 ${formatCents(selectedRelationship.remainingAmountCents)} 元`"
-          />
-          <t-input v-model="relationshipReason" label="归还原因" placeholder="填写可核验的业务原因" />
-          <t-upload
-            v-model="relationshipEvidenceFiles"
-            theme="file-flow"
-            :auto-upload="false"
-            :multiple="false"
-            accept=".pdf,.jpg,.jpeg,.png"
-          />
-        </div>
-        <t-button
-          theme="primary"
-          type="button"
-          :loading="relationshipSubmitting"
-          @click="relationshipDialogVisible = true"
-        >核对并追加归还</t-button>
-      </t-form>
-    </t-card>
-
-    <SensitiveActionDialog
-      v-model="relationshipDialogVisible"
-      title="确认追加往来归还"
-      description="系统会重新核验未结余额、归还凭证和职责分离；归还只追加往来反向事实，不会改写工资应付或付款记录。"
-      :loading="relationshipSubmitting"
-      @confirm="executeRelationshipReturn"
-    />
   </section>
 </template>
 
@@ -308,32 +195,9 @@ p {
   margin: 0;
 }
 
-header p:not(.eyebrow) {
+header p {
   color: var(--jg-color-text-secondary);
   margin-top: var(--jg-space-xs);
 }
 
-.eyebrow {
-  color: var(--jg-color-brand);
-  font-size: var(--jg-font-size-caption);
-  font-weight: var(--jg-font-weight-semibold);
-}
-
-.panel,
-.panel :deep(.t-form) {
-  display: grid;
-  gap: var(--jg-space-md);
-}
-
-.form-grid {
-  display: grid;
-  gap: var(--jg-space-md);
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-@media (max-width: 900px) {
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-}
 </style>

@@ -9,20 +9,20 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 440,
+    "registeredActionCount": 438,
     "pageActionCount": 108,
-    "backgroundActionCount": 332,
+    "backgroundActionCount": 330,
     "reachableVueFileCount": 235,
     "routeRootCount": 80,
     "totalVueFileCount": 255,
     "parsedVueFileCount": 255,
     "reachableProductionModuleCount": 405,
-    "templateEventDirectiveCount": 1533,
+    "templateEventDirectiveCount": 1532,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 431,
-    "candidateProductionMutationConsumerCount": 431,
-    "acceptedProductionMutationConsumerCount": 431,
-    "productionMutationConsumerPairCount": 431,
+    "coveredProductionMutationConsumerCount": 429,
+    "candidateProductionMutationConsumerCount": 429,
+    "acceptedProductionMutationConsumerCount": 429,
+    "productionMutationConsumerPairCount": 429,
     "blockerCount": 0
   },
   "evidence": {
@@ -20003,138 +20003,6 @@
             "localCallChain": [
               "updateOrganizationUserWithCapability",
               "updateOrganizationUser"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "payable-settlement.inter-entity-return",
-      "usage": "background",
-      "routePaths": [
-        "/工资应付核销工作台"
-      ],
-      "ownerRoutePaths": [
-        "/工资应付核销工作台"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "returnInterEntityRelationshipWithCapability",
-        "kind": "background_call",
-        "sourceLine": 112,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "server_boolean",
-        "source": "capability.returnRelationship",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
-          "wrapper": "returnInterEntityRelationship",
-          "method": "POST",
-          "path": "/payable-settlements/inter-entity-relationships/:param/returns",
-          "normalizedKey": "POST /payable-settlements/inter-entity-relationships/:param/returns",
-          "bodyKind": "json",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/payable-settlements/inter-entity-relationships/:relationshipEntryId/returns",
-            "normalizedKey": "POST /payable-settlements/inter-entity-relationships/:param/returns",
-            "controller": "PayableRegistryController",
-            "handler": "returnInterEntityRelationship",
-            "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "positions",
-            "isPublic": false,
-            "requiredPositions": [
-              "finance_director"
-            ],
-            "requiredProjectAction": null
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "returnInterEntityRelationshipWithCapability",
-              "returnInterEntityRelationship"
-            ]
-          },
-          "ticketFollowups": []
-        }
-      ]
-    },
-    {
-      "id": "payable-settlement.inter-entity-return.upload-evidence",
-      "usage": "background",
-      "routePaths": [
-        "/工资应付核销工作台"
-      ],
-      "ownerRoutePaths": [
-        "/工资应付核销工作台"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
-      "trigger": {
-        "element": "module",
-        "event": "call",
-        "handler": "uploadInterEntityRelationshipEvidenceWithCapability",
-        "kind": "background_call",
-        "sourceLine": 96,
-        "sourceColumn": 0
-      },
-      "semantic": "business_write",
-      "capability": {
-        "kind": "server_boolean",
-        "source": "capability.returnRelationship",
-        "serverDerived": true,
-        "dominatesTrigger": true
-      },
-      "bindings": [
-        {
-          "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
-          "wrapper": "uploadInterEntityRelationshipEvidence",
-          "method": "POST",
-          "path": "/payable-settlements/inter-entity-relationships/:param/evidence",
-          "normalizedKey": "POST /payable-settlements/inter-entity-relationships/:param/evidence",
-          "bodyKind": "form_data",
-          "nestRoute": {
-            "method": "POST",
-            "path": "/payable-settlements/inter-entity-relationships/:relationshipEntryId/evidence",
-            "normalizedKey": "POST /payable-settlements/inter-entity-relationships/:param/evidence",
-            "controller": "PayableRegistryController",
-            "handler": "uploadInterEntityRelationshipEvidence",
-            "sourceFile": "services/api/src/payable-registry/payable-registry.controller.ts",
-            "authorizationScope": "guard_metadata_only",
-            "authentication": "authenticated",
-            "guardAuthorization": "positions",
-            "isPublic": false,
-            "requiredPositions": [
-              "finance_director"
-            ],
-            "requiredProjectAction": null
-          },
-          "productionConsumers": [
-            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-          ],
-          "causalVerified": true,
-          "causalProof": {
-            "localCallChain": [
-              "uploadInterEntityRelationshipEvidenceWithCapability",
-              "uploadInterEntityRelationshipEvidence"
             ]
           },
           "ticketFollowups": []

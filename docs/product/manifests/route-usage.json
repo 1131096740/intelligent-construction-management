@@ -13,29 +13,29 @@
     "routeCount": 879,
     "exactRouteCount": 879,
     "normalizedRouteCount": 879,
-    "classificationOverrideCount": 293,
-    "consumerSurfaceOverrideCount": 73,
-    "classificationOverrideSha256": "5f071a545a7b35ceb1a73e0a44fc1c6f5cc3028801c974f96c5bc3e4fab6402d",
-    "consumerSurfaceOverrideSha256": "505b02d24585f9728dc28c9f86099d352a0f49ec9f22ad9b269849075062c91a",
-    "derivedProductionPageCount": 586,
-    "pageRouteCount": 605,
+    "classificationOverrideCount": 295,
+    "consumerSurfaceOverrideCount": 75,
+    "classificationOverrideSha256": "d0218f3175688bcb435902f16e9800c398af3a21947f90edb1637765cd1a2394",
+    "consumerSurfaceOverrideSha256": "dea6162a4df6bfd3c8398e7441e0815ff7bfb1c31dd74531567afcdac09046c6",
+    "derivedProductionPageCount": 584,
+    "pageRouteCount": 603,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 133,
-    "internalTaskCount": 71,
+    "internalTaskCount": 73,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 657,
+      "web_api_wrapper": 655,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 2,
-      "operator_endpoint": 69,
+      "operator_endpoint": 71,
       "none": 144
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 657,
+    "productionWrapperRouteCount": 655,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -25149,26 +25149,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_retained_inter_entity_return_api_web_routes_through_company_transfer",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
-            "wrapper": "uploadInterEntityRelationshipEvidence",
-            "method": "POST",
-            "normalizedPath": "/payable-settlements/inter-entity-relationships/:param/evidence",
-            "normalizedKey": "POST /payable-settlements/inter-entity-relationships/:param/evidence",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_425_retained_inter_entity_return_api_web_routes_through_company_transfer"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -25192,26 +25181,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_retained_inter_entity_return_api_web_routes_through_company_transfer",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
-            "wrapper": "returnInterEntityRelationship",
-            "method": "POST",
-            "normalizedPath": "/payable-settlements/inter-entity-relationships/:param/returns",
-            "normalizedKey": "POST /payable-settlements/inter-entity-relationships/:param/returns",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_425_retained_inter_entity_return_api_web_routes_through_company_transfer"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null

@@ -11,7 +11,7 @@ describe("工资承担工作台非敏感入口", () => {
     expect(routes).toContain('path: "/工资承担工作台"');
     expect(routes).toContain('path: "工资承担工作台"');
     expect(routes).toContain('import("../pages/wage/WageStatementWorkbenchPage.vue")');
-    expect(page).toContain("月度工资承担工作台");
+    expect(page).toContain('title="历史工资承担"');
     expect(page).toContain("来源导入预览");
     expect(page).toContain("月度汇总详情");
     expect(api).toContain("/wage-statements/workbench?page=");

@@ -71,7 +71,7 @@ async function loadWorkbench(page = listMeta.value.page) {
   } catch (error) {
     rows.value = [];
     listMeta.value = { ...listMeta.value, total: 0, totalPages: 0 };
-    loadError.value = formatUnknownApiError(error, "加载月度工资承担工作台失败");
+    loadError.value = formatUnknownApiError(error, "加载月度工资承担历史失败");
   } finally {
     loading.value = false;
   }
@@ -119,7 +119,7 @@ onMounted(() => void loadWorkbench());
 <template>
   <JgWorkbenchShell
     class="wage-statement-workbench"
-    title="月度工资承担工作台"
+    title="历史工资承担"
     description="查看月度工资承担历史、岗位汇总和来源导入状态。本页仅显示非敏感汇总信息。"
   >
     <template #actions>

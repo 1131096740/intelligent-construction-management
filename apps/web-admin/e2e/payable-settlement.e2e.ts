@@ -50,7 +50,7 @@ async function installHarness(page: Page, staleWageCapabilities = false) {
     }));
   });
 
-  await page.route("**/api/**", async (route) => {
+  await page.route((url) => url.pathname.startsWith("/api/"), async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname.replace(/^\/api/u, "");
     const captured: CapturedRequest = { method: request.method(), pathname };
@@ -133,7 +133,7 @@ test.describe("工资应付历史与跨主体往来", () => {
     const requests = await installHarness(page, true);
 
     await page.goto("/工资应付核销工作台");
-    await expect(page.getByRole("heading", { name: "工资应付核销工作台" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "历史工资应付核销" })).toBeVisible();
     await expect(page.getByText("XM-01 · 工资代发机构", { exact: true })).toBeVisible();
     await expect(page.getByText("草稿", { exact: true })).toBeVisible();
     await expect(page.getByText("已提交", { exact: true })).toBeVisible();
