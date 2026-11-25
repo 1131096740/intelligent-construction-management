@@ -11,6 +11,7 @@ import { apiJsonReplacer } from "../api-json-replacer";
 import { configureApiSecurity } from "../api-security";
 import { PrismaService } from "./prisma.service";
 import { armTask12AuthError, takeTask12AuthError, Task12AuthErrorFilter, Task12AuthStageInterceptor } from "./task12-auth-error-diagnostic";
+import { projectTask16RegistrationError } from "./task16-registration-error-diagnostic";
 import { CONTRACT_BODY_DOCX4J_ENGINE_VERSION } from "../contract-document/contract-document.service";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { extractContractDocx } from "../contract-document/contract-docx-extractor";
@@ -50,6 +51,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
   let stage = "IDENTITY";
   let databaseFailure: { model?: string; action: string; code: string; sqlState?: string } | undefined;
   let authFailure: ReturnType<typeof takeTask12AuthError>;
+  let loggedAuthFailure: ReturnType<typeof projectTask16RegistrationError> | undefined;
   try {
     const [identity] = await readOnlyApplication.$queryRaw<Array<{ safe: boolean; oid: string }>>`
       SELECT current_database()  = ${packet.database} AND current_user = session_user
@@ -83,7 +85,15 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
       createdByUserId: seed.handler.id, snapshot: { name: counterparty.name, type: "organization",
         unifiedSocialCreditCode: counterparty.unifiedSocialCreditCode, registeredAddress: "隔离供应地址" } } });
     stage = "HTTP_BOOT";
-    app = await NestFactory.create(AppModule, { logger: false, abortOnError: false });
+    app = await NestFactory.create(AppModule, {
+      logger: {
+        log() {}, warn() {},
+        error(error: unknown) {
+          if (stage === "LOGIN" && error instanceof Error) loggedAuthFailure = projectTask16RegistrationError(error);
+        }
+      },
+      abortOnError: false
+    });
     configureApiSecurity(app);
     const authErrors = new Task12AuthErrorFilter(app.get(HttpAdapterHost));
     app.useGlobalFilters(authErrors);
@@ -124,6 +134,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     for (const [actor, user] of seed.users.entries()) {
       const server = app.getHttpServer() as object;
       const ticket = armTask12AuthError(authErrors, server, user.phone);
+      loggedAuthFailure = undefined;
       try {
         await post(actor, "/auth/login", { phone: user.phone, password: passwords[actor] });
       } finally {
@@ -265,7 +276,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     const marker = typeof detail?.message === "string" && /^(?:NATIVE_329|TASK12)_[A-Z0-9_]{1,100}$/u.test(detail.message) ? detail.message : undefined;
     const status = typeof detail?.status === "number" ? detail.status : undefined;
     const expected = typeof detail?.expected === "number" ? detail.expected : undefined;
-    const diagnostic = JSON.stringify({ stage, code, marker, status, expected, databaseFailure, authFailure });
+    const diagnostic = JSON.stringify({ stage, code, marker, status, expected, databaseFailure, authFailure, loggedAuthFailure });
     process.stdout.write("SEAL_329_NATIVE_FAILURE " + diagnostic + "\n");
     throw new Error(diagnostic);
   } finally {
