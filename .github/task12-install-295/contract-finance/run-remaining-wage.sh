@@ -2,25 +2,29 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 ) ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
 build=$(cd "$4" && pwd -P)
+plan=$(cd "$(dirname "$0")" && pwd -P)
 count=$(node -e '
   const source=require(process.argv[1]);
   if(source.sourceSha!==process.argv[2])process.exit(65);
   if(source.mode==="current-320"&&source.migrationCount===329)console.log(source.migrationCount);
   else if(source.mode==="text-direct-330"&&source.migrationCount===330)console.log(330);
   else if(source.mode==="payment-remainder-331"&&source.migrationCount===331)console.log(331);
+  else if(source.mode==="upward-archive-332") {
+    require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
+    console.log(332);
+  }
   else if(source.mode===undefined&&source.migrationCount===295)console.log(295);
   else process.exit(65);
-' "$prepared/source.json" "$sha")
+' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$plan/common/multi-witness.cjs")
 mode_args=()
-case "$count" in 329) mode_args=(--current-320);; 330) mode_args=(--text-direct-330);; 331) mode_args=(--payment-remainder-331);; esac
+case "$count" in 329) mode_args=(--current-320);; 330) mode_args=(--text-direct-330);; 331) mode_args=(--payment-remainder-331);; 332) mode_args=(--upward-archive-332);; esac
 if [[ $# == 5 && ${mode_args[0]:-} != "$5" ]]; then exit 65; fi
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
-plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$plan/common"
 archive="$repo/.github/task12-install-289"
 scope=wage
@@ -60,7 +64,8 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003600_fund_balance_notice_lock/migration.sql,dst=/qualification/terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
-  --mount "type=bind,src=$plan/remaining-wage-entry.cjs,dst=/qualification/remaining-wage-entry.cjs,readonly")
+  --mount "type=bind,src=$plan/remaining-wage-entry.cjs,dst=/qualification/remaining-wage-entry.cjs,readonly"
+  --mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done

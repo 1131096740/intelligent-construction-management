@@ -2,16 +2,17 @@
 
 const assert=require('node:assert/strict');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive}=require('./installer.cjs');
 const {final,digest}=require('./multi-witness.cjs');
 const {runSlice}=require('./historical-financial-runner.cjs');
 const baseline=require('./historical-financial-candidate.json');
 const source=require('./contract-finance-source.json');
 const requestedMode=process.argv[2];
+const upwardArchive=requestedMode==='--upward-archive-332';
 const paymentRemainder=requestedMode==='--payment-remainder-331';
 const textDirect=requestedMode==='--text-direct-330';
-const current=paymentRemainder||textDirect||requestedMode==='--current-320';
-const count=paymentRemainder?331:textDirect?330:current?329:295;
+const current=upwardArchive||paymentRemainder||textDirect||requestedMode==='--current-320';
+const count=upwardArchive?332:paymentRemainder?331:textDirect?330:current?329:295;
 const root='/qualification';
 const lane='historical_financial_takeover';
 const receipt={schemaVersion:1,purpose:'ORIGINAL_HISTORICAL_FINANCIAL_'+count,lane,sourceSha:source.sourceSha,
@@ -38,11 +39,12 @@ async function main(){
     assert.equal(source.tails.at(-1).sha256,digest);
   }
   assert.equal(baseline.commit,source.sourceSha);
+  if(upwardArchive) require('./upward-archive-332-profile.cjs').assertSource(source,source.sourceSha,final);
   receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   if(current) assert.equal(baseline.tree,source.sourceTree);
   const consume=context=>runSlice(context,receipt,baseline,current?source.sourceTree:undefined);
   if(current){
-    const installCurrent=paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
+    const installCurrent=upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
     await installCurrent(receipt,async context=>{
       assert.equal(context.candidateTree,source.sourceTree);
       await consume(context);
@@ -54,6 +56,7 @@ async function main(){
     assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
     assert.equal(receipt.forward320.sameBaseB7,true);
     assert.equal(receipt.combinedAfterBusiness.count,count);
+    if(upwardArchive) require('./upward-archive-332-profile.cjs').assertInstallation(receipt,source);
     if(paymentRemainder){
       assert.deepEqual(receipt.paymentRemainderPredecessor,{
         count:330,ledgerSha256:source.predecessor330.ledgerSha256,sameIdentity:true,sameBaseB7:true

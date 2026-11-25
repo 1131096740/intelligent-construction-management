@@ -2,26 +2,30 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 ) ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
 build=$(cd "$4" && pwd -P)
+plan=$(cd "$(dirname "$0")" && pwd -P)
 count=$(node -e '
   const source=require(process.argv[1]);
   if(source.sourceSha!==process.argv[2])process.exit(65);
   if(source.mode==="current-320"&&source.migrationCount===329)console.log(source.migrationCount);
   else if(source.mode==="text-direct-330"&&source.migrationCount===330)console.log(330);
   else if(source.mode==="payment-remainder-331"&&source.migrationCount===331)console.log(331);
+  else if(source.mode==="upward-archive-332") {
+    require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
+    console.log(332);
+  }
   else if(source.mode===undefined&&source.migrationCount===295)console.log(295);
   else process.exit(65);
-' "$prepared/source.json" "$sha")
+' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$plan/common/multi-witness.cjs")
 mode_args=()
-case "$count" in 329) mode_args=(--current-320);; 330) mode_args=(--text-direct-330);; 331) mode_args=(--payment-remainder-331);; esac
+case "$count" in 329) mode_args=(--current-320);; 330) mode_args=(--text-direct-330);; 331) mode_args=(--payment-remainder-331);; 332) mode_args=(--upward-archive-332);; esac
 if [[ $# == 5 && ${mode_args[0]:-} != "$5" ]]; then exit 65; fi
 lane=historical-financial
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
-plan=$(cd "$(dirname "$0")" && pwd -P)
 finance="$root/.github/task12-install-295/contract-finance"
 common="$finance/common"
 workspace="$prepared/prepared/context/workspace"
@@ -30,7 +34,7 @@ const [sourceFile,sha,terminalFile,profileFile,workspace,count]=process.argv.sli
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||source.migrationCount!==Number(count))process.exit(65);
 if(count!=='295'){
-  const mode={329:'current-320',330:'text-direct-330',331:'payment-remainder-331'}[count];
+  const mode={329:'current-320',330:'text-direct-330',331:'payment-remainder-331',332:'upward-archive-332'}[count];
   if(source.mode!==mode||source.predecessor.ledgerSha256!==terminal.final)process.exit(65);
 } else if(source.ledgerSha256!==terminal.final)process.exit(65);
 const {spec,sha:digest}=require(profileFile).financial;
@@ -58,6 +62,7 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
   --mount "type=bind,src=$plan/historical-financial-entry.cjs,dst=/qualification/historical-financial-entry.cjs,readonly"
+  --mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly"
   --mount "type=bind,src=$plan/historical-financial-runner.cjs,dst=/qualification/historical-financial-runner.cjs,readonly"
   --mount "type=bind,src=$plan/historical-financial-profile.json,dst=/qualification/historical-financial-profile.json,readonly"
   --mount "type=bind,src=$work/candidate.json,dst=/qualification/historical-financial-candidate.json,readonly")
