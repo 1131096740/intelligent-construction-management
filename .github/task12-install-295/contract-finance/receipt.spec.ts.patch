@@ -5,7 +5,7 @@
      return row;
    }));
 -  assert(EXPECTED_MIGRATION_COUNT === 290 && identity.every(row => row?.ok === true) &&
-+  const expectedCount = [329, 330, 331].find(
++  const expectedCount = [329, 330, 331, 332].find(
 +    count => String(count) === process.env.JG_CONTRACT_FINANCE_LEDGER) ?? 295;
 +  assert(EXPECTED_MIGRATION_COUNT === expectedCount && identity.every(row => row?.ok === true) &&
      new Set(identity.map(row => row?.oid)).size === 1 && new Set(identity.map(row => row?.pid)).size === clients.length,
