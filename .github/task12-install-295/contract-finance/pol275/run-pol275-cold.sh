@@ -2,13 +2,14 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 ) ) ]] || exit 64
 count=295
 mode=()
 case ${5-} in
   --current-320) count=329; mode=(--current-320) ;;
   --text-direct-330) count=330; mode=(--text-direct-330) ;;
   --payment-remainder-331) count=331; mode=(--payment-remainder-331) ;;
+  --upward-archive-332) count=332; mode=(--upward-archive-332) ;;
 esac
 purpose="ORIGINAL_POL275_COLD_EXACT_$count"
 repo=$(cd "$1" && pwd -P)
@@ -25,11 +26,11 @@ node -e '
   const source=require(process.argv[1]);
   const count=Number(process.argv[3]);
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
-  const modes={329:"current-320",330:"text-direct-330",331:"payment-remainder-331"};
+  const modes={329:"current-320",330:"text-direct-330",331:"payment-remainder-331",332:"upward-archive-332"};
   if(modes[count] && (source.mode!==modes[count] || source.predecessor?.migrationCount!==295))process.exit(1);
-  if(count===331){
+  if(count===331||count===332){
     const base=process.argv[4];
-    require(base+"/payment-remainder-331-profile.cjs").assertSource(source,process.argv[2],require(base+"/common/multi-witness.cjs").final);
+    require(base+"/"+source.mode+"-profile.cjs").assertSource(source,process.argv[2],require(base+"/common/multi-witness.cjs").final);
   }
 ' "$prepared/source.json" "$sha" "$count" "$base"
 image=$(cat "$build/image.id")
@@ -58,6 +59,8 @@ for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.j
 done
 if [[ $count == 331 ]]; then
   args+=(--mount "type=bind,src=$base/payment-remainder-331-profile.cjs,dst=/qualification/payment-remainder-331-profile.cjs,readonly")
+elif [[ $count == 332 ]]; then
+  args+=(--mount "type=bind,src=$base/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 fi
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi

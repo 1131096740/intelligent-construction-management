@@ -7,27 +7,32 @@ const {sourceSha}=source;
 const requestedMode=process.argv[2];
 const textDirect=requestedMode==='--text-direct-330';
 const paymentRemainder=requestedMode==='--payment-remainder-331';
-const forward=paymentRemainder||textDirect||requestedMode==='--current-320';
-const count=paymentRemainder?331:textDirect?330:forward?329:295;
+const upwardArchive=requestedMode==='--upward-archive-332';
+const forward=upwardArchive||paymentRemainder||textDirect||requestedMode==='--current-320';
+const count=upwardArchive?332:paymentRemainder?331:textDirect?330:forward?329:295;
 const profile331=paymentRemainder?require('./payment-remainder-331-profile.cjs'):undefined;
+const profile332=upwardArchive?require('./upward-archive-332-profile.cjs'):undefined;
 const installer=require('./installer.cjs');
 const original='/qualification/workspace/services/api/prisma/pol275-original-evidence.cjs';
 const receipt={schemaVersion:1,sourceSha,purpose:'ORIGINAL_POL275_COLD_EXACT_'+count,business:'NOT_ENTERED',stages:[]};
 Promise.resolve().then(()=>{
   assert.equal(process.argv.length,forward?3:2);
   assert.equal(source.migrationCount,count);
-  if(profile331) profile331.assertSource(source,sourceSha,require('./multi-witness.cjs').final);
+  const profile=profile332??profile331;
+  if(profile) profile.assertSource(source,sourceSha,require('./multi-witness.cjs').final);
   else if(forward) {
     assert.equal(source.mode,requestedMode.slice(2));
     assert.equal(source.predecessor.migrationCount,295);
   }
   assert.equal(createHash('sha256').update(readFileSync(original)).digest('hex'),'a338dcd1817f5dc6dacdea62cb36b3357d7933bc58587e61b4b71dec7a91d2db');
   const consume=async context=>{
+    profile332?.assertInstallation(receipt,source);
     receipt.stages.push('POL275_ORIGINAL_CATALOG');
     const catalog=await require(original).collectEvidence(context.ownerUrl,count);
     receipt.pol275={migrationCount:catalog.migrationCount,originalTerminal:catalog.terminalMigration};
   };
-  const install=paymentRemainder?installer.withCombined331PaymentRemainder:
+  const install=upwardArchive?installer.withCombined332UpwardArchive:
+    paymentRemainder?installer.withCombined331PaymentRemainder:
     textDirect?installer.withCombined330TextAgreement:installer.withCombined320ContractPayment;
   return forward
     ? install(receipt,consume,{

@@ -2,13 +2,14 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && $5 == warm && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 ) ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && $5 == warm && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 ) ) ]] || exit 64
 count=295
 mode=()
 case ${6-} in
   --current-320) count=329; mode=(--current-320) ;;
   --text-direct-330) count=330; mode=(--text-direct-330) ;;
   --payment-remainder-331) count=331; mode=(--payment-remainder-331) ;;
+  --upward-archive-332) count=332; mode=(--upward-archive-332) ;;
 esac
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
@@ -36,12 +37,12 @@ node -e '
   const source=require(process.argv[1]);
   const count=Number(process.argv[3]);
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
-  const modes={329:"current-320",330:"text-direct-330",331:"payment-remainder-331"};
+  const modes={329:"current-320",330:"text-direct-330",331:"payment-remainder-331",332:"upward-archive-332"};
   if(modes[count] && (source.mode!==modes[count] || source.predecessor?.migrationCount!==295))process.exit(1);
   const base=process.argv[4];
   const sealed295=require(base+"/common/multi-witness.cjs").final;
   if(count===295&&source.ledgerSha256!==sealed295)process.exit(1);
-  if(count===331)require(base+"/payment-remainder-331-profile.cjs").assertSource(source,process.argv[2],sealed295);
+  if(count===331||count===332)require(base+"/"+source.mode+"-profile.cjs").assertSource(source,process.argv[2],sealed295);
 ' "$prepared/source.json" "$sha" "$count" "$base"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
@@ -60,7 +61,7 @@ if [[ $lane == warm ]]; then
   check "$pol/warm-current.spec.ts" 018dd673815edfeed9c9dc4448dda0bfe1e4b4a1fa78b2e1b1897db03ba162cf
   check "$pol/warm-pol275.cjs" efe40c82aa689ce333c1403dd8d076c9ce37a8530bf4d1b3fa3c09b13e7984ef
   cp "$pol/warm-pol275.cjs" "$work/pol275.cjs"
-  patch --batch --fuzz=0 --silent "$work/pol275.cjs" "$plan/warm-pol275.patch"
+  patch -f -F 0 -s "$work/pol275.cjs" "$plan/warm-pol275.patch"
   chmod 644 "$work/pol275.cjs"
   node --check "$work/pol275.cjs"
 else
@@ -75,10 +76,10 @@ if [[ $lane == warm ]]; then
 else
   install -m 0644 "$pol/collision-observation.cjs" "$work/collision-observation.cjs"
 fi
-check "$common/installer.cjs" 56f1bf763ccbd43485728c11784c8f2f58e970344582f4546cd13edb661e5432
+check "$common/installer.cjs" 298f163d1c8b5495cae25176cc3c242c2595ccf531e08d071e6036b970b87b93
 cp "$common/installer.cjs" "$work/installer.cjs"
-patch --batch --fuzz=0 --silent "$work/installer.cjs" "$plan/installer-pol275.patch"
-check "$work/installer.cjs" 68e67d04b9cd1b2f55dfce2112cf03711a8528b58602b4c0993c66445cb4afce
+patch -f -F 0 -s "$work/installer.cjs" "$plan/installer-pol275.patch"
+check "$work/installer.cjs" 6f0e092d648a5d4a9855d64a068399e7f5750ef5db8318c4c65332781fceb8ae
 chmod 644 "$work/installer.cjs"
 node --check "$work/installer.cjs"
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
@@ -98,6 +99,8 @@ for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof
 done
 if [[ $count == 331 ]]; then
   args+=(--mount "type=bind,src=$base/payment-remainder-331-profile.cjs,dst=/qualification/payment-remainder-331-profile.cjs,readonly")
+elif [[ $count == 332 ]]; then
+  args+=(--mount "type=bind,src=$base/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 fi
 args+=(--mount "type=bind,src=$work/installer.cjs,dst=/qualification/installer.cjs,readonly")
 if [[ $lane == warm ]]; then
