@@ -1,5 +1,6 @@
 import { hash } from "bcryptjs";
 import type { INestApplication } from "@nestjs/common";
+import { HttpAdapterHost } from "@nestjs/core";
 import { Test } from "@nestjs/testing";
 import { PrismaClient } from "@prisma/client";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -7,6 +8,7 @@ import { AppModule } from "../app.module";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { buildRegisteredPgFixturePlan } from "./registered-payment-postgres.fixture";
+import { armTask16RegistrationError, takeTask16RegistrationError, Task16RegistrationErrorFilter } from "./task16-registration-error-diagnostic";
 import { seedSharedPaymentPredecessors } from "./task16-shared-standard-fixture";
 
 const run = process.env.RUN_TASK425_TEXT_FINANCE === "1" ? it : it.skip;
@@ -47,6 +49,8 @@ run("records a two-part text agreement payment with original replay, real refund
     app = (await Test.createTestingModule({ imports: [AppModule] }).compile()).createNestApplication({ logger: false });
     app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
     app.useGlobalPipes(createApiValidationPipe());
+    const registrationErrors = new Task16RegistrationErrorFilter(app.get(HttpAdapterHost));
+    app.useGlobalFilters(registrationErrors);
     await app.listen(0, "127.0.0.1");
     const origin = await app.getUrl();
     const json = async (path: string, token?: string, input?: object) => {
@@ -110,7 +114,17 @@ run("records a two-part text agreement payment with original replay, real refund
       };
     };
     const firstBody = await body("6000", ["6000"]);
-    const first = await json(registrationPath, finance, firstBody);
+    const server = app.getHttpServer() as object;
+    const register = async (input: typeof firstBody) => {
+      const ticket = armTask16RegistrationError(registrationErrors, server, payment.id, input.idempotencyKey);
+      try {
+        return await json(registrationPath, finance, input);
+      } finally {
+        const diagnostic = takeTask16RegistrationError(registrationErrors, server, ticket);
+        expect(diagnostic).toBeUndefined();
+      }
+    };
+    const first = await register(firstBody);
     expect(first.status).toBe(201);
     expect(await json(registrationPath, finance, firstBody)).toEqual(first);
     expect((await json(optionsPath, finance)).body).toMatchObject({ paidAmountCents: "6000", remainingAmountCents: "4000" });
@@ -124,7 +138,7 @@ run("records a two-part text agreement payment with original replay, real refund
     expect((await json(optionsPath, finance)).body).toMatchObject({ paidAmountCents: "4000", remainingAmountCents: "6000" });
 
     const secondBody = await body("6000", ["4000", "2000"]);
-    const second = await json(registrationPath, finance, secondBody);
+    const second = await register(secondBody);
     expect(second.status).toBe(201);
     expect(second.body.id).not.toBe(first.body.id);
     expect(await json(registrationPath, finance, secondBody)).toEqual(second);
