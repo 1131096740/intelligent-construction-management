@@ -6,17 +6,22 @@ const path = require('node:path');
 const { randomBytes } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { admitSource } = require('./install-only292.cjs');
-const { withCombined320ContractPayment, withCombined330TextAgreement } = require('./installer.cjs');
+const {
+  withCombined320ContractPayment, withCombined330TextAgreement, withCombined331PaymentRemainder
+} = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
 const source = require('./contract-finance-source.json');
 
 const root = '/qualification';
 const api = path.join(root, 'workspace/services/api');
 const spec = 'src/database/line-a-real-db.http.pg.spec.ts';
-const textDirect = source.mode === 'text-direct-330';
-const tests = textDirect ? 17 : 16;
+const paymentRemainder = source.mode === 'payment-remainder-331';
+const textDirect = source.mode === 'text-direct-330' || paymentRemainder;
+const migrationCount = paymentRemainder ? 331 : textDirect ? 330 : 329;
+const tests = paymentRemainder ? 18 : textDirect ? 17 : 16;
+const purpose = paymentRemainder ? 'LINE_A_PAYMENT_REMAINDER_331' : textDirect ? 'LINE_A_TEXT_DIRECT_330' : 'LINE_A_EXACT_329';
 const receipt = {
-  schemaVersion: 1, purpose: textDirect ? 'LINE_A_TEXT_DIRECT_330' : 'LINE_A_EXACT_329', sourceSha: source.sourceSha,
+  schemaVersion: 1, purpose, sourceSha: source.sourceSha,
   stages: ['INPUTS'], status: 'STOPPED'
 };
 
@@ -142,6 +147,11 @@ async function consume(context) {
     'GRANT UPDATE ("currentNodeIndex", "frozenNodes", "status", "updatedAt") ON public."ApprovalInstance"' + toRole,
     'GRANT UPDATE ("updatedAt") ON public."PaymentRequest"' + toRole,
     'GRANT UPDATE ("updatedAt") ON public."Contract"' + toRole,
+    ...(paymentRemainder ? [
+      'GRANT UPDATE ("remainingWithdrawnCents") ON public."PaymentRequest"' + toRole,
+      // The remainder request locks its existing contract version with FOR UPDATE.
+      'GRANT UPDATE ("updatedAt") ON public."ContractVersion"' + toRole
+    ] : []),
     'GRANT UPDATE ("updatedAt") ON public."Settlement", public."ProjectCloseAggregate"' + toRole,
     'GRANT UPDATE ("createdAt") ON public."ProjectMember"' + toRole,
     'GRANT UPDATE ("createdAt") ON public."UserPosition"' + toRole,
@@ -195,7 +205,9 @@ async function consume(context) {
       cwd: api, encoding: 'utf8', timeout: 600_000, maxBuffer: 16 * 1024 * 1024,
       env: {
         PATH: '/usr/local/bin:/usr/bin:/bin', HOME: workDir, TMPDIR: workDir, NODE_ENV: 'test', CI: 'true',
-        RUN_LINE_A_REAL_DB: '1', ...(textDirect ? { RUN_LINE_A_TEXT_DIRECT_330: '1' } : {}), JG_LINE_A_SEALED_RUN_ID: run, DATABASE_URL: runtime.href, OWNER_DATABASE_URL: owner.href,
+        RUN_LINE_A_REAL_DB: '1', ...(textDirect ? { RUN_LINE_A_TEXT_DIRECT_330: '1' } : {}),
+        ...(paymentRemainder ? { RUN_LINE_A_PAYMENT_REMAINDER_331: '1' } : {}),
+        JG_LINE_A_SEALED_RUN_ID: run, DATABASE_URL: runtime.href, OWNER_DATABASE_URL: owner.href,
         FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: path.join(directory, 'files'),
         APPROVAL_SMS_ENABLED: 'false', SMS_ENABLED: 'false',
         JWT_ACCESS_SECRET: randomBytes(32).toString('hex'), JWT_REFRESH_SECRET: randomBytes(32).toString('hex'),
@@ -252,14 +264,15 @@ async function main() {
   assert.equal(process.env.DATABASE_URL, undefined);
   assert.match(source.sourceSha, /^[a-f0-9]{40}$/u);
   assert.ok(source.mode === 'current-320' || textDirect);
-  assert.equal(source.migrationCount, textDirect ? 330 : 329);
+  assert.equal(source.migrationCount, migrationCount);
   assert.equal(source.predecessor.ledgerSha256, final);
   const baseline = require(path.join(api, 'prisma/migration-baseline.cjs')).loadCanonicalMigrationBaseline();
   assert.equal(baseline.expectedDirectoryCount, source.migrationCount);
   assert.equal(baseline.terminalMigration, source.tails.at(-1).name);
   assert.equal(baseline.terminalMigrationChecksum, source.tails.at(-1).sha256);
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
-  const install = textDirect ? withCombined330TextAgreement : withCombined320ContractPayment;
+  const install = paymentRemainder ? withCombined331PaymentRemainder
+    : textDirect ? withCombined330TextAgreement : withCombined320ContractPayment;
   await install(receipt, consume, {
     sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails
   });
@@ -268,8 +281,15 @@ async function main() {
       count: 329, ledgerSha256: '3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2',
       sameIdentity: true, sameBaseB7: true
     });
-    assert.equal(receipt.forward320.count, 330);
-    assert.equal(receipt.combinedAfterBusiness.count, 330);
+    assert.equal(receipt.forward320.count, migrationCount);
+    assert.equal(receipt.combinedAfterBusiness.count, migrationCount);
+  }
+  if (paymentRemainder) {
+    assert.deepEqual(receipt.paymentRemainderPredecessor, {
+      count: 330, ledgerSha256: source.predecessor330.ledgerSha256,
+      sameIdentity: true, sameBaseB7: true
+    });
+    assert.deepEqual(receipt.forward320.tails, source.tails.map(({ name, sha256 }) => ({ name, sha256 })));
   }
   assert.equal(receipt.forward320.sourceTree, source.sourceTree);
   assert.equal(receipt.forward320.ledgerSha256, source.ledgerSha256);
@@ -281,14 +301,14 @@ async function main() {
   assert.equal(receipt.multiWitnessCatalogAfterBusiness, true);
   assert.equal(receipt.testWitnessesCleared, true);
   assert.equal(receipt.cleanup, 'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
-  receipt.status = textDirect ? 'LINE_A_TEXT_DIRECT_330_PASSED' : 'LINE_A_EXACT_329_PASSED';
+  receipt.status = purpose + '_PASSED';
 }
 
 main().catch(error => {
   receipt.status = 'STOPPED';
   const code = error.code ?? error.message;
   receipt.failure = {
-    stage: receipt.stages.at(-1), code: /^[A-Z0-9_]+$/u.test(code) ? code : 'LINE_A_EXACT_329_FAILED',
+    stage: receipt.stages.at(-1), code: /^[A-Z0-9_]+$/u.test(code) ? code : (paymentRemainder ? purpose + '_FAILED' : 'LINE_A_EXACT_329_FAILED'),
     sqlstate: error.sqlstate, prismaCode: error.prismaCode
   };
   process.exitCode = 1;

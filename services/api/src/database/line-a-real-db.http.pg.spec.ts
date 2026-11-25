@@ -14,6 +14,7 @@ import { currentRegisteredPaymentDomain } from "../payment/registered-payment-do
 import { loadSignedSettlementPaymentBasis } from "../payment/signed-settlement-payment-capacity";
 
 const run = process.env.RUN_LINE_A_REAL_DB === "1" ? describe : describe.skip;
+const paymentRemainder = process.env.RUN_LINE_A_PAYMENT_REMAINDER_331 === "1";
 
 run("line A contract candidate on real PostgreSQL and HTTP", () => {
   jest.setTimeout(180_000);
@@ -32,6 +33,7 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     contractG: "linea-contract-g", versionG: "linea-contract-g-v1",
     contractH: "linea-contract-h", versionH: "linea-contract-h-v1",
     contractI: "linea-contract-i", versionI: "linea-contract-i-v1",
+    contractJ: "linea-contract-j", versionJ: "linea-contract-j-v1",
     staff: "linea-user-staff", director: "linea-user-director",
     manager: "linea-user-manager", finance: "linea-user-finance", managerPeer: "linea-user-manager-peer"
   };
@@ -103,6 +105,14 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     await app.listen(0, "127.0.0.1");
     base = await app.getUrl();
     owner = new PrismaClient({ datasources: { db: { url: ownerTarget.href } } });
+    if (paymentRemainder) {
+      const [ledger] = await owner.$queryRaw<Array<{ count: bigint; terminal: string }>>`
+        SELECT count(*), max(migration_name) AS terminal
+        FROM public._prisma_migrations
+        WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+      `;
+      expect(ledger).toEqual({ count: 331n, terminal: "20261129000000_payment_remaining_withdrawal" });
+    }
 
     const passwordHash = await hash(password, 4);
     const operatingDate = new Date();
@@ -179,7 +189,8 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { id: ids.contractF, code: "LINEA-HT-F", name: "隔离调减暂停合同F", contractTypeKey: "labor_subcontract", ...contractBase },
       { id: ids.contractG, code: "LINEA-HT-G", name: "隔离负结算竞争合同", contractTypeKey: "labor_subcontract", ...contractBase },
       { id: ids.contractH, code: "LINEA-HT-H", name: "隔离历史结算承接合同", contractTypeKey: "labor_subcontract", ...contractBase },
-      { id: ids.contractI, code: "LINEA-HT-I", name: "隔离四位结算合同", contractTypeKey: "labor_subcontract", ...contractBase }
+      { id: ids.contractI, code: "LINEA-HT-I", name: "隔离四位结算合同", contractTypeKey: "labor_subcontract", ...contractBase },
+      ...(paymentRemainder ? [{ id: ids.contractJ, code: "LINEA-HT-J", name: "隔离余款重审合同", contractTypeKey: "labor_subcontract", ...contractBase }] : [])
     ] });
     const versionBase = {
       changeType: "original", status: "effective", amountCents: 1_000_000n, numericProtocolVersion: 1,
@@ -200,7 +211,8 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { id: ids.versionF, contractId: ids.contractF, versionNo: 1, ...versionBase },
       { id: ids.versionG, contractId: ids.contractG, versionNo: 1, ...versionBase },
       { id: ids.versionH, contractId: ids.contractH, versionNo: 1, ...versionBase },
-      { id: ids.versionI, contractId: ids.contractI, versionNo: 1, ...versionBase }
+      { id: ids.versionI, contractId: ids.contractI, versionNo: 1, ...versionBase },
+      ...(paymentRemainder ? [{ id: ids.versionJ, contractId: ids.contractJ, versionNo: 1, ...versionBase }] : [])
     ] });
     await owner.paymentTermsVersion.createMany({ data: [
       { id: "linea-terms-a", contractId: ids.contractA, contractVersionId: ids.versionA, versionNo: 1,
@@ -218,7 +230,9 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { id: "linea-terms-h", contractId: ids.contractH, contractVersionId: ids.versionH, versionNo: 1,
         status: "effective", originalText: "隔离付款约定：结算后三十日支付" },
       { id: "linea-terms-i", contractId: ids.contractI, contractVersionId: ids.versionI, versionNo: 1,
-        status: "effective", originalText: "隔离付款约定：结算后三十日支付" }
+        status: "effective", originalText: "隔离付款约定：结算后三十日支付" },
+      ...(paymentRemainder ? [{ id: "linea-terms-j", contractId: ids.contractJ, contractVersionId: ids.versionJ, versionNo: 1,
+        status: "effective", originalText: "隔离付款约定：结算后三十日支付" }] : [])
     ] });
     await owner.contractPartySnapshot.createMany({ data: [
       { contractVersionId: ids.versionA, roleKey: "party_b", displayOrder: 0,
@@ -227,7 +241,7 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
         businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" } },
       { contractVersionId: ids.versionC, roleKey: "party_b", displayOrder: 0,
         businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" } },
-      ...[ids.versionF, ids.versionG, ids.versionH, ids.versionI].map(contractVersionId => ({
+      ...[ids.versionF, ids.versionG, ids.versionH, ids.versionI, ...(paymentRemainder ? [ids.versionJ] : [])].map(contractVersionId => ({
         contractVersionId, roleKey: "party_b", displayOrder: 0,
         businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" }
       }))
@@ -827,6 +841,49 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       expect.objectContaining({ label: "当前合同累计", value: "90.0000 元 · 最新确认已变化" }),
       expect.objectContaining({ label: "付款约定原文", value: "隔离付款约定：按累计结算的 80% 支付" })
     ]));
+  });
+
+  if (paymentRemainder) it("withdraws an approved unpaid remainder and starts a fresh approval within corrected capacity (A14)", async () => {
+    const contractId = ids.contractJ;
+    const confirm = async (number: string, amountYuan: string) => {
+      const draft = await newSignedDraft(contractId, number, amountYuan);
+      const submitted = await call("staff", `${settlementPath}/${draft.id}/submission`, { revision: draft.revision });
+      await call("director", `${settlementPath}/${draft.id}/review`, { revision: submitted.body.revision, decision: "confirm" });
+      return draft;
+    };
+    const first = await confirm("JS-J-100", "100.0000");
+    const prior = await owner.paymentRequest.create({ data: {
+      projectId: ids.project, contractId, contractVersionId: ids.versionJ, paymentTermsVersionId: "linea-terms-j",
+      code: "LINEA-FK-A14-PREVIOUS", sourceType: "signed_settlement", paymentSubjectType: "our_company",
+      signedSettlementId: first.id, signedSettlementConfirmationNo: 1n,
+      signedSettlementConfirmedYuan: "100.0000", signedSettlementContractConfirmedYuan: "100.0000",
+      signedSettlementOccupiedCents: 0n, signedSettlementBasisAt: new Date(),
+      status: "partially_paid", requestedAmountCents: 10000n, approvedAmountCents: 10000n, paidAmountCents: 4000n
+    } });
+    const originalApproval = await owner.approvalInstance.create({ data: {
+      flowType: "payment.approve", businessType: "payment_request", businessId: prior.id,
+      status: "approved", currentNodeIndex: 0, frozenNodes: [], applicantUserId: ids.staff
+    } });
+    const corrected = await confirm("JS-J--30", "-30.0000");
+    const path = `/payments/${prior.id}/remainder-withdrawal`;
+    const request = { expectedUpdatedAt: prior.updatedAt.toISOString(), requestedAmountCents: "3000",
+      code: "LINEA-FK-A14-REAPPROVED", reason: "隔离复核调减后的付款余款" };
+    expect((await callRaw("manager", path, request)).status).toBe(403);
+    expect((await callRaw("staff", path, { ...request, requestedAmountCents: "3100" })).status).toBe(400);
+    expect(await owner.paymentRequest.findUniqueOrThrow({ where: { id: prior.id } })).toEqual(prior);
+    const accepted = await call("staff", path, request);
+    expect(accepted).toMatchObject({ status: 201, body: {
+      origin: { approvedAmountCents: "10000", paidAmountCents: "4000", remainingWithdrawnCents: "6000" },
+      revised: { status: "approval_pending", requestedAmountCents: "3000", signedSettlementId: corrected.id }
+    } });
+    expect(await owner.approvalInstance.findUniqueOrThrow({ where: { id: originalApproval.id } })).toEqual(originalApproval);
+    const revisedId = accepted.body.revised.id;
+    expect(await owner.approvalInstance.findFirstOrThrow({ where: { businessId: revisedId } }))
+      .toMatchObject({ status: "in_progress", applicantUserId: ids.staff });
+    const basis = await owner.$transaction(tx => loadSignedSettlementPaymentBasis(tx as never, contractId));
+    expect(basis).toMatchObject({ confirmedCents: 7000n, occupiedCents: 7000n, outstandingCents: 3000n, suspended: false });
+    expect((await callRaw("staff", path, request)).status).toBe(409);
+    expect(await owner.auditLog.count({ where: { businessId: prior.id, action: "payment.request.withdraw_remainder" } })).toBe(1);
   });
 
   it("confirms work completion through three duties and posts one operating cost", async () => {
