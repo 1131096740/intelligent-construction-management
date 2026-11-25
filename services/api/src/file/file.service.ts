@@ -2736,24 +2736,14 @@ export class FileService {
       throw new ForbiddenException("当前账号无权下载该结算模板文件");
     }
 
-    const offlineRevisionClient = (tx as unknown as {
-      contractOfflineRevision?: {
-        findFirst(args: {
-          where: {
-            OR: Array<{ fileId: string } | { previewPdfFileId: string }>;
-          };
-          select: { contractVersionId: true };
-        }): Promise<{ contractVersionId: string } | null>;
-      };
-    }).contractOfflineRevision;
-    const offlineRevisionPreview = offlineRevisionClient
-      ? await offlineRevisionClient.findFirst({
-          where: {
-            OR: [{ fileId: file.id }, { previewPdfFileId: file.id }]
-          },
-          select: { contractVersionId: true }
-        })
-      : null;
+    // Prisma may implicitly select the primary key when only contractVersionId is requested.
+    const [offlineRevisionPreview] = await tx.$queryRaw<Array<{ contractVersionId: string }>>(Prisma.sql`
+      /* private_file_offline_revision_binding */
+      SELECT "contractVersionId"
+      FROM public."ContractOfflineRevision"
+      WHERE "fileId" = ${file.id} OR "previewPdfFileId" = ${file.id}
+      LIMIT 1
+    `);
     if (offlineRevisionPreview) {
       const version = await tx.contractVersion.findUnique({
         where: { id: offlineRevisionPreview.contractVersionId },

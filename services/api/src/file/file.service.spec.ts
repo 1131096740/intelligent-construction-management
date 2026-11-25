@@ -110,6 +110,15 @@ function legacyFileTransaction<T extends object>(transaction: T): T {
           }
           return [{ state: "absent" }];
         }
+        if (sql?.startsWith("/* private_file_offline_revision_binding */")) {
+          if (args.length || !Array.isArray(input?.values) || input.values.length !== 2 ||
+            typeof input.values[0] !== "string" || input.values[0] !== input.values[1] ||
+            sql !== '/* private_file_offline_revision_binding */ SELECT "contractVersionId" FROM public."ContractOfflineRevision" WHERE "fileId" = ? OR "previewPdfFileId" = ? LIMIT 1') {
+            throw new Error("Unsupported offline revision binding projection");
+          }
+          const lookup = Reflect.get(target, "offlineRevisionBinding", target);
+          return typeof lookup === "function" ? lookup(input.values[0]) : [];
+        }
         const original = Reflect.get(target, property, target);
         if (typeof original !== "function") throw new Error("Legacy file fixture has no adapter for this SQL query");
         return Reflect.apply(original,target,[query,...args]);
@@ -6198,9 +6207,7 @@ describe("FileService", () => {
       settlementArchiveFile: { findFirst: jest.fn().mockResolvedValue(null) },
       paymentExecution: { findFirst: jest.fn().mockResolvedValue(null) },
       pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) },
-      contractOfflineRevision: {
-        findFirst: jest.fn().mockResolvedValue({ contractVersionId: "version-1" })
-      },
+      offlineRevisionBinding: jest.fn().mockResolvedValue([{ contractVersionId: "version-1" }]),
       contractVersion: {
         findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1" })
       },
@@ -6257,12 +6264,9 @@ describe("FileService", () => {
         downloadReason: "复核线下修订原文"
       })
     ).rejects.toThrow("当前账号无权下载该线下修订稿文件");
-    expect(tx.contractOfflineRevision.findFirst).toHaveBeenLastCalledWith({
-      where: {
-        OR: [{ fileId: "offline-docx" }, { previewPdfFileId: "offline-docx" }]
-      },
-      select: { contractVersionId: true }
-    });
+    expect(tx.offlineRevisionBinding.mock.calls).toEqual([
+      ["preview-pdf"], ["preview-pdf"], ["offline-docx"], ["offline-docx"]
+    ]);
   });
 
   it("rejects download ticket creation when actor cannot access the file", async () => {
