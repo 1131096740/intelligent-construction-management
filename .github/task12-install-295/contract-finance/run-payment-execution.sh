@@ -77,6 +77,11 @@ for lane in fresh valid paid other; do
   exit_code=0
   docker run "${lane_args[@]}" --entrypoint node "$image" "/qualification/$entry" \
     > "$work/$lane.stdout" 2> "$work/$lane.stderr" || exit_code=$?
+  if [[ ! -s "$work/$lane.stdout" ]]; then
+    printf 'PAYMENT_EXECUTION_%s_NO_RECEIPT %s exit=%s stderr_bytes=%s\n' \
+      "$count" "$lane" "$exit_code" "$(wc -c < "$work/$lane.stderr" | tr -d '[:space:]')" >&2
+    exit 1
+  fi
   tail -n 1 "$work/$lane.stdout" > "$work/$lane.json"
   node -e '
     const row=require(process.argv[1]); const [lane,sha,expected,code,count]=process.argv.slice(2);

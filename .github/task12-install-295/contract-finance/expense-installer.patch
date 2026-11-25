@@ -406,7 +406,7 @@
      receipt.adjacentPostconsume={count:289,exactB7:true};
      receipt[resultKey]=result;
    },outsideRelease);
-@@ -1423,3 +1569,48 @@
+@@ -1423,3 +1569,49 @@
    withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'cleanup');
  module.exports.withCombined330MultiWitnessForProfile=(receipt,consume,material)=>
    withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'profile');
@@ -433,7 +433,8 @@
 +    if(mode==='ORIGINAL_EXPENSE_295_SAME_INSTANCE_RECOVERY_ONLY'){
 +      need(receipt.expenseRecovery?.PrismaResolve===true&&receipt.expenseRecovery?.expectedFailure===true,
 +        'EXPENSE_RECOVERY_COMPLETION');
-+      assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,Boolean(material)))).stdout.trim()));
++      assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,Boolean(material),
++        material?.mode==='upward-archive-332'))).stdout.trim()));
 +      return;
 +    }
 +    need(mode==='ORIGINAL_EXPENSE_295_RETAINED_VALID_ONLY','EXPENSE_NEGATIVE_UNEXPECTED_CONTINUATION');
