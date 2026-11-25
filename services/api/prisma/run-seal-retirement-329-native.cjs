@@ -193,7 +193,7 @@ function grantApplication(sql, database, app, appPassword) {
   // The archive and operating facts retain the grants installed by the product
   // migrations. Only the explicit contract, template and auth tables used by
   // the public workflow are added to this isolated qualification role.
-  const { tables, retainRowLocks } = require("./task16-current259-ordinary-archive-acl.requirements.json");
+  const { tables, retainRowLocks, businessPartyRowLockFallback } = require("./task16-current259-ordinary-archive-acl.requirements.json");
   const worker = require("./task12-current259-document-acl.json").roles.jg_c259_doc_worker;
   const comparison = worker.ContractDocumentComparison;
   const [, , userLoginColumns] = tables.User;
@@ -224,7 +224,7 @@ function grantApplication(sql, database, app, appPassword) {
     assert.ok(existing.has(table), "NATIVE_329_GRANT_SCHEMA");
     return "GRANT " + privilege + " (" + columns.map(identifier).join(", ") + ") ON public." + identifier(table) + " TO " + role + ";";
   };
-  const locks = Object.entries(retainRowLocks).map(([table, column]) => {
+  const locks = Object.entries({ ...retainRowLocks, BusinessParty: businessPartyRowLockFallback }).map(([table, column]) => {
     const granted = sql("SELECT pg_catalog.has_any_column_privilege('" + app + "', 'public." + identifier(table) + "'::regclass, 'UPDATE');").trim();
     assert.ok(granted === "t" || granted === "f");
     return granted === "f" ? grantColumns("UPDATE", table, [column]) : "";
