@@ -55,7 +55,7 @@ if [[ $count == 330 ]]; then
     spec="$work/services/api/src/database/task16-shared-standard.http.pg.spec.ts"
     [[ $(sha256sum "$spec" | cut -d' ' -f1) == e70aa4d7364f7232f694881bb96fce88bfa57a89bd24fc6f527b4d85dfa6b901 ]] || exit 65
     patch --batch --forward --fuzz=0 --silent "$spec" < "$plan/task398-commit-fault-330.patch"
-    [[ $(sha256sum "$spec" | cut -d' ' -f1) == fbb284b5a428966bf4b627dc2e3a826da19a5b57ad858312c7d90079daf467ad ]] || exit 65
+    [[ $(sha256sum "$spec" | cut -d' ' -f1) == 7f3e2b1f7c0e02da919fb097bf78c1f574fdea5d59c1ac73fe65b88415d92b5b ]] || exit 65
     patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-330.patch"
     [[ $(runner_sha) == 1fc3ea9dd55bab96a284b1260a91a6813d117d17d597e185d5f4d904cbc0c983 ]] || exit 65
   fi

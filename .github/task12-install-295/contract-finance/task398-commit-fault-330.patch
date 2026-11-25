@@ -6,8 +6,8 @@
 +     const beforeAttempt=await observe();
 +     await withDeferredPaymentCommitFailure(owner,key,async assertFaultReached=>{
 +      const failed=await json(registrationRoute,"POST",attempt,finance);
-+      expect(failed.status).toBe(500);
 +      await assertFaultReached();
++      expect(failed).toMatchObject({status:409,body:{code:"PAYMENT_RESULT_UNCONFIRMED",resultStatus:"unconfirmed"}});
 +      expect(await observe()).toEqual(beforeAttempt);
 +      expect(await json(`/payment-executions/results/${key}`,"GET",undefined,finance))
 +       .toMatchObject({status:200,body:{status:"unconfirmed"}});

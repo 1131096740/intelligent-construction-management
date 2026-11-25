@@ -70,6 +70,10 @@ async function main(){
         receipt.postgresFailure={
           serialization:has('could not serialize access'),
           deadlock:has('deadlock detected'),
+          sqlstates:[...new Set(lines.flatMap(line=>{
+            const match=/^NATIVE_TASK16 \[\d+\] ERROR: +([0-9A-Z]{5}):/u.exec(line);
+            return match?[match[1]]:[];
+          }))],
           uniqueConstraints:[...new Set(lines.flatMap(line=>{
             const match=/^NATIVE_TASK16 \[\d+\] ERROR: +duplicate key value violates unique constraint "([A-Za-z_][A-Za-z0-9_]{0,62})"/u.exec(line);
             return match?[match[1]]:[];
