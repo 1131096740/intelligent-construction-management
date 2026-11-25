@@ -6,29 +6,29 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `d0da392bdd1ee71871c969fe9f69249731c46eca2c3c822f31f3ee91996bf44e` |
-| webApiWrappers | ready | `c1d14c9f7084f6d71246b16b227a36e2d9855e0040bd3de4239d4d089a88a2e0` |
-| webPageActions | ready | `ae54b5e4c42defd2bf60e345f9e816802e0c43247602181ee8b09f324a598756` |
-| routeUsage | ready | `489a1a7917064d6c7c26fb66946ef20f7aa06ee21a1e2f1bc5aef12546467bff` |
+| nestRoutes | ready | `f11bd2f53ac55e99c7d78eb4ae3265cc26551978770d81213bbdc27a2dd19739` |
+| webApiWrappers | ready | `4bb248bf6c26179200aa2282b9430ca68ce163903e08dc5e7641f47ffe7b994c` |
+| webPageActions | ready | `2ab1cca5fb3f2de90cd55c23686f5c5384716d6158a1ed7581877a840f2475fe` |
+| routeUsage | ready | `d0aa53aa7e079bfd638043c405a686ae0348dc86a28308a94f6a114fe97a9454` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 880 |
-| pageRouteCount | 600 |
+| routeCount | 884 |
+| pageRouteCount | 604 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 136 |
 | internalTaskRouteCount | 74 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 815 |
+| mainRequestBindingCount | 819 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
 | registeredActionCount | 435 |
-| actionBindingCount | 530 |
-| acceptedActionBindingCount | 485 |
+| actionBindingCount | 532 |
+| acceptedActionBindingCount | 487 |
 | unresolvedActionBindingCount | 0 |
 | productionMutationConsumerPairCount | 426 |
 | coveredProductionMutationConsumerPairCount | 426 |
@@ -60,6 +60,7 @@
 | GET | /approval-forms/:businessType/:businessId/capability | page | web_api_wrapper | apps/web-admin/src/api/approval-forms.api.ts#approvalDocumentCapability | — | not_applicable | — |
 | GET | /approval-forms | page | web_api_wrapper | apps/web-admin/src/api/approval-forms.api.ts#listApprovalDocuments | — | not_applicable | — |
 | GET | /approval-progress/:instanceId | page | web_api_wrapper | apps/web-admin/src/api/approval-progress.api.ts#fetchApprovalProgress | — | not_applicable | — |
+| GET | /approval-progress/:instanceId/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /approval-progress | page | web_api_wrapper | apps/web-admin/src/api/approval-progress.api.ts#fetchRelatedApprovals | — | not_applicable | — |
 | GET | /approval-rule-assignments | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchApprovalRuleAssignments | — | not_applicable | — |
 | GET | /archives | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchArchives | — | not_applicable | — |
@@ -145,6 +146,7 @@
 | GET | /draft-retention/preview | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchDraftRetentionPreview | — | not_applicable | — |
 | GET | /employee-onboarding/applications | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#fetchEmployeeApplications | — | not_applicable | — |
 | GET | /employee-onboarding/mine | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#fetchMyApplication | — | not_applicable | — |
+| GET | /expense-claims/:claimId/approval-duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /expense-claims/:claimId/capability | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#deleteExpenseClaimDraft<br>apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimActionCapability | expense-claim.delete-draft | not_applicable | — |
 | GET | /expense-claims/:claimId/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
 | GET | /expense-claims/:claimId | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#fetchExpenseClaimDetail | — | not_applicable | — |
@@ -411,6 +413,7 @@
 | POST | /affiliate-clearing-authorities | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /approval-delegations | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createApprovalDelegation | approval-delegation.create | covered | — |
 | POST | /approval-forms/:businessType/:businessId/download | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#downloadApprovalForm | approval-documents.download-form<br>contract-approval.download-form<br>payment-detail.approval-pdf<br>spot-procurement-payment.pdf.download<br>spot-procurement.application-pdf.download | covered | — |
+| POST | /approval-progress/:instanceId/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /approval-progress/:instanceId/remind | page | web_api_wrapper | apps/web-admin/src/api/approval-progress.api.ts#remindApprovalBySms | approval-progress.remind-by-sms | covered | — |
 | POST | /auth/change-password | page | auth_store | — | — | not_applicable | — |
 | POST | /auth/login | page | auth_store | — | — | not_applicable | — |
@@ -548,6 +551,7 @@
 | POST | /employee-onboarding/mine/password | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#changeApplicationPassword | employee.application-password | covered | — |
 | POST | /employee-onboarding/register | page | web_api_wrapper | apps/web-admin/src/api/employee-onboarding.api.ts#registerEmployee | employee.register | covered | — |
 | POST | /expense-claims/:claimId/append-attachment-file-uploads | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#uploadExpenseClaimAppendAttachmentFile | expense-claim.attachment.append-upload | covered | — |
+| POST | /expense-claims/:claimId/approval-duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /expense-claims/:claimId/approval | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#reviewExpenseClaim | expense-claim.review | covered | — |
 | POST | /expense-claims/:claimId/attachments/:attachmentId/removal | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#removeExpenseClaimAttachment | expense-claim.attachment.remove | covered | — |
 | POST | /expense-claims/:claimId/attachments/append | page | web_api_wrapper | apps/web-admin/src/api/expense-claim.api.ts#appendExpenseClaimAttachment | expense-claim.attachment.append | covered | — |

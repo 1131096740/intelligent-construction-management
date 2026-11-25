@@ -14,22 +14,22 @@
   "inputManifests": {
     "nestRoutes": {
       "path": "docs/product/manifests/nest-business-routes.json",
-      "sha256": "d0da392bdd1ee71871c969fe9f69249731c46eca2c3c822f31f3ee91996bf44e",
+      "sha256": "f11bd2f53ac55e99c7d78eb4ae3265cc26551978770d81213bbdc27a2dd19739",
       "status": "ready",
       "summary": {
-        "routeCount": 880
+        "routeCount": 884
       }
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "c1d14c9f7084f6d71246b16b227a36e2d9855e0040bd3de4239d4d089a88a2e0",
+      "sha256": "4bb248bf6c26179200aa2282b9430ca68ce163903e08dc5e7641f47ffe7b994c",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
         "exportedFunctionCount": 765,
         "transportWrapperCount": 744,
         "pureExportCount": 21,
-        "mainRequestBindingCount": 815,
+        "mainRequestBindingCount": 819,
         "ticketFollowupCount": 6,
         "requestEdgeCount": 773,
         "productionConsumerCount": 632,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "ae54b5e4c42defd2bf60e345f9e816802e0c43247602181ee8b09f324a598756",
+      "sha256": "2ab1cca5fb3f2de90cd55c23686f5c5384716d6158a1ed7581877a840f2475fe",
       "status": "ready",
       "summary": {
         "registeredActionCount": 435,
@@ -64,24 +64,24 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "489a1a7917064d6c7c26fb66946ef20f7aa06ee21a1e2f1bc5aef12546467bff",
+      "sha256": "d0aa53aa7e079bfd638043c405a686ae0348dc86a28308a94f6a114fe97a9454",
       "status": "ready",
       "summary": {
-        "routeCount": 880,
-        "exactRouteCount": 880,
-        "normalizedRouteCount": 880,
+        "routeCount": 884,
+        "exactRouteCount": 884,
+        "normalizedRouteCount": 884,
         "classificationOverrideCount": 299,
         "consumerSurfaceOverrideCount": 76,
         "classificationOverrideSha256": "269b58c52bda4e786da705eb64c08b6ce803b6d42bf4520e65efa9e68b8c9b43",
         "consumerSurfaceOverrideSha256": "c14620f08f076d0b1bc3a7ecfb258a147bdeb7ca120f68c23cdb9ce10521ad49",
-        "derivedProductionPageCount": 581,
-        "pageRouteCount": 600,
+        "derivedProductionPageCount": 585,
+        "pageRouteCount": 604,
         "externalTakeoverCount": 70,
         "exitCandidateCount": 136,
         "internalTaskCount": 74,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 652,
+          "web_api_wrapper": 656,
           "auth_store": 5,
           "signed_ticket_delivery": 2,
           "machine_probe": 2,
@@ -93,20 +93,20 @@
     }
   },
   "summary": {
-    "routeCount": 880,
-    "pageRouteCount": 600,
+    "routeCount": 884,
+    "pageRouteCount": 604,
     "externalTakeoverRouteCount": 70,
     "exitCandidateRouteCount": 136,
     "internalTaskRouteCount": 74,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 815,
+    "mainRequestBindingCount": 819,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
     "registeredActionCount": 435,
-    "actionBindingCount": 530,
-    "acceptedActionBindingCount": 485,
+    "actionBindingCount": 532,
+    "acceptedActionBindingCount": 487,
     "unresolvedActionBindingCount": 0,
     "productionMutationConsumerPairCount": 426,
     "coveredProductionMutationConsumerPairCount": 426,
@@ -1110,6 +1110,48 @@
             "apps/web-admin/src/components/ApprovalProgressPanel.vue"
           ],
           "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/approval-progress/:instanceId/duty-sms",
+        "normalizedKey": "GET /approval-progress/:param/duty-sms",
+        "controller": "ApprovalProgressController",
+        "handler": "dutySmsStatus",
+        "sourceFile": "services/api/src/approval/approval-progress.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "fetchDutySms",
+          "method": "GET",
+          "path": "/approval-progress/:param/duty-sms",
+          "normalizedKey": "GET /approval-progress/:param/duty-sms",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/duty-sms.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -5097,6 +5139,48 @@
             "apps/web-admin/src/pages/login/EmployeeApplicationPage.vue"
           ],
           "testConsumers": []
+        }
+      ],
+      "authTransports": [],
+      "actions": [],
+      "mutationCoverage": "not_applicable",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "GET",
+        "path": "/expense-claims/:claimId/approval-duty-sms",
+        "normalizedKey": "GET /expense-claims/:param/approval-duty-sms",
+        "controller": "ExpenseClaimController",
+        "handler": "approvalDutySmsStatus",
+        "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "fetchDutySms",
+          "method": "GET",
+          "path": "/expense-claims/:param/approval-duty-sms?:param",
+          "normalizedKey": "GET /expense-claims/:param/approval-duty-sms",
+          "bodyKind": "none",
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/duty-sms.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],
@@ -18995,6 +19079,74 @@
     {
       "route": {
         "method": "POST",
+        "path": "/approval-progress/:instanceId/duty-sms/retry",
+        "normalizedKey": "POST /approval-progress/:param/duty-sms/retry",
+        "controller": "ApprovalProgressController",
+        "handler": "retryDutySms",
+        "sourceFile": "services/api/src/approval/approval-progress.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "method": "POST",
+          "path": "/approval-progress/:param/duty-sms/retry",
+          "normalizedKey": "POST /approval-progress/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/duty-sms.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "duty-sms.retry",
+          "bindingIndex": 0,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /approval-progress/:param/duty-sms/retry\u00000",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "notice.canRetry",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
         "path": "/approval-progress/:instanceId/remind",
         "normalizedKey": "POST /approval-progress/:param/remind",
         "controller": "ApprovalProgressController",
@@ -21209,8 +21361,8 @@
       "actions": [
         {
           "actionId": "duty-sms.retry",
-          "bindingIndex": 0,
-          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /contract-bank-verifications/:param/duty-sms/retry\u00000",
+          "bindingIndex": 1,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /contract-bank-verifications/:param/duty-sms/retry\u00001",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
@@ -22433,8 +22585,8 @@
       "actions": [
         {
           "actionId": "duty-sms.retry",
-          "bindingIndex": 1,
-          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /contract-economic-reviews/:param/duty-sms/retry\u00001",
+          "bindingIndex": 2,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /contract-economic-reviews/:param/duty-sms/retry\u00002",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
@@ -23688,8 +23840,8 @@
       "actions": [
         {
           "actionId": "duty-sms.retry",
-          "bindingIndex": 2,
-          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /contract-proxy-executions/:param/duty-sms/retry\u00002",
+          "bindingIndex": 3,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /contract-proxy-executions/:param/duty-sms/retry\u00003",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
@@ -27401,6 +27553,74 @@
     {
       "route": {
         "method": "POST",
+        "path": "/expense-claims/:claimId/approval-duty-sms/retry",
+        "normalizedKey": "POST /expense-claims/:param/approval-duty-sms/retry",
+        "controller": "ExpenseClaimController",
+        "handler": "retryApprovalDutySms",
+        "sourceFile": "services/api/src/expense-claim/expense-claim.controller.ts",
+        "authorizationScope": "guard_metadata_only",
+        "authentication": "authenticated",
+        "guardAuthorization": "authenticated_only",
+        "isPublic": false,
+        "requiredPositions": [],
+        "requiredProjectAction": null,
+        "authorizationCombination": null,
+        "contractCutoverSurface": false,
+        "contractCutoverLegacyWrite": false,
+        "contractCutoverTombstoneWrite": false
+      },
+      "usage": "page",
+      "consumerSurface": "web_api_wrapper",
+      "wrapperRequests": [
+        {
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "method": "POST",
+          "path": "/expense-claims/:param/approval-duty-sms/retry?:param",
+          "normalizedKey": "POST /expense-claims/:param/approval-duty-sms/retry",
+          "bodyKind": "json",
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "testConsumers": [
+            "apps/web-admin/src/api/duty-sms.api.test.ts"
+          ]
+        }
+      ],
+      "authTransports": [],
+      "actions": [
+        {
+          "actionId": "duty-sms.retry",
+          "bindingIndex": 4,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /expense-claims/:param/approval-duty-sms/retry\u00004",
+          "usage": "page_action",
+          "semantic": "business_write",
+          "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
+          "capability": {
+            "kind": "server_boolean",
+            "source": "notice.canRetry",
+            "serverDerived": true,
+            "dominatesTrigger": true
+          },
+          "apiFile": "apps/web-admin/src/api/duty-sms.api.ts",
+          "wrapper": "retryDutySms",
+          "productionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/components/DutySmsStatusPanel.vue"
+          ],
+          "causalVerified": true,
+          "accepted": true,
+          "blockerCodes": []
+        }
+      ],
+      "mutationCoverage": "covered",
+      "blockerCodes": []
+    },
+    {
+      "route": {
+        "method": "POST",
         "path": "/expense-claims/:claimId/approval",
         "normalizedKey": "POST /expense-claims/:param/approval",
         "controller": "ExpenseClaimController",
@@ -27903,8 +28123,8 @@
       "actions": [
         {
           "actionId": "duty-sms.retry",
-          "bindingIndex": 3,
-          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /expense-claims/:param/duty-sms/retry\u00003",
+          "bindingIndex": 5,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /expense-claims/:param/duty-sms/retry\u00005",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
@@ -29876,8 +30096,8 @@
       "actions": [
         {
           "actionId": "duty-sms.retry",
-          "bindingIndex": 4,
-          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /fund-account-transfers/:param/duty-sms/retry\u00004",
+          "bindingIndex": 6,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /fund-account-transfers/:param/duty-sms/retry\u00006",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
@@ -30271,8 +30491,8 @@
       "actions": [
         {
           "actionId": "duty-sms.retry",
-          "bindingIndex": 5,
-          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /fund-accounts/principal-returns/applications/:param/duty-sms/:param/retry\u00005",
+          "bindingIndex": 7,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /fund-accounts/principal-returns/applications/:param/duty-sms/:param/retry\u00007",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
@@ -30659,8 +30879,8 @@
       "actions": [
         {
           "actionId": "duty-sms.retry",
-          "bindingIndex": 6,
-          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /fund-accounts/registrations/:param/review/duty-sms/retry\u00006",
+          "bindingIndex": 8,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /fund-accounts/registrations/:param/review/duty-sms/retry\u00008",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
@@ -34354,8 +34574,8 @@
       "actions": [
         {
           "actionId": "duty-sms.retry",
-          "bindingIndex": 7,
-          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /payment-executions/:param/duty-sms/retry\u00007",
+          "bindingIndex": 9,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /payment-executions/:param/duty-sms/retry\u00009",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
@@ -35087,8 +35307,8 @@
       "actions": [
         {
           "actionId": "duty-sms.retry",
-          "bindingIndex": 8,
-          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /payments/:param/approval/duty-sms/retry\u00008",
+          "bindingIndex": 10,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /payments/:param/approval/duty-sms/retry\u000010",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
@@ -46465,8 +46685,8 @@
       "actions": [
         {
           "actionId": "duty-sms.retry",
-          "bindingIndex": 9,
-          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /settlements/:param/duty-sms/retry\u00009",
+          "bindingIndex": 11,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /settlements/:param/duty-sms/retry\u000011",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
@@ -47396,8 +47616,8 @@
       "actions": [
         {
           "actionId": "duty-sms.retry",
-          "bindingIndex": 10,
-          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /spot-procurement-payments/:param/duty-sms/retry\u000010",
+          "bindingIndex": 12,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /spot-procurement-payments/:param/duty-sms/retry\u000012",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
@@ -49877,8 +50097,8 @@
       "actions": [
         {
           "actionId": "duty-sms.retry",
-          "bindingIndex": 11,
-          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /upward-contract-amount-revisions/:param/duty-sms/retry\u000011",
+          "bindingIndex": 13,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /upward-contract-amount-revisions/:param/duty-sms/retry\u000013",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
@@ -50077,8 +50297,8 @@
       "actions": [
         {
           "actionId": "duty-sms.retry",
-          "bindingIndex": 12,
-          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /upward-receipt-matches/:param/duty-sms/retry\u000012",
+          "bindingIndex": 14,
+          "identity": "duty-sms.retry\u0000apps/web-admin/src/api/duty-sms.api.ts\u0000retryDutySms\u0000POST\u0000POST /upward-receipt-matches/:param/duty-sms/retry\u000014",
           "usage": "page_action",
           "semantic": "business_write",
           "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",

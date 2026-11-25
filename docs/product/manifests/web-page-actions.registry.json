@@ -8977,6 +8977,7 @@
       "id": "duty-sms.retry",
       "usage": "page_action",
       "routePaths": [
+        "/审批中心",
         "/结算管理/:settlementId",
         "/费用与报销/:claimId",
         "/零星材料付款/:paymentId",

@@ -10,7 +10,7 @@
   "summary": {
     "activeBusinessActionCount": 423,
     "technicalActionCount": 8,
-    "activeBindingCount": 517,
+    "activeBindingCount": 519,
     "retiredWriteEntryCount": 123,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
@@ -2367,6 +2367,7 @@
         "/付款管理/:paymentId",
         "/公司互转台账",
         "/垫资本金归还/:applicationId",
+        "/审批中心",
         "/结算管理/:settlementId",
         "/统一资金办理工作台",
         "/费用与报销/:claimId",
@@ -2377,9 +2378,11 @@
       "sourceFile": "apps/web-admin/src/components/DutySmsStatusPanel.vue",
       "capabilityKind": "server_boolean",
       "bindingKeys": [
+        "POST /approval-progress/:param/duty-sms/retry",
         "POST /contract-bank-verifications/:param/duty-sms/retry",
         "POST /contract-economic-reviews/:param/duty-sms/retry",
         "POST /contract-proxy-executions/:param/duty-sms/retry",
+        "POST /expense-claims/:param/approval-duty-sms/retry",
         "POST /expense-claims/:param/duty-sms/retry",
         "POST /fund-account-transfers/:param/duty-sms/retry",
         "POST /fund-accounts/principal-returns/applications/:param/duty-sms/:param/retry",
@@ -2391,7 +2394,7 @@
         "POST /upward-contract-amount-revisions/:param/duty-sms/retry",
         "POST /upward-receipt-matches/:param/duty-sms/retry"
       ],
-      "bindingCount": 13,
+      "bindingCount": 15,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
