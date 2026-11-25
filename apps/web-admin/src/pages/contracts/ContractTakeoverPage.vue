@@ -994,6 +994,7 @@
               :saving="Boolean(contractSideState?.saving)"
               :dirty="Boolean(contractSideState?.dirty)"
               :status-text="contractSideStatus"
+              :original-party-relationship="selectedRow.takeover.takeoverLevel === 'NONE' && (selectedRow.takeover.relationship === 'inside' || selectedRow.takeover.relationship === 'outside') ? selectedRow.takeover.relationship : undefined"
               @update:model-value="updateContractSideModel"
               @upload-evidence="uploadContractSideEvidence"
             />

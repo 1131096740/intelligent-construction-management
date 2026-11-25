@@ -26,6 +26,7 @@ type SignedSettlementRelationship = "inside" | "outside" | "upward";
 export interface SignedSettlementContractOption { kind: SignedContractKind; id: string; label: string; relationship: SignedSettlementRelationship }
 interface SignedSettlementContractDetail {
   contractVersionId: string | null;
+  historicalTakeoverId?: string;
   originalFileId: string | null;
   relationship: SignedSettlementRelationship;
   name: string;
@@ -127,13 +128,13 @@ export class SignedContractSettlementService {
       let contractAttachmentIds: string[] = [];
       let downstreamCapacity: Awaited<ReturnType<typeof loadDownstreamPaymentBasis>>["capacity"] | null = null;
       let paymentAgreementText: string | null = null;
-      if (contract.contractVersionId) {
+      if (contract.contractVersionId && contractKind !== "upward") {
         const basis = await loadDownstreamPaymentBasis(tx, projectId, contractId, contract.contractVersionId, confirmedYuan, canReadSignedAttachments);
         entries.push(...basis.legacyConfirmed);
         contractAttachmentIds = basis.contractAttachmentIds;
         downstreamCapacity = basis.capacity;
         paymentAgreementText = basis.paymentAgreementText;
-      } else {
+      } else if (!contract.historicalTakeoverId) {
         const historical = await tx.projectAffiliateSettlementFact.findMany({
           where: { projectId, status: "confirmed", confirmedAt: { not: null }, ...(contractKind === "upward"
             ? { affiliateCompanyContractId: contractId }
@@ -313,12 +314,12 @@ export class SignedContractSettlementService {
     if (!frozen || typeof frozen !== "object" || Array.isArray(frozen)) return;
     const sourceRecordId = (frozen as Prisma.JsonObject).sourceRecordId;
     if (
-      reviewed.contractKind !== "downstream" ||
+      (reviewed.contractKind !== "downstream" && typeof (frozen as Prisma.JsonObject).historicalTakeoverId !== "string") ||
       typeof sourceRecordId !== "string" ||
       typeof reviewed.number !== "string" ||
       typeof reviewed.contractId !== "string"
     ) {
-      // upward / outside_fact 的数据库复核函数已在同一事务内拒绝任何旧来源同合同事实。
+      // Current upward / outside_fact use their own qualified contract facts.
       return;
     }
     try {

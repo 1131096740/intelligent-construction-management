@@ -643,6 +643,8 @@ export interface ContractTakeoverContractSideReadModel {
     contractName: string;
     contractTypeKey: string;
     counterparty: string;
+    counterpartyVersionId?: string;
+    signingPartyVersionId?: string;
     originalAmountCents: string;
     settlementCutoffDate?: string;
     zeroSettlementDeclared: boolean;

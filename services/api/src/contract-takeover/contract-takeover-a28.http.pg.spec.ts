@@ -197,6 +197,17 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     const code = `A28-${relationship}-${randomUUID()}`;
     const name = `合成历史合同 ${relationship}`;
     const counterparty = relationship === "upward" ? constructionEnterprise : `合成签约相对方 ${relationship}`;
+    let counterpartyVersionId: string | undefined;
+    if (relationship !== "upward") {
+      const createdByUserId = actors.contract_staff.id;
+      const party = await prisma.businessParty.create({
+        data: { name: counterparty, normalizedName: counterparty, createdByUserId }
+      });
+      const version = await prisma.businessPartyVersion.create({
+        data: { businessPartyId: party.id, versionNo: 1, createdByUserId, snapshot: { name: counterparty } }
+      });
+      counterpartyVersionId = version.id;
+    }
     const terms = "按经双方确认的历史结算金额办理收付";
     const draft = await request<{ id: string }>("contract_staff", path, "POST", {
       code, name, counterparty, relationship, contractTypeKey, companyEntityId,
@@ -239,6 +250,8 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
       settlementEvidenceFileIds: [settlementEvidence], paymentTerms: { originalText: terms, stages: [] },
       contractFacts: {
         contractNo: code, contractName: name, contractTypeKey, counterparty, originalAmountCents: "10000",
+        ...(counterpartyVersionId ? { counterpartyVersionId } : {}),
+        ...(relationship === "outside" ? { signingPartyVersionId: affiliateVersionId } : {}),
         settlementCutoffDate: cutoff, zeroSettlementDeclared: zero,
         ...(zero ? { zeroSettlementBasis: "逐期核对台账，确认历史结算未发生" } : {})
       }
@@ -368,7 +381,8 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     const picker = await request<SignedSettlementOption[]>("contract_staff", `${signedPath}/contracts`, "GET", undefined, signedTarget);
     expect(picker.status).toBe(200);
     const sameContract = picker.body.find((item) => item.id === confirmedOption?.contractId);
-    expect(sameContract).toMatchObject({ relationship, kind: expect.any(String) });
+    const expectedKind = relationship === "inside" ? "downstream" : relationship === "outside" ? "outside_fact" : "upward";
+    expect(sameContract).toMatchObject({ relationship, kind: expectedKind });
 
     const selection = { contractKind: sameContract?.kind, contractId: sameContract?.id };
     const overviewPath = `${signedPath}/contract-overview?${new URLSearchParams({
@@ -393,7 +407,11 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     }, signedTarget)).toMatchObject({
       status: 201,
       body: { ...selection, state: "confirmed", confirmedContractSource: {
-        relationship, sourceRecordId: confirmedOption?.contractVersionId
+        relationship, sourceRecordId: confirmedOption?.contractVersionId, historicalTakeoverId: draft.body.id,
+        ...(relationship === "outside" ? {
+          payerKind: "construction_enterprise", payerVersionId: affiliateVersionId,
+          counterpartyKind: "downstream_counterparty", counterpartyVersionId
+        } : {})
       } }
     });
     const confirmedYuan = zero ? "10.0000" : "70.0000";

@@ -5296,6 +5296,8 @@ export class ContractTakeoverService {
         contractName,
         contractTypeKey,
         counterparty,
+        ...(sourceFacts.counterpartyVersionId ? { counterpartyVersionId: sourceFacts.counterpartyVersionId } : {}),
+        ...(sourceFacts.signingPartyVersionId ? { signingPartyVersionId: sourceFacts.signingPartyVersionId } : {}),
         originalAmountCents: originalAmountCents.toString(),
         settlementCutoffDate: settlementCutoffDate || null,
         zeroSettlementDeclared: sourceFacts.zeroSettlementDeclared,
@@ -5311,6 +5313,12 @@ export class ContractTakeoverService {
       historicalSettledCents: input.historicalSettledCents.toString(),
       paymentTerms: input.paymentTerms,
       contractTypeKey: input.contractFacts.contractTypeKey,
+      ...(input.contractFacts.counterpartyVersionId || input.contractFacts.signingPartyVersionId ? {
+        signedAt: input.signedAt.toISOString(),
+        counterparty: input.contractFacts.counterparty,
+        counterpartyVersionId: input.contractFacts.counterpartyVersionId ?? null,
+        signingPartyVersionId: input.contractFacts.signingPartyVersionId ?? null
+      } : {}),
       originalAmountCents: input.contractFacts.originalAmountCents,
       settlementCutoffDate: input.contractFacts.settlementCutoffDate,
       zeroSettlementDeclared: input.contractFacts.zeroSettlementDeclared,
@@ -5331,6 +5339,12 @@ export class ContractTakeoverService {
       historicalSettledCents: facts.historicalSettledCents.toString(),
       paymentTerms: facts.paymentTermsSnapshot,
       contractTypeKey: contractFacts["contractTypeKey"] ?? null,
+      ...(contractFacts["counterpartyVersionId"] || contractFacts["signingPartyVersionId"] ? {
+        signedAt: facts.signedAt.toISOString(),
+        counterparty: contractFacts["counterparty"] ?? null,
+        counterpartyVersionId: contractFacts["counterpartyVersionId"] ?? null,
+        signingPartyVersionId: contractFacts["signingPartyVersionId"] ?? null
+      } : {}),
       originalAmountCents: contractFacts["originalAmountCents"] ?? null,
       settlementCutoffDate: contractFacts["settlementCutoffDate"] ?? null,
       zeroSettlementDeclared: facts.zeroSettlementDeclared,
