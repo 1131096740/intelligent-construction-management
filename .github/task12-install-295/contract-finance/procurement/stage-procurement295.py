@@ -246,6 +246,21 @@ if forward:
         text = text.replace(failure_anchor,failure_probe).replace(stderr_anchor,stderr_probe)
         text = text.replace('    frames,',failure_fields)
         text = text.replace('firstFailure(report)','firstFailure(report,stderrKinds,child.signalCode)')
+        if count == 331:
+            output_start = '    child.stdout.resume();\n    const stderrKinds=new Set();'
+            output_end = '    });\n    exited=once(child,"exit");'
+            if text.count(output_start) != 1 or text.count(output_end) != 1:
+                raise ValueError('PROCUREMENT_331_PROJECT_PROCESS_OBSERVATION_ANCHOR')
+            text = text.replace(output_start, '    const stderrKinds=new Set();')
+            text = text.replace('    let stderrBoundary="";\n    child.stderr.on("data",chunk=>{',
+                '    const observeOutput=stream=>{\n      let stderrBoundary="";\n      stream.on("data",chunk=>{')
+            text = text.replace('        module_resolution:', r'''        jest_exit:/process\.exit called with|Jest worker encountered/u,
+        process_limit:/\bEAGAIN\b|Resource temporarily unavailable/u,
+        filesystem:/\b(?:EACCES|EMFILE)\b/u,
+        module_resolution:''')
+            text = text.replace(output_end, '      });\n    };\n    observeOutput(child.stdout);\n    observeOutput(child.stderr);\n    exited=once(child,"close");')
+            text = text.replace('stderrKinds:[...stderrKinds].sort(),',
+                'processOutputKinds:[...stderrKinds].sort(),')
         anchor = '    const ownerTarget=new URL(context.ownerUrl);'
         observation = '''    const detailAcl=await context.sql(`SELECT jsonb_build_object(
       'activity',has_function_privilege('project_business_scope_runtime','public.jg_read_payment_detail_activity_v1(text,text,text)','EXECUTE'),
