@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { PDFDict, PDFDocument, PDFName } from "pdf-lib";
+import { PDFDict, PDFDocument, PDFName, PDFRawStream } from "pdf-lib";
 import { verifyApprovedPdf } from "../database/approval-pdf-acceptance.test-support";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
@@ -646,7 +646,9 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
         const pdf = await PDFDocument.load(await response.arrayBuffer());
         expect(pdf.getPageCount()).toBeGreaterThan(0);
         const signatureImages = pdf.getPages().flatMap(page =>
-          page.node.Resources()?.lookupMaybe(PDFName.of("XObject"), PDFDict)?.keys() ?? []
+          page.node.Resources()?.lookupMaybe(PDFName.of("XObject"), PDFDict)?.entries().filter(([, reference]) =>
+            pdf.context.lookupMaybe(reference, PDFRawStream)?.dict.get(PDFName.of("Subtype")) === PDFName.of("Image")
+          ) ?? []
         );
         if (signatureImages.length !== count) {
           throw new Error(`A04_PDF_SIGNATURE_IMAGES ${claimType} ${count} ${signatureImages.length}`);
