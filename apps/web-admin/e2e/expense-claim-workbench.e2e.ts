@@ -1,35 +1,41 @@
 import { expect, test, type Page } from "@playwright/test";
+import type { ExpenseClaimLedgerPage } from "../src/api/expense-claim.api";
 import { EXPENSE_CLAIM_ENTRY_DEFINITION } from "../../../services/api/src/expense-claim/expense-claim-entry.definition";
 import {
   expectNoDocumentHorizontalOverflow,
   expectNoNestedHorizontalScrollers
 } from "./helpers/responsive-assertions";
 
-test("费用与报销工作台在桌面和手机尺寸读取新域个人事实并切换服务端视图", async ({ page }) => {
+test("费用与报销台账在桌面和手机尺寸读取新域个人事实并切换服务端视图", async ({ page }) => {
   const requestedViews: string[] = [];
   await mockExpenseClaimSession(page, requestedViews);
   await login(page);
 
   await page.goto("/费用与报销工作台");
-  await expect(page.getByRole("heading", { name: "费用与报销工作台" })).toBeVisible();
-  await expect(page.getByText("BX-20260723-001", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "费用与报销台账" })).toBeVisible();
+  const initialRow = page.getByRole("cell", { name: "BX-20260723-001", exact: true });
+  await expect(initialRow).toBeVisible();
   await expect(page.getByText("由综合部某某代办", { exact: true })).toHaveCount(0);
-  await page.getByText("BX-20260723-001", { exact: true }).click();
+  await initialRow.locator("a").click();
   await expect(page.getByRole("heading", { name: "费用报销" })).toBeVisible();
   await expect(page.getByText("项目现场交通费", { exact: true })).toBeVisible();
   await page.goto("/费用与报销工作台");
+  await expect(initialRow).toBeVisible();
   await expectNoDocumentHorizontalOverflow(page);
   await expectNoNestedHorizontalScrollers(page);
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator("article").getByText("BX-20260723-001", { exact: true })).toBeVisible();
   await expectNoDocumentHorizontalOverflow(page);
   await expectNoNestedHorizontalScrollers(page);
   await page.setViewportSize({ width: 1280, height: 720 });
 
-  await page.locator(".expense-claim-workbench__filter-field .t-select").click();
-  await page.getByText("审批中", { exact: true }).last().click();
-  await expect(page.getByText("BX-20260723-002", { exact: true })).toBeVisible();
-  await expect.poll(() => requestedViews).toContain("in_progress");
+  await page.getByRole("textbox", { name: "办理视图", exact: true }).click();
+  await page.getByRole("listitem", { name: "审批中", exact: true }).click();
+  await page.getByRole("button", { name: "查询", exact: true }).click();
+  await expect(page.getByRole("cell", { name: "BX-20260723-002", exact: true })).toBeVisible();
+  await expect(initialRow).toHaveCount(0);
+  expect(requestedViews).toContain("in_progress");
 });
 
 test("费用工作台仅保留报销和零星费用，并办理零星费用草稿及附件", async ({ page }) => {
@@ -512,23 +518,43 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
       }
     })
   }));
-  await page.route("**/api/expense-claims*", (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    if (request.method() === "POST") {
-      posted.push(request.postDataJSON());
-      return route.fulfill({
-        status: 201,
-        contentType: "application/json",
-        body: JSON.stringify({ id: "expense-claim-created", code: "LXFY-20260723-001", status: "draft", requestedAmountCents: "123456" })
-      });
-    }
-    const view = url.searchParams.get("view") ?? "all";
+  await page.route((url) => url.pathname === "/api/projects", (route) => route.fulfill({
+    json: [{ id: "project-1", code: "JGXM-001", name: "科技园项目" }]
+  }));
+  await page.route((url) => url.pathname === "/api/expense-claims", (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    posted.push(route.request().postDataJSON());
+    return route.fulfill({
+      status: 201,
+      json: { id: "expense-claim-created", code: "LXFY-20260723-001", status: "draft", requestedAmountCents: "123456" }
+    });
+  });
+  await page.route((url) => url.pathname === "/api/expense-claims/ledger", (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const query = new URL(route.request().url()).searchParams;
+    const view = query.get("view") ?? "all";
+    const inProgress = view === "in_progress";
     requestedViews.push(view);
-    const body = view === "in_progress"
-      ? [expenseClaim({ code: "BX-20260723-002", status: "approval_pending" })]
-      : [expenseClaim({ code: "BX-20260723-001", status: "approved_pending_payment" })];
-    return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
+    const claim = expenseClaim({});
+    const ledger: ExpenseClaimLedgerPage = {
+      rows: [{
+        id: claim.id, code: inProgress ? "BX-20260723-002" : claim.code,
+        claimType: claim.claimType, claimTypeLabel: "费用报销", categoryLabel: "交通",
+        status: inProgress ? "approval_pending" : claim.status,
+        statusLabel: inProgress ? "审批中" : "待公司付款",
+        projectId: claim.projectId, projectName: claim.project.name,
+        companyName: claim.companyEntityNameSnapshot, applicantName: claim.applicantNameSnapshot,
+        handledByName: claim.handledByNameSnapshot, reason: claim.reason, payeeName: claim.applicantNameSnapshot,
+        requestedAmountCents: claim.requestedAmountCents, loanOffsetAmountCents: claim.loanOffsetAmountCents,
+        companyPayableAmountCents: claim.companyPayableAmountCents, fundedAmountCents: claim.fundedAmountCents,
+        updatedAt: claim.updatedAt
+      }],
+      pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+      summary: { total: 1, drafts: 0, inProgress: inProgress ? 1 : 0, pendingFunds: inProgress ? 0 : 1, knownAmountRows: 1 },
+      filters: { view },
+      columns: []
+    };
+    return route.fulfill({ json: ledger });
   });
   await page.route("**/api/expense-claims/expense-claim-1", (route) => route.fulfill({
     contentType: "application/json",
@@ -673,6 +699,8 @@ function expenseClaim(overrides: Partial<Record<string, unknown>>) {
     companyPayableAmountCents: "100000",
     fundedAmountCents: "0",
     updatedAt: "2026-07-23T10:30:00.000Z",
+    paymentSubjectCompanyEntities: [],
+    paymentSubjectPermissions: { canAdjust: false },
     ...overrides
   };
 }

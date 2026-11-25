@@ -343,13 +343,41 @@ describe("ContractDocumentProcessor", () => {
   it.each(["material-purchase-real-v1.docx","equipment-rental-real-v1.docx"].flatMap(filename=>[true,false].map(current=>[filename,current]))) ("routes only the frozen mapped supplement version for %s (%s)",async(filename,current)=>{
     const source=readFileSync(join(__dirname,"../../assets/templates",filename as string)),sourceSha256=createHash("sha256").update(source).digest("hex"),prisma=makePrisma(),job=queuedDocument();
     const names={"party.owner.name":"虚构甲方","party.counterparty.name":"虚构乙方"};
-    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({...job,inputSnapshot:{...job.inputSnapshot,...(current?{mappedSignatureVersion:"built-in-mapped-signature-supplement-v1"}:{}),renderInput:{values:names},bodyDocument:{protocolVersion:1,layoutTemplateVersionId:"layout",sourceSha256,pdfEngine:"docx4j-17.3.5",runtimeLockSha256:"a".repeat(64),partyDetailsVersion:current?"built-in-mapped-material-signature-v1":"built-in-signature-supplement-company-v3"}}});
+    const inputSnapshot = {
+      ...job.inputSnapshot,
+      ...(current ? { mappedSignatureVersion: "built-in-mapped-signature-supplement-v1" } : {}),
+      renderInput: { values: names },
+      bodyDocument: {
+        protocolVersion: 1,
+        layoutTemplateVersionId: "layout",
+        sourceSha256,
+        pdfEngine: "docx4j-17.3.5",
+        runtimeLockSha256: "a".repeat(64),
+        partyDetailsVersion: current
+          ? "built-in-mapped-material-signature-v1"
+          : "built-in-signature-supplement-company-v3"
+      }
+    };
+    prisma.contractGeneratedDocument.findFirst.mockResolvedValue({ ...job, inputSnapshot });
     const files=generatedDocumentFiles();files.getFileBuffer.mockResolvedValue({file:{id:"layout-file"},buffer:source});
     const lock=jest.spyOn(bodyConverter,"assertContractBodyPdfRuntimeLock").mockResolvedValue(undefined);
     const body=jest.spyOn(bodyModule,"renderContractBody").mockReturnValue({docx:source,sourceSha256,blocks:[],flow:[],paragraphGroups:[]} as unknown as ReturnType<typeof bodyModule.renderContractBody>);
     const convert=jest.spyOn(bodyConverter,"convertContractBodyDocxToPdf").mockResolvedValue({pdf:convertedPdf,provenance:{}} as unknown as Awaited<ReturnType<typeof bodyConverter.convertContractBodyDocxToPdf>>);
-    try{await new ContractDocumentProcessor(prisma as unknown as PrismaService,files as never,audit as never).processNext();expect(body).toHaveBeenCalledWith(expect.anything(),expect.anything(),expect.anything(),expect.anything(),expect.anything(),undefined,expect.objectContaining({mappedSignatureSupplement:current}));expect(convert).toHaveBeenCalled();}
-    finally{lock.mockRestore();body.mockRestore();convert.mockRestore();}
+    try {
+      await new ContractDocumentProcessor(prisma as unknown as PrismaService, files as never, audit as never).processNext();
+      expect(body).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.anything(), undefined, expect.objectContaining({ mappedSignatureSupplement: current }));
+      expect(convert).toHaveBeenCalled();
+      expect(prisma.tx.contractGeneratedDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          status: "success",
+          inputSnapshot: { ...inputSnapshot, inspection: expect.any(Object) }
+        })
+      }));
+    } finally {
+      lock.mockRestore();
+      body.mockRestore();
+      convert.mockRestore();
+    }
   });
 
   it.each([true,false])("routes generic mapped content without an image placement version (%s)",async current=>{

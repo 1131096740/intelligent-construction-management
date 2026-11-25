@@ -48,7 +48,18 @@ describe("task10 material complete signature dates at the public body and actual
         documentContentFingerprint: wb.version.documentContentFingerprint, bodyDocument: { sourceSha256: sourceSha, typographyVersion: "reviewed-material-primary-secondary-body25-v4", signatureDateVersion: dateVersion },
         renderInput: { values: { "contract.signatureDateVersion": dateVersion } } } });
       const lock = sha(await readFile(join(repository, "services/api/assets/document-converter/runtime-lock-material-body25-v4.json")));
-      expect(pending.idempotencyKey).toBe(sha(JSON.stringify([draft.version.id, wb.version.documentContentRevision, wb.version.documentContentFingerprint, layout.id, "draft", [], "contract-body-docx4j-v1", lock, "contract-money-v1", "body-bill-loop-v2", "reviewed-material-primary-secondary-body25-v4", dateVersion])));
+      expect(pending.idempotencyKey).toBe(sha(JSON.stringify([
+        draft.version.id, wb.version.documentContentRevision, wb.version.documentContentFingerprint,
+        layout.id, "draft", [], "contract-body-docx4j-v1", lock, "contract-money-v1", "body-bill-loop-v2",
+        "reviewed-material-primary-secondary-body25-v4", dateVersion,
+        "built-in-automatic-party-guard-v1:built-in-signature-supplement-company-v3",
+        "built-in-mapped-signature-supplement-v1"
+      ])));
+      const replay = await fetch(draft.base + "/preview-generation", {
+        method: "POST", headers: draft.headers, body: JSON.stringify({ sourceRevision: wb.version.draftRevision })
+      });
+      expect(replay.status).toBe(201);
+      expect(await replay.json()).toMatchObject({ generationId: generation.generationId });
       const start = performance.now(); expect(await server.processor.processNext()).toBe(true); expect(performance.now() - start).toBeLessThanOrEqual(130_000);
       const output = (await list()).find((row: { id: string }) => row.id === generation.generationId);
       expect(output).toMatchObject({ status: "success", inputSnapshot: pending.inputSnapshot, idempotencyKey: pending.idempotencyKey, docxFileId: expect.any(String), pdfFileId: expect.any(String) });
@@ -65,7 +76,12 @@ describe("task10 material complete signature dates at the public body and actual
       const rawCells = direct(direct(rawTable, "tr")[0], "tc"), cells = direct(direct(table, "tr")[0], "tc"); expect(cells).toHaveLength(2);
       expect(direct(table, "tr")).toHaveLength(1);
       for (let i = 0; i < 2; i++) {
-        const original = direct(rawCells[i], "p"), rendered = direct(cells[i], "p"); expect(rendered).toHaveLength(7);
+        const original = direct(rawCells[i], "p"), rendered = direct(cells[i], "p");
+        expect(original).toHaveLength(7);
+        expect(rendered).toHaveLength(9);
+        expect(rendered.slice(original.length).map(textOf)).toEqual([
+          "开户行：________________", "银行账号：________________"
+        ]);
         expect(original[5].childNodes.length).toBe(0); expect(textOf(rendered[5])).toBe(dateText);
         expect(direct(rendered[5], "pPr").map(p => serializer.serializeToString(p))).toEqual([]);
         const t = rendered[5].getElementsByTagNameNS(W, "t"); expect(t.length).toBe(1); expect(t[0].getAttributeNS("http://www.w3.org/XML/1998/namespace", "space")).toBe("preserve");

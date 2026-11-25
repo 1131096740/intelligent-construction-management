@@ -8,6 +8,8 @@
 
 集成候选 `e3789d3b` 的托管 56 项全部通过。合同表格全量复验的六项失败均定位到测试数据或操作时序，校正后桌面和移动端定向六项通过，全量待新提交复跑。正文公开 HTTP 18 项和金额及付款读取 62 项通过，仍在补 A01–A38 的正式实物及同案证据。[托管结果](https://github.com/1131096740/intelligent-construction-management/actions/runs/45596744807)
 
+精确候选 `a0c3fc7c` 的合同表格全量 136 项通过，综合采购三种浏览器配置 18 项通过。材料实物复验发现生成完成会覆盖入队的冻结签章配置，已修复。相同生成键、原签署日期和实际 Word/PDF 均已在本地通过，待绑定新提交。[#426 验收记录](docs/progress/2026-11-25-issue-426.md)
+
 45 项中 43 项已关闭。已领取 [#426](https://github.com/1131096740/intelligent-construction-management/issues/426)，使用 `c44dd864` 启动隔离的合同结算治理、试运行和双浏览器角色链，并逐项核对 A01–A38。生产部署、真实短信送达和微信真机仍无验收结论。#427 等待 #426。
 
 [#424](https://github.com/1131096740/intelligent-construction-management/issues/424) 的授权备份开发演练已关闭。草稿 PR #428 的精确候选 `218960714acdc9ef37141402747b3700fa5764de` [CI 56 项通过](https://github.com/1131096740/intelligent-construction-management/actions/runs/45428642921)。同提交的隔离 PostgreSQL 16 回执核对了六类旧业务来源和 46 张正式账簿。11 月 24 日 03:00:01 的备份中，合同、普通合同付款和现货采购付款的目标在途记录均为零。正式冻写后须用同判据重查。异地数据库日备、同点 25 份附件及非生产 COS 版本恢复已核实。[演练证据索引](docs/progress/2026-11-24-issue-424.md#恢复与切换证据索引)

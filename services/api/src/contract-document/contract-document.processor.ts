@@ -841,7 +841,9 @@ export class ContractDocumentProcessor
             engineVersion: snapshot.bodyDocument?.pdfEngine === "docx4j-17.3.5" ? CONTRACT_BODY_DOCX4J_ENGINE_VERSION
               : snapshot.bodyDocument ? CONTRACT_BODY_DOCUMENT_ENGINE_VERSION : CONTRACT_DOCUMENT_ENGINE_VERSION,
             inputSnapshot: {
-              ...snapshot,
+              // The renderer resolves the frozen profile to its effective mode.
+              // Keep the queued input intact when attaching the output inspection.
+              ...(job.inputSnapshot as Prisma.JsonObject),
               inspection: {
                 pageCount: normalized.pageCount,
                 pageSizes: normalized.pageSizes,
