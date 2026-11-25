@@ -239,6 +239,7 @@ function grantApplication(sql, database, app, appPassword) {
     "GRANT USAGE ON SCHEMA public TO " + role + ";" + grant("SELECT", reads) +
     Object.entries(writes).map(([privilege, names]) => grant(privilege, names)).join("") +
     grantColumns("UPDATE", "User", userUpdateColumns) +
+    grantColumns("SELECT", "ProjectRosterMember", ["projectId", "userId"]) +
     grantColumns("SELECT", "ContractDocumentComparison", comparison.select) +
     grantColumns("UPDATE", "ContractDocumentComparison", comparison.update) +
     grantColumns("SELECT", "ContractDraftCheckpoint", ["contractVersionId", "id", "sequenceNo", "name", "snapshot", "createdByUserId", "createdAt"]) +
