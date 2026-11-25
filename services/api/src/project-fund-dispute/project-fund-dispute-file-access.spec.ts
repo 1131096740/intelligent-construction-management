@@ -21,8 +21,17 @@ describe("project fund dispute evidence file access", () => {
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn().mockResolvedValue(null)
     };
+    const bindingQuery = '/* private_file_project_binding */ SELECT dispute."projectId" FROM public."ProjectFundDisputeEntry" entry JOIN public."ProjectFundDispute" dispute ON dispute.id = entry."disputeId" WHERE entry."evidenceFileId" = $1 LIMIT 1';
     const rawLookup = jest.fn(async (query: Prisma.Sql): Promise<Array<{ projectId: string } | { state: string }>> => {
       if (query.text.includes("/* registered_payment_voucher_catalog */")) return [{ state: "absent" }];
+      const statement = query.text.replace(/\s+/gu, " ").trim();
+      if (query.values.length && query.values.every(value => value === file.id)) {
+        if (statement === bindingQuery) return [{ projectId: "project-1" }];
+        if (/^\/\* private_file_(offline_revision|expense_attachment|project)_binding \*\//u.test(statement)) {
+          if (statement.includes('FROM public."ProjectFundDisputeEntry"')) throw new Error("Unexpected project binding projection");
+          return [];
+        }
+      }
       throw new Error("Unexpected private-file lookup");
     });
     const tx = new Proxy(
@@ -30,11 +39,7 @@ describe("project fund dispute evidence file access", () => {
         $queryRaw: rawLookup,
         contractTakeoverCorrection: { groupBy: jest.fn().mockResolvedValue([]) },
         fileObject: { findUnique: jest.fn().mockResolvedValue(file) },
-        projectFundDisputeEntry: {
-          findFirst: jest.fn().mockResolvedValue({
-            dispute: { projectId: "project-1" }
-          })
-        },
+        projectFundDisputeEntry: { findFirst: jest.fn() },
         userPosition: {
           findMany: jest.fn().mockImplementation(({ where }: { where: { projectId: string | null } }) =>
             Promise.resolve(scope === "global" && where.projectId === null
@@ -76,11 +81,11 @@ describe("project fund dispute evidence file access", () => {
       {} as never,
       spotAccess as never
     );
-    return { service, tx };
+    return { service, tx, bindingQuery };
   }
 
   it("allows only the new detail-read roles through the short-lived ticket seam", async () => {
-    const { service, tx } = createService("project_manager");
+    const { service, tx, bindingQuery } = createService("project_manager");
 
     const ticket = await service.createDownloadTicket("dispute-evidence-1", {
       actorUserId: "project-manager-1",
@@ -88,10 +93,8 @@ describe("project fund dispute evidence file access", () => {
     });
 
     expect(ticket.downloadUrl).toContain("expiresAt=");
-    expect(tx.projectFundDisputeEntry.findFirst).toHaveBeenCalledWith({
-      where: { evidenceFileId: "dispute-evidence-1" },
-      select: { dispute: { select: { projectId: true } } }
-    });
+    expect(tx.$queryRaw.mock.calls.map(([query]) => query.text.replace(/\s+/gu, " ").trim())).toContain(bindingQuery);
+    expect(tx.projectFundDisputeEntry.findFirst).not.toHaveBeenCalled();
   });
 
   it("denies even the original uploader after the file is bound to a dispute", async () => {
@@ -130,21 +133,12 @@ describe("project fund dispute evidence file access", () => {
   it("keeps dispute evidence ACL fail-closed when the generated delegate is stale", async () => {
     const { service, tx } = createService("employee");
     Reflect.deleteProperty(tx, "projectFundDisputeEntry");
-    tx.$queryRaw.mockImplementation(async (query: Prisma.Sql) => {
-      if (query.text.includes("/* registered_payment_voucher_catalog */")) return [{ state: "absent" }];
-      if (query.text.includes('FROM "ProjectFundDisputeEntry"') && query.values[0] === "dispute-evidence-1") {
-        return [{ projectId: "project-1" }];
-      }
-      throw new Error("Unexpected private-file lookup");
-    });
-
     await expect(service.createDownloadTicket("dispute-evidence-1", {
       actorUserId: "evidence-uploader",
       downloadReason: "查看一般争议资金依据"
     })).rejects.toThrow("当前账号无权下载该一般争议资金依据");
-    expect(tx.$queryRaw.mock.calls.map(([query]) => query.text)).toEqual([
-      expect.stringContaining("/* registered_payment_voucher_catalog */"),
-      expect.stringContaining('FROM "ProjectFundDisputeEntry"')
-    ]);
+    expect(tx.$queryRaw.mock.calls.map(([query]) => query.text)).toEqual(
+      expect.arrayContaining([expect.stringContaining('FROM public."ProjectFundDisputeEntry"')])
+    );
   });
 });

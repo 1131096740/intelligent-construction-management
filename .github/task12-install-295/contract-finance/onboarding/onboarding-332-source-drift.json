@@ -14,7 +14,9 @@
   "services/api/src/database/line-a-real-db.http.pg.spec.ts": "778ab372345d494f6bdef6881a8d3cce86d21b6d30f27ebdfefd79a54bc50683",
   "services/api/src/file/file.service.spec.ts": "43497f0f1c8080f98cdc84cfc306d1a7b1fe7d66e2ce63ab97e5460c7fda3fc4",
   "services/api/src/file/file.service.ts": "8ad78a1b9a00f154384524bdfd7af2def5be00fd4ef64db0d1a51e6e9546727f",
+  "services/api/src/necessary-expense-reserve/necessary-expense-reserve-file-access.spec.ts": "0a90790d0c5da521c04133638770bb91b59ffe2b387fc84eb29ecdbcdfb9be14",
   "services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts": "f285a9fa492fd75763937f25b73dd0fb2907de4397672cf47be6cf18f68819c8",
+  "services/api/src/project-fund-dispute/project-fund-dispute-file-access.spec.ts": "09d01533102dd2860f17bc3785c9dacc0df055e393f1530db9e0860136d1101b",
   "services/api/src/spot-procurement/spot-procurement-access.service.spec.ts": "2cd5d59494c94b3127f65d80c3cb6ded1dbd4fd6946629966a44c92c1ac2ff74",
   "services/api/src/spot-procurement/spot-procurement-access.service.ts": "7b04681b38f7e02c673164c66ee8e8d5454c678600fd4311d31a5676678a18f3"
 }
