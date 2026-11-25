@@ -30,6 +30,11 @@
     "candidate": "3f88256435bca5871cb74c655af7790e4eea952db30ce71e2da5226848127783"
   },
   {
+    "path": "apps/web-admin/e2e/p0-browser-smoke.e2e.ts",
+    "expected": "f8d029542a9ef2a02608c12f58b46614dbf729f56bbad29aea905b77c640c5a5",
+    "candidate": "679c6168697ed90a76dbb5608641a0e8694757289034656ddb83533755434e53"
+  },
+  {
     "path": "apps/web-admin/e2e/payment-workbench.e2e.ts",
     "expected": "529fe0fda777cd0927b0be7c968726da1de0d5c76cfef0102843d1cc4d4c7d36",
     "candidate": "9d82e1d8d227967a6ecfd66b9aa2a975e8194ba56c853065eafc04421e65aed6"

@@ -608,6 +608,7 @@ test("temporary-password account is forced through password change when configur
 });
 
 test("current work notifications stay unread-independent and open the authorized work route", async ({ page }) => {
+  const startsNarrow = page.viewportSize()!.width <= 720;
   const item = {
     id: "approval:e2e-notice", type: "approval", title: "待审采购事项", businessCode: "CG-E2E-001",
     projectName: "合成项目", amountText: "待确定", currentNode: "项目经理审批", stayedText: "",
@@ -636,11 +637,11 @@ test("current work notifications stay unread-independent and open the authorized
   const area = page.getByRole("region", { name: "待办通知" });
   const toggle = area.getByRole("button", { name: "待办通知，共 1 项" });
   await expect(area.getByText("有 1 项新待办")).toBeVisible();
-  await expect(area).toHaveCSS("position", "fixed");
+  await expect(area).toHaveCSS("position", startsNarrow ? "relative" : "fixed");
   await toggle.click();
   await expect(toggle).toBeVisible();
   await expect(area.getByRole("heading", { name: "待我处理" })).toBeVisible();
-  await page.setViewportSize({ width: 390, height: 844 });
+  if (!startsNarrow) await page.setViewportSize({ width: 390, height: 844 });
   await expect(area).toHaveCSS("position", "relative");
   await area.locator("#work-notices-list").getByRole("link", { name: /CG-E2E-001/ }).click();
   await expect(page).toHaveURL(/%E5%AE%A1%E6%89%B9%E4%B8%AD%E5%BF%83/u);
