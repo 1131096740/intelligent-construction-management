@@ -33,6 +33,7 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
   let baseUrl: string;
   let projectId: string;
   let companyEntityId: string;
+  let affiliateVersionId: string;
   let path: string;
   const password = randomUUID();
   const actors = {} as Record<Role, Actor>;
@@ -88,6 +89,7 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
       const session = await login.json() as { tokens: { accessToken: string } };
       actors[role] = { id: actor.id, token: session.tokens.accessToken };
     }
+    affiliateVersionId = await configureProjectParties();
   });
 
   afterAll(async () => {
@@ -125,11 +127,7 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     return result.body;
   }
 
-  async function enableUpwardOperatingLedger() {
-    const secret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
-    if (!secret) throw new Error("A28 启用经营账场景需要隔离经营账写入凭据");
-    await prisma.$executeRaw`INSERT INTO "OperatingLedgerWriteSecret" ("id", "secretHash")
-      VALUES (1, public.crypt(${secret}, public.gen_salt('bf')))`;
+  async function configureProjectParties() {
     const start = new Date("2026-01-01");
     const userId = actors.contract_staff.id;
     const creditCode = "91310000000000000X";
@@ -158,10 +156,17 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
       companyNameSnapshot: company.name, companyCreditCodeSnapshot: company.unifiedSocialCreditCode,
       effectiveFrom: start, changeReason: "A28 测试参与公司", addedByUserId: userId
     } });
+    return partyVersion.id;
+  }
+
+  async function enableUpwardOperatingLedger() {
+    const secret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+    if (!secret) throw new Error("A28 启用经营账场景需要隔离经营账写入凭据");
+    await prisma.$executeRaw`INSERT INTO "OperatingLedgerWriteSecret" ("id", "secretHash")
+      VALUES (1, public.crypt(${secret}, public.gen_salt('bf')))`;
     expect(await request("finance_director", `/projects/${projectId}/operating-profile`, "PATCH", {
       operatingLedgerEffectiveDate: "2026-11-01"
     })).toMatchObject({ status: 200, body: { operatingLedgerEffectiveDate: "2026-11-01" } });
-    return partyVersion.id;
   }
 
   async function moneyWrites() {
@@ -180,7 +185,7 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     { relationship: "inside", settledCents: "0", finance: "finance_director", excessTreatment: null },
     { relationship: "upward", settledCents: "6000", finance: "finance_staff", excessTreatment: "abnormal_overpay" }
   ] as const)("由实际岗位接管并继续办理 $relationship 历史合同", async ({ relationship, settledCents, finance, excessTreatment }) => {
-    const affiliateVersionId = relationship === "upward" ? await enableUpwardOperatingLedger() : null;
+    if (relationship === "upward") await enableUpwardOperatingLedger();
     const beforeMoney = await moneyWrites();
     const zero = settledCents === "0";
     const code = `A28-${relationship}-${randomUUID()}`;
@@ -302,7 +307,14 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
       await assertUnposted("pending_review");
     }
 
-    expect(await confirmDirector()).toMatchObject({ status: 201, body: { confirmed: true, activated: true } });
+    const activation = await confirmDirector();
+    if (activation.status !== 201) {
+      const message = (activation.body as { message?: unknown } | null)?.message;
+      const publicMessage = typeof message === "string" && /^[\p{Script=Han}，。；：！？、]{1,96}$/u.test(message)
+        ? message : "未提供符合回执格式的公开提示";
+      throw new Error(`A28_ACTIVATION_HTTP(${activation.status},${publicMessage})`);
+    }
+    expect(activation.body).toMatchObject({ confirmed: true, activated: true });
     const moneySummary = relationship === "upward"
       ? { historicalReceiptsCents: "7000", historicalOverReceivedCents: "1000", historicalOverReceivedPendingVerification: true, historicalOverpaidCents: "0" }
       : zero
@@ -315,16 +327,6 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     expect(confirmedOption).toMatchObject({
       source: "historical_takeover", canCreateSettlement: true, contractVersionId: expect.any(String),
       settlements: zero ? [] : [expect.objectContaining({ amountCents: "6000", paidAmountCents: "6000" })]
-    });
-    const continuation = await request("contract_staff", `/projects/${projectId}/settlement-drafts`, "POST", {
-      contractVersionId: confirmedOption?.contractVersionId,
-      settlementTemplateVersionId: "a28-continuation-preview",
-      code: `${code}-NEXT`,
-      periodLabel: "接管后第一期结算",
-      settlementLines: [{ sourceType: "manual_adjustment", adjustmentKind: "ordinary", name: "接管后新增结算", amountCents: "1000", reason: "本期新增履约" }]
-    });
-    expect(continuation).toMatchObject({
-      status: 201, body: { status: "draft", contractVersionId: confirmedOption?.contractVersionId }
     });
     const afterMoney = await moneyWrites();
     if (relationship === "upward") {
@@ -350,5 +352,16 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     } else {
       expect(afterMoney).toEqual(beforeMoney);
     }
+
+    const continuation = await request("contract_staff", `/projects/${projectId}/settlement-drafts`, "POST", {
+      contractVersionId: confirmedOption?.contractVersionId,
+      settlementTemplateVersionId: "a28-continuation-preview",
+      code: `${code}-NEXT`,
+      periodLabel: "接管后第一期结算",
+      settlementLines: [{ sourceType: "manual_adjustment", adjustmentKind: "ordinary", name: "接管后新增结算", amountCents: "1000", reason: "本期新增履约" }]
+    });
+    expect(continuation).toMatchObject({
+      status: 201, body: { status: "draft", contractVersionId: confirmedOption?.contractVersionId }
+    });
   }, 60_000);
 });

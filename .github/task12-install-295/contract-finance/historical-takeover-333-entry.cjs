@@ -63,8 +63,12 @@ async function consume({ ownerUrl, database, workDir, candidateTree }) {
       const message = (test.failureMessages ?? []).join('\n').replace(/\u001b\[[0-9;]*m/gu, '').slice(0, 32_768);
       const lines = [...new Set([...message.matchAll(/contract-takeover-a28\.http\.pg\.spec\.ts:(\d{1,5}):\d{1,5}/gu)]
         .map(match => Number(match[1])))].slice(0, 4);
+      const activationFailure = /A28_ACTIVATION_HTTP\(([1-5]\d{2}),([\p{Script=Han}，。；：！？、]{1,96})\)/u.exec(message);
       return [{ index: index + 1, lines,
-        statuses: [...message.matchAll(/"status": ([1-5]\d{2})/gu)].slice(0, 2).map(match => Number(match[1])) }];
+        statuses: activationFailure
+          ? [201, Number(activationFailure[1])]
+          : [...message.matchAll(/"status": ([1-5]\d{2})/gu)].slice(0, 2).map(match => Number(match[1])),
+        ...(activationFailure ? { activationPublicMessage: activationFailure[2] } : {}) }];
     })
   };
   receipt.a28.complete = child.status === 0 && report?.success === true && report.testResults.length === 1 &&
