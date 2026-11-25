@@ -762,7 +762,7 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     };
     const original = await confirm("JS-F-100", "100.0000");
     const basisPath = `${settlementPath}/payment-basis?contractKind=downstream&contractId=${ids.contractF}`;
-    await owner.paymentRequest.create({ data: {
+    const pending = await owner.paymentRequest.create({ data: {
       id: "linea-f-pending-80", projectId: ids.project, settlementId: null,
       signedSettlementId: original, signedSettlementConfirmationNo: 1n,
       signedSettlementConfirmedYuan: "100.0000", signedSettlementContractConfirmedYuan: "100.0000",
@@ -787,12 +787,22 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     expect((await call("staff", basisPath)).body).toMatchObject({
       confirmedYuan: "50.0000", downstreamCapacity: { wholeCentLimit: "0", capacityShortfallYuan: "30.0000", suspended: true }
     });
+    const paymentDetailPath = `/payments/${pending.id}`;
+    const pauseMessage = expect.stringContaining("相关未付申请已暂停");
+    expect((await call("staff", paymentDetailPath)).body.blockedReasons).toEqual(
+      expect.arrayContaining([pauseMessage])
+    );
     const prior = await confirm("JS-F-+40", "40.0000");
     const restored = await owner.$transaction(tx => loadSignedSettlementPaymentBasis(tx as never, ids.contractF));
     expect(restored).toMatchObject({
       confirmedCents: 9_000n, occupiedCents: 8_000n,
       rawRemainingCents: 1_000n, remainingCents: 1_000n, suspended: false
     });
+
+    expect((await call("staff", paymentDetailPath)).body.blockedReasons).not.toEqual(
+      expect.arrayContaining([pauseMessage])
+    );
+    expect(await owner.paymentRequest.findUniqueOrThrow({ where: { id: pending.id } })).toEqual(pending);
 
     const latest = await confirm("JS-F--5", "-5.0000");
     const basis = await call("staff", basisPath);
