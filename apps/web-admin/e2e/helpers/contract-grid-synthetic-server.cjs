@@ -135,6 +135,10 @@ for (const table of Object.keys(state)) {
 db.$transaction = async run => { const previous = clone(state); try { return await run(db); } catch (error) { state = previous; throw error; } };
 db.$queryRaw = async query => {
   const text = query.strings?.join(" ") ?? "";
+  // This fixture has no PostgreSQL catalog or registered-payment binding.
+  if (text.trimStart().startsWith("/* registered_payment_voucher_catalog */") && query.values.length === 0) {
+    return [{ state: "absent", ownerSettlementVoucher: false, signedContractFileBindings: "absent" }];
+  }
   if (text.includes('FROM "ContractFormalFile"')) { const id = query.values[0]; return [{ hasSignedFormalFile: state.contractFormalFile.some(file => file.contractVersionId === id && file.status === 'active' && file.purpose === 'mutually_signed_final'), hasActiveSealTask: state.contractSealTask.some(task => task.contractVersionId === id && task.status !== 'cancelled'), hasArchiveFile: state.contractArchiveFile.some(file => file.contractVersionId === id), hasSettlement: state.settlement.some(item => item.contractVersionId === id), hasPaymentRequest: state.paymentRequest.some(item => item.contractVersionId === id) }]; }
   if (text.includes('FROM "Project"')) return clone(state.project.filter(item => item.id === query.values[0]));
   if (text.includes('FROM "Contract" c')) { const version = state.contractVersion.find(item => item.id === query.values[0]); return clone(state.contract.filter(item => item.id === version?.contractId)); }
