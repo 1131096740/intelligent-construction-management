@@ -6,7 +6,7 @@ import { types } from "node:util";
 import { Prisma } from "@prisma/client";
 import { ProjectOperatingConstraintFilter } from "../project/project-operating-constraint.filter";
 
-type Detail = Readonly<{ serverErrorKind: string; serverPrismaCode?: string; serverSqlState?: string }>;
+type Detail = Readonly<{ serverErrorKind: string; serverPrismaCode?: string; serverSqlState?: string; serverSqlResource?: string }>;
 type Active = { server: Server; paymentHash: string; keyHash: string; captured?: Detail; observed: boolean };
 type State = { active?: Active };
 const states = new WeakMap<object, State>();
@@ -44,6 +44,15 @@ export function projectTask16RegistrationError(error: unknown): Detail {
     ...((kind === "KNOWN_REQUEST_ERROR" || kind === "INITIALIZATION_ERROR") && typeof code === "string" && codes.has(code) ? { serverPrismaCode: code } : {}),
     ...(kind === "KNOWN_REQUEST_ERROR" && typeof sql === "string" && sqlStates.has(sql) ? { serverSqlState: sql } : {}) });
 }
+function projectRegistrationFailure(error: unknown): Detail {
+  const detail = projectTask16RegistrationError(error);
+  const message = own(error, "message");
+  if (detail.serverErrorKind !== "UNKNOWN_REQUEST_ERROR" || typeof message !== "string") return detail;
+  const raw = message.slice(0, 16_384);
+  const state = /code:\s*"(23514|42501|42703|P0001)"/u.exec(raw)?.[1];
+  const resource = /permission denied for (?:table|relation) (SignedContractSettlement|PaymentExecutionAllocation|ContractVersion|ApprovalInstance|RegisteredPaymentFunding)\b/u.exec(raw)?.[1];
+  return Object.freeze({ ...detail, ...(state ? { serverSqlState: state } : {}), ...(resource ? { serverSqlResource: resource } : {}) });
+}
 export function armTask16RegistrationError(filter: object, server: object, paymentId: string, key: string): object {
   const state = !types.isProxy(filter) && states.get(filter);
   if (!state || state.active || types.isProxy(server) || !(server instanceof Server) || !server.listening || typeof paymentId !== "string" || typeof key !== "string" || !uuid.test(paymentId) || !uuid.test(key)) throw failure();
@@ -73,7 +82,7 @@ export class Task16RegistrationErrorFilter extends ProjectOperatingConstraintFil
         const paymentId = own(own(request, "params"), "paymentId"), key = own(own(request, "body"), "idempotencyKey");
         if (typeof paymentId === "string" && typeof key === "string" && uuid.test(paymentId) && uuid.test(key) && hash(paymentId) === active.paymentHash && hash(key) === active.keyHash) {
           if (active.observed) active.captured = undefined;
-          else active.captured = projectTask16RegistrationError(exception);
+          else active.captured = projectRegistrationFailure(exception);
           active.observed = true;
         }
       }

@@ -262,17 +262,19 @@ run("records a two-part text agreement payment with original replay, real refund
     expect(roundingOptions).toMatchObject({ status: 200, body: { remainingAmountCents: "10001" } });
     const roundingKey = randomUUID();
     const roundingTicket = armTask16RegistrationError(registrationErrors, server, paymentRequestId, roundingKey);
+    let actual: Awaited<ReturnType<typeof json>>;
+    let diagnostic: ReturnType<typeof takeTask16RegistrationError>;
     try {
-      const actual = await json(roundingPath + "/registrations", roundingFinance, {
+      actual = await json(roundingPath + "/registrations", roundingFinance, {
         idempotencyKey: roundingKey, expectedPaymentUpdatedAt: roundingOptions.body.expectedPaymentUpdatedAt,
         amountCents: "10001", paidAt: rounding.paidAt, scopeKey: roundingScope, expectedRegistrationId: roundingOpening.body.id,
         openingTreatment: "not_included", openingReason: "付款未含期初", openingEvidence: "隔离合成证据", confirmationPassword: password,
         sourceAllocations: [{ sourceBatchId: roundingOpening.body.sources[0].id, amountCents: "10001" }]
       });
-      expect(actual.status).toBe(201);
     } finally {
-      expect(takeTask16RegistrationError(registrationErrors, server, roundingTicket)).toBeUndefined();
+      diagnostic = takeTask16RegistrationError(registrationErrors, server, roundingTicket);
     }
+    expect({ status: actual.status, diagnostic }).toEqual({ status: 201, diagnostic: undefined });
     expect(await owner.paymentRequest.findUniqueOrThrow({ where: { id: paymentRequestId } }))
       .toMatchObject({ status: "paid", paidAmountCents: 10_001n });
     expect(await owner.paymentExecution.count({ where: { paymentRequestId: paymentRequestId, amountCents: 10_001n } })).toBe(1);
