@@ -9,7 +9,7 @@ const read=name=>JSON.parse(readFileSync(path.join(dir,name),'utf8'));
 const terminal=read('receipt-complete.json');
 const markers=['receipt.json','receipt-stage2.json'].map(read);
 const count=Number(process.argv[4]??295);
-assert.ok([295,329,330,331].includes(count));
+assert.ok([295,329,330,331,332].includes(count));
 assert.equal(outer.status,'TASK398_BROWSER_COMPLETION_EXACT_'+count+'_PASSED');
 if(count!==295){
   assert.equal(outer.forward320?.count,count);
@@ -25,12 +25,19 @@ if(count!==295){
     assert.equal(outer.textDirectPredecessor?.sameIdentity,true);
     assert.equal(outer.textDirectPredecessor?.sameBaseB7,true);
   }
-  if(count===331){
+  if(count>=331){
     assert.deepEqual(outer.paymentRemainderPredecessor,{
       count:330,ledgerSha256:'12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f',
       sameIdentity:true,sameBaseB7:true
     });
-    assert.equal(outer.forward320.ledgerSha256,'0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014');
+    if(count===331) assert.equal(outer.forward320.ledgerSha256,'0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014');
+  }
+  if(count===332){
+    assert.deepEqual(outer.upwardArchivePredecessor,{
+      count:331,ledgerSha256:'0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014',
+      sameIdentity:true,sameBaseB7:true
+    });
+    assert.equal(outer.forward320.ledgerSha256,'fa7de95de902e97fda3a8d01de042ac11d1ce6421345d8edc71d9ca97c1f18ce');
   }
 }
 assert.equal(outer.installOnly295.count,295);

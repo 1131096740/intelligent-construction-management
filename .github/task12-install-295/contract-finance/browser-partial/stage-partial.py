@@ -6,7 +6,7 @@ import sys
 
 repo, workspace, output = map(Path, sys.argv[1:4])
 options = sys.argv[4:]
-if options not in ([], ['--payment-remainder-331']):
+if options not in ([], ['--payment-remainder-331'], ['--upward-archive-332']):
     raise SystemExit('TASK398_BROWSER_PARTIAL_STAGING_MODE')
 original = repo / '.github/task12-install-290'
 partial = original / 'browser-partial'
@@ -68,5 +68,10 @@ for name in sorted(partial_pins.keys() | completion_pins.keys()):
             subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                             str(target), str(payment_remainder)], check=True)
             check(target.read_bytes(), '6a33493fa5f0e10d95e8a9cb8989ef663b43277340374336fd3a10d3cf287741', target.name)
+        if options == ['--upward-archive-332']:
+            upward_archive = Path(__file__).with_name('partial332.patch')
+            subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
+                            str(target), str(upward_archive)], check=True)
+            check(target.read_bytes(), '17138b67d38a0def12eb17e548032172ada5d0a8223644c20e55318b17677505', target.name)
     target.chmod(0o644)
     print(name)

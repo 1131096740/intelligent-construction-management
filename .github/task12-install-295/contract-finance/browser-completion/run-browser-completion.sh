@@ -15,10 +15,11 @@ scope=task398-browser-completion
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const count=source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
+  if(count===332) require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
   console.log(count);
-' "$prepared/source.json" "$sha")
+' "$prepared/source.json" "$sha" "$base/upward-archive-332-profile.cjs" "$common/multi-witness.cjs")
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -29,6 +30,8 @@ work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 stage_args=()
 if [[ $count == 331 ]]; then
   stage_args=(--payment-remainder-331)
+elif [[ $count == 332 ]]; then
+  stage_args=(--upward-archive-332)
 fi
 python3 "$plan/stage-completion.py" \
   "$repo" "$prepared/prepared/context/workspace" "$work" ${stage_args[@]+"${stage_args[@]}"} > "$work/overlay-files.txt"
@@ -49,7 +52,8 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
   --mount "type=bind,src=$work/owned,dst=/run/task398-browser"
   --mount "type=bind,src=$base/task398-browser-diagnostics.cjs,dst=/qualification/task398-browser-diagnostics.cjs,readonly"
-  --mount "type=bind,src=$plan/task398-completion-entry.cjs,dst=/qualification/task398-completion-entry.cjs,readonly")
+  --mount "type=bind,src=$plan/task398-completion-entry.cjs,dst=/qualification/task398-completion-entry.cjs,readonly"
+  --mount "type=bind,src=$base/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
