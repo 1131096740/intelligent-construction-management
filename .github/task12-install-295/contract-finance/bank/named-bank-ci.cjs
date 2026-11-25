@@ -5,7 +5,7 @@ const path=require('node:path');
 const {createHash}=require('node:crypto');
 const {spawnSync}=require('node:child_process');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive}=require('./installer.cjs');
 const tree=require('./tree-proof.json');
 const titles=require('./original-titles.json');
 const prefix='/qualification';
@@ -15,11 +15,13 @@ const file='src/database/project-affiliate-company-contract-db.spec.ts';
 const args=process.argv.slice(2);
 const current320=args[0]==='--current-320';
 const textDirect330=args[0]==='--text-direct-330';
+const upwardArchive332=args[0]==='--upward-archive-332';
 const paymentRemainder331=args[0]==='--payment-remainder-331';
-const forward=current320||textDirect330||paymentRemainder331;
-const count=paymentRemainder331?331:textDirect330?330:current320?329:295;
+const forward=current320||textDirect330||paymentRemainder331||upwardArchive332;
+const count=upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
 const runArgs=forward?args.slice(1):args;
-const profile=paymentRemainder331?require('./payment-remainder-331-profile.cjs'):
+const profile=upwardArchive332?require('./upward-archive-332-profile.cjs'):
+  paymentRemainder331?require('./payment-remainder-331-profile.cjs'):
   textDirect330?require('./text-direct-330-profile.cjs'):undefined;
 const candidateDigest320='3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2';
 const receipt={status:'STOPPED',scope:'NAMED_BANK_ORIGINAL_FULL_12',backupRestore:'NOT_EXECUTED',business:'NOT_ENTERED',stages:[]};
@@ -101,7 +103,7 @@ Promise.resolve().then(async()=>{
     return verifyNamedBank(context,receipt,titles,forward?{sourceTree:source.sourceTree,count}:undefined);
   };
   if(forward) {
-    const install=paymentRemainder331?withCombined331PaymentRemainder:
+    const install=upwardArchive332?withCombined332UpwardArchive:paymentRemainder331?withCombined331PaymentRemainder:
       textDirect330?withCombined330TextAgreement:withCombined320ContractPayment;
     await install(receipt,consume,{
       sourceTree:source.sourceTree,migrations:path.join(workspace,'services/api/prisma/migrations'),tails:source.tails

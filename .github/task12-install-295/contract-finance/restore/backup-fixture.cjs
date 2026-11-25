@@ -89,7 +89,7 @@ async function runNamedBackup(context,receipt,namedRoles,forward320,textDirectSo
   try {
     receipt.restore=await restoreBusinessDatabase(context,named.credentials,enter,forward320,
       textDirectSource?{historical:receipt.historicalPayment295,
-        terminal:textDirectSource.tails[34],paymentRemainder:textDirectSource.migrationCount===331}:undefined);
+        terminal:textDirectSource.tails[34],paymentRemainder:textDirectSource.migrationCount>=331}:undefined);
     assert.equal(receipt.restore.businessTables,profile.businessCount);
     assert.equal(receipt.restore.restoredDataPayloads,profile.businessCount);
     assert.equal(receipt.restore.protectedTables,profile.technical.length);

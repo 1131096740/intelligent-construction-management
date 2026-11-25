@@ -4,6 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const {randomBytes}=require('node:crypto');
 const {spawnSync}=require('node:child_process');
+const {createHash}=require('node:crypto');
 const {pgDumpArgs,classifyArchive}=require('./archive-contract.cjs');
 const {key,operatingVerifier,operatingContext}=require('./technical-relations.json');
 const {legacy,successor,textDirect}=require('./restore-profile.cjs');
@@ -295,7 +296,7 @@ function importAsNamedBackup(sql,invoke,tables,sequences,dataArchive,dataList,pr
 
 async function restoreBusinessDatabase(context,credentials,enter,forward320,textDirectInputs) {
   const profile=textDirectInputs?textDirect:forward320?successor:legacy;
-  assert.equal([330,331].includes(forward320?.count),Boolean(textDirectInputs),'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
+  assert.equal([330,331,332].includes(forward320?.count),Boolean(textDirectInputs),'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
   const expectedTree=forward320?.sourceTree ?? scope.tree;
   assert.match(expectedTree,/^[a-f0-9]{40}$/u);
   const {technical}=profile;
@@ -322,6 +323,25 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
   }
   const paymentProof=paymentChecks?readTextDirect330(source):undefined;
   const paymentRemainderProof=textDirectInputs?.paymentRemainder?readPaymentRemainder331(source):undefined;
+  function readUpwardArchive332(db) {
+    const ledger = JSON.parse(sql(owner,db,`SELECT jsonb_agg(jsonb_build_object(
+      'name',migration_name,'sha256',checksum,'finished',finished_at IS NOT NULL,
+      'rolledBack',rolled_back_at IS NOT NULL) ORDER BY migration_name) FROM public._prisma_migrations;`))
+      .map(({name,sha256,finished,rolledBack})=>({name,sha256,finished,rolledBack}));
+    const ledgerSha256=createHash('sha256').update(JSON.stringify(ledger)).digest('hex');
+    assert.equal(ledger.length,332,'BACKUP332_LEDGER_COUNT');
+    assert.equal(ledgerSha256,forward320.ledgerSha256,'BACKUP332_LEDGER_DIGEST');
+    const postimages = JSON.parse(sql(owner,db,`SELECT jsonb_object_agg(p.proname,encode(sha256(convert_to(p.prosrc,'UTF8')),'hex'))
+      FROM pg_proc p WHERE p.oid IN (
+        to_regprocedure('public.jg_upward_archive_catalog_projection_v2()'),
+        to_regprocedure('public.jg_upward_direct_archive_admission_v1()'));`));
+    assert.deepEqual(postimages,{
+      jg_upward_archive_catalog_projection_v2:'486032556ec79adeaaf134eace64e6348cbf667abf3f9a7ba38e29176ebe2cc7',
+      jg_upward_direct_archive_admission_v1:'0a647f271a6ff2ec4bdf776c7a4950b26c4885babe980e08dec0182b2c1bae30'
+    },'BACKUP332_UPWARD_ARCHIVE_POSTIMAGES');
+    return {ledgerSha256,postimages};
+  }
+  const upwardArchiveProof=forward320?.count===332?readUpwardArchive332(source):undefined;
   function readPaymentRemainder331(db) {
     const proof=JSON.parse(sql(owner,db,`SELECT jsonb_build_object(
       'historicalRowsUnchanged', NOT EXISTS(SELECT FROM public."PaymentRequest" WHERE "remainingWithdrawnCents" IS NOT NULL),
@@ -458,6 +478,10 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
       assert.deepEqual(readPaymentRemainder331(restoreDb),paymentRemainderProof);
       assert.deepEqual(readPaymentRemainder331(source),paymentRemainderProof);
     }
+    if(upwardArchiveProof) {
+      assert.deepEqual(readUpwardArchive332(restoreDb),upwardArchiveProof);
+      assert.deepEqual(readUpwardArchive332(source),upwardArchiveProof);
+    }
     if (forward320) {
       for (const role of [backupRole,bankRuntime])
         for (const table of profile.technical)
@@ -475,6 +499,7 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
       protectedTables:technicalCount.tables,protectedPayloads:technicalCount.payloads,
       history,sourceKeyRows:beforeKeys.keyCount,ownerOnlyRekeyed:true,namedNegativeTests:true,probes,
       ...(paymentRemainderProof?{paymentRemainder331:paymentRemainderProof}:{}),
+      ...(upwardArchiveProof?{upwardArchive332:{...upwardArchiveProof,sourceAndRestoredMatched:true}}:{}),
       ...(paymentProof?{textDirect330:{...paymentProof,oldColumnProjectionMatched:true,newColumnNull:true,
         sourceAndRestoredCatalogMatched:true,sourceAndRestoredNamedExecutionDenied:true}}:{})};
   } finally {

@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 [[ $# == 1 || ( $# == 3 && $2 == --current-320 && $3 =~ ^[a-f0-9]{40}$ ) ||
-  ( ( ${2-} == --text-direct-330 || ${2-} == --payment-remainder-331 ) && ( $# == 2 ||
+  ( ( ${2-} == --text-direct-330 || ${2-} == --payment-remainder-331 || ${2-} == --upward-archive-332 ) && ( $# == 2 ||
     ( $# == 3 && ( $3 == --host-only || $3 =~ ^[a-f0-9]{40}$ ) ) ||
     ( $# == 4 && $3 =~ ^[a-f0-9]{40}$ && $4 == --host-only ) ) ) ]] || exit 64
 sha=$1
@@ -25,7 +25,7 @@ prepare_predecessor() {
 }
 mode=${2-}
 restore_predecessor=
-if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 ]]; then
+if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 ]]; then
   [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
   [[ -z $(git -C "$root" status --porcelain --untracked-files=all -- "$plan") ]] || exit 65
   bash "$plan/prepare.sh" "$root" "$sha" "$work/source" "$mode"
@@ -38,7 +38,7 @@ if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 ]]; then
     node - "$plan" "$work/source/source.json" "$sha" <<'JS'
 const [plan,file,sha]=process.argv.slice(2);
 const source=require(file);
-const profile=source.mode==='payment-remainder-331'?'payment-remainder-331-profile.cjs':'text-direct-330-profile.cjs';
+const profile=source.mode+'-profile.cjs';
 require(plan+'/'+profile).assertSource(source,sha,require(plan+'/common/multi-witness.cjs').final);
 JS
     workspace="$work/source/prepared/context/workspace"
@@ -64,7 +64,7 @@ trap 'cleanup "$?"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 ]]; then
+if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 ]]; then
   bash "$plan/build.sh" "$work/source" "$sha" browser "$work/browser"
   if [[ -n $restore_predecessor ]]; then
     bash "$plan/build.sh" "$work/predecessor-source" "$restore_predecessor" restore "$work/restore"

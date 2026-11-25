@@ -6,10 +6,12 @@ const {legacy,successor,textDirect}=require('./restore-profile.cjs');
 const path=require('node:path');
 const {paymentCatalogChecks}=require('./text-direct-330.cjs');
 const current=process.argv[7]?require(process.argv[7]):undefined;
-const paymentRemainder331=current?.mode==='payment-remainder-331';
+const upwardArchive332=current?.mode==='upward-archive-332';
+const paymentRemainder331=upwardArchive332||current?.mode==='payment-remainder-331';
 const textDirect330=paymentRemainder331||current?.mode==='text-direct-330';
-const count=paymentRemainder331?331:textDirect330?330:current?329:295;
-const paymentProfile=paymentRemainder331?require('../payment-remainder-331-profile.cjs'):
+const count=upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current?329:295;
+const paymentProfile=upwardArchive332?require('../upward-archive-332-profile.cjs'):
+  paymentRemainder331?require('../payment-remainder-331-profile.cjs'):
   textDirect330?require('../text-direct-330-profile.cjs'):undefined;
 const {technical,businessCount}=textDirect330?textDirect:current?successor:legacy;
 
@@ -70,6 +72,10 @@ function qualified(row,mode){
       ['PaymentExecution_withdrawn_remainder_guard','jg_guard_withdrawn_payment_execution_v1',true],
       ['PaymentRequest_remaining_withdrawal_guard','jg_guard_payment_remaining_withdrawal_v1',false]
     ]))) return false;
+  if(upwardArchive332 && (data?.upwardArchive332?.sourceAndRestoredMatched!==true||
+    data.upwardArchive332.ledgerSha256!==current.ledgerSha256||
+    data.upwardArchive332.postimages?.jg_upward_archive_catalog_projection_v2!=='486032556ec79adeaaf134eace64e6348cbf667abf3f9a7ba38e29176ebe2cc7'||
+    data.upwardArchive332.postimages?.jg_upward_direct_archive_admission_v1!=='0a647f271a6ff2ec4bdf776c7a4950b26c4885babe980e08dec0182b2c1bae30')) return false;
   const forwardValid=!current||(row.forward320?.count===count&&row.forward320.sameIdentity===true&&
     row.forward320.sameBaseB7===true&&row.forward320.sourceTree===current.sourceTree&&
     row.forward320.ledgerSha256===current.ledgerSha256&&row.combinedAfterBusiness?.ledgerSha256===current.ledgerSha256&&

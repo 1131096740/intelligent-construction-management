@@ -8,20 +8,22 @@ const {runBackup295,prepareBackup295,runBackup320,verifyLease} = require('./back
 const admission=require('./committed-admission.json');
 const {admitSource} = require('./install-only292.cjs');
 const {checkClosure} = require('./verify-behavior.cjs');
-const {withCombined295MultiWitnessForRestore,withCombined320ContractPaymentForRestore,withCombined330ContractPaymentForRestore,withCombined331PaymentRemainderForRestore} = require('./installer.cjs');
+const {withCombined295MultiWitnessForRestore,withCombined320ContractPaymentForRestore,withCombined330ContractPaymentForRestore,withCombined331PaymentRemainderForRestore,withCombined332UpwardArchiveForRestore} = require('./installer.cjs');
 const bank = require('./named-roles/contract-finance-owned-ci.cjs');
 const correctionRoot='/qualification/workspace', loanRoot='/qualification/loan-workspace';
 const correction=require(correctionRoot+'/services/api/prisma/run-task398-shared-standard-local.cjs').runTask398Owned282Voucher;
 const loan=require(loanRoot+'/services/api/prisma/contract-finance-owned-ci.cjs').verify;
 const args=process.argv.slice(2);
 const current320=args[0]==='--current-320';
+const upwardArchive332=args[0]==='--upward-archive-332';
 const paymentRemainder331=args[0]==='--payment-remainder-331';
-const textDirect330=paymentRemainder331||args[0]==='--text-direct-330';
+const textDirect330=upwardArchive332||paymentRemainder331||args[0]==='--text-direct-330';
 const forward=current320||textDirect330;
-const count=paymentRemainder331?331:textDirect330?330:current320?329:295;
+const count=upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
 const runArgs=forward?args.slice(1):args;
 const source=forward?require('./current320-source.json'):undefined;
-const paymentProfile=paymentRemainder331?require('./payment-remainder-331-profile.cjs'):
+const paymentProfile=upwardArchive332?require('./upward-archive-332-profile.cjs'):
+  paymentRemainder331?require('./payment-remainder-331-profile.cjs'):
   textDirect330?require('./text-direct-330-profile.cjs'):undefined;
 const receipt={schemaVersion:1,purpose:'NTF04_NAMED_RESTORE_EXACT_'+count,
   candidateSha:source?.sourceSha??admission.head,...(forward?{fixturePredecessorSha:admission.head}:{}),
@@ -113,7 +115,7 @@ async function main(){
     loan:async ctx=>{ await verifyLease(ctx); return loan('affiliate',ctx); },
   };
   if(forward){
-    const install=paymentRemainder331?withCombined331PaymentRemainderForRestore:
+    const install=upwardArchive332?withCombined332UpwardArchiveForRestore:paymentRemainder331?withCombined331PaymentRemainderForRestore:
       textDirect330?withCombined330ContractPaymentForRestore:withCombined320ContractPaymentForRestore;
     await install(receipt,
       context=>prepareBackup295(context,receipt,admission,{...fixtures,textDirect330}),

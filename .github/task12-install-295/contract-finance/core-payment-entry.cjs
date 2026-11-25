@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const {randomBytes} = require('node:crypto');
 const {admitSource} = require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder} = require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive} = require('./installer.cjs');
 const {final, digest} = require('./multi-witness.cjs');
 const {verify} = require('./workspace/services/api/prisma/core-payment-runner.cjs');
 
@@ -12,11 +12,13 @@ const source = require('./contract-finance-source.json');
 const mode = process.argv[2];
 const current320=source.mode==='current-320';
 const textDirect330=source.mode==='text-direct-330';
+const upwardArchive332=source.mode==='upward-archive-332';
 const paymentRemainder331=source.mode==='payment-remainder-331';
-const forward=current320||textDirect330||paymentRemainder331;
-const profile=paymentRemainder331?require('./payment-remainder-331-profile.cjs'):
+const forward=current320||textDirect330||paymentRemainder331||upwardArchive332;
+const profile=upwardArchive332?require('./upward-archive-332-profile.cjs'):
+  paymentRemainder331?require('./payment-remainder-331-profile.cjs'):
   textDirect330?require('./text-direct-330-profile.cjs'):undefined;
-const count=paymentRemainder331?331:textDirect330?330:current320?329:295;
+const count=upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
 const receipt = {schemaVersion:1,purpose:'CONTRACT_FINANCE_CORE_OR_PAYMENT_EXACT_'+count,
   scope:mode,sourceSha:source.sourceSha,migrationSha256:forward?source.tails.at(-1).sha256:digest,stages:['INPUTS'],status:'STOPPED'};
 
@@ -81,7 +83,7 @@ async function main() {
     }
   };
   if(forward){
-    const install=paymentRemainder331?withCombined331PaymentRemainder:
+    const install=upwardArchive332?withCombined332UpwardArchive:paymentRemainder331?withCombined331PaymentRemainder:
       textDirect330?withCombined330TextAgreement:withCombined320ContractPayment;
     await install(receipt,consume,{sourceTree:source.sourceTree,
       migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails});

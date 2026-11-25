@@ -19,7 +19,9 @@ workspace="$prepared/prepared/context/workspace"
 mode=$(node - "$prepared/source.json" "$sha" "$plan" <<'JS'
 const [file,sha,plan]=process.argv.slice(2);
 const source=require(file);
-if(source.mode==='payment-remainder-331') {
+if(source.mode==='upward-archive-332') {
+  require(plan+'/upward-archive-332-profile.cjs').assertSource(source,sha,require(plan+'/common/multi-witness.cjs').final);
+} else if(source.mode==='payment-remainder-331') {
   require(plan+'/payment-remainder-331-profile.cjs').assertSource(source,sha,require(plan+'/common/multi-witness.cjs').final);
 } else if(source.mode==='text-direct-330') {
   require(plan+'/text-direct-330-profile.cjs').assertSource(source,sha,require(plan+'/common/multi-witness.cjs').final);
@@ -56,6 +58,8 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$plan/core-payment-entry.cjs,dst=/qualification/core-payment-entry.cjs,readonly")
 if [[ $mode == text-direct-330 ]]; then
   args+=(--mount "type=bind,src=$plan/text-direct-330-profile.cjs,dst=/qualification/text-direct-330-profile.cjs,readonly")
+elif [[ $mode == upward-archive-332 ]]; then
+  args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 elif [[ $mode == payment-remainder-331 ]]; then
   args+=(--mount "type=bind,src=$plan/payment-remainder-331-profile.cjs,dst=/qualification/payment-remainder-331-profile.cjs,readonly")
 fi
@@ -66,7 +70,7 @@ for file in core-payment-runner.cjs contract-finance-stage-web.cjs task12-pol109
   args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/workspace/services/api/prisma/$file,readonly")
 done
 ledger_support="$plan/contract-finance-owned.test-support.ts"
-if [[ $mode == payment-remainder-331 ]]; then
+if [[ $mode == payment-remainder-331 || $mode == upward-archive-332 ]]; then
   ledger_support="$work/services/api/src/database/contract-finance-owned.test-support.ts"
 fi
 args+=(--mount "type=bind,src=$ledger_support,dst=/qualification/workspace/services/api/src/database/contract-finance-owned.test-support.ts,readonly"
