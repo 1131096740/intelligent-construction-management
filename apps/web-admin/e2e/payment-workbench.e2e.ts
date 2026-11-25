@@ -619,6 +619,22 @@ test("separates the payment ledger from the contract-linked creation workbench",
   page
 }, testInfo) => {
   let createdBody: Record<string, unknown> | null = null;
+  let recordedReads = 0;
+  await page.route("**/api/payment-executions/recorded-items", async (route) => {
+    expect(route.request().method()).toBe("GET");
+    recordedReads += 1;
+    await route.fulfill({ json: { items: [], total: 0 } });
+  });
+  await page.route("**/api/payment-executions/work-items", route =>
+    route.fulfill({ json: { items: [], total: 0 } }));
+  await page.route("**/api/contract-relationship-ledger?*", route =>
+    route.fulfill({ json: { readAt: "2026-11-25T01:00:00.000Z", rows: [], totals: [], notice: "" } }));
+  await page.route("**/api/operating-projections/as-of?*", route =>
+    route.fulfill({ json: {
+      asOf: { businessDate: "2026-11-25", readAt: "2026-11-25T01:00:00.000Z" },
+      integrity: { statusLabel: "金额完整", moneyComplete: true, notices: [] },
+      operating: { receivableCents: "0", payableCents: "0" }
+    } }));
 
   await page.route("**/api/auth/login", (route) =>
     route.fulfill({
@@ -804,6 +820,7 @@ test("separates the payment ledger from the contract-linked creation workbench",
   await expect
     .poll(() => decodeURIComponent(new URL(page.url()).pathname))
     .toBe("/付款管理/FK-E2E-001");
+  await expect.poll(() => recordedReads).toBeGreaterThan(0);
   expect(createdBody).toEqual({
     sourceType: "settlement",
     code: "FK-E2E-001",
