@@ -167,6 +167,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
 
     const qualifiedFiles = new Set<string>();
     const qualifiedWrites = new Set<string>();
+    const qualifiedReads = new Set<string>();
     stage = "HTTP_BOOT";
     app = await NestFactory.create(AppModule, {
       logger: {
@@ -180,12 +181,13 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     configureApiSecurity(app);
     const server = app.getHttpServer() as Server;
     app.use((request: IncomingMessage, response: ServerResponse, next: (error?: unknown) => void) => {
-      const pathname = (request.url ?? "").split("?", 1)[0];
+      const url = request.url ?? "";
+      const pathname = url.split("?", 1)[0];
       const filePath = request.method === "GET" ? /^\/files\/([a-f0-9-]{36})\/download$/u :
         request.method === "POST" ? /^\/files\/([a-f0-9-]{36})\/download-ticket$/u : undefined;
       const file = filePath?.exec(pathname)?.[1];
-      const allowWrite = request.method === "POST" && qualifiedWrites.has(pathname);
-      if (!allowWrite && !(file && qualifiedFiles.has(file))) return next();
+      const allowContract = request.method === "POST" ? qualifiedWrites.has(pathname) : request.method === "GET" && qualifiedReads.has(url);
+      if (!allowContract && !(file && qualifiedFiles.has(file))) return next();
       const token = issueTask12NativeReviewReadiness(readinessIdentity, ticketOwnerProof, () => {
         if (!server.listening || request.socket.remoteAddress !== "127.0.0.1") throw new Error("NATIVE_329_DOWNLOAD_SCOPE");
       });
@@ -306,7 +308,11 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     const draft = "/contract-drafts/" + versionId;
     const contract = "/contracts/" + versionId;
     for (const path of [draft + "/submission", contract + "/approval", contract + "/seal-confirmation"]) qualifiedWrites.add(path);
-    const detail = (actor = 0) => get(actor, "/contracts/" + contractId + "?versionId=" + versionId);
+    const detailPath = "/contracts/" + contractId + "?versionId=" + versionId;
+    const pendingPath = "/contracts/workbench?view=pending_action&page=1&pageSize=100";
+    qualifiedReads.add(detailPath);
+    qualifiedReads.add(pendingPath);
+    const detail = (actor = 0) => get(actor, detailPath);
     stage = "DRAFT_LEASE";
     const lease = await post(0, draft + "/edit-lease");
     const headers = { "x-contract-draft-lease": lease.token as string };
@@ -384,7 +390,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     expect(await post(0, draft + "/submission", { ...submission, submissionProtocolVersion: 2 }, headers)).toEqual(submitted);
 
     stage = "APPROVAL";
-    const pending = async (actor: number) => (await get(actor, "/contracts/workbench?view=pending_action&page=1&pageSize=100")).rows
+    const pending = async (actor: number) => (await get(actor, pendingPath)).rows
       .filter((row: Payload) => row.contractVersionId === versionId).length;
     expect(await pending(6)).toBe(0);
     const actors = [1, 2, 3, 4, 5];
