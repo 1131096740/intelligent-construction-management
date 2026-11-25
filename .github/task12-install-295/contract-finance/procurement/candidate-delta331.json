@@ -10,6 +10,11 @@
     "candidate": "f296e48b4afbe2b74438a8ba8d6dbc418c20be77f98feeb96edee7e62ccfa760"
   },
   {
+    "path": "apps/web-admin/e2e/expense-claim-workbench.e2e.ts",
+    "expected": "8c0e7d588456b25fe7e78b35255377292ac2ff7505d21cb28aff9a63571f22f3",
+    "candidate": "8484f63b30ce10947ef67c950ba17cc864f62584d04423a31edaad7b623b5af4"
+  },
+  {
     "path": "apps/web-admin/e2e/helpers/contract-grid-synthetic-server.cjs",
     "expected": "e607d332a42c6bc36e9cd5096d3e585eda6b5ee0cdc4b0eba0cf10158fb8fbfd",
     "candidate": "31e39fc8b1400f5635a97b22281a1e5b58784297f9a19a1bf3b45c66c593a15e"

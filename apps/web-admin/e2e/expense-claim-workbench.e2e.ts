@@ -1,10 +1,14 @@
+import { createRequire } from "node:module";
 import { expect, test, type Page } from "@playwright/test";
 import type { ExpenseClaimLedgerPage } from "../src/api/expense-claim.api";
-import { EXPENSE_CLAIM_ENTRY_DEFINITION } from "../../../services/api/src/expense-claim/expense-claim-entry.definition";
 import {
   expectNoDocumentHorizontalOverflow,
   expectNoNestedHorizontalScrollers
 } from "./helpers/responsive-assertions";
+
+const { EXPENSE_CLAIM_ENTRY_DEFINITION } = createRequire(import.meta.url)(
+  "../../../services/api/src/expense-claim/expense-claim-entry.definition.ts"
+) as typeof import("../../../services/api/src/expense-claim/expense-claim-entry.definition");
 
 test("费用与报销台账在桌面和手机尺寸读取新域个人事实并切换服务端视图", async ({ page }) => {
   const requestedViews: string[] = [];
