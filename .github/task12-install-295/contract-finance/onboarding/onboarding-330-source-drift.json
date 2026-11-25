@@ -11,6 +11,7 @@
   "services/api/prisma/run-database-dynamic-gate-local.cjs": "e5000873ff8d91fc7136de06d06294dc725b1dd1ebe48cc1545959659f0259eb",
   "services/api/prisma/run-database-dynamic-gate-local.test.cjs": "767c2579c8eb163b06726710b17be6f6b9bfc145cbe4372b819bc94a7b562b04",
   "services/api/prisma/schema.prisma": "b0a00a37e3df7190c9b6ca87fafe7301946ae8c983b45f982755a3ac2f86c2bc",
+  "services/api/prisma/task16-current259-payment-competition.cjs": "5c97b492291a8d1c44834329d801d14703b7e3483087304f006faf92dd23d13c",
   "services/api/src/approval/approval-form.service.ts": "fabca21d3ca30c9878545c12e277be103d933329404eae287807c64eb3c50b80",
   "services/api/src/contract/contract-read.service.ts": "70b52722b3dfa7ec4aacc70d02b19e5fa11bdbaa728b66dccf0dc9716f11ee77",
   "services/api/src/database/task16-shared-standard-fixture.ts": "9a596a48851f73b80d45eccd2ffcf95d5c52b5af0f8df86f16c3d35148065cb3",
@@ -21,5 +22,5 @@
   "services/api/src/payment/payment-read.service.spec.ts": "f1d1f3087700efca25b802471564a5896ec8df58f55a3dc7f3d428c08a62b973",
   "services/api/src/payment/payment-read.service.ts": "e0e22a9d16dec72e4047bd516c83a27663dad1bdb3eac7e256486b2347be0036",
   "services/api/src/payment/payment-request.service.spec.ts": "d3556b44acc4f12ce48b5287c8d4e6ce70c1801873ea94a1f7151b3407ba77e5",
-  "services/api/src/payment/payment-request.service.ts": "02071e7a48bd3c502f8e91a73b4ea00f57d339642ba4f28fa6bafc246cf73f7e"
+  "services/api/src/payment/payment-request.service.ts": "4a8ffa8b4594f0105e6fdee20444f7687e4fa6f27e1e4cfdb5f06115e45883ca"
 }

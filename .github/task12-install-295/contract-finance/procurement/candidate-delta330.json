@@ -60,6 +60,11 @@
     "candidate": "b0a00a37e3df7190c9b6ca87fafe7301946ae8c983b45f982755a3ac2f86c2bc"
   },
   {
+    "path": "services/api/prisma/task16-current259-payment-competition.cjs",
+    "expected": "034e447eea55f7d6d443a081ba2e2cbbe96088336b9fc217de273562510b30c7",
+    "candidate": "5c97b492291a8d1c44834329d801d14703b7e3483087304f006faf92dd23d13c"
+  },
+  {
     "path": "services/api/src/approval/approval-form.service.ts",
     "expected": "031b17311e634ad97b838f71dd155734def4b2a2f3c307bf347e644427a6dedd",
     "candidate": "fabca21d3ca30c9878545c12e277be103d933329404eae287807c64eb3c50b80"
@@ -112,6 +117,6 @@
   {
     "path": "services/api/src/payment/payment-request.service.ts",
     "expected": "0a283f62d03fc5f22fe776d1a9da00b9becf80a2cdff44808fa1d944f96fd74f",
-    "candidate": "02071e7a48bd3c502f8e91a73b4ea00f57d339642ba4f28fa6bafc246cf73f7e"
+    "candidate": "4a8ffa8b4594f0105e6fdee20444f7687e4fa6f27e1e4cfdb5f06115e45883ca"
   }
 ]

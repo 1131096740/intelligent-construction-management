@@ -29,7 +29,7 @@ const holdSql=`SELECT p.id, a.pid, a.usesysid::text AS oid, a.datid::text AS "da
 // then independently require both lock waits to reach this fixture row holder.
 const paymentLockPrefix=[
  'SELECT payment."id", payment."code", payment."projectId", payment."contractId", contract."contractTypeKey",',
- 'payment."contractVersionId", payment."paymentTermsVersionId", payment."paymentTermsStageId", payment."settlementId",',
+ 'payment."contractVersionId", payment."paymentTermsVersionId", payment."paymentTermsStageId", payment."contractDueBasis", payment."settlementId",',
  'payment."signedSettlementId", payment."sourceType", payment."updatedAt", payment."paymentSubjectType", payment."status",',
  'payment."requestedAmountCents",',
  'payment."approvedAmountCents", payment."paidAmountCents", version."signingSubjectType", version."companyEntityIdSnapshot",',
