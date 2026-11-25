@@ -1,19 +1,21 @@
 <template>
   <section class="contract-list-page">
     <BusinessPageHeader
-      title="合同工作台"
-      description="统一查看合同台账、当前草稿和已作废草稿；合同生效仍以审批、用印和归档确认事实为准。"
+      :title="formalLedgerOnly ? '合同台账' : '合同工作台'"
+      :description="formalLedgerOnly
+        ? '查询已归档生效或保留的正式合同记录。'
+        : '统一查看合同台账、当前草稿和已作废草稿；合同生效仍以审批、用印和归档确认事实为准。'"
     >
       <template #actions>
         <t-button
-          v-if="canReadTakeovers"
+          v-if="!formalLedgerOnly && canReadTakeovers"
           variant="outline"
           @click="goContractTakeover"
         >
           历史合同接管
         </t-button>
         <t-button
-          v-if="canManageContracts"
+          v-if="!formalLedgerOnly && canManageContracts"
           theme="primary"
           @click="goNewContract"
         >
@@ -21,10 +23,11 @@
         </t-button>
       </template>
     </BusinessPageHeader>
-    <ContractRelationshipLedger initial-section="contracts" />
+    <ContractRelationshipLedger v-if="!formalLedgerOnly" initial-section="contracts" />
 
 
     <t-tabs
+      v-if="!formalLedgerOnly"
       v-model="activeTab"
       class="contract-tabs"
     >
@@ -181,19 +184,19 @@
           <template #operation="{ row }">
             <t-link
               theme="primary"
-              @click="isHistoricalTakeoverLedgerRow(row)
+              @click="!formalLedgerOnly && isHistoricalTakeoverLedgerRow(row)
                 ? openHistoricalTakeoverRow(row)
                 : openDetail(
                   row.id,
                   activeTab === 'ended' ? row.contractVersionId : undefined
                 )"
             >
-              {{ isHistoricalTakeoverLedgerRow(row)
+              {{ !formalLedgerOnly && isHistoricalTakeoverLedgerRow(row)
                 ? historicalTakeoverLedgerOperationLabel(row)
                 : '查看详情' }}
             </t-link>
             <t-link
-              v-if="activeTab === 'formal_ledger' && canManageContracts && !isHistoricalTakeoverLedgerRow(row)"
+              v-if="!formalLedgerOnly && activeTab === 'formal_ledger' && canManageContracts && !isHistoricalTakeoverLedgerRow(row)"
               theme="primary"
               @click="openDetail(row.id, undefined, true)"
             >
@@ -213,7 +216,7 @@
         <EmptyBusinessState
           v-else-if="!noticeMessage"
           title="当前条件下暂无合同记录"
-          :description="canManageContracts
+          :description="!formalLedgerOnly && canManageContracts
             ? '可以调整筛选条件；如需创建合同，请使用页头唯一的“新建合同”入口。'
             : '可以调整筛选条件，或刷新后再次查看当前权限范围内的合同记录。'"
         />
@@ -353,6 +356,7 @@ import {
   emptyContractLedgerFilters,
   filterContractLedgerRows
 } from "./contract-list.config";
+const props = defineProps<{ formalLedgerOnly?: boolean }>();
 const router = useRouter();
 const route = useRoute();
 const auth = useAuthStore();
@@ -378,6 +382,7 @@ const LEGACY_WORKBENCH_VIEW_MAP: Record<string, DraftLedgerView> = {
   all: "formal_ledger"
 };
 function routeLifecycleView(value: unknown): DraftLedgerView {
+  if (props.formalLedgerOnly) return "formal_ledger";
   const requested = typeof value === "string"
     ? (lifecycleViews.has(value as DraftLedgerView)
       ? value as DraftLedgerView
@@ -624,7 +629,7 @@ function statusTagTheme(tone: ContractStatusTone) {
 }
 
 watch(() => route.query.project, applyRouteProjectFilter, { immediate: true });
-watch(() => route.query.view, (value) => {
+watch([() => props.formalLedgerOnly, () => route.query.view], ([, value]) => {
   const next = routeLifecycleView(value);
   if (activeTab.value !== next) activeTab.value = next;
 });
@@ -632,7 +637,7 @@ watch(contractPreferenceStorageKey, loadContractColumnPreferences, { immediate: 
 watch(activeTab, (tab) => {
   lifecycleMeta.value.page = 1;
   void loadContractLifecycleLedger();
-  if (route.query.view !== tab) {
+  if (!props.formalLedgerOnly && route.query.view !== tab) {
     void router.replace({ query: { ...route.query, view: tab } });
   }
 });
@@ -642,7 +647,7 @@ watch(canManageContracts, (allowed) => {
 });
 
 onMounted(() => {
-  if (route.query.view !== activeTab.value) {
+  if (!props.formalLedgerOnly && route.query.view !== activeTab.value) {
     void router.replace({ query: { ...route.query, view: activeTab.value } });
   }
   void loadContractLedger();

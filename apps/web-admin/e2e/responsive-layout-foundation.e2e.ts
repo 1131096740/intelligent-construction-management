@@ -228,10 +228,23 @@ test("keeps navigation, page content, and confirmation controls usable across de
   await expect(page.locator(".navigation-drawer")).toHaveCount(0);
   await expect(page.locator(".t-drawer__content-wrapper")).toHaveCount(0);
 
-  const previousKeyboardState = await page.evaluate(() => document.documentElement.getAttribute("data-keyboard"));
   try {
-    // The viewport adapter owns this state on phones; exercise its compact layout without an OS keyboard.
-    await page.evaluate(() => document.documentElement.setAttribute("data-keyboard", "open"));
+    // Simulate the viewport shrinking around a focused editor, as with a soft keyboard.
+    await page.evaluate(() => {
+      const viewport = window.visualViewport;
+      if (!viewport) throw new Error("缺少浏览器可视视口");
+      Object.defineProperty(viewport, "height", {
+        configurable: true,
+        get: () => window.innerHeight - 240
+      });
+      const editor = document.createElement("input");
+      editor.id = "simulated-keyboard-editor";
+      editor.style.cssText = "position: fixed; top: 0; opacity: 0";
+      document.body.appendChild(editor);
+      editor.focus({ preventScroll: true });
+      viewport.dispatchEvent(new Event("resize"));
+    });
+    await expect(page.locator("html")).toHaveAttribute("data-keyboard", "open");
     await expect(bottomNavigation).not.toBeVisible();
     await expect(toggle).toBeInViewport();
     await toggle.focus();
@@ -242,11 +255,15 @@ test("keeps navigation, page content, and confirmation controls usable across de
     await expect(page.locator(".navigation-drawer")).toHaveCount(0);
     await expect(page.locator(".t-drawer__content-wrapper")).toHaveCount(0);
   } finally {
-    await page.evaluate((state) => {
-      if (state === null) document.documentElement.removeAttribute("data-keyboard");
-      else document.documentElement.setAttribute("data-keyboard", state);
-    }, previousKeyboardState);
+    await page.evaluate(() => {
+      document.getElementById("simulated-keyboard-editor")?.remove();
+      const viewport = window.visualViewport;
+      if (!viewport) return;
+      Reflect.deleteProperty(viewport, "height");
+      viewport.dispatchEvent(new Event("resize"));
+    });
   }
+  await expect(page.locator("html")).toHaveAttribute("data-keyboard", "closed");
   await expect(bottomNavigation).toBeVisible();
   await toggle.focus();
   await page.keyboard.press("Enter");

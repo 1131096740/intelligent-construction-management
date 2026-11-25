@@ -134,8 +134,8 @@ export const adminNavigationGroups: AdminNavigationGroup[] = [
   {
     label: "独立台账",
     items: [
-      { label: "合同台账", path: "/合同工作台", access: "ledger_contract" },
-      { label: "结算台账", path: "/结算工作台", access: "ledger_settlement" },
+      { label: "合同台账", path: "/合同台账", access: "ledger_contract" },
+      { label: "结算台账", path: "/结算台账", access: "ledger_settlement" },
       { label: "付款台账", path: "/付款管理", access: "ledger_payment" },
       { label: "零星采购台账", path: "/零星采购工作台", access: "ledger_spot_procurement" },
       { label: "综合采购台账", path: "/综合采购申请", access: "ledger_general_procurement" },
@@ -251,6 +251,12 @@ export const webAdminRoutes: RouteRecordRaw[] = [
         path: "合同工作台",
         component: () => import("../pages/contracts/ContractListPage.vue"),
         meta: { title: "合同工作台" }
+      },
+      {
+        path: "合同台账",
+        component: () => import("../pages/contracts/ContractListPage.vue"),
+        props: { formalLedgerOnly: true },
+        meta: { requiredRoleKeys: navigationEntryRoleKeys("ledger_contract"), title: "合同台账" }
       },
       {
         path: "合同工作台/新建",
@@ -422,6 +428,11 @@ export const webAdminRoutes: RouteRecordRaw[] = [
       {
         path: "结算工作台",
         component: () => import("../pages/settlements/SettlementListPage.vue")
+      },
+      {
+        path: "结算台账",
+        component: () => import("../pages/settlements/SignedSettlementLedgerPage.vue"),
+        meta: { requiredRoleKeys: navigationEntryRoleKeys("ledger_settlement"), title: "结算台账" }
       },
       {
         path: "结算工作台/已签登记",
