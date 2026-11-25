@@ -2,7 +2,13 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == standard-330 || $5 == standard-331 || $5 == ledger-loss-330 || $5 == ledger-loss-331 || $5 == competition-331 ) ) ]] || exit 64
+[[ $# == 4 || $# == 5 ]] || exit 64
+variant=${5-}
+case "$variant" in
+  ''|standard-330|standard-331|standard-332|ledger-loss-330|ledger-loss-331|ledger-loss-332|competition-331|competition-332) ;;
+  *) exit 64 ;;
+esac
+[[ $# == 4 || -n $variant ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -14,26 +20,22 @@ scope=task398-standard
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const count=source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
+  if(count===332)require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
   console.log(count);
-' "$prepared/source.json" "$sha")
+' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs")
 variant_args=()
 purpose=TASK398_STANDARD_EXACT_$count
-if [[ ${5-} == standard-330 || ${5-} == standard-331 ]]; then
-  [[ $5 == "standard-$count" ]] || exit 64
-  variant_args=("$5")
-elif [[ ${5-} == ledger-loss-330 || ${5-} == ledger-loss-331 ]]; then
-  [[ $5 == "ledger-loss-$count" ]] || exit 64
-  variant_args=("$5")
-  purpose=TASK398_LEDGER_LOSS_EXACT_$count
-elif [[ ${5-} == competition-331 ]]; then
-  [[ $count == 331 ]] || exit 64
-  variant_args=("$5")
-  purpose=TASK398_COMPETITION_EXACT_331
-elif [[ $count == 330 || $count == 331 ]]; then
-  purpose=TASK425_TEXT_DIRECT_FINANCE_$count
+if [[ -n $variant ]]; then
+  [[ ${variant##*-} == "$count" ]] || exit 64
+  variant_args=("$variant")
 fi
+case "$variant" in
+  ledger-loss-*) purpose=TASK398_LEDGER_LOSS_EXACT_$count ;;
+  competition-*) purpose=TASK398_COMPETITION_EXACT_$count ;;
+  '') if (( count >= 330 )); then purpose=TASK425_TEXT_DIRECT_FINANCE_$count; fi ;;
+esac
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -46,36 +48,57 @@ python3 "$plan/stage-task398-standard.py" \
 overlay_files=()
 while IFS= read -r file; do overlay_files+=("$file"); done < "$work/overlay-files.txt"
 [[ ${#overlay_files[@]} == 6 ]] || exit 65
-if [[ $count == 329 || $count == 330 || $count == 331 ]]; then
+if (( count >= 329 )); then
   patch --batch --forward --fuzz=0 --silent "$work/services/api/prisma/run-task398-shared-standard-local.cjs" < "$plan/task398-standard-320.patch"
 fi
-if [[ $count == 330 || $count == 331 ]]; then
+if (( count >= 330 )); then
   runner="$work/services/api/prisma/run-task398-shared-standard-local.cjs"
   runner_sha() { node -e 'const fs=require("node:fs"),{createHash}=require("node:crypto"); console.log(createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$runner"; }
   [[ $(runner_sha) == 08bacc09e2870c23bc4e73ff5d6473ae1a64c005d3ed92790713609406369b96 ]] || exit 65
   patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-text-direct-330.patch"
   [[ $(runner_sha) == 2a38871242e820e1164c3a68ca1373795dc05adf14a147500ec981e06a403b97 ]] || exit 65
-  if [[ ${5-} == ledger-loss-330 || ${5-} == ledger-loss-331 ]]; then
+  if [[ $variant == ledger-loss-* ]]; then
     spec="$work/services/api/src/database/task16-shared-standard.http.pg.spec.ts"
     [[ $(sha256sum "$spec" | cut -d' ' -f1) == e70aa4d7364f7232f694881bb96fce88bfa57a89bd24fc6f527b4d85dfa6b901 ]] || exit 65
     patch --batch --forward --fuzz=0 --silent "$spec" < "$plan/task398-commit-fault-330.patch"
     [[ $(sha256sum "$spec" | cut -d' ' -f1) == 4f374450ef008d745d67807529521d36b1d6a598a60dc5b161804b626b183b78 ]] || exit 65
     patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-330.patch"
     [[ $(runner_sha) == d21d72c39d6a3baead9ff149607b4cdac607b13ce0c810508997f44c3278c50d ]] || exit 65
-    if [[ $count == 331 ]]; then
+    if (( count >= 331 )); then
       patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-331.patch"
       [[ $(runner_sha) == af42b4c2fb8489cd6560b8dfb2775f4880ed806730e9e00d36073ebd1bb89b29 ]] || exit 65
     fi
-  elif [[ $count == 331 ]]; then
+    if [[ $count == 332 ]]; then
+      patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-332.patch"
+      [[ $(runner_sha) == cfadb8d99c42bca952fa8ef76ee2f080df4f8cdd43db5455d8db14b7e4fc492a ]] || exit 65
+    fi
+  elif (( count >= 331 )); then
     patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-standard-331.patch"
     [[ $(runner_sha) == a53edcb4f8dd60c88ee74f784d9eb1e5d04296e2c024a74680f1f38f84e92f33 ]] || exit 65
-    if [[ ${5-} == competition-331 ]]; then
+    if [[ $variant == competition-* ]]; then
       spec="$work/services/api/src/database/task16-shared-standard.http.pg.spec.ts"
       [[ $(sha256sum "$spec" | cut -d' ' -f1) == e70aa4d7364f7232f694881bb96fce88bfa57a89bd24fc6f527b4d85dfa6b901 ]] || exit 65
       patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-competition-runner-331.patch"
       patch --batch --forward --fuzz=0 --silent "$spec" < "$plan/task398-competition-spec-331.patch"
       [[ $(runner_sha) == e5bc00fab58ecac6786b9bc6a8228f6af3906c8a093bedea2a052bcd9a02973b ]] || exit 65
       [[ $(sha256sum "$spec" | cut -d' ' -f1) == 05bfdec5b4e12815b6ca7c3ea9345d44b4c27ab77a52223f62ccbda18187ad1c ]] || exit 65
+      if [[ $count == 332 ]]; then
+        patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-competition-runner-332.patch"
+        [[ $(runner_sha) == 1aed99cf7cdb95d1e1821204727df5f46b0d56fa184287363929dd565615eaf8 ]] || exit 65
+      fi
+    elif [[ $count == 332 ]]; then
+      patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-standard-332.patch"
+      [[ $(runner_sha) == f2330ca2d87085803692c508fbb1643522901b84a5595141ed342fb54a18be4f ]] || exit 65
+      if [[ -z $variant ]]; then
+        relative=services/api/src/database/task16-text-agreement-payments.http.pg.spec.ts
+        spec="$work/$relative"
+        cp "$prepared/prepared/context/workspace/$relative" "$spec"
+        [[ $(sha256sum "$spec" | cut -d' ' -f1) == a23a5009503b6683aa545c582ff0e511c85768e417d591555d502a1934686b49 ]] || exit 65
+        patch --batch --forward --fuzz=0 --silent "$spec" < "$plan/task398-text-direct-spec-332.patch"
+        [[ $(sha256sum "$spec" | cut -d' ' -f1) == a019456b916800c5f9d8356b014182aedfdead1d7e93252a745841d8223b274a ]] || exit 65
+        chmod 0644 "$spec"
+        overlay_files+=("$relative")
+      fi
     fi
   fi
 fi
@@ -90,7 +113,8 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003600_fund_balance_notice_lock/migration.sql,dst=/qualification/terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
-  --mount "type=bind,src=$plan/task398-standard-entry.cjs,dst=/qualification/task398-standard-entry.cjs,readonly")
+  --mount "type=bind,src=$plan/task398-standard-entry.cjs,dst=/qualification/task398-standard-entry.cjs,readonly"
+  --mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
