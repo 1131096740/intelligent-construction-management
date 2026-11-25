@@ -1,7 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 umask 077
-[[ $# == 4 || ( $# == 5 && $4 == bank && $5 == --current-320 ) ||
+if [[ ${4-} == restore && ${5-} == --text-direct-330 ]]; then
+  printf '%s\n' 'CONTRACT_FINANCE_330_RESTORE_UNAVAILABLE' >&2
+  exit 64
+fi
+[[ $# == 4 || ( $# == 5 && $4 == bank && ( $5 == --current-320 || $5 == --text-direct-330 ) ) ||
   ( $# == 6 && $4 == restore && $5 == --current-320 ) ]] || exit 64
 
 prepared=$(cd "$1" && pwd -P)
@@ -10,7 +14,7 @@ image_dir=$(cd "$3" && pwd -P)
 lane=$4
 mode=${5-}
 bank_args=()
-if [[ $lane == bank && $mode == --current-320 ]]; then bank_args=(--current-320); fi
+if [[ $lane == bank && -n $mode ]]; then bank_args=("$mode"); fi
 restore_args=()
 restore_source=()
 if [[ $lane == restore && $mode == --current-320 ]]; then
@@ -33,7 +37,9 @@ node - "$prepared/source.json" "$sha" "$plan" ${bank_args[@]+"${bank_args[@]}"} 
 const [source,sha,plan,mode]=process.argv.slice(2);
 const candidate=require(source),m=require(plan+'/common/multi-witness.cjs');
 if(candidate.sourceSha!==sha)process.exit(65);
-if(mode==='--current-320') {
+if(mode==='--text-direct-330') {
+  require(plan+'/text-direct-330-profile.cjs').assertSource(candidate,sha,m.final);
+} else if(mode==='--current-320') {
   if(candidate.mode!=='current-320'||candidate.migrationCount!==329||candidate.predecessor?.migrationCount!==295||
       candidate.predecessor.ledgerSha256!==m.final||candidate.tails.length!==34||
       typeof candidate.sourceTree!=='string'||!/^[0-9a-f]{40}$/u.test(candidate.sourceTree)||
@@ -70,6 +76,10 @@ if [[ $lane == bank ]]; then
   for file in named-bank-ci.cjs original-titles.json failure-projection.cjs; do
     readonly_mount "$plan/bank/$file" "/qualification/$file"
   done
+  if [[ $mode == --text-direct-330 ]]; then
+    readonly_mount "$plan/text-direct-330-profile.cjs" /qualification/text-direct-330-profile.cjs
+    readonly_mount "$plan/bank/staging-330.json" /qualification/bank-staging-330.json
+  fi
   readonly_mount "$overlay/bank/execution-files.json" /qualification/execution-files.json
   mount_tree "$overlay/bank/overlay" /qualification/workspace
 else
@@ -111,7 +121,7 @@ capture(){
     node - "$out/$mode.stdout" "$out/$mode.json" "$mode" "$sha" ${bank_args[@]+"${bank_args[@]}"} <<'JS' || proof_status=$?
 const [file,receipt,mode,sha,sourceMode]=process.argv.slice(2);
 const r=JSON.parse(require('node:fs').readFileSync(file,'utf8').trimEnd().split('\n').at(-1));
-const count=sourceMode==='--current-320'?329:295;
+const count=sourceMode==='--text-direct-330'?330:sourceMode==='--current-320'?329:295;
 const result=mode==='preflight'?'DIAGNOSTIC_NO_DATABASE_PREFLIGHT_PASSED':'ORIGINAL_FULL_12_PASSED';
 const expected='BANK_'+count+'_'+result;
 require('node:fs').writeFileSync(receipt,JSON.stringify(r,null,2)+'\n',{flag:'wx',mode:0o600});

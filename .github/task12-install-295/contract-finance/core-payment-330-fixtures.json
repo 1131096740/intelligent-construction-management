@@ -1,0 +1,20 @@
+{
+  "materials": {
+    "core-payment-tests-current329.patch.gz": "d5944a9e1cdc0594e312e8b21492ac80dd33050862028d752f60e86862bf6a54",
+    "payment-concurrency-330.patch": "0c3e152d51b6b69898b1f2c9ca48d4e8c9eb3f6044b69e4e8dcd77da373eaa09"
+  },
+  "fixtures": {
+    "services/api/src/database/contract-business-entry-http.spec.ts": {
+      "input": "530935849d1e2b78675379d485cdc60721cfddea062d92443f707f01c2cbbd6f",
+      "output": "9b2d681c92394c5d5b811dc19706d8cc856d92aa6387e9c6f9e83053d704a8ff"
+    },
+    "services/api/src/database/company-transfer-http-postgres.spec.ts": {
+      "input": "4e298ae84118325441b881207dd1e3b9c47b565ed0f8f6673e65d45b87ca4b2f",
+      "output": "3d94146515dfa1c147955dc11aaf7a2c9a5acf0910a01a22b0b2c67fbaf10f41"
+    },
+    "services/api/src/database/payment-execution-concurrency.spec.ts": {
+      "input": "db4ab98336a423cde99b0e79291fca78c719de4c7d1f14c7af31f5397b308813",
+      "output": "6ad30d13afcaf20ee7189d23f38532a87814992c8791cc49280e24836f94603b"
+    }
+  }
+}

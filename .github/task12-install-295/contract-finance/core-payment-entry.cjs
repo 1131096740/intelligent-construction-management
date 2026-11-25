@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const {randomBytes} = require('node:crypto');
 const {admitSource} = require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment} = require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement} = require('./installer.cjs');
 const {final, digest} = require('./multi-witness.cjs');
 const {verify} = require('./workspace/services/api/prisma/core-payment-runner.cjs');
 
@@ -11,9 +11,12 @@ const root = '/qualification';
 const source = require('./contract-finance-source.json');
 const mode = process.argv[2];
 const current320=source.mode==='current-320';
-const count=current320?329:295;
+const textDirect330=source.mode==='text-direct-330';
+const forward=current320||textDirect330;
+const profile330=textDirect330?require('./text-direct-330-profile.cjs'):undefined;
+const count=textDirect330?330:current320?329:295;
 const receipt = {schemaVersion:1,purpose:'CONTRACT_FINANCE_CORE_OR_PAYMENT_EXACT_'+count,
-  scope:mode,sourceSha:source.sourceSha,migrationSha256:current320?source.tails.at(-1).sha256:digest,stages:['INPUTS'],status:'STOPPED'};
+  scope:mode,sourceSha:source.sourceSha,migrationSha256:forward?source.tails.at(-1).sha256:digest,stages:['INPUTS'],status:'STOPPED'};
 
 async function main() {
   assert.equal(process.argv.length,3);
@@ -22,7 +25,8 @@ async function main() {
   assert.equal(process.env.DATABASE_URL,undefined);
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
   assert.equal(source.migrationCount,count);
-  assert.equal(current320?source.predecessor.ledgerSha256:source.ledgerSha256,final);
+  assert.equal(forward?source.predecessor.ledgerSha256:source.ledgerSha256,final);
+  if(textDirect330) profile330.assertSource(source,source.sourceSha,final);
   const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
   assert.equal(baseline.expectedDirectoryCount,count);
   assert.equal(baseline.terminalMigration,source.tails.at(-1).name);
@@ -31,12 +35,13 @@ async function main() {
   const consume=async context=>{
     assert.equal(context.database,'jg_task01_'+context.runId.replaceAll('-',''));
     receipt.stages.push(mode==='core'?'ORIGINAL_AGGREGATE_THEN_COMPANY_TRANSFER':'ORIGINAL_PAYMENT_CONCURRENCY');
-    if(current320&&mode==='core'){
+    if(textDirect330) profile330.assertInstallation(receipt,source);
+    if(forward&&mode==='core'){
       const key=randomBytes(32).toString('hex');
       const table='public.jg_signed_settlement_attachment_witness_key';
       await context.sql(`INSERT INTO ${table}("key") VALUES(decode('${key}','hex'));`);
       try {
-        receipt.finance=await verify(mode,context,true,key);
+        receipt.finance=await verify(mode,context,count,key);
       } finally {
         await context.sql(`DELETE FROM ${table} WHERE "key"=decode('${key}','hex');`);
         const {stdout}=await context.sql(`SELECT NOT EXISTS(SELECT FROM ${table});`);
@@ -44,7 +49,7 @@ async function main() {
         receipt.settlementReadWitnessCleared=true;
       }
     } else {
-      receipt.finance=await verify(mode,context,current320);
+      receipt.finance=await verify(mode,context,count);
     }
     const found=receipt.finance.suites.map(({file,passed,skipped})=>[file.split('/').at(-1),passed,skipped]);
     assert.deepEqual(found,mode==='core'
@@ -65,8 +70,9 @@ async function main() {
       assert.deepEqual(rows[4],{event:'child-exit',code:0,signal:null});
     }
   };
-  if(current320){
-    await withCombined320ContractPayment(receipt,consume,{sourceTree:source.sourceTree,
+  if(forward){
+    const install=textDirect330?withCombined330TextAgreement:withCombined320ContractPayment;
+    await install(receipt,consume,{sourceTree:source.sourceTree,
       migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails});
     assert.equal(receipt.forward320.sourceTree,source.sourceTree);
     assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);

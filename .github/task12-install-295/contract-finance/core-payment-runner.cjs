@@ -17,7 +17,8 @@ const profiles = Object.freeze({
   },
 });
 
-async function verify(scope, context, current320 = false, settlementReadKey) {
+async function verify(scope, context, ledgerCount = 295, settlementReadKey) {
+  if (![295, 329, 330].includes(ledgerCount)) throw new Error("CONTRACT_FINANCE_LEDGER");
   const profile = Object.hasOwn(profiles, scope) ? profiles[scope] : undefined;
   if (!profile) throw new Error("CONTRACT_FINANCE_MODE");
   const storage = path.join(context.workDir, "contract-finance-files");
@@ -30,7 +31,7 @@ async function verify(scope, context, current320 = false, settlementReadKey) {
     INITIAL_USER_TEMPORARY_PASSWORD: "Local-Transfer-Initial-01",
     OPERATING_LEDGER_DB_WRITE_SECRET: randomUUID(),
     JG_TASK12_OWNED_280_RUN_ID: context.runId, JG_CONTRACT_FINANCE_SCOPE: scope,
-    ...(current320 ? {JG_CONTRACT_FINANCE_LEDGER: "329"} : {}),
+    ...(ledgerCount !== 295 ? {JG_CONTRACT_FINANCE_LEDGER: String(ledgerCount)} : {}),
     ...(settlementReadKey ? {SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY: settlementReadKey} : {}),
     ...Object.fromEntries(profile.flags.map(flag=>[flag,"1"])),
   };
