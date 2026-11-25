@@ -1,18 +1,32 @@
 --- installer.cjs
 +++ installer.cjs
-@@ -187 +187 @@
+@@ -184,14 +184,16 @@
+   return verifyPinnedInputs(historical, product, seal, stableRelease);
+ }
+
 -async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,enter,fromHistory){
 +async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,enter,fromHistory,receipt){
-@@ -192,0 +193,2 @@
+  const controls=fromHistory('./local-staged-migration-controls.cjs'),{createLocalTailQualification}=fromHistory('./local-staged-tail-qualification.cjs');
+  const ledger=plan.source.witness.profile.ledger,migrations=ledger.map(({name,sha256})=>({name,sha256})),database=plan.database;
+  const {cli,engine}=plan.prismaTools;
+  const schema=capture(path.join(plan.historical,'schema.prisma')).bytes;
+  const roots=new Map();
 + const historicalNegative=['PAYMENT_EXECUTION_ORIGINAL_REMAINING_13_NEGATIVES','PAYMENT_EXECUTION_ORIGINAL_PAID_MISMATCH_DIAGNOSTIC'].includes(receipt?.purpose);
-+ const historicalValid=/^PAYMENT_EXECUTION_ORIGINAL_RETAINED_VALID_(295|329|330|331)$/u.test(receipt?.purpose??"");
-@@ -194 +196 @@
++ const historicalValid=/^PAYMENT_EXECUTION_ORIGINAL_RETAINED_VALID_(295|329|330|331|332)$/u.test(receipt?.purpose??"");
+  for(const size of [...new Set(plan.stopAt205 ? [203,205] : [
 -   ...(plan.profileUpgrade?[125,126]:[]),203,205,213,215,218,221,ledger.length
 +   ...(historicalNegative||historicalValid?[109,110]:[]),...(plan.profileUpgrade?[125,126]:[]),203,205,213,215,218,221,ledger.length
-@@ -207 +209 @@
+  ])]){
+   const dir=path.join(root,'prefixes',String(size));fs.mkdirSync(dir,{mode:0o700});fs.mkdirSync(path.join(dir,'migrations'),{mode:0o700});
+   fs.writeFileSync(path.join(dir,'schema.prisma'),size<=126&&plan.profileUpgrade?plan.profileSchema:schema,{flag:'wx',mode:0o600});
+@@ -204,13 +206,40 @@
+  }
+  const baseUrl=new URL('postgresql://jg_task01_owner@127.0.0.1:'+port+'/'+database);baseUrl.password=password;
+  for(const [key,value]of Object.entries({schema:'public',connection_limit:'1',sslmode:'require',sslaccept:'strict',sslcert:path.join(root,'ca.crt'),connect_timeout:'5',pool_timeout:'5'}))baseUrl.searchParams.set(key,value);
 - const deploy=async(size,url=baseUrl)=>{enter('MIGRATE_'+size);await command(process.execPath,[cli,'migrate','deploy','--schema',path.join(roots.get(size),'schema.prisma')],{timeoutMs:plan.limits.migrationMs,extra:{DATABASE_URL:url.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});};
 + const deploy=async(size,url=baseUrl,allowFailure=false)=>{enter('MIGRATE_'+size);return command(process.execPath,[cli,'migrate','deploy','--schema',path.join(roots.get(size),'schema.prisma')],{allowFailure,timeoutMs:plan.limits.migrationMs,extra:{DATABASE_URL:url.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});};
-@@ -209,0 +212,26 @@
+  const identity=row=>{need(row.database===database&&row.ownerOid==='10'&&row.actorOid==='10'&&row.actor==='jg_task01_owner'&&row.sessionActor==='jg_task01_owner'&&row.version===160015&&row.encoding==='UTF8'&&row.replication==='origin','NATIVE_DIRECT_MIGRATION_IDENTITY');return Object.fromEntries(['database','databaseOid','namespaceOid','actorOid','ownerOid','systemIdentifier'].map(k=>[k,row[k]]));};
+  const checkLedger=(row,size)=>{need(equal(row.ledger,ledger.slice(0,size)),'NATIVE_DIRECT_MIGRATION_LEDGER');};
 + if(historicalNegative){
 +  const {load,verifyPrefix}=require('/qualification/retained-payment.cjs');
 +  const data=load('/qualification/retained-payment.json');
@@ -39,12 +53,30 @@
 +    },sql,jsonSql,inspect:controls.inspectSql(),ledger,identity,onPhase:enter
 +  });
 + }
-@@ -213,0 +242 @@
+  const profileIdentity=plan.profileUpgrade?await require('./profile-history.cjs').runProfileHistory({
+    ledger,deploy,read:()=>jsonSql(controls.inspectSql()),identity,checkLedger,enter,sql,receipt:plan.profileUpgrade,
+  }):undefined;
+  await deploy(203);const first=await jsonSql(controls.inspectSql());const bound=identity(first);checkLedger(first,203);
 + if(receipt?.retainedPayment) need(equal(bound,receipt.retainedPayment.identity),'PAYMENT_RETAINED_POST203_IDENTITY');
-@@ -1011 +1040 @@
+  if(profileIdentity) need(equal(bound,profileIdentity),'REMAINING_PROFILE_HISTORY_IDENTITY');
+  const migrationPlan={...bound,runId:randomUUID(),nonce:randomBytes(32).toString('hex'),appName:'jg_fixture_app_'+randomBytes(12).toString('hex'),schemaName:'jg_fixture_'+randomBytes(12).toString('hex'),technicalProfile:'CURRENT259_OWNED_TECHNICAL_V1',resourceRunId:plan.runId,migrations:migrations.slice(0,205)};
+  const setup=await jsonSql(controls.setupSql(migrationPlan));controls.checkSetup(setup,migrationPlan);
+@@ -1008,7 +1037,7 @@
+
+ async function installHistory(plan,root,port,credentials,sql,jsonSql,command,enter,fromHistory,stageTree,receipt){
+ const {runId}=plan;
 -const migration=await migrateNativeTask16(plan,root,port,credentials.owner,sql,jsonSql,command,enter,fromHistory);
 +const migration=await migrateNativeTask16(plan,root,port,credentials.owner,sql,jsonSql,command,enter,fromHistory,receipt);
-@@ -1338,0 +1368,3 @@
+ enter('ROLES');const roles=fromHistory('./task16-current259-role-provision.cjs');
+   const roleIdentity=await jsonSql(`SELECT jsonb_build_object('database',current_database(),'databaseOid',d.oid::text,'namespaceOid',to_regnamespace('public')::oid::text,'ownerOid',d.datdba::text,'actorOid',current_user::regrole::oid::text,'actor',current_user,'sessionActor',session_user,'systemIdentifier',(SELECT system_identifier::text FROM pg_control_system()),'tls',(SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()),'clientAddress',host(inet_client_addr()),'serverAddress',host(inet_server_addr()),'serverPort',inet_server_port()) FROM pg_database d WHERE d.datname=current_database();`);
+   need(roleIdentity.ownerOid==='10'&&roleIdentity.actorOid==='10'&&roleIdentity.tls===true&&roleIdentity.clientAddress==='127.0.0.1'&&roleIdentity.serverAddress==='127.0.0.1'&&roleIdentity.serverPort===port,'NATIVE_DIRECT_OWNER');
+@@ -1336,6 +1365,9 @@
+ }
+ module.exports.withCombined292ApprovalOnly = (receipt,consume) => withCombinedOrdinaryLoan(receipt,consume,installOnly292);
+ module.exports.withCombined295MultiWitness = (receipt,consume) => withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295);
 +
 +// The historical negatives terminate at the original migration 110.
 +module.exports.withRetainedPayment282 = module.exports.withCombined295MultiWitness;
+
+ module.exports.withCombined295MultiWitnessForRestore = (receipt,consume) =>
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,true);

@@ -21,7 +21,7 @@ for name, checksum in pins.items():
 
 installer = stage / 'installer.cjs'
 shutil.copyfile(common / 'installer.cjs', installer)
-subprocess.run(['git', 'apply', '--unidiff-zero', '-p0',
+subprocess.run(['git', 'apply', '-p0',
                 str((plan / 'payment-execution-installer.patch').resolve())], cwd=stage, check=True)
 for name in ('fresh.cjs','valid.cjs','payment-execution-concurrency.spec.ts'):
     subprocess.run(['patch','--silent','--batch','--fuzz=0',str(stage/name),str(plan/(name+'.patch'))],check=True)
