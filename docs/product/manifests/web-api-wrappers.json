@@ -11,7 +11,7 @@
     "exportedFunctionCount": 765,
     "transportWrapperCount": 744,
     "pureExportCount": 21,
-    "mainRequestBindingCount": 815,
+    "mainRequestBindingCount": 819,
     "ticketFollowupCount": 6,
     "requestEdgeCount": 773,
     "productionConsumerCount": 632,
@@ -12999,7 +12999,21 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 47,
+          "sourceLine": 57,
+          "method": "GET",
+          "path": "/approval-progress/:param/duty-sms",
+          "normalizedPath": "/approval-progress/:param/duty-sms",
+          "normalizedKey": "GET /approval-progress/:param/duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 57,
           "method": "GET",
           "path": "/contract-bank-verifications/:param/duty-sms",
           "normalizedPath": "/contract-bank-verifications/:param/duty-sms",
@@ -13013,7 +13027,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 47,
+          "sourceLine": 57,
           "method": "GET",
           "path": "/contract-economic-reviews/:param/duty-sms",
           "normalizedPath": "/contract-economic-reviews/:param/duty-sms",
@@ -13027,7 +13041,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 47,
+          "sourceLine": 57,
           "method": "GET",
           "path": "/contract-proxy-executions/:param/duty-sms",
           "normalizedPath": "/contract-proxy-executions/:param/duty-sms",
@@ -13041,7 +13055,21 @@
         },
         {
           "kind": "main",
-          "sourceLine": 47,
+          "sourceLine": 57,
+          "method": "GET",
+          "path": "/expense-claims/:param/approval-duty-sms?:param",
+          "normalizedPath": "/expense-claims/:param/approval-duty-sms",
+          "normalizedKey": "GET /expense-claims/:param/approval-duty-sms",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 57,
           "method": "GET",
           "path": "/expense-claims/:param/duty-sms",
           "normalizedPath": "/expense-claims/:param/duty-sms",
@@ -13055,7 +13083,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 47,
+          "sourceLine": 57,
           "method": "GET",
           "path": "/fund-account-transfers/:param/duty-sms",
           "normalizedPath": "/fund-account-transfers/:param/duty-sms",
@@ -13069,7 +13097,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 47,
+          "sourceLine": 57,
           "method": "GET",
           "path": "/fund-accounts/principal-returns/applications/:param/duty-sms/:param",
           "normalizedPath": "/fund-accounts/principal-returns/applications/:param/duty-sms/:param",
@@ -13083,7 +13111,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 47,
+          "sourceLine": 57,
           "method": "GET",
           "path": "/fund-accounts/registrations/:param/review/duty-sms",
           "normalizedPath": "/fund-accounts/registrations/:param/review/duty-sms",
@@ -13097,7 +13125,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 47,
+          "sourceLine": 57,
           "method": "GET",
           "path": "/payment-executions/:param/duty-sms",
           "normalizedPath": "/payment-executions/:param/duty-sms",
@@ -13111,7 +13139,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 47,
+          "sourceLine": 57,
           "method": "GET",
           "path": "/payments/:param/approval/duty-sms",
           "normalizedPath": "/payments/:param/approval/duty-sms",
@@ -13125,7 +13153,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 47,
+          "sourceLine": 57,
           "method": "GET",
           "path": "/settlements/:param/duty-sms",
           "normalizedPath": "/settlements/:param/duty-sms",
@@ -13139,7 +13167,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 47,
+          "sourceLine": 57,
           "method": "GET",
           "path": "/spot-procurement-payments/:param/duty-sms",
           "normalizedPath": "/spot-procurement-payments/:param/duty-sms",
@@ -13153,7 +13181,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 47,
+          "sourceLine": 57,
           "method": "GET",
           "path": "/upward-contract-amount-revisions/:param/duty-sms",
           "normalizedPath": "/upward-contract-amount-revisions/:param/duty-sms",
@@ -13167,7 +13195,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 47,
+          "sourceLine": 57,
           "method": "GET",
           "path": "/upward-receipt-matches/:param/duty-sms",
           "normalizedPath": "/upward-receipt-matches/:param/duty-sms",
@@ -13196,7 +13224,21 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 57,
+          "sourceLine": 69,
+          "method": "POST",
+          "path": "/approval-progress/:param/duty-sms/retry",
+          "normalizedPath": "/approval-progress/:param/duty-sms/retry",
+          "normalizedKey": "POST /approval-progress/:param/duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 69,
           "method": "POST",
           "path": "/contract-bank-verifications/:param/duty-sms/retry",
           "normalizedPath": "/contract-bank-verifications/:param/duty-sms/retry",
@@ -13210,7 +13252,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 57,
+          "sourceLine": 69,
           "method": "POST",
           "path": "/contract-economic-reviews/:param/duty-sms/retry",
           "normalizedPath": "/contract-economic-reviews/:param/duty-sms/retry",
@@ -13224,7 +13266,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 57,
+          "sourceLine": 69,
           "method": "POST",
           "path": "/contract-proxy-executions/:param/duty-sms/retry",
           "normalizedPath": "/contract-proxy-executions/:param/duty-sms/retry",
@@ -13238,7 +13280,21 @@
         },
         {
           "kind": "main",
-          "sourceLine": 57,
+          "sourceLine": 69,
+          "method": "POST",
+          "path": "/expense-claims/:param/approval-duty-sms/retry?:param",
+          "normalizedPath": "/expense-claims/:param/approval-duty-sms/retry",
+          "normalizedKey": "POST /expense-claims/:param/approval-duty-sms/retry",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "retryDutySms"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 69,
           "method": "POST",
           "path": "/expense-claims/:param/duty-sms/retry",
           "normalizedPath": "/expense-claims/:param/duty-sms/retry",
@@ -13252,7 +13308,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 57,
+          "sourceLine": 69,
           "method": "POST",
           "path": "/fund-account-transfers/:param/duty-sms/retry",
           "normalizedPath": "/fund-account-transfers/:param/duty-sms/retry",
@@ -13266,7 +13322,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 57,
+          "sourceLine": 69,
           "method": "POST",
           "path": "/fund-accounts/principal-returns/applications/:param/duty-sms/:param/retry",
           "normalizedPath": "/fund-accounts/principal-returns/applications/:param/duty-sms/:param/retry",
@@ -13280,7 +13336,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 57,
+          "sourceLine": 69,
           "method": "POST",
           "path": "/fund-accounts/registrations/:param/review/duty-sms/retry",
           "normalizedPath": "/fund-accounts/registrations/:param/review/duty-sms/retry",
@@ -13294,7 +13350,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 57,
+          "sourceLine": 69,
           "method": "POST",
           "path": "/payment-executions/:param/duty-sms/retry",
           "normalizedPath": "/payment-executions/:param/duty-sms/retry",
@@ -13308,7 +13364,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 57,
+          "sourceLine": 69,
           "method": "POST",
           "path": "/payments/:param/approval/duty-sms/retry",
           "normalizedPath": "/payments/:param/approval/duty-sms/retry",
@@ -13322,7 +13378,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 57,
+          "sourceLine": 69,
           "method": "POST",
           "path": "/settlements/:param/duty-sms/retry",
           "normalizedPath": "/settlements/:param/duty-sms/retry",
@@ -13336,7 +13392,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 57,
+          "sourceLine": 69,
           "method": "POST",
           "path": "/spot-procurement-payments/:param/duty-sms/retry",
           "normalizedPath": "/spot-procurement-payments/:param/duty-sms/retry",
@@ -13350,7 +13406,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 57,
+          "sourceLine": 69,
           "method": "POST",
           "path": "/upward-contract-amount-revisions/:param/duty-sms/retry",
           "normalizedPath": "/upward-contract-amount-revisions/:param/duty-sms/retry",
@@ -13364,7 +13420,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 57,
+          "sourceLine": 69,
           "method": "POST",
           "path": "/upward-receipt-matches/:param/duty-sms/retry",
           "normalizedPath": "/upward-receipt-matches/:param/duty-sms/retry",

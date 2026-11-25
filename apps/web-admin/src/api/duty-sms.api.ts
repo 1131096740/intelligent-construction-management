@@ -24,10 +24,9 @@ export interface DutySmsStatus {
   canRetry: boolean;
 }
 
-function path(domain: DutySmsDomain, id: string, dutyKey?: string) {
+function path(domain: Exclude<DutySmsDomain, "expense-claim-approvals">, id: string, dutyKey?: string) {
   const resource = encodeURIComponent(id);
   if (domain === "approval-progress") return `/approval-progress/${resource}/duty-sms`;
-  if (domain === "expense-claim-approvals") return `/expense-claims/${resource}/approval-duty-sms`;
   if (domain === "contract-bank-verifications") return `/contract-bank-verifications/${resource}/duty-sms`;
   if (domain === "contract-economic-reviews") return `/contract-economic-reviews/${resource}/duty-sms`;
   if (domain === "contract-proxy-executions") return `/contract-proxy-executions/${resource}/duty-sms`;
@@ -47,17 +46,17 @@ function path(domain: DutySmsDomain, id: string, dutyKey?: string) {
   throw new Error("短信待办业务类型无法核对");
 }
 
-function requestPath(domain: DutySmsDomain, id: string, dutyKey?: string, expectedApprovalInstanceId?: string, retry = false) {
-  const endpoint = path(domain, id, dutyKey) + (retry ? "/retry" : "");
-  if (domain !== "expense-claim-approvals") return endpoint;
+function expenseApprovalScope(expectedApprovalInstanceId?: string, dutyKey?: string) {
   if (!expectedApprovalInstanceId) throw new Error("当前费用审批轮次无法确认，请刷新状态");
   const scope = new URLSearchParams({ approvalInstanceId: expectedApprovalInstanceId });
   if (dutyKey !== undefined) scope.set("approvalDutyIndex", dutyKey);
-  return `${endpoint}?${scope}`;
+  return scope.toString();
 }
 
 export async function fetchDutySms(domain: DutySmsDomain, id: string, dutyKey?: string, expectedApprovalInstanceId?: string): Promise<DutySmsStatus | null> {
-  const response = await apiFetch(requestPath(domain, id, dutyKey, expectedApprovalInstanceId));
+  const response = await apiFetch(domain === "expense-claim-approvals"
+    ? `/expense-claims/${encodeURIComponent(id)}/approval-duty-sms?${expenseApprovalScope(expectedApprovalInstanceId, dutyKey)}`
+    : path(domain, id, dutyKey));
   if (!response.ok) return null;
   return ((await response.json()) as { notice: DutySmsStatus | null }).notice;
 }
@@ -67,7 +66,9 @@ export async function retryDutySms(domain: DutySmsDomain, id: string, attemptId:
     throw new Error("当前余额复核轮次无法确认，请刷新状态");
   }
   const body = domain === "fund-accounts/registrations" ? { attemptId, expectedApprovalInstanceId } : { attemptId };
-  const response = await apiFetch(requestPath(domain, id, dutyKey, expectedApprovalInstanceId, true), {
+  const response = await apiFetch(domain === "expense-claim-approvals"
+    ? `/expense-claims/${encodeURIComponent(id)}/approval-duty-sms/retry?${expenseApprovalScope(expectedApprovalInstanceId, dutyKey)}`
+    : `${path(domain, id, dutyKey)}/retry`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
   });
   if (!response.ok) {
