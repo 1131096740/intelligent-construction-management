@@ -4,7 +4,8 @@ umask 077
 
 [[ $# == 5 || ( $# == 6 && $6 == --current-320 ) ||
   ( ( $# == 6 || ( $# == 7 && $7 == --host-only ) ) &&
-    ( $6 == --text-direct-330 || $6 == --payment-remainder-331 ) ) ]] || exit 64
+    ( $6 == --text-direct-330 || $6 == --payment-remainder-331 ) ) ||
+  ( $# == 7 && $5 == general16 && $6 == --payment-remainder-331 && $7 == --a05 ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -77,6 +78,9 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$plan/procurement-entry.cjs,dst=/qualification/procurement-entry.cjs,readonly")
 if [[ -n $profile ]]; then
   args+=(--mount "type=bind,src=$profile,dst=/qualification/${profile##*/},readonly")
+fi
+if [[ ${7-} == --a05 ]]; then
+  args+=(--env JG_PROCUREMENT_A05=1)
 fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")

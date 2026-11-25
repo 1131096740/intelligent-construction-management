@@ -56,7 +56,15 @@ describePg("A05 综合采购同案身份与委托公开 HTTP / PostgreSQL 16", (
 
   beforeAll(async () => {
     const url = new URL(process.env.DATABASE_URL ?? "");
-    if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" || url.pathname !== "/general_procurement") {
+    const runId = process.env.JG_PROCUREMENT_OWNED_RUN_ID ?? "";
+    const orderedFixture = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u.test(runId)
+      && url.pathname === "/jg_task01_" + runId.replaceAll("-", "")
+      && url.username === "general_procurement_runtime"
+      && url.searchParams.get("sslmode") === "require"
+      && url.searchParams.get("sslaccept") === "strict"
+      && Boolean(url.searchParams.get("sslcert"));
+    if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1"
+        || (url.pathname !== "/general_procurement" && !orderedFixture)) {
       throw new Error("仅允许本机一次性采购测试数据库");
     }
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();

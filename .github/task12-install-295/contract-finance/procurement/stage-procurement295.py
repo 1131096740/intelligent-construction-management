@@ -380,6 +380,28 @@ if forward:
         if text.count(failure_anchor) != 1:
             raise ValueError('PROCUREMENT_329_GENERAL_FAILURE_OBSERVATION_ANCHOR')
         text = text.replace(failure_anchor, observation)
+        if count == 331:
+            supplement_anchor = '      reportSha256:createHash("sha256").update(report).digest("hex")};'
+            if text.count(supplement_anchor) != 1:
+                raise ValueError('PROCUREMENT_331_A05_ANCHOR')
+            text = text.replace(supplement_anchor, supplement_anchor + r'''
+    if(process.env.JG_PROCUREMENT_A05==="1"){
+      const api="/qualification/workspace/services/api";
+      const roots=path.join(api,"test-support");
+      const reportFile=path.join(workDir,"procurement-a05.json");
+      const result=require("node:child_process").spawnSync(process.execPath,[path.join(api,"node_modules/jest/bin/jest.js"),
+        "--runInBand","--roots",roots,"--runTestsByPath",path.join(roots,"task426-a05-general-procurement.http.pg.spec.ts"),
+        "--json","--outputFile",reportFile],{cwd:api,stdio:"ignore",timeout:180_000,env:{
+          PATH:"/usr/local/bin:/usr/bin:/bin",HOME:workDir,TMPDIR:workDir,NODE_ENV:"test",CI:"true",
+          DATABASE_URL:runtime.toString(),FILE_STORAGE_DRIVER:"local",FILE_STORAGE_ROOT:storage,
+          APPROVAL_SMS_ENABLED:"false",SMS_ENABLED:"false",RUN_GENERAL_PROCUREMENT_PG16:"1",JG_PROCUREMENT_OWNED_RUN_ID:runId
+        }});
+      const report=fs.existsSync(reportFile)?JSON.parse(fs.readFileSync(reportFile,"utf8")):null;
+      const assertion=report?.testResults?.[0]?.assertionResults?.[0]?.failureMessages?.join(" ")??"";
+      receipt.approvalA05={exit:result.status,signal:result.signal,passed:report?.numPassedTests,failed:report?.numFailedTests,
+        frame:/task426-a05-general-procurement[.]http[.]pg[.]spec[.]ts:(\d{1,5}):(\d{1,4})/u.exec(assertion)?.slice(1)};
+      condition(result.status===0&&report?.numTotalTests===1&&report?.numPassedTests===1,"PROCUREMENT_331_A05_JEST");
+    }''')
     write(consumer,text.encode())
 for name in ['owner-observation.cjs', *(
     ['project-scope-http-report.cjs', 'project-scope-browser-report.cjs', 'project-scope-browser-pins.json']
