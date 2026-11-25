@@ -1,3 +1,4 @@
+import * as ExcelJS from "exceljs";
 import { ForbiddenException } from "@nestjs/common";
 import {
   deriveSpotPaymentCurrentTask,
@@ -443,7 +444,7 @@ function buildFixture() {
     resolvePaymentViewAccess: jest.fn().mockResolvedValue("allowed"),
     accessibleProcurementIds: jest.fn((procurementIds: string[]) =>
       Promise.resolve(
-        new Set(
+        new Set<string>(
           procurementIds.filter(
             (procurementId) => procurementId === "procurement-1"
           )
@@ -1289,6 +1290,51 @@ describe("SpotProcurementReadService", () => {
     await expect(service.createProjectOptions("material-1")).resolves.toEqual([
       { id: "project-1", code: "XM-001", name: "一号项目" }
     ]);
+  });
+
+  it("exports all filtered procurement pages within the same row-level scope", async () => {
+    const fixture = buildFixture();
+    const audit = { record: jest.fn() };
+    fixture.prisma.spotProcurement.findMany.mockResolvedValue([
+      procurementRow(),
+      procurementRow({ id: "procurement-2", code: "LXCG-2026-002", currentVersionId: "version-2" }),
+      procurementRow({ id: "procurement-denied", code: "LXCG-2026-003", currentVersionId: "version-denied" }),
+      procurementRow({ id: "procurement-closed", code: "LXCG-2026-004", currentVersionId: "version-closed", status: "closed" })
+    ]);
+    fixture.prisma.spotProcurementVersion.findMany.mockResolvedValue([
+      versionRow({ reason: "=1+2 现场补料" }),
+      versionRow({ id: "version-2", procurementId: "procurement-2", reason: "正常采购" })
+    ]);
+    fixture.access.accessibleProcurementIds.mockImplementation(async (ids: string[]) =>
+      new Set(ids.filter(id => id !== "procurement-denied")));
+    const service = new SpotProcurementReadService(
+      fixture.prisma as never, fixture.visibility as never, fixture.access as never, fixture.pilot as never,
+      undefined, undefined, audit as never
+    );
+    const filters = { status: "approved_in_progress", pageSize: "1", columns: "reason" };
+    const first = await service.listProcurements("finance-1", { ...filters, page: "1" });
+    const second = await service.listProcurements("finance-1", { ...filters, page: "2" });
+    const codes = [...first.items, ...second.items].map(row => row.code);
+    expect(first.items).toHaveLength(1);
+    expect(second.items).toHaveLength(1);
+    expect(codes).toEqual(["LXCG-2026-001", "LXCG-2026-002"]);
+
+    const exported = await service.exportLedger("finance-1", { ...filters, page: "1" });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(exported.buffer as unknown as ExcelJS.Buffer);
+    const sheet = workbook.getWorksheet("零星采购台账");
+    if (!sheet) throw new Error("缺少零星采购台账工作表");
+    expect(sheet.rowCount).toBe(3);
+    expect([1, 2, 3].map(column => sheet.getRow(1).getCell(column).value))
+      .toEqual(["采购编号", "项目", "采购内容与用途"]);
+    expect([2, 3].map(index => sheet.getRow(index).getCell(1).value)).toEqual(codes);
+    expect([2, 3].map(index => sheet.getRow(index).getCell(3).value))
+      .toEqual(["'=1+2 现场补料", "正常采购"]);
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      actorUserId: "finance-1",
+      action: "spot_procurement.ledger.export",
+      metadata: expect.objectContaining({ exportedRows: 2 })
+    }));
   });
 
   it("returns only centrally-authorized procurement rows and serializes money facts", async () => {

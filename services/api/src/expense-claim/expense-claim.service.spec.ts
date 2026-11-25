@@ -1,3 +1,4 @@
+import * as ExcelJS from "exceljs";
 import { Test } from "@nestjs/testing";
 import { RetiredWriteEntryGuard } from "../retired-write-entry/retired-write-entry.guard";
 import { FileService } from "../file/file.service";
@@ -50,6 +51,59 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
   const service = new ExpenseClaimService(prisma as never, numbering as never, audit as never, options?.auth as never, visibility as never, options?.files as never, options?.approvalForms as never, options?.projectFunding as never, options?.operatingSources as never, undefined, options?.fundingNotifications as never);
   return { service, tx, prisma, numbering, audit, visibility };
 }
+
+it("exports every filtered expense ledger row visible to the employee", async () => {
+  const { service, tx, audit } = createHarness({ roles: ["employee"] });
+  const claim = {
+    claimType: "reimbursement",
+    status: "approved_pending_payment",
+    projectId: "project-1",
+    handledByUserId: "actor",
+    applicantUserId: "actor",
+    applicantNameSnapshot: "合成报销人",
+    companyEntityNameSnapshot: "合成报销单位",
+    requestedAmountCents: 800n,
+    fundedAmountCents: 0n,
+    loanOffsetAmountCents: 0n,
+    companyPayableAmountCents: 800n,
+    updatedAt: new Date("2026-11-25T00:00:00Z")
+  };
+  const rows = [
+    { ...claim, id: "claim-1", code: "BX-001", reason: "=1+2 同批台账" },
+    { ...claim, id: "claim-2", code: "BX-002", reason: "同批台账正常报销" },
+    { ...claim, id: "claim-other-keyword", code: "BX-003", reason: "其他批次" },
+    { ...claim, id: "claim-other-user", code: "BX-004", reason: "同批台账无权查看",
+      applicantUserId: "outsider", handledByUserId: "outsider" }
+  ];
+  tx.expenseClaim.findMany.mockImplementation(async ({ where }: { where: { OR: Array<Record<string, string>> } }) =>
+    rows.filter(row => where.OR.some(ownership => Object.entries(ownership).every(([key, value]) =>
+      row[key as keyof typeof row] === value))));
+  tx.project.findMany.mockResolvedValue([{ id: "project-1", code: "XM-001", name: "一号项目" }]);
+
+  const filters = { keyword: "同批台账", pageSize: "1", columns: "reason" };
+  const first = await service.listLedger("actor", { ...filters, page: "1" });
+  const second = await service.listLedger("actor", { ...filters, page: "2" });
+  expect(first.pagination.total).toBe(2);
+  expect(first.rows.map(row => row.code)).toEqual(["BX-001"]);
+  expect(second.rows.map(row => row.code)).toEqual(["BX-002"]);
+
+  const exported = await service.exportLedger("actor", { ...filters, page: "1" });
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(exported.buffer as unknown as ExcelJS.Buffer);
+  const sheet = workbook.getWorksheet("费用与报销台账");
+  if (!sheet) throw new Error("缺少费用与报销台账工作表");
+  const header = sheet.getRow(1);
+  expect([1, 2, 3, 4, 5, 6].map(column => header.getCell(column).value))
+    .toEqual(["报销编号", "项目或使用单位", "报销单位", "报销人/借款人", "事由", "申请金额（元）"]);
+  expect([2, 3].map(index => sheet.getRow(index).getCell(1).value)).toEqual(["BX-001", "BX-002"]);
+  expect([2, 3].map(index => sheet.getRow(index).getCell(5).value))
+    .toEqual(["'=1+2 同批台账", "同批台账正常报销"]);
+  expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+    actorUserId: "actor",
+    action: "expense_claim.ledger.export",
+    metadata: expect.objectContaining({ exportedRows: 2 })
+  }));
+});
 
 async function expectParticipantSerializationBoundary(
   makeHarness: () => ReturnType<typeof createHarness>,
