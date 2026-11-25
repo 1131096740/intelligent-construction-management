@@ -13,6 +13,8 @@
   "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts": "09696483f30a672b0bc148f5b078ea09f6c82f9219beadaaab0a425abfc37a50",
   "services/api/src/general-procurement/general-procurement-request-access.ts": "dbc611ed6488fa32c8794a0244a087e5239b2fd22117704ba38fbd2c0bbeb456",
   "services/api/src/me/me.service.ts": "1f31e938cc1e120cab49cb6c2758360266defc6969c959691453f23764c02781",
+  "services/api/src/organization/permission-impact.service.spec.ts": "4f02a58903a661173cd02d680b2099c76a1f19bfeb26b18c5330dfa377397814",
+  "services/api/src/organization/permission-impact.service.ts": "2fd9fdc649f5933db12858710a66e64c684a42b0d013fefeaf21c749ce434467",
   "services/api/src/payment/dto/withdraw-payment-remainder.dto.ts": "7bbe51a83d5902082e3a3a01a6859fcf1e831fa2175ae3826a959f82b9c171b8",
   "services/api/src/payment/payment-read.service.ts": "7dd6c207314a70ed0e540c0e893cc1102abeb1d74385362a877eb344ff90c15b",
   "services/api/src/payment/payment-request.service.spec.ts": "4ccfa66cac417d3594008af2e40881febeafdc31fa572b913bbfc901864e5ed8",

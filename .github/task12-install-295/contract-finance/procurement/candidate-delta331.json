@@ -55,6 +55,16 @@
     "candidate": "1f31e938cc1e120cab49cb6c2758360266defc6969c959691453f23764c02781"
   },
   {
+    "path": "services/api/src/organization/permission-impact.service.spec.ts",
+    "expected": "96de27b5bbceb11fbf93b358193455268d3d7ea6b581c0bf121293fac689878b",
+    "candidate": "4f02a58903a661173cd02d680b2099c76a1f19bfeb26b18c5330dfa377397814"
+  },
+  {
+    "path": "services/api/src/organization/permission-impact.service.ts",
+    "expected": "eb164797a1b4e22e983df5c5e61e01b39b412da681a3a4a620a49b6c479b2391",
+    "candidate": "2fd9fdc649f5933db12858710a66e64c684a42b0d013fefeaf21c749ce434467"
+  },
+  {
     "path": "services/api/src/payment/payment-read.service.ts",
     "expected": "7d2378c22ec148759df4848beb7ddc684537735390815d112eb4cda3170d9197",
     "candidate": "7dd6c207314a70ed0e540c0e893cc1102abeb1d74385362a877eb344ff90c15b"
