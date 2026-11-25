@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 ) ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 ) ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -20,9 +20,8 @@ const [sourceFile,sha,profilesFile,lane,terminalFile,mode]=process.argv.slice(2)
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||!Object.hasOwn(require(profilesFile).profiles,lane))process.exit(65);
 if(mode!==undefined) {
-  const textDirect=mode==='--text-direct-330';
-  const count=textDirect?330:329;
-  if(source.mode!==(textDirect?'text-direct-330':'current-320')||source.migrationCount!==count||source.predecessor?.migrationCount!==295||
+  const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331}[mode];
+  if(source.mode!==mode.slice(2)||source.migrationCount!==count||source.predecessor?.migrationCount!==295||
      source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==count-295) process.exit(65);
 } else if(source.migrationCount!==295||source.ledgerSha256!==terminal.final) process.exit(65);
 JS
@@ -67,7 +66,7 @@ done < "$work/fixture-mounts.tsv"
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 count=295
-case "${6:-}" in --current-320) count=329;; --text-direct-330) count=330;; esac
+case "${6:-}" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; esac
 printf '%s\n' "假设原 $lane 业务断言和迁移状态在同一 $count 隔离库通过。观察 settlement、combinedAfterBusiness 和 cleanup。" > "$work/hypothesis.txt"
 printf '%s\n' "$work"
 status=0
