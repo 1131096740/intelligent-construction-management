@@ -105,6 +105,24 @@ pg("费用报销并联逐人入队及退回修改持久化", async () => {
     ]));
     const ids = rows.map(row => JSON.stringify(row.metadata));
     expect(new Set(ids).size).toBe(rows.length);
+    probe.enable();
+    await expenses.afterCommit();
+    const financeDuty = await expenses.approvalStatus(first.claim.id, reviewer.id, 0);
+    const projectDuty = await expenses.approvalStatus(first.claim.id, reviewer.id, 1);
+    expect(financeDuty).toMatchObject({ status: "failed", canRetry: true });
+    expect(projectDuty).toMatchObject({ status: "failed", canRetry: true });
+    expect(projectDuty!.attemptId).not.toBe(financeDuty!.attemptId);
+    expect(probe.sends.filter(phone => phone === reviewer.phone)).toHaveLength(2);
+    await expect(expenses.retryApproval(first.claim.id, reviewer.id, financeDuty!.attemptId, 1))
+      .rejects.toThrow("短信记录已更新");
+    probe.setOutcome("accepted");
+    expect(await expenses.retryApproval(first.claim.id, reviewer.id, financeDuty!.attemptId, 0))
+      .toMatchObject({ status: "accepted", canRetry: false });
+    expect(await expenses.retryApproval(first.claim.id, reviewer.id, projectDuty!.attemptId, 1))
+      .toMatchObject({ status: "accepted", canRetry: false });
+    expect(probe.sends.filter(phone => phone === reviewer.phone)).toHaveLength(4);
+    probe.disable();
+
     const reject = async ({ claim, round }: typeof first) => {
       const result = await service.review(claim.id, reviewer.id, { decision: "reject", comment: "补充合成材料",
         approvalInstanceId: round.id, approvalDutyIndex: 0 });
@@ -123,6 +141,23 @@ pg("费用报销并联逐人入队及退回修改持久化", async () => {
       status: (key, actor) => expenses.approvalStatus(key, actor), retry: (key, actor, attempt) => expenses.retryApproval(key, actor, attempt),
       queueUnknown: async () => { const unknown = await createCase(); await reject(unknown); return unknown.claim.id; }
     });
+    const resubmitted = await createCase();
+    await reject(resubmitted);
+    await db.$transaction(async tx => {
+      const next = await tx.approvalInstance.create({ data: {
+        businessType: resubmitted.round.businessType, businessId: resubmitted.claim.id,
+        flowType: resubmitted.round.flowType, applicantUserId: resubmitted.round.applicantUserId,
+        status: "in_progress", currentNodeIndex: 0, frozenNodes: resubmitted.round.frozenNodes as Prisma.InputJsonValue
+      } });
+      await tx.expenseClaim.update({ where: { id: resubmitted.claim.id }, data: {
+        status: "approval_pending", approvalInstanceId: next.id, companyPayableAmountCents: 100n
+      } });
+    });
+    const before = probe.sends.length;
+    probe.enable();
+    await expenses.afterCommit();
+    expect(probe.sends).toHaveLength(before);
+    expect(await db.auditLog.count({ where: { ...queued(resubmitted.claim.id), action: "cancelled" } })).toBe(1);
   } finally { await db.$disconnect(); }
 }, 30_000);
 

@@ -1,7 +1,7 @@
 import { ExpenseClaimFundingNotificationService } from "./expense-claim-funding-notification.service";
 import { RetryDutyNotificationDto } from "../approval/retry-duty-notification.dto";
 import { DeleteExpenseClaimDraftDto } from "./dto/delete-expense-claim-draft.dto";
-import { BadRequestException, Body, Controller, Get, GoneException, Optional, Param, Patch, Post, Query, Res, StreamableFile, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, GoneException, Optional, Param, ParseIntPipe, Patch, Post, Query, Res, StreamableFile, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
@@ -18,6 +18,10 @@ import { ledgerExportHeaders } from "../core-flow/business-ledger-export";
 import { ExpenseClaimService } from "./expense-claim.service";
 
 const RETIRED_LOAN_CASH = "员工借款资金办理已停止";
+const approvalDutyIndexPipe = new ParseIntPipe({
+  optional: true,
+  exceptionFactory: () => new BadRequestException("审批职责编号无效，请刷新")
+});
 
 @Controller("expense-claims")
 export class ExpenseClaimController {
@@ -279,14 +283,31 @@ export class ExpenseClaimController {
   }
 
   @Get(":claimId/approval-duty-sms")
-  async approvalDutySmsStatus(@Param("claimId") id: string, @CurrentUser() user: AuthenticatedUser) {
-    return { notice: await this.dutyNotifications?.approvalStatus(id, user.id) ?? null };
+  async approvalDutySmsStatus(
+    @Param("claimId") id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("approvalDutyIndex", approvalDutyIndexPipe) approvalDutyIndex?: number
+  ) {
+    this.assertApprovalDutyIndex(approvalDutyIndex);
+    return { notice: await this.dutyNotifications?.approvalStatus(id, user.id, approvalDutyIndex) ?? null };
   }
 
   @Post(":claimId/approval-duty-sms/retry")
-  retryApprovalDutySms(@Param("claimId") id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: RetryDutyNotificationDto) {
+  retryApprovalDutySms(
+    @Param("claimId") id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: RetryDutyNotificationDto,
+    @Query("approvalDutyIndex", approvalDutyIndexPipe) approvalDutyIndex?: number
+  ) {
     if (!this.dutyNotifications) throw new BadRequestException("短信通知暂不可用");
-    return this.dutyNotifications.retryApproval(id, user.id, body.attemptId);
+    this.assertApprovalDutyIndex(approvalDutyIndex);
+    return this.dutyNotifications.retryApproval(id, user.id, body.attemptId, approvalDutyIndex);
+  }
+
+  private assertApprovalDutyIndex(value?: number) {
+    if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+      throw new BadRequestException("审批职责编号无效，请刷新");
+    }
   }
 
   @Post(":claimId/disbursements")
