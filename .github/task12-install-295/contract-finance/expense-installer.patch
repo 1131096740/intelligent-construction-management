@@ -297,7 +297,7 @@
        }
      }
      let cleanupLegacy;
-@@ -835,16 +972,17 @@
+@@ -835,22 +972,23 @@
            throw error;
          }
          current=await jsonSql(control.inspectSql());
@@ -311,6 +311,14 @@
            need(digest==='3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2' &&
              equal(await jsonSql(finalSql),final),'TEXT_DIRECT_329_PREDECESSOR_CONTINUITY');
            receipt.textDirectPredecessor={count:329,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true};
+         }
+-        if (forward320.paymentRemainder && current.ledger.length===330) {
+-          const digest=hash(JSON.stringify(current.ledger));
++        if (forward320.paymentRemainder && qualifiedLedger.length===330) {
++          const digest=hash(JSON.stringify(qualifiedLedger));
+           need(digest==='12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f' &&
+             equal(await jsonSql(finalSql),final),'PAYMENT_REMAINDER_330_PREDECESSOR_CONTINUITY');
+           receipt.paymentRemainderPredecessor={count:330,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true};
          }
        }
 -      receipt.forward320={count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
@@ -390,10 +398,10 @@
      receipt.adjacentPostconsume={count:289,exactB7:true};
      receipt[resultKey]=result;
    },outsideRelease);
-@@ -1423,3 +1569,44 @@
-   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,true),'cleanup');
+@@ -1423,3 +1569,47 @@
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'cleanup');
  module.exports.withCombined330MultiWitnessForProfile=(receipt,consume,material)=>
-   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,true),'profile');
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'profile');
 +module.exports.withExpense295 = (receipt,lane,material) => {
 +  need(['execution','finance','receipt'].includes(lane) && receipt.lane===lane,'EXPENSE_295_LANE');
 +  const mode=receipt.purpose;
@@ -401,9 +409,12 @@
 +    'ORIGINAL_EXPENSE_HISTORICAL_NEGATIVES_295_SOURCE','ORIGINAL_EXPENSE_295_SAME_INSTANCE_RECOVERY_ONLY'].includes(mode),
 +    'EXPENSE_295_MODE');
 +  if(mode==='ORIGINAL_EXPENSE_295_SAME_INSTANCE_RECOVERY_ONLY') need(Object.hasOwn(expenseRecoveryProfiles,lane),'EXPENSE_295_RECOVERY_LANE');
-+  const install=material
-+    ? (material.mode==='text-direct-330' ? module.exports.withCombined330TextAgreement : module.exports.withCombined320ContractPayment)
-+    : module.exports.withCombined295MultiWitness;
++  const install=material ? ({
++    'current-320':module.exports.withCombined320ContractPayment,
++    'text-direct-330':module.exports.withCombined330TextAgreement,
++    'payment-remainder-331':module.exports.withCombined331PaymentRemainder,
++  })[material.mode] : module.exports.withCombined295MultiWitness;
++  need(typeof install==='function','EXPENSE_295_INSTALL_MODE');
 +  need(!material || mode!=='ORIGINAL_EXPENSE_HISTORICAL_NEGATIVES_295_SOURCE','EXPENSE_320_NEGATIVE_MUST_RETAIN_HISTORY');
 +  return install(receipt,async context=>{
 +    if(mode==='ORIGINAL_EXPENSE_295_APPLICATION_ONLY') {

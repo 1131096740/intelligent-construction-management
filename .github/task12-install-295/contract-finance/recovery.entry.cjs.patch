@@ -1,13 +1,13 @@
 --- entry.cjs
 +++ entry.cjs
-@@ -2,23 +2,37 @@
+@@ -2,23 +2,39 @@
  const assert=require('node:assert/strict');
  const lane=process.argv[2];
  assert.ok(process.argv.length===3 && ['execution','finance'].includes(lane));
 -const receipt={schemaVersion:1,purpose:'ORIGINAL_EXPENSE_290_SAME_INSTANCE_RECOVERY_ONLY',lane,business:'NOT_ENTERED',stages:[]};
 +const source=require('./contract-finance-source.json');
-+const forward=source.mode==='current-320'||source.mode==='text-direct-330';
-+const count=source.mode==='text-direct-330'?330:forward?329:295;
++const count=source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
++const forward=count>295;
 +const material=forward?{mode:source.mode,sourceTree:source.sourceTree,
 +  migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails}:undefined;
 +const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:'ORIGINAL_EXPENSE_295_SAME_INSTANCE_RECOVERY_ONLY',lane,business:'NOT_ENTERED',stages:[]};
@@ -29,6 +29,8 @@
 +    assert.equal(receipt.forward320?.sameBaseB7,true);
 +    assert.equal(receipt.forward320?.sourceTree,source.sourceTree);
 +    assert.equal(receipt.forward320?.ledgerSha256,source.ledgerSha256);
++    assert.equal(receipt.forward320?.recoveryLedger?.count,count+1);
++    assert.match(receipt.forward320?.recoveryLedger?.sha256,/^[0-9a-f]{64}$/u);
 +  }
    assert.equal(receipt.business,'CALLBACK_COMPLETED');
    assert.equal(receipt.expenseRecovery?.PrismaResolve,true);

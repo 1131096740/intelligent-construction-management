@@ -5,7 +5,7 @@
    "receipt": {
      "spec": "project-expense-receipt-concurrency.spec.ts",
 -    "sha256": "c54a84a4b522b1ed999db844ecbf644da094b0a225eeb6904e16e23c210ffdd7",
-+    "sha256": "c23d5c5b934011ff4381792ad72fba6fd9ca9b38f0c7a6f7ccc67e3dd9aa9eb9",
++    "sha256": "d7aa7bc7c0ad104a96fe496b8ad4d5e10556b800db4a7949030e9522d9652ab8",
      "runFlag": "RUN_PROJECT_EXPENSE_RECEIPT_CONCURRENCY",
      "runIdKey": "TASK_RECEIPT_282_RUN_ID"
    }

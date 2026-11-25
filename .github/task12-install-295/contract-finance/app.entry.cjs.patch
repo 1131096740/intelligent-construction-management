@@ -8,8 +8,8 @@
 -Promise.resolve().then(()=>require('./installer.cjs').withOutside290Fresh(receipt,lane)).then(()=>{
 -  assert.equal(receipt.installOnly290?.count,290);
 +const source=require('./contract-finance-source.json');
-+const forward=source.mode==='current-320'||source.mode==='text-direct-330';
-+const count=source.mode==='text-direct-330'?330:forward?329:295;
++const count=source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
++const forward=count>295;
 +const material=forward?{mode:source.mode,sourceTree:source.sourceTree,
 +  migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails}:undefined;
 +const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:'ORIGINAL_EXPENSE_295_APPLICATION_ONLY',lane,business:'NOT_ENTERED',stages:[]};
