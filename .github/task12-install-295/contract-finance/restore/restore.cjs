@@ -7,7 +7,7 @@ const {spawnSync}=require('node:child_process');
 const {pgDumpArgs,classifyArchive}=require('./archive-contract.cjs');
 const {key,operatingVerifier,operatingContext}=require('./technical-relations.json');
 const {legacy,successor,textDirect}=require('./restore-profile.cjs');
-const {paymentRowsSql,paymentRows,paymentCatalogSql,paymentCatalog}=require('./text-direct-330.cjs');
+const {paymentRowsSql,paymentRows,paymentCatalogChecks}=require('./text-direct-330.cjs');
 const {scope,exactCatalog,catalogSql}=require('./successor.cjs');
 const notice=require('./terminal.cjs');
 const payout=require('./payout-terminal.cjs');
@@ -293,9 +293,9 @@ function importAsNamedBackup(sql,invoke,tables,sequences,dataArchive,dataList,pr
   return {role:backupRole,tls:true,restoredTables:tables.length,restoredSequences:sequences.length,targetWritesRevoked:true};
 }
 
-async function restoreBusinessDatabase(context,credentials,enter,forward320,historicalPayment295) {
-  const profile=historicalPayment295?textDirect:forward320?successor:legacy;
-  assert.equal(forward320?.count===330,Boolean(historicalPayment295),'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
+async function restoreBusinessDatabase(context,credentials,enter,forward320,textDirectInputs) {
+  const profile=textDirectInputs?textDirect:forward320?successor:legacy;
+  assert.equal(forward320?.count===330,Boolean(textDirectInputs),'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
   const expectedTree=forward320?.sourceTree ?? scope.tree;
   assert.match(expectedTree,/^[a-f0-9]{40}$/u);
   const {technical}=profile;
@@ -314,16 +314,27 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,hist
   const expectedHistory=readBusinessHistory(statement=>sql(owner,source,statement));
   validateHistory(expectedHistory);
   const before=businessFingerprint(sql,source,business);
-  const paymentProof=historicalPayment295 ? readTextDirect330(source) : undefined;
+  let paymentChecks;
+  if(textDirectInputs) {
+    const {terminal}=textDirectInputs;
+    paymentChecks=paymentCatalogChecks(fs.readFileSync('/qualification/current320/migrations/'+terminal.name+'/migration.sql'),
+      terminal.sha256);
+  }
+  const paymentProof=paymentChecks?readTextDirect330(source):undefined;
   function readTextDirect330(db) {
     const historical=paymentRows(sql(owner,db,paymentRowsSql(true)),true);
-    assert.deepEqual(historical,historicalPayment295,'BACKUP330_HISTORICAL_PAYMENTS_CHANGED');
-    return {historical,ddlAclSha256:paymentCatalog(sql(owner,db,paymentCatalogSql))};
+    assert.deepEqual(historical,textDirectInputs.historical,'BACKUP330_HISTORICAL_PAYMENTS_CHANGED');
+    return {historical,ddlAclSha256:paymentChecks.parse(sql(owner,db,paymentChecks.sql)),
+      ...(paymentChecks.allocationWriterSha256?{allocationWriterSha256:paymentChecks.allocationWriterSha256}:{})};
   }
   function verifyTextDirect330NamedDenials(db) {
     for (const role of [backupRole,bankRuntime]) {
       sql(role,db,"SELECT * FROM public.jg_read_text_payment_agreement_v1('missing','missing','missing','missing');",
         /42501:[^\n]*permission denied for function jg_read_text_payment_agreement_v1/u);
+      if(paymentChecks.allocationWriterSha256) {
+        sql(role,db,"SELECT public.jg_append_text_payment_allocation_v1('missing');",
+          /42501:[^\n]*permission denied for function jg_append_text_payment_allocation_v1/u);
+      }
     }
   }
   assert.equal(sql(owner,source,`SELECT NOT EXISTS (SELECT FROM pg_database WHERE datname='${restoreDb}');`),'t','BACKUP292_DESTINATION_EXISTS');

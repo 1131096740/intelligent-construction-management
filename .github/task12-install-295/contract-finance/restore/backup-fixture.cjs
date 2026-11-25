@@ -87,7 +87,7 @@ async function runNamedBackup(context,receipt,namedRoles,forward320,textDirectSo
   const named=await namedRoles(context);
   try {
     receipt.restore=await restoreBusinessDatabase(context,named.credentials,enter,forward320,
-      textDirectSource?receipt.historicalPayment295:undefined);
+      textDirectSource?{historical:receipt.historicalPayment295,terminal:textDirectSource.tails.at(-1)}:undefined);
     assert.equal(receipt.restore.businessTables,profile.businessCount);
     assert.equal(receipt.restore.restoredDataPayloads,profile.businessCount);
     assert.equal(receipt.restore.protectedTables,profile.technical.length);

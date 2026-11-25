@@ -2,6 +2,7 @@
 
 const assert=require('node:assert/strict');
 const {createHash}=require('node:crypto');
+const sha256=bytes=>createHash('sha256').update(bytes).digest('hex');
 
 const historicalColumns=['id','projectId','settlementId','sourceType','contractId','contractVersionId','paymentTermsVersionId',
   'paymentTermsStageId','code','status','requestedAmountCents','approvedAmountCents','paidAmountCents','paymentMatter',
@@ -20,11 +21,11 @@ function paymentRows(raw,includeNewColumn) {
   return {count:result.count,sha256:result.sha256};
 }
 
-const routines=[
-  ['jg_guard_payment_text_agreement_v1()','ad1a4d63d54439361a70aba1283c00577b41d86435e711c35883e883cc7167ef',false,false,false],
-  ['jg_read_text_payment_agreement_v1(text,text,text,text)','19b590b39f0bc954449f1e882c6e8daf0deb89baef8b1697453e9073e7ca1aa2',true,true,true],
-  ['jg_freeze_signed_payment_agreement_v1()','afc3ec3ce0ccd4e6985c1113247bf4e869b1bf31fd59230f1b6a78694bb944bf',true,false,false],
-  ['jg_guard_approved_request_payment_allocation_v1()','e8b2350cfaaf33545eba96c6c1f287ff8f2e4ebf85055ceb08ef695c39baa786',false,false,false]
+const originalRoutines=[
+  ['jg_guard_payment_text_agreement_v1()','ad1a4d63d54439361a70aba1283c00577b41d86435e711c35883e883cc7167ef',false,false,false,'trigger'],
+  ['jg_read_text_payment_agreement_v1(text,text,text,text)','19b590b39f0bc954449f1e882c6e8daf0deb89baef8b1697453e9073e7ca1aa2',true,true,true,'text'],
+  ['jg_freeze_signed_payment_agreement_v1()','afc3ec3ce0ccd4e6985c1113247bf4e869b1bf31fd59230f1b6a78694bb944bf',true,false,false,'trigger'],
+  ['jg_guard_approved_request_payment_allocation_v1()','e8b2350cfaaf33545eba96c6c1f287ff8f2e4ebf85055ceb08ef695c39baa786',false,false,false,'trigger']
 ];
 const triggers=[
   ['PaymentRequest','jg_guard_payment_text_agreement','jg_guard_payment_text_agreement_v1',23,null],
@@ -33,7 +34,8 @@ const triggers=[
   ['PaymentExecutionAllocation','jg_guard_approved_request_payment_allocation','jg_guard_approved_request_payment_allocation_v1',7,'new."stageType" IS NULL']
 ];
 const checkNames=['PaymentRequest_text_agreement_shape_check','PaymentExecutionAllocation_settlement_required_check'];
-const paymentCatalogSql=`
+const allocationWriter='jg_append_text_payment_allocation_v1';
+const paymentCatalogSql=routines=>`
   WITH routines(signature,ordinal) AS (VALUES ${routines.map(([sig],i)=>"('public."+sig+"',"+i+")").join(',')}),
   triggers(relation,name,ordinal) AS (VALUES ${triggers.map(([relation,name],i)=>"('public.\""+relation+"\"'::regclass,'"+name+"',"+i+")").join(',')})
   SELECT jsonb_build_object(
@@ -53,7 +55,7 @@ const paymentCatalogSql=`
       FROM triggers wanted JOIN pg_trigger t ON t.tgrelid=wanted.relation AND t.tgname=wanted.name
       JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_proc p ON p.oid=t.tgfoid JOIN pg_namespace n ON n.oid=p.pronamespace),
     'routines',(SELECT jsonb_agg(jsonb_build_array(encode(sha256(convert_to(p.prosrc,'UTF8')),'hex'),
-      p.prosecdef,p.proisstrict,p.proretset,p.proconfig=ARRAY['search_path=pg_catalog, public, pg_temp'],
+      p.prosecdef,p.proisstrict,p.proretset,format_type(p.prorettype,NULL),cardinality(p.proconfig)=1 AND regexp_replace(p.proconfig[1],'[[:space:]]','','g')='search_path=pg_catalog,public,pg_temp',
       p.proowner=10 AND l.lanname='plpgsql' AND p.provolatile=CASE WHEN p.proretset THEN 's' ELSE 'v' END::"char",
       NOT EXISTS(SELECT FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
         WHERE a.grantee<>p.proowner OR a.grantor<>p.proowner),
@@ -62,7 +64,7 @@ const paymentCatalogSql=`
       FROM routines wanted JOIN pg_proc p ON p.oid=to_regprocedure(wanted.signature) JOIN pg_language l ON l.oid=p.prolang)
   );`;
 
-function paymentCatalog(raw) {
+function paymentCatalog(raw,routines) {
   const catalog=JSON.parse(raw);
   assert.deepEqual(catalog.columns,[
     ['PaymentExecutionAllocation','stageType','text',false,true,null],
@@ -76,7 +78,27 @@ function paymentCatalog(raw) {
     [table,name,routine,type,definition?.match(/ WHEN \({1,2}(new\."stageType" IS (?:NOT )?NULL)\){1,2} EXECUTE FUNCTION /u)?.[1] ?? definition,active]),
     triggers.map(row=>[...row,true]),'BACKUP330_ACTIVE_PAYMENT_TRIGGERS');
   assert.deepEqual(catalog.routines,routines.map(row=>[...row.slice(1),true,true,true,true]),'BACKUP330_PAYMENT_ROUTINES_ACL');
-  return createHash('sha256').update(JSON.stringify(catalog)).digest('hex');
+  return sha256(JSON.stringify(catalog));
 }
 
-module.exports={paymentRowsSql,paymentRows,paymentCatalogSql,paymentCatalog};
+function paymentCatalogChecks(terminalSql,expectedSha256) {
+  assert.equal(sha256(terminalSql),expectedSha256,'BACKUP330_PAYMENT_CATALOG_MIGRATION_INPUT');
+  const sql=terminalSql.toString('utf8');
+  const routines=[...originalRoutines];
+  let allocationWriterSha256;
+  if(sql.includes(allocationWriter)) {
+    const definitions=[...sql.matchAll(/CREATE FUNCTION public\.jg_append_text_payment_allocation_v1\(execution_id text\) RETURNS void\nLANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS \$\$([\s\S]*?)\$\$;/gu)];
+    const revoke='REVOKE ALL ON FUNCTION public.jg_append_text_payment_allocation_v1(text) FROM PUBLIC;';
+    assert.equal(definitions.length,1,'BACKUP330_PAYMENT_ALLOCATION_WRITER_SOURCE');
+    assert.equal(sql.split(revoke).length,2,'BACKUP330_PAYMENT_ALLOCATION_WRITER_PUBLIC_DENY');
+    allocationWriterSha256=sha256(definitions[0][1]);
+    routines.push([allocationWriter+'(text)',allocationWriterSha256,true,false,false,'void']);
+  }
+  return {
+    sql:paymentCatalogSql(routines),
+    parse:raw=>paymentCatalog(raw,routines),
+    allocationWriterSha256
+  };
+}
+
+module.exports={paymentRowsSql,paymentRows,paymentCatalogChecks};

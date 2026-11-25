@@ -4,6 +4,8 @@ const {readFileSync,writeFileSync,statSync}=require('node:fs');
 const {scope}=require('../common/successor.cjs');
 const {legacy,successor,textDirect}=require('./restore-profile.cjs');
 const profile330=require('../text-direct-330-profile.cjs');
+const path=require('node:path');
+const {paymentCatalogChecks}=require('./text-direct-330.cjs');
 const current=process.argv[7]?require(process.argv[7]):undefined;
 const textDirect330=current?.mode==='text-direct-330';
 const count=textDirect330?330:current?329:295;
@@ -51,6 +53,10 @@ function qualified(row,mode){
       return false;
     }
     const proof=data?.textDirect330;
+    const terminal=current.tails.at(-1);
+    const migration=path.join(path.dirname(process.argv[7]),'prepared/context/workspace/services/api/prisma/migrations',terminal.name,'migration.sql');
+    const {allocationWriterSha256}=paymentCatalogChecks(readFileSync(migration),terminal.sha256);
+    if(proof?.allocationWriterSha256!==allocationWriterSha256) return false;
     if(!exactlyTrue(proof,['oldColumnProjectionMatched','newColumnNull','sourceAndRestoredCatalogMatched','sourceAndRestoredNamedExecutionDenied'])||
       !positive(proof.historical?.count)||proof.historical.count!==row.historicalPayment295?.count||
       !/^[a-f0-9]{64}$/u.test(proof.historical.sha256)||proof.historical.sha256!==row.historicalPayment295?.sha256||
