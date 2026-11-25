@@ -7,7 +7,7 @@ const { randomBytes } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { admitSource } = require('./install-only292.cjs');
 const {
-  withCombined320ContractPayment, withCombined330TextAgreement, withCombined331PaymentRemainder
+  withCombined320ContractPayment, withCombined330TextAgreement, withCombined331PaymentRemainder, withCombined332UpwardArchive
 } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
 const source = require('./contract-finance-source.json');
@@ -15,11 +15,13 @@ const source = require('./contract-finance-source.json');
 const root = '/qualification';
 const api = path.join(root, 'workspace/services/api');
 const spec = 'src/database/line-a-real-db.http.pg.spec.ts';
-const paymentRemainder = source.mode === 'payment-remainder-331';
+const upwardArchive = source.mode === 'upward-archive-332';
+const paymentRemainder = source.mode === 'payment-remainder-331' || upwardArchive;
 const textDirect = source.mode === 'text-direct-330' || paymentRemainder;
-const migrationCount = paymentRemainder ? 331 : textDirect ? 330 : 329;
+const migrationCount = upwardArchive ? 332 : paymentRemainder ? 331 : textDirect ? 330 : 329;
 const tests = paymentRemainder ? 18 : textDirect ? 17 : 16;
-const purpose = paymentRemainder ? 'LINE_A_PAYMENT_REMAINDER_331' : textDirect ? 'LINE_A_TEXT_DIRECT_330' : 'LINE_A_EXACT_329';
+const purpose = upwardArchive ? 'LINE_A_UPWARD_ARCHIVE_332' : paymentRemainder ? 'LINE_A_PAYMENT_REMAINDER_331'
+  : textDirect ? 'LINE_A_TEXT_DIRECT_330' : 'LINE_A_EXACT_329';
 const receipt = {
   schemaVersion: 1, purpose, sourceSha: source.sourceSha,
   stages: ['INPUTS'], status: 'STOPPED'
@@ -208,6 +210,7 @@ async function consume(context) {
         PATH: '/usr/local/bin:/usr/bin:/bin', HOME: workDir, TMPDIR: workDir, NODE_ENV: 'test', CI: 'true',
         RUN_LINE_A_REAL_DB: '1', ...(textDirect ? { RUN_LINE_A_TEXT_DIRECT_330: '1' } : {}),
         ...(paymentRemainder ? { RUN_LINE_A_PAYMENT_REMAINDER_331: '1' } : {}),
+        ...(upwardArchive ? { RUN_LINE_A_UPWARD_ARCHIVE_332: '1' } : {}),
         JG_LINE_A_SEALED_RUN_ID: run, DATABASE_URL: runtime.href, OWNER_DATABASE_URL: owner.href,
         FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: path.join(directory, 'files'),
         APPROVAL_SMS_ENABLED: 'false', SMS_ENABLED: 'false',
@@ -272,7 +275,7 @@ async function main() {
   assert.equal(baseline.terminalMigration, source.tails.at(-1).name);
   assert.equal(baseline.terminalMigrationChecksum, source.tails.at(-1).sha256);
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
-  const install = paymentRemainder ? withCombined331PaymentRemainder
+  const install = upwardArchive ? withCombined332UpwardArchive : paymentRemainder ? withCombined331PaymentRemainder
     : textDirect ? withCombined330TextAgreement : withCombined320ContractPayment;
   await install(receipt, consume, {
     sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails
@@ -291,6 +294,12 @@ async function main() {
       sameIdentity: true, sameBaseB7: true
     });
     assert.deepEqual(receipt.forward320.tails, source.tails.map(({ name, sha256 }) => ({ name, sha256 })));
+  }
+  if (upwardArchive) {
+    assert.deepEqual(receipt.upwardArchivePredecessor, {
+      count: 331, ledgerSha256: source.predecessor331.ledgerSha256,
+      sameIdentity: true, sameBaseB7: true
+    });
   }
   assert.equal(receipt.forward320.sourceTree, source.sourceTree);
   assert.equal(receipt.forward320.ledgerSha256, source.ledgerSha256);

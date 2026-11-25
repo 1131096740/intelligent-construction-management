@@ -14,6 +14,7 @@ import { currentRegisteredPaymentDomain } from "../payment/registered-payment-do
 import { loadSignedSettlementPaymentBasis } from "../payment/signed-settlement-payment-capacity";
 
 const run = process.env.RUN_LINE_A_REAL_DB === "1" ? describe : describe.skip;
+const upwardArchive = process.env.RUN_LINE_A_UPWARD_ARCHIVE_332 === "1";
 const paymentRemainder = process.env.RUN_LINE_A_PAYMENT_REMAINDER_331 === "1";
 
 run("line A contract candidate on real PostgreSQL and HTTP", () => {
@@ -105,13 +106,15 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     await app.listen(0, "127.0.0.1");
     base = await app.getUrl();
     owner = new PrismaClient({ datasources: { db: { url: ownerTarget.href } } });
-    if (paymentRemainder) {
+    if (paymentRemainder || upwardArchive) {
       const [ledger] = await owner.$queryRaw<Array<{ count: bigint; terminal: string }>>`
         SELECT count(*), max(migration_name) AS terminal
         FROM public._prisma_migrations
         WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
       `;
-      expect(ledger).toEqual({ count: 331n, terminal: "20261129000000_payment_remaining_withdrawal" });
+      expect(ledger).toEqual(upwardArchive
+        ? { count: 332n, terminal: "20261129001000_contract_upward_archive_verifier_pin_forward" }
+        : { count: 331n, terminal: "20261129000000_payment_remaining_withdrawal" });
     }
 
     const passwordHash = await hash(password, 4);

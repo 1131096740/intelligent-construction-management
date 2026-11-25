@@ -13,7 +13,7 @@ source="$prepared/source.json"
 
 node -e '
   const source=require(process.argv[1]);
-  const count=({"current-320":329,"text-direct-330":330,"payment-remainder-331":331})[source.mode];
+  const count=({"current-320":329,"text-direct-330":330,"payment-remainder-331":331,"upward-archive-332":332})[source.mode];
   if(!count||source.migrationCount!==count||source.sourceSha!==process.argv[2])process.exit(65);
 ' "$source" "$sha"
 image=$(cat "$build/image.id")
@@ -48,6 +48,7 @@ node -e '
   const proof=require(process.argv[1]);
   const source=require(process.argv[3]);
   const expected=({"current-320":"LINE_A_EXACT_329_PASSED","text-direct-330":"LINE_A_TEXT_DIRECT_330_PASSED",
-    "payment-remainder-331":"LINE_A_PAYMENT_REMAINDER_331_PASSED"})[source.mode];
+    "payment-remainder-331":"LINE_A_PAYMENT_REMAINDER_331_PASSED",
+    "upward-archive-332":"LINE_A_UPWARD_ARCHIVE_332_PASSED"})[source.mode];
   if(proof.status!==expected||proof.sourceSha!==process.argv[2])process.exit(65);
 ' "$work/receipt.json" "$sha" "$source"

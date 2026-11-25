@@ -21,3 +21,14 @@ test('signed-change verifier pin migration advances both readers and keeps the b
  assert.match(migration,/jg_require_contract_direct_upward_source_v2\(\) IS DISTINCT FROM closure_sha/u);
  assert.doesNotMatch(migration,/\b(?:GRANT|REVOKE|ALTER ROLE)\b/u);
 });
+
+test('the hosted catalog witness checks the repaired readers after 332 and the original readers after 331', () => {
+  const {outsideWitnessSql}=require('../../../.github/task12-install-295/contract-finance/common/installer.cjs');
+  const before=outsideWitnessSql(289,true);
+  const after=outsideWitnessSql(289,true,true);
+  assert.match(before,/jg_upward_archive_catalog_projection_v2\(\)'\)::oid, '5fc49d0c0d0982b14dad70f9498c003dcffb4dfa9d1b7ae58155a93069f220b3'/u);
+  assert.match(before,/jg_upward_direct_archive_admission_v1\(\)'\)::oid, '0ae95bf1a1b3551b5a123869077432a74578cb5c49ca63e7a4be4320eecef462'/u);
+  assert.match(after,/jg_upward_archive_catalog_projection_v2\(\)'\)::oid, '486032556ec79adeaaf134eace64e6348cbf667abf3f9a7ba38e29176ebe2cc7'/u);
+  assert.match(after,/jg_upward_direct_archive_admission_v1\(\)'\)::oid, '0a647f271a6ff2ec4bdf776c7a4950b26c4885babe980e08dec0182b2c1bae30'/u);
+  assert.match(after,/jg_require_contract_direct_upward_source_v2\(\)'\)::oid, 'c86b37cc155cb5cf424dd682f9767363da264eed8630a0dee9f02acde0dc3f49'/u);
+});

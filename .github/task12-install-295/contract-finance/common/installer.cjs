@@ -82,11 +82,17 @@ const signedSettlementOutsidePostimages = Object.freeze({
   'jg_upward_archive_catalog_projection_v2()':'5fc49d0c0d0982b14dad70f9498c003dcffb4dfa9d1b7ae58155a93069f220b3',
   'jg_upward_direct_archive_admission_v1()':'0ae95bf1a1b3551b5a123869077432a74578cb5c49ca63e7a4be4320eecef462',
 });
-function outsideWitnessSql(count, signedSettlementInstalled = false) {
+const upwardArchivePostimages = Object.freeze({
+  'jg_upward_archive_catalog_projection_v2()':'486032556ec79adeaaf134eace64e6348cbf667abf3f9a7ba38e29176ebe2cc7',
+  'jg_upward_direct_archive_admission_v1()':'0a647f271a6ff2ec4bdf776c7a4950b26c4885babe980e08dec0182b2c1bae30',
+});
+function outsideWitnessSql(count, signedSettlementInstalled = false, upwardArchiveInstalled = false) {
   need(count===288 || count===289,'UNKNOWN_OUTSIDE_CATALOG_MILESTONE');
   need(!signedSettlementInstalled || count===289,'FORWARD_320_OUTSIDE_MILESTONE');
+  need(!upwardArchiveInstalled || signedSettlementInstalled,'UPWARD_ARCHIVE_332_OUTSIDE_MILESTONE');
   const checks = Object.entries(outsideBodies).map(([name,bodies]) => {
-    const digest=(signedSettlementInstalled ? signedSettlementOutsidePostimages[name] : undefined) ?? bodies[count-288];
+    const digest=(upwardArchiveInstalled ? upwardArchivePostimages[name] : undefined)
+      ?? (signedSettlementInstalled ? signedSettlementOutsidePostimages[name] : undefined) ?? bodies[count-288];
     return `(to_regprocedure('public.${name}')::oid, '${digest}')`;
   }).join(', ');
   return `SELECT jsonb_build_object(
@@ -811,7 +817,8 @@ statement_timeout='60s'
       const {tails,sourceTree,sql:tailSources}=forward320;
       let current;
       const batches = forward320.textDirect ? [tails.slice(0,34), tails.slice(34,35)] : [tails];
-      if (forward320.paymentRemainder) batches.push(tails.slice(35));
+      if (forward320.paymentRemainder) batches.push(tails.slice(35,36));
+      if (forward320.upwardArchive) batches.push(tails.slice(36));
       for (const batch of batches) {
         for (const row of batch) {
           const index = tails.indexOf(row);
@@ -848,6 +855,12 @@ statement_timeout='60s'
           need(digest==='12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f' &&
             equal(await jsonSql(finalSql),final),'PAYMENT_REMAINDER_330_PREDECESSOR_CONTINUITY');
           receipt.paymentRemainderPredecessor={count:330,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true};
+        }
+        if (forward320.upwardArchive && current.ledger.length===331) {
+          const digest=hash(JSON.stringify(current.ledger));
+          need(digest==='0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014' &&
+            equal(await jsonSql(finalSql),final),'UPWARD_ARCHIVE_331_PREDECESSOR_CONTINUITY');
+          receipt.upwardArchivePredecessor={count:331,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true};
         }
       }
       receipt.forward320={count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
@@ -959,7 +972,7 @@ statement_timeout='60s'
           unrelatedLoginDenied:true,postconsume:true};
       }
       if (release === ordinaryApprovalRelease) {
-        const afterOutside=await jsonSql(outsideWitnessSql(289,Boolean(forward320)));
+        const afterOutside=await jsonSql(outsideWitnessSql(289,Boolean(forward320),forward320?.upwardArchive));
         assertOutsideWitness(289,afterOutside);
         if (forward320) receipt.forwardOutsideWitness=afterOutside;
         const after = await jsonSql(ordinaryClosedSql(true));
@@ -1343,7 +1356,8 @@ module.exports.withCombined295MultiWitnessForRestore = (receipt,consume) =>
 
 function readForward320({sourceTree,migrations,tails},target=329) {
   const textDirect=target>=330;
-  const paymentRemainder=target===331;
+  const paymentRemainder=target>=331;
+  const upwardArchive=target===332;
   need(typeof sourceTree==='string' && /^[0-9a-f]{40}$/u.test(sourceTree) &&
     typeof migrations==='string' && path.isAbsolute(migrations) &&
     Array.isArray(tails) && tails.length===target-295,'FORWARD_320_SOURCE');
@@ -1357,6 +1371,11 @@ function readForward320({sourceTree,migrations,tails},target=329) {
       tails[35]?.sha256==='67593637957ba372cbba7633334fb9896ba6adf472b0c1b9b6f1482c0d645fc2',
       'PAYMENT_REMAINDER_331_TERMINAL');
   }
+  if(upwardArchive) {
+    need(tails[36]?.name==='20261129001000_contract_upward_archive_verifier_pin_forward' &&
+      tails[36]?.sha256==='61ed04c79086124df2a379a5651494ed4efa797169f6937b4dad549a31732788',
+      'UPWARD_ARCHIVE_332_TERMINAL');
+  }
   let previous='20261119003900';
   const rows=tails.map(row => {
     const match=row && typeof row.name==='string' ? /^(\d{14})_[a-z0-9_]+$/u.exec(row.name) : null;
@@ -1369,7 +1388,7 @@ function readForward320({sourceTree,migrations,tails},target=329) {
     need(hash(bytes)===row.sha256,'FORWARD_320_TAIL_DIGEST');
     return bytes;
   });
-  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder};
+  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive};
 }
 
 module.exports.withCombined320ContractPayment = (receipt,consume,material) => {
@@ -1387,6 +1406,11 @@ module.exports.withCombined330TextAgreement = (receipt,consume,material) => {
 module.exports.withCombined331PaymentRemainder = (receipt,consume,material) => {
   need(typeof consume==='function' && material && typeof material==='object','PAYMENT_REMAINDER_331_ARGUMENTS');
   return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,331));
+};
+
+module.exports.withCombined332UpwardArchive = (receipt,consume,material) => {
+  need(typeof consume==='function' && material && typeof material==='object','UPWARD_ARCHIVE_332_ARGUMENTS');
+  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,332));
 };
 
 module.exports.withCombined320ContractPaymentForRestore = (receipt,prepare295,consume,material) => {
