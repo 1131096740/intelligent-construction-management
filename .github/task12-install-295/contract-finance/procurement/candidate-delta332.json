@@ -15,6 +15,11 @@
     "candidate": "e8dfaed6e34613de8d9abe47fa5f450bcb837d08a861c60b4a461591c7a19bd1"
   },
   {
+    "path": "services/api/src/contract/contract-direct-pending-save.ts",
+    "expected": "34d4b80ea1cbe047951b84f01af05b1d9887ac70dfb7db857f8e15a5c0daee2c",
+    "candidate": "9bafb801dcfe561a5072a6fbc4d8ac890ce2f729a23d055e4828a082490ae48c"
+  },
+  {
     "path": "services/api/src/contract/contract-direct-pending-source.ts",
     "expected": "ad35320e61478c6076a1b3af5b407b7eeb8c24243ec98196eb4812a40e9921df",
     "candidate": "99c929bf8d53f511fe65309b8cf9bcd776a1da04de15e78b58255a66c47e71e7"
@@ -38,5 +43,10 @@
     "path": "services/api/src/contract/contract-upward-legacy-readers.spec.ts",
     "expected": "7bec8a7c21af7fc4f6091380f4da4c0237d60c95623daa6ecc3c487716e44dcc",
     "candidate": "e8661cf7685b150a88a2380a8b0e164bf7518ee75742f3d2f023f4bec25e5ba5"
+  },
+  {
+    "path": "services/api/src/contract/contract-upward-pending-save.ts",
+    "expected": "a6bc604f99e17ef8f68b39d01a3d8df787b11cc9560297e0aa6ad2f26b7cd648",
+    "candidate": "7fd73c7e91985e51ec269bb31a7acf1674d3958ad04ed67612eab7c695dc4c31"
   }
 ]
