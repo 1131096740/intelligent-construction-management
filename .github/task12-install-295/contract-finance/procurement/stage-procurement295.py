@@ -261,6 +261,15 @@ if forward:
             text = text.replace(output_end, '      });\n    };\n    observeOutput(child.stdout);\n    observeOutput(child.stderr);\n    exited=once(child,"close");')
             text = text.replace('stderrKinds:[...stderrKinds].sort(),',
                 'processOutputKinds:[...stderrKinds].sort(),')
+            memory_file = '/sys/fs/cgroup/memory.events'
+            failure_call = '...firstFailure(report,stderrKinds,child.signalCode)'
+            if text.count(failure_call) != 1:
+                raise ValueError('PROCUREMENT_331_PROJECT_MEMORY_OBSERVATION_ANCHOR')
+            text = text.replace(failure_call, failure_call + f''',
+        cgroupMemoryEvents:fs.existsSync("{memory_file}")
+          ?Object.fromEntries([...fs.readFileSync("{memory_file}","utf8")
+            .matchAll(/^(oom|oom_kill|oom_group_kill) (\\d{{1,12}})$/gmu)].map(([,key,value])=>[key,Number(value)]))
+          :undefined''')
         anchor = '    const ownerTarget=new URL(context.ownerUrl);'
         observation = '''    const detailAcl=await context.sql(`SELECT jsonb_build_object(
       'activity',has_function_privilege('project_business_scope_runtime','public.jg_read_payment_detail_activity_v1(text,text,text)','EXECUTE'),
