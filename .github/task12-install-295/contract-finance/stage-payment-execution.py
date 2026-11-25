@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 archive_arg, common_arg, stage_arg, *options = sys.argv[1:]
-if options not in ([], ['--text-direct-330'], ['--payment-remainder-331']):
+if options not in ([], ['--text-direct-330'], ['--payment-remainder-331'], ['--upward-archive-332']):
     raise SystemExit('PAYMENT_STAGE_MODE')
 archive, common, stage = map(Path, (archive_arg, common_arg, stage_arg))
 plan = Path(__file__).parent
@@ -27,7 +27,7 @@ for name in ('fresh.cjs','valid.cjs','payment-execution-concurrency.spec.ts'):
     subprocess.run(['patch','--silent','--batch','--fuzz=0',str(stage/name),str(plan/(name+'.patch'))],check=True)
 subprocess.run(['patch','--silent','--batch','--fuzz=0',str(stage/'payment-execution-concurrency.spec.ts'),
                 str(plan/('payment-concurrency-330.patch' if options else 'payment-concurrency-320.patch'))],check=True)
-if options == ['--payment-remainder-331']:
+if options in (['--payment-remainder-331'], ['--upward-archive-332']):
     support = 'contract-finance-owned.test-support.ts'
     shutil.copyfile(plan / support, stage / support)
     for name, delta, before, after in [
@@ -47,6 +47,24 @@ if options == ['--payment-remainder-331']:
                         str(target), str(plan / delta)], check=True)
         if hashlib.sha256(target.read_bytes()).hexdigest() != after:
             raise SystemExit(f'PAYMENT_331_POSTIMAGE {name}')
+if options == ['--upward-archive-332']:
+    for name, delta, before, after in [
+        ('fresh.cjs', 'payment-execution-332-fresh.cjs.patch',
+         '1694f94fb0248da07f88f7f7b76d83c64195d1fcb13379aadc321b71c6da48b0', 'c68867cf66ec834c5d05be44bdfe17975497d9d216a0a4b654a8dcfb9ce891cf'),
+        ('valid.cjs', 'payment-execution-332-valid.cjs.patch',
+         '677fee72f86c38beab8cb47938be858aa59a648146d0fed1556bf5d9028eb6c0', '213b61fbd163f4ac150f33c463419e382240cd1b78d6ed1a60f724c001a2bd2f'),
+        ('payment-execution-concurrency.spec.ts', 'payment-execution-332-payment-execution-concurrency.spec.ts.patch',
+         '0cd8ebc9938760d0af40b4825cd00d23d4bcdf733df65a5cc96e7b178e20e020', '38a8ce57ceb7393f928c597d375f8c1c4d8a2621d89f5588f02c21f4553e4e69'),
+        ('contract-finance-owned.test-support.ts', 'payment-execution-332-contract-finance-owned.test-support.ts.patch',
+         '2c3ab7ebeedc7da20ae1a1b1c189fb3e36781b9b6fd6e69e62c59a1d00d70377', '1801de35588da4a1628e55042cb8f0839f492ee66065b880ccb274381a3d49ba'),
+    ]:
+        target = stage / name
+        if hashlib.sha256(target.read_bytes()).hexdigest() != before:
+            raise SystemExit(f'PAYMENT_332_PREIMAGE {name}')
+        subprocess.run(['patch', '--silent', '--batch', '--forward', '--fuzz=0',
+                        str(target), str(plan / delta)], check=True)
+        if hashlib.sha256(target.read_bytes()).hexdigest() != after:
+            raise SystemExit(f'PAYMENT_332_POSTIMAGE {name}')
 for file in stage.rglob('*'):
     if file.is_file():
         file.chmod(0o644)
