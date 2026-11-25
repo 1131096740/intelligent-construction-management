@@ -98,7 +98,7 @@ describe("contract workbench document canvas structure", () => {
     expect(pricingSource).not.toContain(':value="manualAmountYuanText"');
     expect(pricingSource).toContain('@change="onManualAmountChange"');
     expect(pricingSource).toContain('value: "fixed_total"');
-    expect(pricingSource).toContain('value: "bill_sum"');
+    expect(pricingSource).toContain('return policy === "fixed_total_without_bill" ? "manual" : "bill_sum"');
     expect(pricingSource).not.toContain('value: "fixed_price"');
     expect(pricingSource).not.toContain('value: "cost_plus"');
   });
