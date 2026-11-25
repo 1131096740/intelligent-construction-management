@@ -6,6 +6,7 @@ const { createHash, randomBytes, randomUUID } = require("node:crypto");
 const fs = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
+const { officialDocumentProfile } = require("./task12-official-document-profiles.cjs");
 const os = require("node:os");
 const { captureArchive, installArchive } = require("./seal-retirement-329-archive.cjs");
 const controls = require("./local-staged-migration-controls.cjs");
@@ -53,9 +54,43 @@ function captureRuntime(pgManifestPath, pgManifestSha, documentPath, documentSha
   for (const [name, row] of Object.entries(manifest.externalLibraries)) assert.equal(file(name, row.sha256).length, row.bytes);
   const required = ["bin/initdb", "bin/postgres", "bin/psql", "bin/pg_ctl", "share/postgresql/extension/pgcrypto.control"];
   assert.ok(required.every(name => Object.hasOwn(manifest.files, name)));
-  file(documentPath, documentSha);
+  const document = JSON.parse(file(documentPath, documentSha));
+  const lock = JSON.parse(fs.readFileSync(path.join(api, "assets/document-converter/runtime-lock.json")));
+  assert.equal(document.fonts.length, lock.fonts.length);
+  const fonts = lock.fonts.map(({ name, sha256 }) => {
+    const [font, duplicate] = document.fonts.filter(row => row.name === name);
+    assert.ok(font && !duplicate);
+    file(font.path, sha256);
+    return { name, path: font.path };
+  });
+  assert.equal(officeSha, "81c7db1c6dbcdd606d95abef337b4529aeda6a4fa1cf23a5a567f9c5655c8b66");
   file(office, officeSha);
-  return { pg: manifest.privatePrefix, pgManifestSha, document: documentPath, documentSha, office, officeSha };
+  const { nativeSha256 } = officialDocumentProfile("TASK12_OFFICIAL_TEMURIN17_0_17_10_CODEX26_1112_V2");
+  const nativeOffice = path.resolve(path.dirname(office), "../../native/libreoffice-headless/libreoffice/LibreOfficeDev.app/Contents/MacOS/soffice");
+  file(nativeOffice, nativeSha256);
+  return { pg: manifest.privatePrefix, document: documentPath, documentSha, office, officeSha, nativeOfficeSha: nativeSha256, fonts };
+}
+
+function isolateOffice(runtime, directory) {
+  const officeHome = path.join(directory, "office-home");
+  const cache = path.join(directory, "office-cache");
+  const fonts = path.join(directory, "office-fonts");
+  for (const target of [officeHome, cache, fonts]) fs.mkdirSync(target, { mode: 0o700 });
+  for (const font of runtime.fonts) {
+    assert.match(font.name, /^[a-z0-9-]+$/u);
+    fs.copyFileSync(font.path, path.join(fonts, font.name + ".ttf"), fs.constants.COPYFILE_FICLONE | fs.constants.COPYFILE_EXCL);
+  }
+  const config = path.join(directory, "fonts.conf");
+  fs.writeFileSync(config, '<?xml version="1.0"?><fontconfig><dir>' + fonts + '</dir><cachedir>' + cache + '</cachedir></fontconfig>\n',
+    { flag: "wx", mode: 0o600 });
+  const args = { PATH: "/usr/bin:/bin", HOME: officeHome, TMPDIR: directory, FONTCONFIG_FILE: config,
+    XDG_CACHE_HOME: cache, LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8" };
+  const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
+  const shim = path.join(directory, "soffice");
+  fs.writeFileSync(shim, "#!/bin/sh\nexec /usr/bin/env -i " +
+    Object.entries(args).map(([key, value]) => key + "=" + quote(value)).join(" ") + " " + quote(runtime.office) + ' "$@"\n',
+    { flag: "wx", mode: 0o700 });
+  return shim;
 }
 
 function localPort() {
@@ -158,9 +193,11 @@ function grantApplication(sql, database, app, appPassword) {
   // The archive and operating facts retain the grants installed by the product
   // migrations. Only the explicit contract, template and auth tables used by
   // the public workflow are added to this isolated qualification role.
-  const { tables } = require("./task16-current259-ordinary-archive-acl.requirements.json");
+  const { tables, retainRowLocks } = require("./task16-current259-ordinary-archive-acl.requirements.json");
+  const worker = require("./task12-current259-document-acl.json").roles.jg_c259_doc_worker;
+  const comparison = worker.ContractDocumentComparison;
   const [, , userLoginColumns] = tables.User;
-  const userUpdateColumns = [...userLoginColumns, "signatureFileId"].map(identifier).join(", ");
+  const userUpdateColumns = [...userLoginColumns, "signatureFileId"];
   const known = Object.keys(tables).filter(table => !["OperatingFact", "OperatingImpactEntry"].includes(table));
   const writes = {
     INSERT: ["AuditLog", "AuthRateLimit", "RefreshToken", "FileObject", "BusinessDailySequence", "Contract", "ContractVersion", "ContractBill", "ContractBillRow",
@@ -183,12 +220,25 @@ function grantApplication(sql, database, app, appPassword) {
     assert.ok(names.every(name => existing.has(name)), "NATIVE_329_GRANT_SCHEMA");
     return "GRANT " + privilege + " ON " + names.map(name => "public." + identifier(name)).join(",") + " TO " + role + ";";
   };
+  const grantColumns = (privilege, table, columns) => {
+    assert.ok(existing.has(table), "NATIVE_329_GRANT_SCHEMA");
+    return "GRANT " + privilege + " (" + columns.map(identifier).join(", ") + ") ON public." + identifier(table) + " TO " + role + ";";
+  };
+  const locks = Object.entries(retainRowLocks).map(([table, column]) => {
+    const granted = sql("SELECT pg_catalog.has_any_column_privilege('" + app + "', 'public." + identifier(table) + "'::regclass, 'UPDATE');").trim();
+    assert.ok(granted === "t" || granted === "f");
+    return granted === "f" ? grantColumns("UPDATE", table, [column]) : "";
+  });
   sql("BEGIN;" +
     "ALTER ROLE " + role + " LOGIN PASSWORD '" + appPassword + "' CONNECTION LIMIT 12;" +
     "GRANT CONNECT ON DATABASE " + identifier(database) + " TO " + role + ";" +
     "GRANT USAGE ON SCHEMA public TO " + role + ";" + grant("SELECT", reads) +
     Object.entries(writes).map(([privilege, names]) => grant(privilege, names)).join("") +
-    'GRANT UPDATE (' + userUpdateColumns + ') ON public."User" TO ' + role + ";" +
+    grantColumns("UPDATE", "User", userUpdateColumns) +
+    grantColumns("SELECT", "ContractDocumentComparison", comparison.select) +
+    grantColumns("UPDATE", "ContractDocumentComparison", comparison.update) +
+    grantColumns("SELECT", "ContractDraftCheckpoint", ["contractVersionId", "id", "sequenceNo", "name", "snapshot", "createdAt"]) +
+    locks.join("") +
     "COMMIT;");
 }
 
@@ -199,11 +249,13 @@ async function main(args) {
   const [mode, sha, pgManifest, pgSha, docManifest, docSha, office, officeSha, archiveAdmission, archiveSha] = args;
   assert.ok(["verify", "run"].includes(mode));
   const source = captureSource(sha);
+  const normalArchiveRecipeSha = "90b698f5230ae172518e285bf8c4e197eb1d552518c55670c2b3794eb82f1b75";
+  file(path.join(__dirname, "task12-normal274-archive-binding.cjs"), normalArchiveRecipeSha);
   assert.match(archiveSha, shaPattern);
   const archive = captureArchive(archiveAdmission, archiveSha, source, { file, hash });
   const runtime = captureRuntime(pgManifest, pgSha, docManifest, docSha, office, officeSha);
   const receipt = { candidate: sha, sourceTree: source.sourceTree, migrations: source.ledger.length, ledgerSha256: source.ledgerDigest,
-    postgresMaterialSha256: pgSha, historicalSourceAdmissionSha256: archiveSha, documentManifestSha256: docSha, libreOfficeExecutableSha256: officeSha,
+    postgresMaterialSha256: pgSha, historicalSourceAdmissionSha256: archiveSha, normalArchiveRecipeSha256: normalArchiveRecipeSha, documentManifestSha256: docSha, libreOfficeWrapperSha256: officeSha, libreOfficeExecutableSha256: runtime.nativeOfficeSha,
     status: "HOST_MATERIAL_VERIFIED", stages: [], cleanup: "NOT_NEEDED" };
   if (mode === "verify") return receipt;
 
@@ -245,6 +297,8 @@ async function main(args) {
     return result.stdout;
   };
   try {
+    stage("OFFICE_PROFILE");
+    const office = isolateOffice(runtime, directory);
     const port = await localPort();
     const certificate = path.join(directory, "server.crt");
     const ca = path.join(directory, "ca.crt");
@@ -317,14 +371,14 @@ async function main(args) {
     appUrl.password = appPassword;
     appUrl.searchParams.set("connection_limit", "8");
     const packet = path.join(directory, "input.json");
-    fs.writeFileSync(packet, JSON.stringify({ ownerUrl: ownerUrl.toString(), applicationOid: appOid, database, candidate: sha }), { mode: 0o600, flag: "wx" });
+    fs.writeFileSync(packet, JSON.stringify({ ownerUrl: ownerUrl.toString(), psql: bin("psql"), applicationOid: appOid, database, candidate: sha }), { mode: 0o600, flag: "wx" });
     const files = path.join(directory, "files");
     fs.mkdirSync(files, { mode: 0o700 });
     stage("PUBLIC_LIFECYCLE");
     const outcome = run(process.execPath, [require.resolve("jest/bin/jest"), "--runInBand", "--testRegex", "seal-retirement-329[.]native[.]test-support[.]ts$", "--runTestsByPath", "src/database/seal-retirement-329.native.test-support.ts"], {
       NODE_ENV: "test", TMPDIR: directory, SEAL_329_NATIVE_PACKET: packet, DATABASE_URL: appUrl.toString(),
       FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: files, FILE_DOWNLOAD_SECRET: secret(), JWT_ACCESS_SECRET: secret(), JWT_REFRESH_SECRET: secret(),
-      CONTRACT_DOCX4J_RUNTIME_MANIFEST: runtime.document, DOC_CONVERTER_COMMAND: runtime.office
+      CONTRACT_DOCX4J_RUNTIME_MANIFEST: runtime.document, DOC_CONVERTER_COMMAND: office
     }, undefined, 450_000);
     const proof = outcome.match(/SEAL_329_NATIVE_PROOF (\{[^\n]+\})/u);
     assert.ok(proof);

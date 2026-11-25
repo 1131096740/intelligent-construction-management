@@ -2,6 +2,7 @@ import "reflect-metadata";
 import { type INestApplication } from "@nestjs/common";
 import { HttpAdapterHost, NestFactory } from "@nestjs/core";
 import { Prisma, PrismaClient } from "@prisma/client";
+import { spawnSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
@@ -20,11 +21,24 @@ import { extractContractDocx } from "../contract-document/contract-docx-extracto
 import { createTask12Con18DefaultHttp } from "./task12-con18-default-http";
 import { buildTask12GeneratedApprovalFixture, hashTask12GeneratedAdmissionPassword } from "./task12-generated-approval-admission";
 import { runTask12GeneratedDocument } from "./task12-generated-document-seam";
-import { publishTask12GeneratedMaterialTemplate } from "./task12-generated-material-template";
+import { publishTask12GeneratedEquipmentTemplate } from "./task12-generated-material-template";
 import type { Task12LocalLifecycleRequest } from "./task12-local-lifecycle-case";
 
 // The runner owns the isolated cluster, effective database grants and all storage.
-type Packet = { ownerUrl: string; applicationOid: string; database: string; candidate: string };
+type Packet = { ownerUrl: string; psql: string; applicationOid: string; database: string; candidate: string };
+type ArchiveIdentity = { database: string; databaseOid: string; systemIdentifier: string; serverPort: number;
+  ordinaryName: string; ordinaryOid: string };
+type ArchiveCheckpoint = { projectId: string; handlerId: string; contractId: string; versionId: string; approvalInstanceId: string;
+  requestKey: string; documentContentRevision: number; documentContentFingerprint: string;
+  originals: Array<{ id: string; sha256: string; sizeBytes: number }> };
+const {
+  renderNormal274ConstructionFixture, renderNormal274ArchiveBinding
+}: {
+  renderNormal274ConstructionFixture(identity: ArchiveIdentity, ids: { party: string; version: string; assignment: string }, project: string, applicant: string): string;
+  renderNormal274ArchiveBinding(lease: { identity: ArchiveIdentity; serverPort: number; roles: { 3: { name: string; oid: string } } },
+    checkpoint: ArchiveCheckpoint, voucherInstalled: boolean): string;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+} = require("../../prisma/task12-normal274-archive-binding.cjs");
 type RequestDetails = Pick<Task12LocalLifecycleRequest, "json" | "form" | "headers">;
 // The existing public transport returns untyped JSON. The assertions below check the fields used by the case.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -41,7 +55,29 @@ function privatePacket(): Packet {
   if (!path || !/^\/private\/tmp\/jg425-seal-329-[a-zA-Z0-9]+\/input[.]json$/u.test(path)) throw new Error("NATIVE_329_PACKET");
   const entry = lstatSync(path);
   if (!entry.isFile() || realpathSync(path) !== path || entry.uid !== process.getuid?.() || (entry.mode & 0o777) !== 0o600) throw new Error("NATIVE_329_PACKET");
-  return JSON.parse(readFileSync(path, "utf8")) as Packet;
+  const packet = JSON.parse(readFileSync(path, "utf8")) as Packet;
+  const url = new URL(packet.ownerUrl);
+  if (!/^jg_task01_[a-f0-9]{32}$/u.test(packet.database) || url.protocol !== "postgresql:" || url.hostname !== "127.0.0.1" ||
+    url.pathname !== "/" + packet.database || url.username !== "jg_task01_owner" || !url.port ||
+    url.searchParams.get("sslmode") !== "require" || url.searchParams.get("sslaccept") !== "strict" ||
+    url.searchParams.get("sslcert") !== resolve(path, "../ca.crt") || realpathSync(packet.psql) !== packet.psql) {
+    throw new Error("NATIVE_329_PACKET");
+  }
+  return packet;
+}
+
+function executeOwnerFixtureSql(packet: Packet, sql: string) {
+  const url = new URL(packet.ownerUrl);
+  const result = spawnSync(packet.psql, ["-X", "-q", "-v", "ON_ERROR_STOP=1", "-v", "VERBOSITY=verbose", "-d", packet.database, "-f", "-"], {
+    input: sql, encoding: "utf8", maxBuffer: 256 * 1024, timeout: 45_000,
+    env: { PATH: "/usr/bin:/bin", HOME: resolve(process.env.SEAL_329_NATIVE_PACKET!, ".."), LANG: "C", PGHOST: url.hostname,
+      PGPORT: url.port, PGUSER: url.username, PGPASSWORD: url.password, PGSSLMODE: "verify-full",
+      PGSSLROOTCERT: url.searchParams.get("sslcert")!, PGCONNECT_TIMEOUT: "5" }
+  });
+  if (result.status !== 0) {
+    const code = /ERROR:\s+([A-Z0-9]{5}):/u.exec(result.stderr ?? "")?.[1];
+    throw Object.assign(new Error("NATIVE_329_OWNER_ARCHIVE_FIXTURE"), { code });
+  }
 }
 
 it("generates a V2 document on native docx4j, approves it, confirms the automatic seal and downloads its private archive", async () => {
@@ -66,7 +102,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     expect(await owner.project.count()).toBe(0);
     expect(await owner.contract.count()).toBe(0);
     stage = "SEED";
-    const seed = buildTask12GeneratedApprovalFixture(randomUUID());
+    const seed = buildTask12GeneratedApprovalFixture(randomUUID(), "inside:equipment_rental");
     for (const [actor, user] of seed.users.entries()) {
       await owner.user.create({ data: { ...user, passwordHash: await hashTask12GeneratedAdmissionPassword(passwords[actor]) } });
     }
@@ -89,6 +125,20 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     const partyVersion = await owner.businessPartyVersion.create({ data: { businessPartyId: counterparty.id, versionNo: 1,
       createdByUserId: seed.handler.id, snapshot: { name: counterparty.name, type: "organization",
         unifiedSocialCreditCode: counterparty.unifiedSocialCreditCode, registeredAddress: "隔离供应地址" } } });
+    stage = "EQUIPMENT_CONSTRUCTION_FIXTURE";
+    const ownerEndpoint = new URL(packet.ownerUrl);
+    const applicationEndpoint = new URL(process.env.DATABASE_URL!);
+    expect(applicationEndpoint.hostname).toBe(ownerEndpoint.hostname);
+    expect(applicationEndpoint.port).toBe(ownerEndpoint.port);
+    expect(applicationEndpoint.pathname).toBe(ownerEndpoint.pathname);
+    expect(applicationEndpoint.searchParams.get("sslcert")).toBe(ownerEndpoint.searchParams.get("sslcert"));
+    const [coordinates] = await owner.$queryRaw<Array<{ databaseOid: string; systemIdentifier: string; serverPort: number }>>`
+      SELECT d.oid::text AS "databaseOid", (SELECT system_identifier::text FROM pg_control_system()) AS "systemIdentifier",
+        inet_server_port() AS "serverPort" FROM pg_database d WHERE datname=current_database() AND datdba=10`;
+    const archiveIdentity = { ...coordinates, database: packet.database, ordinaryName: applicationEndpoint.username, ordinaryOid: packet.applicationOid };
+    const construction = { party: randomUUID(), version: randomUUID(), assignment: randomUUID() };
+    executeOwnerFixtureSql(packet, renderNormal274ConstructionFixture(archiveIdentity, construction, seed.project.id, seed.handler.id));
+
     stage = "HTTP_BOOT";
     app = await NestFactory.create(AppModule, {
       logger: {
@@ -197,10 +247,10 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     for (const actor of [1, 2, 3, 4, 5]) await expectStatus(send(actor, "/me/signature/canvas", "POST", { form: form(png, "image/png", "signature.png") }), 201);
 
     stage = "TEMPLATE";
-    const material = readFileSync(resolve(__dirname, "../../assets/templates/material-purchase-real-v1.docx"));
-    const published = await publishTask12GeneratedMaterialTemplate(material, seed.users[2].id, port(2));
+    const equipment = readFileSync(resolve(__dirname, "../../assets/templates/equipment-rental-real-v1.docx"));
+    const published = await publishTask12GeneratedEquipmentTemplate(equipment, seed.users[2].id, port(2));
     stage = "DRAFT";
-    const created = await post(0, "/contracts", { projectId: seed.project.id, numericProtocolVersion: 2, contractTypeKey: "material_purchase", relationship: "inside", amountLimitType: "capped" });
+    const created = await post(0, "/contracts", { projectId: seed.project.id, numericProtocolVersion: 2, contractTypeKey: "equipment_rental", relationship: "inside", amountLimitType: "capped" });
     const { id: contractId } = created.contract;
     const { id: versionId } = created.version;
     expect(typeof versionId).toBe("string");
@@ -210,7 +260,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     const lease = await post(0, draft + "/edit-lease");
     const headers = { "x-contract-draft-lease": lease.token as string };
     const workbench = () => get(0, draft + "/workbench");
-    const name = "隔离验收材料合同";
+    const name = "隔离验收设备租赁合同";
     const addedClause = "双方补充约定原件保密。";
     const save = async (documentBody?: object) => {
       const current = await workbench();
@@ -218,7 +268,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
         idempotencyKey: randomUUID(), saveKind: "manual", expectedRevision: current.version.draftRevision,
         changedSections: ["draft", "parties"],
         draft: { numericProtocolVersion: 2, companyEntityId: company.id,
-          draftData: { ...current.draft, contractName: name, contractBasics: { businessType: "material_purchase", relationship: "inside", amountBasis: "tax_inclusive", invoiceStatus: "pending" },
+          draftData: { ...current.draft, contractName: name, contractBasics: { businessType: "equipment_rental", relationship: "inside", amountBasis: "tax_inclusive", invoiceStatus: "pending" },
             ...(documentBody ? { documentBody } : {}) },
           clauses: [], pricingNature: "unit_price", amountSource: "bill_sum", layoutTemplateVersionId: published.layoutId,
           taxFacts: { invoiceType: null, taxMode: "single_rate", defaultTaxRatePercent: null, source: "contract_document" } },
@@ -230,7 +280,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     };
     await save();
     const source = await get(0, draft + "/document-body");
-    const block = source.blocks.find((item: Payload) => item.editable && item.text.startsWith("4.若卖方违背"));
+    const block = source.blocks.find((item: Payload) => item.editable && item.text.startsWith("3.甲方需要延长本合同租赁期限"));
     expect(block?.id).toBeDefined();
     await save({ protocolVersion: 1, layoutTemplateVersionId: published.layoutId, sourceSha256: source.sourceSha256,
       edits: [{ positionId: block.id, text: block.text + addedClause }] });
@@ -294,33 +344,55 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     expect(await pending(6)).toBe(0);
     expect(await pending(0)).toBe(1);
     expect(await owner.contractSealTask.count({ where: { contractVersionId: versionId, approvalInstanceId: submitted.approvalInstanceId } })).toBe(1);
-    expect(await owner.approvalInstance.count({ where: { businessId: versionId, flowType: "contract_seal" } })).toBe(0);
+    expect(await owner.approvalInstance.findMany({ where: { businessId: versionId }, select: { id: true, flowType: true } }))
+      .toEqual([{ id: submitted.approvalInstanceId, flowType: "contract.approve" }]);
+
+    stage = "ORIGINALS";
+    const originals = [];
+    for (const index of [0, 1]) {
+      const original = await PDFDocument.load(pdf);
+      const font = await original.embedFont(StandardFonts.Helvetica);
+      original.getPage(0).drawText("Synthetic original, party " + (index + 1), { font, x: 48, y: 20, size: 9 });
+      const bytes = await original.save();
+      const uploaded = await expectStatus(send(0, "/files", "POST", { form: form(bytes, "application/pdf", "signed-original-" + (index + 1) + ".pdf") }), 201);
+      expect(uploaded).toMatchObject({ contentSha256: hash(bytes), sizeBytes: bytes.length });
+      originals.push({ id: uploaded.id as string, sha256: hash(bytes), sizeBytes: bytes.length });
+    }
+    expect(originals[0].sha256).not.toBe(originals[1].sha256);
+    const fileIds = originals.map(original => original.id);
+    const archive = { ...seal, confirmed: undefined, archiveProtocolVersion: 2, archiveSource: "generated_approval",
+      idempotencyKey: randomUUID(), fileIds, confirmedMatchingSignedDocument: true };
+    stage = "ARCHIVE_ADMISSION";
+    const leaseIdentity = { identity: archiveIdentity, serverPort: archiveIdentity.serverPort,
+      roles: { 3: { name: archiveIdentity.ordinaryName, oid: archiveIdentity.ordinaryOid } } };
+    executeOwnerFixtureSql(packet, renderNormal274ArchiveBinding(leaseIdentity, { projectId: seed.project.id, handlerId: seed.handler.id, contractId, versionId,
+      approvalInstanceId: submitted.approvalInstanceId, requestKey: archive.idempotencyKey, documentContentRevision: submission.documentContentRevision,
+      documentContentFingerprint: submission.documentContentFingerprint, originals }, true));
 
     stage = "ARCHIVE";
-    const original = await PDFDocument.create();
-    const font = await original.embedFont(StandardFonts.Helvetica);
-    original.addPage().drawText("Synthetic original for native contract archive", { font });
-    const file = await original.save();
-    const uploaded = await expectStatus(send(0, "/files", "POST", { form: form(file, "application/pdf", "signed-original.pdf") }), 201);
-    expect(uploaded.contentSha256).toBe(hash(file));
-    const archive = { ...seal, confirmed: undefined, archiveProtocolVersion: 2, archiveSource: "generated_approval",
-      idempotencyKey: randomUUID(), fileIds: [uploaded.id], confirmedMatchingSignedDocument: true };
     await expectStatus(send(7, contract + "/signed-archive", "POST", { json: archive }), 403);
     const archived = await post(0, contract + "/signed-archive", archive);
-    expect(archived).toMatchObject({ status: "effective", contractVersionId: versionId, fileIds: [uploaded.id] });
+    expect(archived).toMatchObject({ status: "effective", contractVersionId: versionId, fileIds });
     expect(await post(0, contract + "/signed-archive", archive)).toEqual(archived);
     expect((await get(0, contract + "/archive-requests/" + archive.idempotencyKey)).result).toEqual(archived);
     expect(await pending(0)).toBe(0);
-    expect(hash(await download(uploaded.id, "application/pdf"))).toBe(hash(file));
-    await expectStatus(send(7, "/files/" + uploaded.id + "/download-ticket", "POST", {
-      json: { confirmationPassword: passwords[7], downloadReason: "隔离测试访问限制" }
-    }), 403);
+    for (const original of originals) {
+      expect(hash(await download(original.id, "application/pdf"))).toBe(original.sha256);
+      await expectStatus(send(7, "/files/" + original.id + "/download-ticket", "POST", {
+        json: { confirmationPassword: passwords[7], downloadReason: "隔离测试访问限制" }
+      }), 403);
+    }
+    const activatedVersion = await owner.contractVersion.findUniqueOrThrow({ where: { id: versionId } });
+    const project = await owner.project.findUniqueOrThrow({ where: { id: seed.project.id } });
+    expect(activatedVersion.status).toBe("effective");
+    expect(project.constructionEnterpriseLockedAt).toEqual(activatedVersion.effectiveAt);
+    expect(project.constructionEnterpriseLockedAt).toBeInstanceOf(Date);
     expect((await detail()).contractVersionId).toBe(versionId);
     for (const [action, actor] of [["contract.seal_task.create", null], ["contract.seal.complete", seed.users[6].id], ["contract.archive.complete", seed.users[0].id]] as const) {
       expect(await owner.auditLog.count({ where: { action, businessId: versionId, ...(actor ? { actorUserId: actor } : {}) } })).toBe(1);
     }
     process.stdout.write("SEAL_329_NATIVE_PROOF " + JSON.stringify({ candidate: packet.candidate, docxSha256: hash(docx), pdfSha256: hash(pdf),
-      originalSha256: hash(file), approvals: actors.length, legacyRouteResponses: [410,410,410,410], sealTasks: 1, storage: "local" }) + "\n");
+      contractType: "equipment_rental", originalSha256: originals.map(original => original.sha256), approvals: actors.length, legacyRouteResponses: [410,410,410,410], sealTasks: 1, storage: "local" }) + "\n");
   } catch (error) {
     const detail = error as { code?: unknown; status?: unknown; expected?: unknown; message?: unknown };
     const code = typeof detail?.code === "string" && /^[A-Z0-9_]{1,100}$/u.test(detail.code) ? detail.code : undefined;
