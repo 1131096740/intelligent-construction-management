@@ -294,9 +294,6 @@ export class SettlementOperatingSourceAdapter implements OperatingSourceAdapter 
         businessPartyVersionId: upward?.affiliate.businessPartyVersionId ?? version.affiliateBusinessPartyVersionId
       })
     ]);
-    if (upward && !occurredBeforeEffectiveDate(occurredAt, effectiveDate)) {
-      throw new BadRequestException("对上历史结算截止日必须早于经营账启用日");
-    }
     const counterpartySnapshot = counterparty?.snapshot as Record<string, unknown> | undefined;
     return {
       projectId: row.projectId,

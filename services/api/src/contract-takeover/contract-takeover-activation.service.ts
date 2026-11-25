@@ -3,7 +3,7 @@ import { ConflictException, Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { freezeHistoricalUpwardAuthority, isHistoricalUpwardDraft } from "./historical-upward-authority";
-import { occurredBeforeEffectiveDate, sourceJson } from "../operating-ledger/formal-operating-source.helpers";
+import { sourceJson } from "../operating-ledger/formal-operating-source.helpers";
 import { assertTakeoverHandoverReady } from "./contract-takeover-handover";
 import { dbMoneyToBigInt } from "../money/decimal-money";
 import {
@@ -179,9 +179,6 @@ export class ContractTakeoverActivationService {
         where: { id: takeover.projectId }, select: { operatingLedgerEffectiveDate: true }
       });
       if (project?.operatingLedgerEffectiveDate) {
-        if (!occurredBeforeEffectiveDate(contractFacts.signedAt, project.operatingLedgerEffectiveDate)) {
-          throw new ConflictException("对上历史合同签订日必须早于经营账启用日");
-        }
         historicalUpwardAuthority = await freezeHistoricalUpwardAuthority(tx, {
           projectId: takeover.projectId, signedAt: contractFacts.signedAt,
           companyEntityId: contract.companyEntityId, counterparty: contract.counterparty
