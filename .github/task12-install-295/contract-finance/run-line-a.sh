@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 3 ]] || exit 64
+[[ $# == 3 || ( $# == 4 && $4 == original ) ]] || exit 64
 prepared=$(cd "$1" && pwd -P)
 sha=$2
 build=$(cd "$3" && pwd -P)
@@ -18,7 +18,8 @@ node -e '
 ' "$source" "$sha"
 entry=line-a-entry.cjs
 mode=$(node -p 'require(process.argv[1]).mode' "$source")
-if [[ "$mode" == historical-takeover-333 || "$mode" == historical-settlement-334 ]]; then
+if [[ ${4:-} == original && "$mode" != historical-settlement-334 ]]; then exit 64; fi
+if [[ ( "$mode" == historical-takeover-333 || "$mode" == historical-settlement-334 ) && ${4:-} != original ]]; then
   entry=historical-takeover-333-entry.cjs
 fi
 image=$(cat "$build/image.id")
@@ -29,7 +30,7 @@ fingerprint=$(cat "$build/context.sha256")
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-line-a.XXXXXXXX")
 installer="$common/installer.cjs"
-if [[ "$entry" == historical-takeover-333-entry.cjs ]]; then
+if [[ "$mode" == historical-takeover-333 || "$mode" == historical-settlement-334 ]]; then
   node "$plan/stage-historical-takeover-333.cjs" "$work" "$mode"
   installer="$work/installer.cjs"
 fi
@@ -49,7 +50,7 @@ for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
 
-if [[ "$entry" == historical-takeover-333-entry.cjs ]]; then
+if [[ "$mode" == historical-takeover-333 || "$mode" == historical-settlement-334 ]]; then
   args+=(--mount "type=bind,src=$plan/historical-takeover-333-profile.cjs,dst=/qualification/historical-takeover-333-profile.cjs,readonly")
   if [[ "$mode" == historical-settlement-334 ]]; then
     args+=(--mount "type=bind,src=$plan/historical-settlement-334-profile.cjs,dst=/qualification/historical-settlement-334-profile.cjs,readonly")
@@ -68,5 +69,6 @@ node -e '
   const expected=({"current-320":"LINE_A_EXACT_329_PASSED","text-direct-330":"LINE_A_TEXT_DIRECT_330_PASSED",
     "payment-remainder-331":"LINE_A_PAYMENT_REMAINDER_331_PASSED",
     "upward-archive-332":"LINE_A_UPWARD_ARCHIVE_332_PASSED","historical-takeover-333":"HISTORICAL_TAKEOVER_A28_333_PASSED","historical-settlement-334":"HISTORICAL_TAKEOVER_A28_334_PASSED"})[source.mode];
-  if(proof.status!==expected||proof.sourceSha!==process.argv[2])process.exit(65);
-' "$work/receipt.json" "$sha" "$source"
+  const required=process.argv[4]==="original"?"LINE_A_HISTORICAL_SETTLEMENT_334_PASSED":expected;
+  if(proof.status!==required||proof.sourceSha!==process.argv[2])process.exit(65);
+' "$work/receipt.json" "$sha" "$source" "${4:-}"

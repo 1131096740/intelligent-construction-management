@@ -3,11 +3,12 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { randomBytes } = require('node:crypto');
+const { createHash, randomBytes } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { admitSource } = require('./install-only292.cjs');
 const {
-  withCombined320ContractPayment, withCombined330TextAgreement, withCombined331PaymentRemainder, withCombined332UpwardArchive
+  withCombined320ContractPayment, withCombined330TextAgreement, withCombined331PaymentRemainder, withCombined332UpwardArchive,
+  withCombined334HistoricalSettlement
 } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
 const source = require('./contract-finance-source.json');
@@ -15,12 +16,14 @@ const source = require('./contract-finance-source.json');
 const root = '/qualification';
 const api = path.join(root, 'workspace/services/api');
 const spec = 'src/database/line-a-real-db.http.pg.spec.ts';
-const upwardArchive = source.mode === 'upward-archive-332';
+const historicalSettlement = source.mode === 'historical-settlement-334';
+const upwardArchive = source.mode === 'upward-archive-332' || historicalSettlement;
 const paymentRemainder = source.mode === 'payment-remainder-331' || upwardArchive;
 const textDirect = source.mode === 'text-direct-330' || paymentRemainder;
-const migrationCount = upwardArchive ? 332 : paymentRemainder ? 331 : textDirect ? 330 : 329;
+const migrationCount = historicalSettlement ? 334 : upwardArchive ? 332 : paymentRemainder ? 331 : textDirect ? 330 : 329;
 const tests = paymentRemainder ? 18 : textDirect ? 17 : 16;
-const purpose = upwardArchive ? 'LINE_A_UPWARD_ARCHIVE_332' : paymentRemainder ? 'LINE_A_PAYMENT_REMAINDER_331'
+const purpose = historicalSettlement ? 'LINE_A_HISTORICAL_SETTLEMENT_334'
+  : upwardArchive ? 'LINE_A_UPWARD_ARCHIVE_332' : paymentRemainder ? 'LINE_A_PAYMENT_REMAINDER_331'
   : textDirect ? 'LINE_A_TEXT_DIRECT_330' : 'LINE_A_EXACT_329';
 const receipt = {
   schemaVersion: 1, purpose, sourceSha: source.sourceSha,
@@ -270,12 +273,19 @@ async function main() {
   assert.ok(source.mode === 'current-320' || textDirect);
   assert.equal(source.migrationCount, migrationCount);
   assert.equal(source.predecessor.ledgerSha256, final);
+  if (historicalSettlement) {
+    const profile = require('./historical-settlement-334-profile.cjs');
+    profile.assertSource(source, final);
+    const installerHash = createHash('sha256').update(fs.readFileSync(path.join(root, 'installer.cjs'))).digest('hex');
+    assert.equal(installerHash, profile.installerSha256, 'LINE_A_334_INSTALLER_FINGERPRINT');
+  }
   const baseline = require(path.join(api, 'prisma/migration-baseline.cjs')).loadCanonicalMigrationBaseline();
   assert.equal(baseline.expectedDirectoryCount, source.migrationCount);
   assert.equal(baseline.terminalMigration, source.tails.at(-1).name);
   assert.equal(baseline.terminalMigrationChecksum, source.tails.at(-1).sha256);
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
-  const install = upwardArchive ? withCombined332UpwardArchive : paymentRemainder ? withCombined331PaymentRemainder
+  const install = historicalSettlement ? withCombined334HistoricalSettlement
+    : upwardArchive ? withCombined332UpwardArchive : paymentRemainder ? withCombined331PaymentRemainder
     : textDirect ? withCombined330TextAgreement : withCombined320ContractPayment;
   await install(receipt, consume, {
     sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails
@@ -309,6 +319,10 @@ async function main() {
   assert.equal(receipt.combinedAfterBusiness.sameIdentity, true);
   assert.equal(receipt.combinedAfterBusiness.exactB7, true);
   assert.equal(receipt.multiWitnessCatalogAfterBusiness, true);
+  if (historicalSettlement) {
+    assert.equal(receipt.historicalTakeoverCatalogAfterBusiness, true);
+    assert.equal(receipt.historicalSettlementCatalogAfterBusiness, true);
+  }
   assert.equal(receipt.testWitnessesCleared, true);
   assert.equal(receipt.cleanup, 'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
   receipt.status = purpose + '_PASSED';
