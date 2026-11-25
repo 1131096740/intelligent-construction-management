@@ -723,7 +723,12 @@ test("locates a rejected decimal cell and saves corrected input as a fresh confi
   await page.goto("/合同工作台/grid-contract?versionId=grid-version");
   await page.getByRole("button", { name: "放大编辑", exact: true }).click();
   const writes: string[] = [];
-  page.on("request", outgoing => { if (outgoing.method() === "PUT" && outgoing.url().endsWith("/contract-drafts/grid-version")) writes.push(outgoing.postDataJSON().idempotencyKey); });
+  let editLease: string | undefined;
+  page.on("request", outgoing => {
+    if (outgoing.method() !== "PUT" || !outgoing.url().endsWith("/contract-drafts/grid-version")) return;
+    writes.push(outgoing.postDataJSON().idempotencyKey);
+    editLease = outgoing.headers()["x-contract-draft-lease"];
+  });
   const grid = page.getByTestId("contract-bill-grid").locator("revo-grid");
   if (isMobile) await swipeToBillColumn(page, context, "含税单价 *");
   await grid.getByRole("gridcell", { name: "1.534", exact: true }).first().dblclick();
@@ -741,6 +746,31 @@ test("locates a rejected decimal cell and saves corrected input as a fresh confi
   expect(writes).toHaveLength(2);
   expect(writes[1]).not.toBe(writes[0]);
   await expect(page.getByTestId("contract-draft-save-status")).toContainText("已保存");
+
+  const path = "/api/contract-drafts/grid-version";
+  const saved = await (await request.get(`${path}/workbench`, { headers })).json();
+  const bill = saved.bills[0];
+  if (!editLease) throw new Error("The browser save did not send a draft lease");
+  const writeHeaders = { ...headers, "x-contract-draft-lease": editLease };
+  for (const unitPrice of ["-0.0001", "1e2", "100000000000000000000"]) {
+    const rows = bill.rows.map(gridApiRow);
+    rows[0].unitPrice = unitPrice;
+    const rejected = await request.put(path, {
+      headers: writeHeaders, data: gridApiSave(saved.version.draftRevision, bill.revision, rows)
+    });
+    expect(rejected.status(), unitPrice).toBe(400);
+  }
+  const unchanged = await (await request.get(`${path}/workbench`, { headers })).json();
+  expect(unchanged.version.draftRevision).toBe(saved.version.draftRevision);
+  expect(unchanged.bills[0].rows).toEqual(bill.rows);
+
+  const exported = await request.get(`${path}/bills/main/export`, { headers });
+  expect(exported.status()).toBe(200);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(await exported.body());
+  const sheet = workbook.getWorksheet("合同清单");
+  expect(sheet?.getCell("F2").value).toBe(bill.rows[0].unitPrice);
+  expect(sheet?.getCell("H2").value).toBe(bill.rows[0].taxInclusiveAmountYuan);
 });
 
 
