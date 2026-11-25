@@ -102,6 +102,7 @@ async function main() {
 }
 
 main().catch(error => {
+  receipt.status = 'STOPPED';
   const code = error.code ?? error.message;
   receipt.failure = { stage: receipt.stages.at(-1), code: /^[A-Z0-9_]+$/u.test(code) ? code : 'A28_333_FAILED',
     sqlstate: error.sqlstate, prismaCode: error.prismaCode };
