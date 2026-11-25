@@ -14,7 +14,7 @@ scope=task398-standard
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="current-320"?329:295;
+  const count=source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
   console.log(count);
 ' "$prepared/source.json" "$sha")
@@ -30,8 +30,15 @@ python3 "$plan/stage-task398-standard.py" \
 overlay_files=()
 while IFS= read -r file; do overlay_files+=("$file"); done < "$work/overlay-files.txt"
 [[ ${#overlay_files[@]} == 6 ]] || exit 65
-if [[ $count == 329 ]]; then
+if [[ $count == 329 || $count == 330 ]]; then
   patch --batch --forward --fuzz=0 --silent "$work/services/api/prisma/run-task398-shared-standard-local.cjs" < "$plan/task398-standard-320.patch"
+fi
+if [[ $count == 330 ]]; then
+  runner="$work/services/api/prisma/run-task398-shared-standard-local.cjs"
+  runner_sha() { node -e 'const fs=require("node:fs"),{createHash}=require("node:crypto"); console.log(createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$runner"; }
+  [[ $(runner_sha) == 08bacc09e2870c23bc4e73ff5d6473ae1a64c005d3ed92790713609406369b96 ]] || exit 65
+  patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-text-direct-330.patch"
+  [[ $(runner_sha) == 41f9b7dbed6fdae32dde82f71075e3b8df5a6e5013b74a1157d34476773cd1dd ]] || exit 65
 fi
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
@@ -59,12 +66,13 @@ docker run "${args[@]}" --entrypoint node "$image" /qualification/task398-standa
 tail -n 1 "$work/private.stdout" > "$work/receipt.json"
 node -e '
   const row=require(process.argv[1]);
-  if(row.purpose!=="TASK398_STANDARD_EXACT_"+process.argv[3]||row.sourceSha!==process.argv[2])process.exit(1);
+  const purpose=process.argv[3]==="330"?"TASK425_TEXT_DIRECT_FINANCE_330":"TASK398_STANDARD_EXACT_"+process.argv[3];
+  if(row.purpose!==purpose||row.sourceSha!==process.argv[2])process.exit(1);
   console.log(JSON.stringify(row));
 ' "$work/receipt.json" "$sha" "$count" || { printf 'TASK398_STANDARD_295_NO_RECEIPT %s\n' "$work" >&2; exit 1; }
 (( exit_code == 0 )) || exit "$exit_code"
 node -e '
   const proof=require(process.argv[1]);
-  const expected="TASK398_STANDARD_EXACT_"+process.argv[4]+"_PASSED";
+  const expected=(process.argv[4]==="330"?"TASK425_TEXT_DIRECT_FINANCE_330":"TASK398_STANDARD_EXACT_"+process.argv[4])+"_PASSED";
   if(proof.status!==expected||proof.sourceSha!==process.argv[3])process.exit(1);
 ' "$work/receipt.json" "$scope" "$sha" "$count"
