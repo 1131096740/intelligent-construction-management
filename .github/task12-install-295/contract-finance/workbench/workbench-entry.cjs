@@ -2,11 +2,12 @@
 const assert=require('node:assert/strict');
 const {verifyInputs}=require('./workbench-inputs.cjs');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement}=require('./installer.cjs');
 const terminal=require('./multi-witness.cjs');
 const source=require('./contract-finance-source.json');
-const current320=process.argv[2]==='--current-320';
-const count=current320?329:295;
+const textDirect=process.argv[2]==='--text-direct-330';
+const current320=textDirect||process.argv[2]==='--current-320';
+const count=textDirect?330:current320?329:295;
 const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:'POL115_WORKBENCH_ORIGINAL_'+count,business:'NOT_ENTERED',stages:['INPUTS']};
 Promise.resolve().then(()=>{
   assert.notEqual(process.getuid(),0);
@@ -14,7 +15,7 @@ Promise.resolve().then(()=>{
   assert.equal(process.argv.length,current320?3:2);
   assert.equal(source.migrationCount,count);
   if(current320){
-    assert.equal(source.mode,'current-320');
+    assert.equal(source.mode,textDirect?'text-direct-330':'current-320');
     assert.equal(source.predecessor.migrationCount,295);
     assert.equal(source.predecessor.ledgerSha256,terminal.final);
   } else assert.equal(source.ledgerSha256,terminal.final);
@@ -23,9 +24,12 @@ Promise.resolve().then(()=>{
   admitSource('/qualification','/qualification/source/services/api/prisma','/qualification/source-seal.txt');
   const {runWorkbench}=require('./task12-pol115-workbench-ci.cjs');
   const consume=context=>runWorkbench(context,receipt,current320?source:undefined);
-  if(current320) return withCombined320ContractPayment(receipt,consume,{
-    sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
-  });
+  if(current320){
+    const install=textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
+    return install(receipt,consume,{
+      sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
+    });
+  }
   return withCombined295MultiWitness(receipt,consume);
 }).then(()=>{
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
@@ -40,6 +44,10 @@ Promise.resolve().then(()=>{
     assert.equal(receipt.forward320.sameBaseB7,true);
     assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
     assert.equal(receipt.combinedAfterBusiness.count,count);
+  }
+  if(textDirect){
+    assert.equal(receipt.textDirectPredecessor?.count,329);
+    assert.equal(receipt.textDirectPredecessor?.sameBaseB7,true);
   }
   assert.equal(receipt.combinedAfterBusiness?.ledgerSha256,source.ledgerSha256);
   assert.equal(receipt.combinedAfterBusiness?.balance.keyUnprovisioned,true);
