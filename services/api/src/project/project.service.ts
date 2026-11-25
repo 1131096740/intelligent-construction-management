@@ -1,3 +1,4 @@
+import { ApprovalTransitionNotificationService } from "../approval/approval-transition-notification.service";
 import { mergeContractDrilldown } from "./project-operating-drilldown";
 import { readOwnerSettlementCumulative, readProjectOwnerBalance, resolveOwnerSettlementAdjustment } from "./project-owner-balance";
 import { requiredPastChinaDate } from "@jiangkong/shared-domain";
@@ -318,7 +319,8 @@ export class ProjectService {
     private readonly upstreamFundBusinessEntry: ProjectUpstreamFundBusinessEntryService =
       missingProjectUpstreamFundBusinessEntryService(),
     @Optional()
-    private readonly masterDataAccess: CompanyEntityAccess = new CompanyEntityAccess(prisma)
+    private readonly masterDataAccess: CompanyEntityAccess = new CompanyEntityAccess(prisma),
+    @Optional() private readonly approvalNotifications?: ApprovalTransitionNotificationService
   ) {}
 
   private async assertCanMaintainBasics(actorUserId: string, tx: Prisma.TransactionClient | PrismaService = this.prisma) {
@@ -3146,7 +3148,8 @@ export class ProjectService {
       "请上传结算例外额度附件"
     );
 
-    return this.prisma.$transaction(async (tx) => {
+    let noticeQueued = false;
+    const result = await this.prisma.$transaction(async (tx) => {
       const [project, contract, file] = await Promise.all([
         tx.project.findFirst({
           where: { id: projectId, isActive: true },
@@ -3188,7 +3191,7 @@ export class ProjectService {
         }
       });
 
-      await tx.approvalInstance.create({
+      const round = await tx.approvalInstance.create({
         data: {
           flowType: "settlement_exception_quota.approve",
           businessType: "project_settlement_exception_quota",
@@ -3214,8 +3217,11 @@ export class ProjectService {
         }
       });
 
+      noticeQueued = await this.approvalNotifications?.queue(tx, round.id, actorUserId) ?? false;
       return toSettlementExceptionQuotaReadModel(quota);
     });
+    if (noticeQueued) void this.approvalNotifications?.afterCommit();
+    return result;
   }
 
   async reviewSettlementExceptionQuota(
@@ -3236,7 +3242,8 @@ export class ProjectService {
     }
     await this.auth.confirmPassword(actorUserId, confirmationPassword);
 
-    return this.prisma.$transaction(async (tx) => {
+    let noticeQueued = false;
+    const result = await this.prisma.$transaction(async (tx) => {
       const quota = await tx.projectSettlementExceptionQuota.findFirst({
         where: { id: quotaId, projectId }
       });
@@ -3299,6 +3306,7 @@ export class ProjectService {
             nodeName: currentNode.name
           }
         });
+        noticeQueued = await this.approvalNotifications?.queue(tx, instance.id, actorUserId, true) ?? false;
         return toSettlementExceptionQuotaReadModel(rejected);
       }
 
@@ -3350,8 +3358,11 @@ export class ProjectService {
         }
       });
 
+      if (!flowCompleted) noticeQueued = await this.approvalNotifications?.queue(tx, instance.id, actorUserId) ?? false;
       return toSettlementExceptionQuotaReadModel(updated);
     });
+    if (noticeQueued) void this.approvalNotifications?.afterCommit();
+    return result;
   }
 
   async getProjectFinancingQuotaWorkbench(projectId: string, actorUserId: string) {
@@ -3673,8 +3684,9 @@ export class ProjectService {
       idempotencyKey
     };
 
+    let noticeQueued = false;
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const result = await this.prisma.$transaction(async (tx) => {
         const requestedByRoleKey = await this.requireProjectFinancingQuotaRequester(
           tx,
           projectId,
@@ -3761,7 +3773,7 @@ export class ProjectService {
           }
         });
 
-        await tx.approvalInstance.create({
+        const round = await tx.approvalInstance.create({
           data: {
             flowType: "project_financing_quota.approve",
             businessType: "project_financing_quota",
@@ -3791,8 +3803,11 @@ export class ProjectService {
           }
         });
 
+        noticeQueued = await this.approvalNotifications?.queue(tx, round.id, actorUserId) ?? false;
         return projectFinancingQuotaRequestReceipt(quota, "created");
       });
+      if (noticeQueued) void this.approvalNotifications?.afterCommit();
+      return result;
     } catch (error) {
       if (!isProjectFinancingQuotaRequestIdempotencyConflict(error)) throw error;
       return this.prisma.$transaction(async (tx) => {
@@ -3958,8 +3973,9 @@ export class ProjectService {
       throw new Error("Auth service is required to review project financing quota");
     }
 
+    let noticeQueued = false;
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const result = await this.prisma.$transaction(async (tx) => {
         const project = await lockActiveProjectForFinancingQuotaMutation(
           tx,
           projectId
@@ -4171,6 +4187,9 @@ export class ProjectService {
           }
         });
 
+        if (!flowCompleted) {
+          noticeQueued = await this.approvalNotifications?.queue(tx, instance.id, actorUserId, input.decision === "reject") ?? false;
+        }
         return projectFinancingQuotaReviewReceipt({
           kind: "applied",
           actionId,
@@ -4178,6 +4197,8 @@ export class ProjectService {
           quotaId
         });
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      if (noticeQueued) void this.approvalNotifications?.afterCommit();
+      return result;
     } catch (error) {
       if (isProjectFinancingQuotaReviewConcurrencyConflict(error)) {
         throw new ConflictException(

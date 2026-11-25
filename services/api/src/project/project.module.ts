@@ -1,3 +1,4 @@
+import { ApprovalModule } from "../approval/approval.module";
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
@@ -16,6 +17,7 @@ import { ProjectUpstreamFundBusinessEntryService } from "./project-upstream-fund
 
 @Module({
   imports: [
+    ApprovalModule,
     AuditModule,
     AuthModule,
     FileModule,

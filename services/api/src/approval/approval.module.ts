@@ -1,3 +1,4 @@
+import { ApprovalTransitionNotificationService } from "./approval-transition-notification.service";
 import { GeneralProcurementRequestNotificationModule } from "../general-procurement/general-procurement-request-notification.module";
 import { ApprovalRuleAssignmentsController } from "./approval-rule-assignments.controller";
 import { ApprovalRuleAssignmentsService } from "./approval-rule-assignments.service";
@@ -22,7 +23,7 @@ import { ApprovalSmsService } from "./approval-sms.service";
 @Module({
   imports: [GeneralProcurementRequestNotificationModule, AuditModule, AuthModule, FileModule, SpotProcurementAccessModule],
   controllers: [ApprovalRuleAssignmentsController, ApprovalDelegationController, ApprovalFormController, ApprovalProgressController],
-  providers: [ApprovalRuleAssignmentsService, SpotProcurementApprovalNotificationService, ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ProjectVisibilityService, ApprovalProgressService, ApprovalSmsService, IndependentApprovalProgressService, SpotProcurementPilotService],
-  exports: [SpotProcurementApprovalNotificationService, ApprovalSmsService, ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ApprovalProgressService, IndependentApprovalProgressService, SpotProcurementPilotService]
+  providers: [ApprovalTransitionNotificationService, ApprovalRuleAssignmentsService, SpotProcurementApprovalNotificationService, ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ProjectVisibilityService, ApprovalProgressService, ApprovalSmsService, IndependentApprovalProgressService, SpotProcurementPilotService],
+  exports: [ApprovalTransitionNotificationService, SpotProcurementApprovalNotificationService, ApprovalSmsService, ApprovalFreezeService, ApprovalDelegationService, ApprovalFormService, ApprovalProgressService, IndependentApprovalProgressService, SpotProcurementPilotService]
 })
 export class ApprovalModule {}

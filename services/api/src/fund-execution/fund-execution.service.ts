@@ -1,3 +1,4 @@
+import { ApprovalTransitionNotificationService } from "../approval/approval-transition-notification.service";
 import {AuthService} from "../auth/auth.service";
 import {confirmApprovalSelfReview} from "../approval/approval-self-review";
 import {
@@ -199,7 +200,8 @@ export class FundExecutionService {
     private readonly audit: AuditService,
     private readonly options: FundExecutionSelectionOptionsService,
     private readonly canonicalAdapter: FundExecutionCanonicalAdapterService,
-    @Optional() private readonly auth?: AuthService
+    @Optional() private readonly auth?: AuthService,
+    @Optional() private readonly approvalNotifications?: ApprovalTransitionNotificationService
   ) {}
 
   async createCase(
@@ -1006,7 +1008,8 @@ export class FundExecutionService {
     input: ReviewFundExecutionApprovalInput
   ) {
     const caseId = requiredText(input.caseId, "资金执行案件不能为空");
-    return this.runSerializable(async (tx) => {
+    let noticeQueued = false;
+    const result = await this.runSerializable(async (tx) => {
       const submitted = await this.lockLatestCase(tx, caseId, undefined, "submitted");
       if (!submitted.approvalInstanceId) {
         throw new ConflictException("资金执行案件缺少审批实例");
@@ -1091,6 +1094,7 @@ export class FundExecutionService {
           where: { id: instance.id },
           data: { status: "returned_to_applicant" }
         });
+        noticeQueued = await this.approvalNotifications?.queue(tx, instance.id, actorUserId, true) ?? false;
         return { caseId, status: "returned_to_applicant" };
       }
       const finalNode = instance.currentNodeIndex === nodes.length - 1;
@@ -1123,8 +1127,11 @@ export class FundExecutionService {
             : instance.currentNodeIndex + 1
         }
       });
+      if (!finalNode) noticeQueued = await this.approvalNotifications?.queue(tx, instance.id, actorUserId) ?? false;
       return { caseId, status: finalNode ? "approved" : "in_progress" };
     });
+    if (noticeQueued) void this.approvalNotifications?.afterCommit();
+    return result;
   }
 
   private async transition(
@@ -1148,7 +1155,8 @@ export class FundExecutionService {
       expectedRevision: input.expectedRevision,
       returnReason
     });
-    return this.runSerializable(async (tx) => {
+    let noticeQueued = false;
+    const result = await this.runSerializable(async (tx) => {
       await this.authorizeContext(tx, actorUserId, idempotencyKey, action);
       await this.assertRole(tx, actorUserId, action === "submit_case" ? FINANCE_WRITER_ROLES : ["finance_director"]);
       return this.receiptFirst(tx, {
@@ -1325,6 +1333,9 @@ export class FundExecutionService {
           }
           if (action === "submit_case") {
             await freezeFundExecutionEntryInTransaction(tx, caseRow.id, actorUserId, publicClassificationLines(predecessorSelections));
+            if (approvalInstanceId) {
+              noticeQueued = await this.approvalNotifications?.queue(tx, approvalInstanceId, actorUserId) ?? false;
+            }
           }
           const response = this.response(caseRow);
           await this.recordAudit(tx, actorUserId, action, response, {
@@ -1344,6 +1355,8 @@ export class FundExecutionService {
         }
       });
     });
+    if (noticeQueued) void this.approvalNotifications?.afterCommit();
+    return result;
   }
 
   private async lockReversalSource(

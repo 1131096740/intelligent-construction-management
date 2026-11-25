@@ -1,4 +1,6 @@
-import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import { ApprovalTransitionNotificationService } from "./approval-transition-notification.service";
+import { RetryDutyNotificationDto } from "./retry-duty-notification.dto";
+import { BadRequestException, Body, Controller, Get, Optional, Param, Post, Query } from "@nestjs/common";
 import { ArrayNotEmpty, ArrayUnique, IsArray, IsOptional, IsString, IsUUID, Matches } from "class-validator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
@@ -21,7 +23,10 @@ class RemindApprovalDto {
 
 @Controller("approval-progress")
 export class ApprovalProgressController {
-  constructor(private readonly progress: ApprovalProgressService) {}
+  constructor(
+    private readonly progress: ApprovalProgressService,
+    @Optional() private readonly notifications?: ApprovalTransitionNotificationService
+  ) {}
 
   @Get()
   list(@CurrentUser() user: AuthenticatedUser, @Query("cursor") cursor?: string, @Query("businessType") businessType?: string,
@@ -33,6 +38,17 @@ export class ApprovalProgressController {
   @Get(":instanceId")
   detail(@Param("instanceId") id: string, @CurrentUser() user: AuthenticatedUser, @Query("view") view?: string) {
     return this.progress.detail(id, user.id, view === "viewable");
+  }
+
+  @Get(":instanceId/duty-sms")
+  async dutySmsStatus(@Param("instanceId") id: string, @CurrentUser() user: AuthenticatedUser) {
+    return { notice: await this.notifications?.status(id, user.id) ?? null };
+  }
+
+  @Post(":instanceId/duty-sms/retry")
+  retryDutySms(@Param("instanceId") id: string, @CurrentUser() user: AuthenticatedUser, @Body() input: RetryDutyNotificationDto) {
+    if (!this.notifications) throw new BadRequestException("短信通知暂不可用");
+    return this.notifications.retry(id, user.id, input.attemptId);
   }
 
   @Post(":instanceId/remind")

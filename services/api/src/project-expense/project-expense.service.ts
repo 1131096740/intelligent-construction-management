@@ -1,3 +1,4 @@
+import { ApprovalTransitionNotificationService } from "../approval/approval-transition-notification.service";
 import { requiredPastChinaDate } from "@jiangkong/shared-domain";
 import { ApprovalFormService } from "../approval/approval-form.service";
 import {
@@ -284,7 +285,8 @@ export class ProjectExpenseService {
     @Optional()
     private readonly files?: FileService,
     private readonly projectFunding?: ProjectFundingAvailabilityService,
-    @Optional() private readonly approvalForms?: ApprovalFormService
+    @Optional() private readonly approvalForms?: ApprovalFormService,
+    @Optional() private readonly approvalNotifications?: ApprovalTransitionNotificationService
   ) {}
 
   async list(projectId: string, actorUserId: string, query?: ProjectExpenseLedgerQuery) {
@@ -1125,6 +1127,7 @@ export class ProjectExpenseService {
       throw new BadRequestException("预期审批节点格式不正确");
     }
 
+    let noticeQueued = false;
     const reviewed = await this.prisma.$transaction(async (tx) => {
       const request = await this.lockExpenseRequestById(tx, projectId, expenseRequestId);
       if (!request) {
@@ -1241,6 +1244,7 @@ export class ProjectExpenseService {
             ...selfReview.metadata
           }
         });
+        noticeQueued = await this.approvalNotifications?.queue(tx, instance.id, actorUserId, true) ?? false;
         return rejected;
       }
 
@@ -1330,8 +1334,12 @@ export class ProjectExpenseService {
           ...selfReview.metadata
         }
       });
+      if (!flowCompleted) {
+        noticeQueued = await this.approvalNotifications?.queue(tx, instance.id, actorUserId) ?? false;
+      }
       return updated;
     });
+    if (noticeQueued) void this.approvalNotifications?.afterCommit();
 
     if (reviewed.status === "approved_pending_payment" && this.files) {
       await this.ensureApprovalPdfArchive(reviewed.id, actorUserId).catch(() => undefined);

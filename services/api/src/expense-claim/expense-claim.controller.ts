@@ -278,6 +278,17 @@ export class ExpenseClaimController {
     return this.dutyNotifications.retry(id, user.id, body.attemptId);
   }
 
+  @Get(":claimId/approval-duty-sms")
+  async approvalDutySmsStatus(@Param("claimId") id: string, @CurrentUser() user: AuthenticatedUser) {
+    return { notice: await this.dutyNotifications?.approvalStatus(id, user.id) ?? null };
+  }
+
+  @Post(":claimId/approval-duty-sms/retry")
+  retryApprovalDutySms(@Param("claimId") id: string, @CurrentUser() user: AuthenticatedUser, @Body() body: RetryDutyNotificationDto) {
+    if (!this.dutyNotifications) throw new BadRequestException("短信通知暂不可用");
+    return this.dutyNotifications.retryApproval(id, user.id, body.attemptId);
+  }
+
   @Post(":claimId/disbursements")
   @RequireProjectRole("expense_claim.disburse")
   recordLoanDisbursement() {

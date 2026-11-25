@@ -9,6 +9,7 @@ export function auditDutyNoticeId(kind: string, ...identity: string[]) {
 }
 
 export type AuditDutySmsMessage = { phone: string; intent: ApprovalDutySmsIntent };
+export type DutyDispatchMessage = AuditDutySmsMessage | { phone: string; intent?: never };
 type PrepareNoticeAudit = (tx: Prisma.TransactionClient, intent: AuditLog, id: string, action: string) => Promise<void>;
 
 export async function dispatchAuditDutyNotices(
@@ -16,7 +17,7 @@ export async function dispatchAuditDutyNotices(
   sms: ApprovalSmsService,
   kind: string,
   lockDuty: (tx: Prisma.TransactionClient, businessId: string, intent: AuditLog) => Promise<boolean | void>,
-  currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => Promise<AuditDutySmsMessage | null>,
+  currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => Promise<DutyDispatchMessage | null>,
   prepareAudit?: PrepareNoticeAudit
 ) {
   if (!sms.available()) return;
@@ -51,7 +52,8 @@ export async function dispatchAuditDutyNotices(
       return (await record(tx, claimId, "dispatch_claimed")).count === 1 ? current : null;
     });
     if (!message) continue;
-    const result = await sms.sendDutyIntent(message.phone, message.intent).catch(() => ({ status: "unknown" as const }));
+    const result = await (message.intent ? sms.sendDutyIntent(message.phone, message.intent) : sms.send(message.phone))
+      .catch(() => ({ status: "unknown" as const }));
     if (prepareAudit) {
       await prisma.$transaction(tx => record(tx, terminalId, result.status));
     } else {
@@ -65,7 +67,7 @@ type NoticeAccess = {
   sms: Pick<ApprovalSmsService, "available">;
   kind: string;
   lockDuty: (tx: Prisma.TransactionClient, businessId: string) => Promise<void>;
-  currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => Promise<AuditDutySmsMessage | null>;
+  currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => Promise<DutyDispatchMessage | null>;
   prepareAudit?: PrepareNoticeAudit;
   canAccess?: (tx: Prisma.TransactionClient, intent: AuditLog) => Promise<boolean>;
   scope?: Readonly<Record<string, string | number>>;

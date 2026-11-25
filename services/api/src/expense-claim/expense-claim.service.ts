@@ -1452,6 +1452,9 @@ export class ExpenseClaimService {
           businessId: claim.id,
           metadata: { nodeName: node.name, approvedRoleKey: identity.approvedRoleKey, releasedAmountCents: releasedAmountCents.toString(), ...selfReview.metadata }
         });
+        if (this.fundingNotifications) {
+          notificationQueued = await this.fundingNotifications.queueApprovalCorrection(tx, claim.id, instance, actorUserId);
+        }
         return { id: claim.id, status: parallel ? "draft" : "rejected" };
       }
 

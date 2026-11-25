@@ -6,7 +6,7 @@ import { formatMoneyCentsAsPlainYuan } from "../money/decimal-money";
 import { expenseClaimFundingDuty } from "./expense-claim-funding-duty";
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
 import { Prisma, type AuditLog, type ExpenseClaim } from "@prisma/client";
-import { auditDutyNoticeId, auditDutyNoticeStatus, dispatchAuditDutyNotices, retryFailedAuditDutyNotice, type AuditDutySmsMessage } from "../approval/audit-duty-notification-delivery";
+import { auditDutyNoticeId, auditDutyNoticeStatus, dispatchAuditDutyNotices, retryFailedAuditDutyNotice, type AuditDutySmsMessage, type DutyDispatchMessage } from "../approval/audit-duty-notification-delivery";
 import { ApprovalSmsService } from "../approval/approval-sms.service";
 import { loadEffectiveProjectApprovalAssignments } from "../approval/project-approval-assignments";
 import { PrismaService } from "../database/prisma.service";
@@ -69,6 +69,19 @@ export class ExpenseClaimFundingNotificationService implements OnModuleInit, OnM
     );
     if (!rows.length) return false;
     return (await tx.auditLog.createMany({ skipDuplicates: true, data: rows })).count > 0;
+  }
+
+  async queueApprovalCorrection(
+    tx: Prisma.TransactionClient,
+    claimId: string,
+    round: { id: string; applicantUserId: string },
+    actorUserId: string
+  ) {
+    return (await tx.auditLog.createMany({ skipDuplicates: true, data: [{
+      id: auditDutyNoticeId(approvalKind, claimId, round.id, "correction", round.applicantUserId),
+      action: "queued", businessType: approvalKind, businessId: claimId, actorUserId,
+      metadata: { recipientId: round.applicantUserId, approvalInstanceId: round.id, duty: "correction" }
+    }] })).count > 0;
   }
 
   async reconcilePendingApprovalDuties() {
@@ -147,18 +160,48 @@ export class ExpenseClaimFundingNotificationService implements OnModuleInit, OnM
     return result.status;
   }
 
-  private async currentApprovalMessage(tx: Prisma.TransactionClient, intent: AuditLog): Promise<AuditDutySmsMessage | null> {
+  private approvalNoticeAccess() {
+    return {
+      prisma: this.prisma, sms: this.sms, kind: approvalKind,
+      lockDuty: (tx: Prisma.TransactionClient, id: string) => this.lockDuty(tx, id),
+      currentMessage: (tx: Prisma.TransactionClient, intent: AuditLog) => this.currentApprovalMessage(tx, intent)
+    };
+  }
+
+  approvalStatus(id: string, actorId: string) {
+    return auditDutyNoticeStatus(this.approvalNoticeAccess(), id, actorId);
+  }
+
+  async retryApproval(id: string, actorId: string, attemptId: string) {
+    const result = await retryFailedAuditDutyNotice(this.approvalNoticeAccess(), id, actorId, attemptId);
+    if (result.enqueued) await this.afterCommit();
+    return (await this.approvalStatus(id, actorId)) ?? result.status;
+  }
+
+  private async currentApprovalMessage(tx: Prisma.TransactionClient, intent: AuditLog): Promise<DutyDispatchMessage | null> {
     const data = intent.metadata as Prisma.JsonObject | null;
     const recipientId = data?.recipientId;
     const instanceId = data?.approvalInstanceId;
     const nodeIndex = data?.approvalDutyIndex;
-    if (!intent.businessId || typeof recipientId !== "string" || typeof instanceId !== "string" ||
-        typeof nodeIndex !== "number" || !Number.isInteger(nodeIndex)) return null;
+    if (!intent.businessId || typeof recipientId !== "string" || typeof instanceId !== "string") return null;
     const claim = await tx.expenseClaim.findUnique({
       where: { id: intent.businessId },
       select: { id: true, projectId: true, claimType: true, generalProcurementId: true, actualPurchaseBatchId: true,
         approvalInstanceId: true, status: true, voidedAt: true }
     });
+    if (data?.duty === "correction") {
+      if (!claim || claim.claimType === "loan" || claim.voidedAt || !["draft", "rejected"].includes(claim.status)) return null;
+      const round = await tx.approvalInstance.findFirst({
+        where: { businessId: claim.id, businessType: "expense_claim", flowType: "expense_claim.approve" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { id: true, status: true, applicantUserId: true }
+      });
+      if (round?.id !== instanceId || round.applicantUserId !== recipientId ||
+          round.status !== (claim.status === "draft" ? "returned" : "rejected")) return null;
+      const user = await tx.user.findUnique({ where: { id: recipientId }, select: { phone: true, isActive: true } });
+      return user?.isActive ? { phone: user.phone ?? "" } : null;
+    }
+    if (typeof nodeIndex !== "number" || !Number.isInteger(nodeIndex)) return null;
     if (!claim || !supportsExpenseParallelApproval(claim) || claim.voidedAt ||
         claim.status !== "approval_pending" || claim.approvalInstanceId !== instanceId) return null;
     const round = await tx.approvalInstance.findUnique({

@@ -265,7 +265,7 @@ export class ApprovalProgressService {
         const contract = version ? await db.contract.findUnique({ where: { id: version.contractId }, select: { projectId: true, code: true } }) : null;
         return contract ? { projectId: contract.projectId, code: contract.code ?? "合同履约确认", contractVersionId: completion!.contractVersionId } : null;
       }
-      case "project_expense_request": return db.projectExpenseRequest.findUnique({ where: { id }, select: { projectId: true, code: true, expenseType: true, expenseSubtype: true } });
+      case "project_expense_request": return db.projectExpenseRequest.findUnique({ where: { id }, select: { projectId: true, code: true, expenseType: true, expenseSubtype: true, status: true } });
       case "expense_claim": return db.expenseClaim.findUnique({ where: { id }, select: {
         projectId: true, code: true, applicantUserId: true, handledByUserId: true, status: true,
         approvalInstanceId: true, claimType: true, generalProcurementId: true, actualPurchaseBatchId: true
@@ -275,14 +275,49 @@ export class ApprovalProgressService {
         return version ? db.spotProcurement.findUnique({ where: { id: version.procurementId }, select: { projectId: true, code: true } }) : null;
       }
       case "spot_procurement_payment": return db.spotProcurementPayment.findUnique({ where: { id }, select: { projectId: true, code: true } });
-      case "project_financing_quota": return db.projectFinancingQuota.findUnique({ where: { id }, select: { projectId: true, requestedByRoleKey: true } });
-      case "project_settlement_exception_quota": return db.projectSettlementExceptionQuota.findUnique({ where: { id }, select: { projectId: true } });
+      case "project_financing_quota": return db.projectFinancingQuota.findUnique({ where: { id }, select: { projectId: true, requestedByRoleKey: true, status: true } });
+      case "project_settlement_exception_quota": return db.projectSettlementExceptionQuota.findUnique({ where: { id }, select: { projectId: true, status: true } });
       default: return null;
     }
   }
 
-  private async context(db: Db, id: string, actorId: string, allowViewer = false) {
-    const instance = await db.approvalInstance.findUnique({ where: { id } });
+  async transitionSmsDuties(db: Db, id: string, correction: boolean) {
+    const round = await db.approvalInstance.findUnique({ where: { id } });
+    const flowTypes: Record<string, string> = {
+      project_expense_request: "project_expense.approve",
+      project_financing_quota: "project_financing_quota.approve",
+      project_settlement_exception_quota: "settlement_exception_quota.approve",
+      fund_execution_case: "fund_execution_case.approve"
+    };
+    if (!round || !Object.hasOwn(flowTypes, round.businessType) || flowTypes[round.businessType] !== round.flowType) return [];
+    const fundExecution = round.businessType === "fund_execution_case";
+    if (round.status !== (correction ? (fundExecution ? "returned_to_applicant" : "rejected") : "in_progress")) return [];
+    const latest = await db.approvalInstance.findFirst({
+      where: { businessId: round.businessId, businessType: round.businessType, flowType: round.flowType },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: { id: true }
+    });
+    if (latest?.id !== id) return [];
+    const ctx = await this.context(db, id, null, false, round);
+    if (ctx.retiredReminderReason || !("status" in ctx.business) || (ctx.business.projectId && !ctx.project?.isActive)) return [];
+    if (fundExecution) {
+      if (!("approvalInstanceId" in ctx.business) || ctx.business.approvalInstanceId !== id ||
+          !(correction ? ["submitted", "draft"].includes(ctx.business.status) : ctx.business.status === "submitted")) return [];
+    } else if (ctx.business.status !== (correction ? "rejected" : "approval_pending")) {
+      return [];
+    }
+    if (correction) {
+      const action = fundExecution ? "return_to_applicant" : "reject";
+      if (!ctx.logs.some(log => log.action === action)) return [];
+      const applicant = ctx.byId.get(round.applicantUserId);
+      return applicant?.isActive ? [{ duty: "correction", recipients: [applicant] }] : [];
+    }
+    return activeApprovalNodeIndexes(round.frozenNodes, round.currentNodeIndex).map(duty => ({
+      duty, recipients: ctx.currentPendingByDuty?.[duty] ?? ctx.pending.filter(user => ctx.nodeIds[duty]?.includes(user.id))
+    }));
+  }
+
+  private async context(db: Db, id: string, actorId: string | null, allowViewer = false, loadedRound?: ApprovalInstance) {
+    const instance = loadedRound ?? await db.approvalInstance.findUnique({ where: { id } });
     if (!instance) throw new NotFoundException("审批流程不存在或无权查看");
     const business = await this.business(db, instance);
     if (!business) throw new NotFoundException("审批流程不存在或无权查看");
@@ -314,7 +349,7 @@ export class ApprovalProgressService {
       projectId ? db.project.findUnique({ where: { id: projectId }, select: { name: true, isActive: true } }) : Promise.resolve(null)
     ]);
     const byId = new Map(users.map(u => [u.id, u]));
-    if (!byId.get(actorId)?.isActive) throw new NotFoundException("审批流程不存在或无权查看");
+    if (actorId !== null && !byId.get(actorId)?.isActive) throw new NotFoundException("审批流程不存在或无权查看");
     const roles = new Map<string, ApprovalActorRoleScopes>();
     const positionKeys = new Map(positions.map(p => [p.id, p.key as RoleKey]));
     for (const user of users) roles.set(user.id, {
@@ -454,12 +489,12 @@ export class ApprovalProgressService {
     }
     if ("applicantUserId" in business && typeof business.applicantUserId === "string") participants.add(business.applicantUserId);
     if ("handledByUserId" in business && typeof business.handledByUserId === "string") participants.add(business.handledByUserId);
-    if (parallelGeneral && "applicantUserId" in business && typeof business.applicantUserId === "string") {
+    if (actorId !== null && parallelGeneral && "applicantUserId" in business && typeof business.applicantUserId === "string") {
       const actor = await generalRequestActor(db as Prisma.TransactionClient, new ProjectVisibilityService(this.prisma), actorId, projectId);
       if (generalRequestCanRead({ applicantUserId: business.applicantUserId }, actor)) participants.add(actorId);
     }
-    const participant = participants.has(actorId);
-    if (!participant) {
+    const participant = actorId !== null && participants.has(actorId);
+    if (actorId !== null && !participant) {
       // 可见范围与可办理分离：管理查看人只读进度，不进入任何职责候选。
       const viewerAllowed = allowViewer && this.files
         ? await this.files.canViewApprovalFlow(instance.businessType, instance.businessId, actorId) : false;
