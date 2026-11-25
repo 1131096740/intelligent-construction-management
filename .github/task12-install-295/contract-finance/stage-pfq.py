@@ -38,10 +38,10 @@ entry.write_text(text.replace('withOutside289Pfq','withPfq295')
     .replace('  assert.equal(receipt.business,','  assert.equal(receipt.combinedAfterBusiness?.exactB7,true);\n  assert.equal(receipt.business,'))
 installer=out/'installer.cjs'
 shutil.copyfile(common/'installer.cjs',installer)
-if sha(installer)!='3a7dca40f95be2acd9119e512fa37cf3f29bc7815ecd4d46ee3537f49959301d':
+if sha(installer)!='32a8523675c13ffb29e9a0d7957c6ee32fd1f901df2f2075fdaa9da8d1ff56f8':
     raise SystemExit('PFQ_COMBINED_INSTALLER_PREIMAGE')
 subprocess.run(['git','apply','--unidiff-zero','-p0',str((plan/'pfq-installer-295.patch').resolve())],cwd=out,check=True)
-if sha(installer)!='c185ca929da44608289ce0a11a866b5b215f2a97223d1e2798bd128733f23eda':
+if sha(installer)!='9a042ac6fccdc1cf44649beb49da08193afffc91da40c80db82e68ec565f811c':
     raise SystemExit('PFQ_COMBINED_INSTALLER_POSTIMAGE')
 patch(entry,plan/'pfq-entry-modes.patch')
 for file in out.iterdir():
