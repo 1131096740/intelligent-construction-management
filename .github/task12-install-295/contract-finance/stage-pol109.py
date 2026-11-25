@@ -57,7 +57,22 @@ def exactly(text,needle,new):
         raise SystemExit('POL109_295_ORIGINAL_ANCHOR '+needle)
     return text.replace(needle,new)
 
-for target in [out/'project-close-profit.owned282.http.pg.spec.ts',out/'task12-pol109-ci.cjs']:
+owned_http = out/'project-close-profit.owned282.http.pg.spec.ts'
+if count == 332:
+    current_http = (workspace/'services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts').read_text()
+    scenario_start = '    // A27 incomplete operating details\n'
+    scenario_end = '    // End A27 incomplete operating details\n'
+    if current_http.count(scenario_start) != 1 or current_http.count(scenario_end) != 1:
+        raise SystemExit('POL109_A27_SCENARIO')
+    scenario, end, _ = current_http.split(scenario_start, 1)[1].partition(scenario_end)
+    if not scenario.strip() or not end:
+        raise SystemExit('POL109_A27_SCENARIO')
+    setup_end = '    await appendAdjustment("browser-reopen", "expense", 1n, "outflow", "confirmed_cost");\n'
+    original_title = 'completes seven stages and real positive, loss, and zero submit-confirm decision cycles'
+    with_a27 = exactly(owned_http.read_text(), setup_end, setup_end + '\n' + scenario_start + scenario + scenario_end)
+    owned_http.write_text(exactly(with_a27, original_title, original_title + ' and rejects an incomplete A27 final submission'))
+
+for target in [owned_http,out/'task12-pol109-ci.cjs']:
     text=target.read_text()
     text=exactly(text,'count(*) = 290' if target.suffix=='.ts' else 'count(*)=290',
                       f'count(*) = {count}' if target.suffix=='.ts' else f'count(*)={count}')

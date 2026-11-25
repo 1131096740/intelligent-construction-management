@@ -143,7 +143,9 @@ test('POL108 and POL109 stage their original fixtures for the exact 332 ledger',
     assert.match(projection, /rolled_back_at IS NULL\) = 332/u);
 
     const workspace = path.join(work, 'workspace');
-    mkdirSync(workspace);
+    const httpSpec = 'services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts';
+    mkdirSync(path.dirname(path.join(workspace, httpSpec)), { recursive: true });
+    writeFileSync(path.join(workspace, httpSpec), readFileSync(path.join(root, httpSpec)));
     const record = path.join(work, 'source.json');
     writeFileSync(record, JSON.stringify(source));
     const closure = path.join(work, 'pol109');
@@ -156,6 +158,9 @@ test('POL108 and POL109 stage their original fixtures for the exact 332 ledger',
       assert.ok(staged.includes(terminal.name));
       assert.ok(staged.includes(terminal.sha256));
     }
+    const owned = readFileSync(path.join(closure, 'project-close-profit.owned282.http.pg.spec.ts'), 'utf8');
+    assert.match(owned, /and rejects an incomplete A27 final submission/u);
+    assert.ok(owned.includes('经营金额或来源仍不完整，不能最终确认盈亏'));
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
