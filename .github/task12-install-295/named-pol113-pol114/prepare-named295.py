@@ -249,9 +249,10 @@ write(context/'candidate-admission.json',(json.dumps({
     'migrationCount':count,
     **({'ledger329':ledger329} if text_direct else {}),
     **({'ledger330':source['predecessor330']['ledgerSha256']} if payment_remainder else {}),
-    **({'ledger331':source['predecessor331']['ledgerSha256'],'ledger332':source['ledgerSha256']} if upward_archive else {}),
-    **({'ledger320':source['ledgerSha256']} if current320 and not upward_archive else {}),
-    **({'sourceTree':source['sourceTree'],'tails':source['tails']} if current320 else {}),
+    **({'ledger331':source['predecessor331']['ledgerSha256'],'ledger332':source['ledgerSha256'],
+        'sourceTree':source['sourceTree'],'tails':source['tails']} if upward_archive else {}),
+    **({'sourceTree':source['sourceTree'],'ledger320':source['ledgerSha256'],'tails':source['tails']}
+       if current320 and not upward_archive else {}),
 })+'\n').encode())
 docker = read_pinned(donor/'Dockerfile.in','456025c143f993973d1947343c7636565406c74c5a0456addc1e1ff3dcffc24e').decode()
 copy = read_pinned(donor/'runtime-copy.txt','de9a7b69c406aa307423a7231ec086b8c6995bd435bfc1fae0bb0dab5d4b40e6').decode().strip()
