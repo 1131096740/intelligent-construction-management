@@ -56,14 +56,18 @@ export async function withDeferredPaymentCommitFault(
 }
 
 export async function disconnectIsolatedPaymentCommit<T>(owner: PrismaClient, register: () => Promise<T>): Promise<T> {
+  const runId = process.env.TASK398_RUN_ID ?? "";
+  expect(process.env.NODE_ENV).toBe("test");
+  expect(runId).toMatch(/^[a-f0-9]{32}$/u);
+  const database = `jg_task01_${runId}`;
   let response: Promise<{ value: T } | { error: unknown }> | undefined;
   await owner.$transaction(async tx => {
     // The archived isolated runner supplies these identities. The advisory
     // lock ties the signal to this one request inside PostgreSQL COMMIT.
     const [identity] = await tx.$queryRaw<Array<{ safe: boolean }>>`
-      SELECT current_database() = 'jiangkong_payment_execution_concurrency'
+      SELECT current_database() = ${database}
         AND current_user = 'jg_task01_owner'
-        AND current_setting('jg.task398_run_id', true) = ${process.env.TASK398_RUN_ID} AS safe`;
+        AND current_setting('jg.task398_run_id', true) = ${runId} AS safe`;
     expect(identity?.safe).toBe(true);
     await tx.$executeRaw`SET LOCAL stats_fetch_consistency = 'none'`;
     await tx.$executeRaw`SELECT pg_catalog.pg_advisory_xact_lock(426, 16)`;
