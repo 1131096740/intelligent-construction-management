@@ -85,16 +85,16 @@ export async function disconnectIsolatedPaymentCommit<T>(owner: PrismaClient, re
 
     const deadline = Date.now() + 8_000;
     do {
-      const [match, extra] = await tx.$queryRaw<Array<{ pid: number }>>`
-        SELECT activity.pid
-        FROM pg_catalog.pg_stat_activity activity
-        JOIN pg_catalog.pg_locks waiting ON waiting.pid = activity.pid
-        WHERE activity.datname = current_database() AND activity.usename = 'jg_task01_runtime'
-          AND activity.application_name = 'jg398_runtime' AND activity.state = 'active'
+      const [match, extra] = await tx.$queryRaw<Array<{ pid: number; runtime: boolean | null }>>`
+        SELECT waiting.pid, activity.usename = 'jg_task01_runtime' AS runtime
+        FROM pg_catalog.pg_locks waiting
+        LEFT JOIN pg_catalog.pg_stat_activity activity ON activity.pid = waiting.pid
+        WHERE waiting.database = (SELECT oid FROM pg_catalog.pg_database WHERE datname = current_database())
           AND waiting.locktype = 'advisory' AND waiting.classid = 426 AND waiting.objid = 16
           AND waiting.objsubid = 2 AND NOT waiting.granted`;
       expect(extra).toBeUndefined();
       if (match) {
+        expect(match.runtime).toBe(true);
         const [signal] = await tx.$queryRaw<Array<{ disconnected: boolean }>>`
           SELECT pg_catalog.pg_terminate_backend(${match.pid}::integer, 1500::bigint) AS disconnected`;
         expect(signal?.disconnected).toBe(true);
