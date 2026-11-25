@@ -716,7 +716,8 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       expect((await db.approvalInstance.findUniqueOrThrow({ where: { id: newId } })).status).toBe("withdrawn");
       expect(await db.approvalActionLog.count({ where: { approvalInstanceId: newId, action: "approve" } })).toBe(1);
       const afterWithdrawal = await request(`${path}/submission`, {});
-      expect(afterWithdrawal).toMatchObject({ status: 201, body: { status: "approval_pending", requestedAmountCents: "8" } });
+      expect(afterWithdrawal).toMatchObject({ status: 201, body: { status: "approval_pending", companyPayableAmountCents: "8" } });
+      expect(await request(path)).toMatchObject({ status: 200, body: { requestedAmountCents: "8" } });
       const finalId = afterWithdrawal.body.approvalInstanceId!;
       expect(finalId).not.toBe(newId);
       expect(await request(`/approval-progress/${newId}`)).toMatchObject({
