@@ -388,6 +388,15 @@ if forward:
   if(process.env.JG_PROCUREMENT_A05==="1"){
     receipt.stages.push("PROCUREMENT_A05_ORGANIZATION_AUTHORITY");
     try{
+      const sequence='public."PersonnelChange_sequence_seq"';
+      const preimage=await ownerSql("A05_SEQUENCE_PREIMAGE",`SELECT (NOT has_sequence_privilege('${role}','${sequence}','USAGE,SELECT,UPDATE'))::text`);
+      condition(preimage.stdout.trim()==="true","PROCUREMENT_A05_SEQUENCE_PREIMAGE");
+      const restricted=await ownerSql("A05_SEQUENCE_USAGE",`
+        GRANT USAGE ON SEQUENCE ${sequence} TO ${role};
+        SELECT (has_sequence_privilege('${role}','${sequence}','USAGE') AND
+          NOT has_sequence_privilege('${role}','${sequence}','SELECT,UPDATE,USAGE WITH GRANT OPTION'))::text`);
+      condition(restricted.stdout.trim()==="true","PROCUREMENT_A05_SEQUENCE_SCOPE");
+      receipt.personnelHistorySequence={usage:true,readOrReset:false};
       const api="/qualification/workspace/services/api";
       const roots=path.join(api,"test-support");
       const reportFile=path.join(workDir,"procurement-a05.json");
@@ -402,7 +411,8 @@ if forward:
       const assertion=report?.testResults?.[0]?.assertionResults?.[0]?.failureMessages?.join(" ")??"";
       receipt.approvalA05={exit:result.status,signal:result.signal,passed:report?.numPassedTests,failed:report?.numFailedTests,
         frame:/task426-a05-general-procurement[.]http[.]pg[.]spec[.]ts:(\d{1,5}):(\d{1,4})/u.exec(assertion)?.slice(1),
-        roleRemovalPreview:/A05_ROLE_REMOVAL_PREVIEW ([1-5][0-9]{2}) (\d{1,4}|-) ([a-z_,]{1,250}|-)/u.exec(assertion)?.slice(1)};
+        roleRemovalPreview:/A05_ROLE_REMOVAL_PREVIEW ([1-5][0-9]{2}) (\d{1,4}|-) ([a-z_,]{1,250}|-)/u.exec(assertion)?.slice(1),
+        roleRemovalApply:/A05_ROLE_REMOVAL_APPLY ([1-5][0-9]{2})/u.exec(assertion)?.[1]};
       condition(result.status===0&&report?.numTotalTests===1&&report?.numPassedTests===1,"PROCUREMENT_331_A05_JEST");
     }finally{
       await ownerSql("ROLE_TEARDOWN",roleTeardown("procurement",database));

@@ -139,9 +139,10 @@ describePg("A05 综合采购同案身份与委托公开 HTTP / PostgreSQL 16", (
       const count = preview.body.summary?.blockingInstances;
       throw new Error(`A05_ROLE_REMOVAL_PREVIEW ${preview.status} ${Number.isSafeInteger(count) ? count : "-"} ${issues?.join(",") || "-"}`);
     }
-    expect((await request(chairman.token, "/organization/role-changes/apply", "POST", {
+    const applied = await request(chairman.token, "/organization/role-changes/apply", "POST", {
       ...removal, snapshotHash: preview.body.snapshotHash, confirmationPassword: password
-    })).status).toBe(201);
+    });
+    if (applied.status !== 201) throw new Error(`A05_ROLE_REMOVAL_APPLY ${applied.status}`);
     expect((await review(outgoing.token, 3, 0)).status).toBe(401);
     const updatedToken = await login(outgoing.phone);
     expect((await review(updatedToken, 3, 0)).status).toBe(403);
