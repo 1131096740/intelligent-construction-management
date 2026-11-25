@@ -27,7 +27,8 @@ mode=${2-}
 restore_predecessor=
 if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 ]]; then
   [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
-  [[ -z $(git -C "$root" status --porcelain --untracked-files=all -- "$plan") ]] || exit 65
+  plan_status=$(git -C "$root" status --porcelain --untracked-files=all -- "$plan")
+  [[ -z $plan_status ]] || exit 65
   bash "$plan/prepare.sh" "$root" "$sha" "$work/source" "$mode"
   if [[ ${3-} =~ ^[a-f0-9]{40}$ ]]; then
     restore_predecessor=$3
