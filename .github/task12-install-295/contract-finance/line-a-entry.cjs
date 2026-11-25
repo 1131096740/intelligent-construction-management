@@ -134,6 +134,7 @@ async function consume(context) {
       + '"sourceRevision","inputSha256","fileId","mimeType","sizeBytes","contentSha256","bucket","objectKey")'
       + ' ON public."ContractEconomicReviewFileReference"' + toRole,
     'GRANT SELECT ("id","projectId","status","confirmedAt","frozenSources") ON public."ContractEconomicReview"' + toRole,
+    'GRANT SELECT ("paymentRequestId","status","amountDeltaCents") ON public."PaymentExecutionCorrection"' + toRole,
     'GRANT INSERT ON ' + tables(insertTables) + toRole,
     'GRANT UPDATE, DELETE ON public."AuthRateLimit"' + toRole,
     'GRANT UPDATE ("lastLoginAt", "updatedAt") ON public."User"' + toRole,
