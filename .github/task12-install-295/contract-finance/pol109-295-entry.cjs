@@ -2,21 +2,23 @@
 const assert=require('node:assert/strict');
 const source=require('./contract-finance-source.json');
 const {sourceSha}=source;
-const textDirect=process.argv.at(-1)==='--text-direct-330';
-const current320=textDirect||process.argv.at(-1)==='--current-320';
-const count=textDirect?330:current320?329:295;
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement}=require('./installer.cjs');
+const mode=process.argv.at(-1);
+const paymentRemainder=mode==='--payment-remainder-331';
+const textDirect=mode==='--text-direct-330';
+const current320=paymentRemainder||textDirect||mode==='--current-320';
+const count=paymentRemainder?331:textDirect?330:current320?329:295;
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder}=require('./installer.cjs');
 const receipt={schemaVersion:1,sourceSha,purpose:'ORIGINAL_POL109_EXACT_'+count,business:'NOT_ENTERED',stages:[]};
 Promise.resolve().then(()=>{
   assert.equal(process.argv.length,current320?3:2);
   assert.equal(source.migrationCount,count);
   if(current320){
-    assert.equal(source.mode,textDirect?'text-direct-330':'current-320');
+    assert.equal(source.mode,mode.slice(2));
     assert.equal(source.predecessor.migrationCount,295);
   }
   const proof=require('./workspace-proof.cjs').verifyWorkspace();
   const consume=context=>require('./workspace/services/api/prisma/task12-pol109-ci.cjs').runPol109(context,receipt,proof);
-  const install=textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
+  const install=paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
   if(current320) return install(receipt,consume,{
     sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
   });
@@ -40,6 +42,11 @@ Promise.resolve().then(()=>{
     assert.equal(receipt.combinedAfterBusiness.count,count);
     assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
     assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
+    if(paymentRemainder){
+      assert.deepEqual(receipt.paymentRemainderPredecessor,{
+        count:330,ledgerSha256:source.predecessor330.ledgerSha256,sameIdentity:true,sameBaseB7:true
+      });
+    }
   }
   assert.equal(receipt.combinedAfterBusiness?.exactB7,true);
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
