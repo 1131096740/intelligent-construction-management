@@ -3,11 +3,13 @@ const assert=require('node:assert/strict');
 const {execFileSync}=require('node:child_process');
 const {createHash}=require('node:crypto');
 const path=require('node:path');
+const {ledgerSha256: textDirectLedgerSha256}=require('./text-direct-330-profile.cjs');
 const [root,sha,mode]=process.argv.slice(2);
-assert.ok(process.argv.length===4||(process.argv.length===5&&['--current-320','--text-direct-330'].includes(mode)),
+assert.ok(process.argv.length===4||(process.argv.length===5&&['--current-320','--text-direct-330','--payment-remainder-331'].includes(mode)),
   'CONTRACT_FINANCE_HOSTED_LEDGER_MODE');
 const textDirect=mode==='--text-direct-330';
-const current320=mode==='--current-320'||textDirect;
+const paymentRemainder=mode==='--payment-remainder-331';
+const current320=mode==='--current-320'||textDirect||paymentRemainder;
 assert.match(sha,/^[a-f0-9]{40}$/u);
 const git=(...args)=>execFileSync('git',['-C',root,...args],{maxBuffer:16*1024*1024});
 assert.equal(git('rev-parse','HEAD').toString().trim(),sha);
@@ -21,12 +23,14 @@ const ledger=git('ls-tree','-r','--name-only','-z',sha,'--',migrationsPath).toSt
 const digest=ledgerHash(ledger);
 const predecessor295Sha256='b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d';
 if(current320) {
-  assert.equal(ledger.length,textDirect?330:329,'CONTRACT_FINANCE_CURRENT_320_LEDGER_COUNT');
+  assert.equal(ledger.length,paymentRemainder?331:textDirect?330:329,'CONTRACT_FINANCE_CURRENT_320_LEDGER_COUNT');
   assert.equal(ledgerHash(ledger.slice(0,295)),predecessor295Sha256,'CONTRACT_FINANCE_CURRENT_320_PREDECESSOR');
   assert.equal(ledgerHash(ledger.slice(0,329)),'3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2',
     'CONTRACT_FINANCE_CURRENT_320_LEDGER_DIGEST');
-  if(textDirect) assert.equal(digest,'12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f',
+  if(textDirect||paymentRemainder) assert.equal(ledgerHash(ledger.slice(0,330)),textDirectLedgerSha256,
     'CONTRACT_FINANCE_TEXT_DIRECT_330_LEDGER_DIGEST');
+  if(paymentRemainder) assert.equal(digest,'0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014',
+    'CONTRACT_FINANCE_PAYMENT_REMAINDER_331_LEDGER_DIGEST');
 } else {
   assert.ok(ledger.length===294||ledger.length===295,'CONTRACT_FINANCE_HOSTED_LEDGER_COUNT');
 }
@@ -42,9 +46,10 @@ assert.equal(migrationBaseline.terminalMigration,terminal.name);
 assert.equal(migrationBaseline.terminalMigrationChecksum,terminal.sha256);
 if (current320) {
   console.log(JSON.stringify({
-    mode:textDirect?'text-direct-330':'current-320',sourceSha:sha,sourceTree:git('rev-parse',sha+'^{tree}').toString().trim(),
+    mode:paymentRemainder?'payment-remainder-331':textDirect?'text-direct-330':'current-320',sourceSha:sha,sourceTree:git('rev-parse',sha+'^{tree}').toString().trim(),
     migrationCount:ledger.length,ledgerSha256:digest,
     predecessor:{migrationCount:295,ledgerSha256:predecessor295Sha256,tails:ledger.slice(292,295)},
+    ...(paymentRemainder?{predecessor330:{migrationCount:330,ledgerSha256:textDirectLedgerSha256}}:{}),
     tails:ledger.slice(295)
   }));
 } else {
