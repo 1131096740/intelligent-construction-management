@@ -108,6 +108,9 @@ for lane in pins['lanes']:
             raise SystemExit('ONBOARDING_329_ROSTER_FAILURE_FRAME_ANCHOR')
         text=text.replace(anchor, frame+'\n'+anchor+'\n            ...(frame&&{frame:[Number(frame[1]),Number(frame[2])]}),',1)
     runner.write_text(text)
+    if count==331 and lane=='reset-case12':
+        subprocess.run(['patch','--batch','--forward','--fuzz=0','--no-backup-if-mismatch','--silent',
+                        str(runner),str(plan/'reset-case12-memory-observation.patch')],check=True)
     if lane=='roster':
         seed=lane_root/'onboarding-roster-seed.cjs'
         material=seed.read_bytes()
