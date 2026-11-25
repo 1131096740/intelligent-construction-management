@@ -424,9 +424,9 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     });
     stage = "LATE_APPROVAL_QUEUE";
     const queued = await owner.auditLog.findMany({ where: lateNotice });
-    if (queued.length !== 1) throw new Error(queued.length === 0 ? "NATIVE_329_LATE_NOTICE_MISSING" : "NATIVE_329_LATE_NOTICE_DUPLICATED");
+    expect(queued).toHaveLength(1);
     stage = "LATE_APPROVAL_TODO";
-    if (await pending(4) !== 1) throw new Error("NATIVE_329_LATE_PENDING_COUNT");
+    expect(await pending(4)).toBe(1);
     stage = "LATE_APPROVAL_ACTIVE_PROGRESS";
     expect(await financeDuty(4)).toMatchObject({ status: "处理中", pending: [{ id: lateAssignment.userId }] });
     expect((await get(0, approvalProgress)).parallelCompletion).toEqual({ completed: 1, total: 5 });
@@ -436,9 +436,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
       { available: () => true, sendDutyIntent: mockSend } as unknown as ApprovalSmsService);
     await dispatcher.afterCommit(queued[0].id);
     await dispatcher.afterCommit(queued[0].id);
-    if (mockSend.mock.calls.length !== 1) {
-      throw new Error(mockSend.mock.calls.length === 0 ? "NATIVE_329_LATE_SMS_NOT_SENT" : "NATIVE_329_LATE_SMS_DUPLICATED");
-    }
+    expect(mockSend).toHaveBeenCalledTimes(1);
 
     stage = "APPROVAL_AFTER_ROLE";
     const remainingActors = [2, 3, 4, 5];

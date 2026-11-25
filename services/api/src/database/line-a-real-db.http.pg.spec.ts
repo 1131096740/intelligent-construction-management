@@ -227,7 +227,7 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
         businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" } },
       { contractVersionId: ids.versionC, roleKey: "party_b", displayOrder: 0,
         businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" } },
-      ...[ids.versionG, ids.versionH, ids.versionI].map(contractVersionId => ({
+      ...[ids.versionF, ids.versionG, ids.versionH, ids.versionI].map(contractVersionId => ({
         contractVersionId, roleKey: "party_b", displayOrder: 0,
         businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" }
       }))
