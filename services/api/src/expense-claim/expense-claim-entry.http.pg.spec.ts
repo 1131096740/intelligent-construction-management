@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { PDFDocument } from "pdf-lib";
+import { PDFDict, PDFDocument, PDFName } from "pdf-lib";
 import { verifyApprovedPdf } from "../database/approval-pdf-acceptance.test-support";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
@@ -618,13 +618,38 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       const created = await request("/expense-claims", originalInput);
       expect(created.status).toBe(201);
       const path = `/expense-claims/${created.body.id}`;
-      const capability = (id: string) => `/approval-forms/expense_claim/${created.body.id}/capability?expectedApprovalInstanceId=${id}`;
+      const formPath = `/approval-forms/expense_claim/${created.body.id}`;
+      const capability = (id: string) => `${formPath}/capability?expectedApprovalInstanceId=${id}`;
+      const downloadInput = (id: string) => ({
+        confirmationPassword: accountPassword, downloadReason: "验收费用审批轮次", expectedApprovalInstanceId: id
+      });
+      const downloadAudits = () => db.auditLog.count({ where: { businessId: created.body.id, action: "approval.form.download" } });
+      async function expectPdfSignatures(id: string, count: number) {
+        const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
+        const available = await fetch(`${baseUrl}${capability(id)}`, { headers });
+        expect(available.status).toBe(200);
+        expect(available.headers.get("cache-control")).toBe("no-store");
+        expect(await available.json()).toMatchObject({ available: true });
+        const response = await fetch(`${baseUrl}${formPath}/download`, {
+          method: "POST", headers, body: JSON.stringify(downloadInput(id))
+        });
+        expect(response.status).toBe(201);
+        expect(response.headers.get("cache-control")).toBe("no-store");
+        expect(response.headers.get("content-type")).toMatch(/application\/pdf/u);
+        const pdf = await PDFDocument.load(await response.arrayBuffer());
+        expect(pdf.getPageCount()).toBeGreaterThan(0);
+        const signatureImages = pdf.getPages().flatMap(page =>
+          page.node.Resources()?.lookupMaybe(PDFName.of("XObject"), PDFDict)?.keys() ?? []
+        );
+        expect(signatureImages).toHaveLength(count);
+      }
       const submitted = await request(`${path}/submission`, {});
       expect(submitted.status).toBe(201);
       const oldId = submitted.body.approvalInstanceId!;
       const signed = await parallelReviewCoordinates(path, approvalTokens[2]!);
       const pending = await parallelReviewCoordinates(path, approvalTokens[0]!);
       expect((await request(`${path}/approval`, { decision: "approve", ...signed }, approvalTokens[2]!)).status).toBe(201);
+      await expectPdfSignatures(oldId, 1);
       const originalSignature = await db.approvalActionLog.findFirstOrThrow({ where: { approvalInstanceId: oldId, action: "approve" } });
       const originalSnapshot = await db.expenseClaimEntrySnapshot.findFirstOrThrow({ where: { expenseClaimId: created.body.id, submissionRevision: oldId } });
       expect((await request(`${path}/approval`, { decision: "reject", ...pending }, approvalTokens[0]!)).status).toBe(400);
@@ -657,6 +682,13 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       expect(newId).not.toBe(oldId);
       expect(await request(capability(oldId))).toMatchObject({ status: 200, body: { available: false } });
       expect(await request(capability(newId))).toMatchObject({ status: 200, body: { available: true, incomplete: true } });
+      expect(await request(`/approval-progress/${oldId}`)).toMatchObject({
+        status: 200, body: { canHandle: false, canRemind: false, pendingRecipients: [] }
+      });
+      expect((await request(`${formPath}/download`, downloadInput(oldId))).status).toBe(409);
+      expect(await downloadAudits()).toBe(1);
+      expect(await db.pdfDocument.count({ where: { businessId: created.body.id } })).toBe(0);
+      await expectPdfSignatures(newId, 0);
       expect((await request(`${path}/approval`, { decision: "approve", ...pending }, approvalTokens[0]!)).status).toBe(409);
       expect((await db.approvalInstance.findUniqueOrThrow({ where: { id: oldId } })).status).toBe("returned");
       expect(await db.approvalActionLog.findUniqueOrThrow({ where: { id: originalSignature.id } })).toEqual(originalSignature);
@@ -676,6 +708,26 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       expect(await request(capability(newId))).toMatchObject({ status: 200, body: { available: false } });
       expect((await db.approvalInstance.findUniqueOrThrow({ where: { id: newId } })).status).toBe("withdrawn");
       expect(await db.approvalActionLog.count({ where: { approvalInstanceId: newId, action: "approve" } })).toBe(1);
+      const afterWithdrawal = await request(`${path}/submission`, {});
+      expect(afterWithdrawal).toMatchObject({ status: 201, body: { status: "approval_pending", requestedAmountCents: "8" } });
+      const finalId = afterWithdrawal.body.approvalInstanceId!;
+      expect(finalId).not.toBe(newId);
+      expect(await request(`/approval-progress/${newId}`)).toMatchObject({
+        status: 200, body: { canHandle: false, canRemind: false, pendingRecipients: [] }
+      });
+      expect((await request(`${formPath}/download`, downloadInput(newId))).status).toBe(409);
+      expect(await downloadAudits()).toBe(2);
+      await expectPdfSignatures(finalId, 0);
+      for (const reviewer of approvalTokens) {
+        const input = { decision: "approve", ...await parallelReviewCoordinates(path, reviewer) };
+        expect(input.approvalInstanceId).toBe(finalId);
+        expect((await request(`${path}/approval`, input, reviewer)).status).toBe(201);
+      }
+      expect(await db.approvalActionLog.count({ where: { approvalInstanceId: finalId, action: "approve" } })).toBe(4);
+      await expectPdfSignatures(finalId, 4);
+      expect(await db.pdfDocument.findMany({ where: { businessId: created.body.id }, select: { approvalInstanceId: true } }))
+        .toEqual([{ approvalInstanceId: finalId }]);
+      expect(await downloadAudits()).toBe(4);
       expect(await db.expenseClaimPaymentExecution.count({ where: { expenseClaimId: created.body.id } })).toBe(0);
     }, 60_000
   );
