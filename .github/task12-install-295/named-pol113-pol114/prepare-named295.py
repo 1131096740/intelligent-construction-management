@@ -137,6 +137,8 @@ for name, pin in pins['runtime'].items():
 """
             assert material.count(diagnostic_anchor) == 1
             material = material.replace(diagnostic_anchor, diagnostic_anchor + diagnostic)
+    if text_direct and name == 'browser-evidence.cjs':
+        material = patch(material,(plan/'browser-330-diagnostics.patch').read_bytes())
     write(context/name,material)
 for name, pin in pins['named'].items():
     material = overlay((historical/'source/services/api/prisma'/name).read_bytes(),pin) if 'base' in pin else read_pinned(donor/pin['file'],pin['result'])

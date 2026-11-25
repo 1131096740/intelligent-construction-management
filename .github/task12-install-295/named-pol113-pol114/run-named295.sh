@@ -89,9 +89,20 @@ const lanes=mode==='pol114'?['layout','settlement']:['project'];
 for(const lane of lanes){
   const rows=receipt.browser?.[lane];
   if(!Array.isArray(rows))continue;
-  failure[lane]=rows.slice(0,8).map(row=>Object.fromEntries(
-    ['total','passed','unexpected'].filter(key=>count(row?.[key])).map(key=>[key,row[key]])
-  ));
+  failure[lane]=rows.slice(0,8).map(row=>{
+    const summary=Object.fromEntries(
+      ['total','passed','unexpected'].filter(key=>count(row?.[key])).map(key=>[key,row[key]])
+    );
+    if(Array.isArray(row?.failures)&&row.failures.length) summary.cases=row.failures.slice(0,6).map(test=>({
+      project:['desktop','mobile','chromium','webkit-mobile'].includes(test?.project)?test.project:undefined,
+      titleSha256:typeof test?.titleSha256==='string'&&/^[0-9a-f]{64}$/u.test(test.titleSha256)?test.titleSha256:undefined,
+      kind:['TIMEOUT','ASSERTION','OTHER'].includes(test?.kind)?test.kind:undefined,
+      spec:typeof test?.spec==='string'&&/^pol113-(?:project-profile|business-party|company-entity|settings)-real[.]e2e[.]ts$/u.test(test.spec)?test.spec:undefined,
+      line:count(test?.line)?test.line:undefined,
+      column:count(test?.column)?test.column:undefined
+    }));
+    return summary;
+  });
 }
 process.stderr.write('POL113_POL114_FAILURE '+JSON.stringify(failure)+'\n');
 JS
