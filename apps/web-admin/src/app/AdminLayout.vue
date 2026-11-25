@@ -391,7 +391,15 @@ async function loadNavigationBadges(requestId: number, userId: string, offset: n
   .main-shell { position: fixed; inset-inline: 0; top: var(--jg-visible-top, 0px); height: var(--jg-visible-height, 100dvh); min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
   .header { flex: 0 0 auto; min-height: 56px; padding: var(--jg-space-sm) var(--jg-space-md); gap: var(--jg-space-sm); }
   .header-title { flex: 1; }
-  .header-user { flex-basis: 100%; margin-left: 0; text-align: left; }
+  .header-user {
+    flex-basis: 100%;
+    margin-left: 0;
+    text-align: left;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
   .content { overflow-y: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; padding: var(--jg-space-section) var(--jg-space-lg); }
   .mobile-bottom { flex: 0 0 auto; display: flex; gap: var(--jg-space-xs); padding: var(--jg-space-xs) var(--jg-space-sm) max(var(--jg-space-xs), env(safe-area-inset-bottom)); border-top: var(--jg-border-width-base) solid var(--jg-color-border); background: var(--jg-color-bg-surface); }
   .mobile-bottom .t-button { flex: 1; padding: var(--jg-space-sm) var(--jg-space-xs); color: var(--jg-color-text-tertiary); font-size: var(--jg-font-size-meta); }

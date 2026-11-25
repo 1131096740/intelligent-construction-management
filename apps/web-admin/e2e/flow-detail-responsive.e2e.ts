@@ -211,6 +211,21 @@ async function mockSession(page: Page) {
       }
     })
   }));
+  await page.route((url) => url.pathname === "/api/approval-progress", (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({ json: { items: [], nextCursor: null } })
+      : route.fallback()
+  );
+  await page.route((url) => url.pathname === "/api/approval-rule-assignments", (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({ json: { projects: [projectOverview.project], projectId: null, roles: [] } })
+      : route.fallback()
+  );
+  await page.route("**/api/projects/project-responsive/cost-attributions", (route) =>
+    route.request().method() === "GET"
+      ? route.fulfill({ json: { candidates: [], confirmations: [] } })
+      : route.fallback()
+  );
   await page.route("**/api/business-parties/party-responsive", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({
