@@ -2,7 +2,7 @@
 
 const { randomBytes } = require("node:crypto");
 
-function createSignedSettlementQualification(databaseUrl, { existingReadWitness = false } = {}) {
+function createSignedSettlementQualification(databaseUrl, { existingReadWitness = false, historicalPaymentBasis = false } = {}) {
   const url = new URL(databaseUrl);
   if (process.env.NODE_ENV === "production" || url.protocol !== "postgresql:" ||
     !["127.0.0.1", "localhost"].includes(url.hostname) ||
@@ -42,6 +42,10 @@ function createSignedSettlementQualification(databaseUrl, { existingReadWitness 
     // FileObject INSERT invokes both retained-file checks as this restricted session.
     `GRANT SELECT ("fileId", "objectKey") ON public."ContractEconomicReviewFileReference" TO ${role}`,
     `GRANT SELECT ("attachmentFileId", "correctionType") ON public."ContractTakeoverCorrection" TO ${role}`,
+    ...(historicalPaymentBasis ? [
+      `GRANT SELECT ("sourceRef", "frozenSource", "entryKind", "status", "paymentRequestId", "amountCents")
+        ON public."ContractProxyExecution" TO ${role}`
+    ] : []),
     `GRANT SELECT ("id", "projectId", "status", "voidedAt", "amountCents") ON public."ProjectOwnerContract" TO ${role}`,
     `GRANT SELECT ("id", "contractId", "projectId", "settlementId", "voidedAt", "amountCents") ON public."ProjectProxyPayment" TO ${role}`,
     `GRANT SELECT ("id", "projectId", "sourceType", "sourceId", "sourceFingerprint") ON public."ProjectCloseImpact" TO ${role}`,

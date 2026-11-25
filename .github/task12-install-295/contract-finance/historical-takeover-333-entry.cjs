@@ -67,11 +67,13 @@ async function consume({ ownerUrl, database, workDir, candidateTree }) {
       const lines = [...new Set([...message.matchAll(/contract-takeover-a28\.http\.pg\.spec\.ts:(\d{1,5}):\d{1,5}/gu)]
         .map(match => Number(match[1])))].slice(0, 4);
       const activationFailure = /A28_ACTIVATION_HTTP\(([1-5]\d{2}),([\p{Script=Han}，。；：！？、]{1,96})\)/u.exec(message);
+      const paymentBasisFailure = /A28_SIGNED_PAYMENT_BASIS_HTTP\(([1-5]\d{2}),(POL114_SIGNED_SETTLEMENT_QUERY_[A-Z0-9]+|QUERY_UNAVAILABLE)\)/u.exec(message);
       return [{ index: index + 1, lines,
-        statuses: activationFailure
-          ? [201, Number(activationFailure[1])]
+        statuses: activationFailure ? [201, Number(activationFailure[1])]
+          : paymentBasisFailure ? [200, Number(paymentBasisFailure[1])]
           : [...message.matchAll(/"status": ([1-5]\d{2})/gu)].slice(0, 2).map(match => Number(match[1])),
-        ...(activationFailure ? { activationPublicMessage: activationFailure[2] } : {}) }];
+        ...(activationFailure ? { activationPublicMessage: activationFailure[2] } : {}),
+        ...(paymentBasisFailure ? { paymentBasisQuery: paymentBasisFailure[2] } : {}) }];
     })
   };
   receipt.a28.complete = child.status === 0 && report?.success === true && report.testResults.length === 1 &&

@@ -375,7 +375,7 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     const retired = await request("contract_staff", `/projects/${projectId}/settlement-drafts`, "POST", {});
     expect(retired).toMatchObject({ status: 410, body: { code: "OLD_WRITE_ENTRY_RETIRED" } });
 
-    signedQualification ??= await openSignedSettlementQualification(prisma, process.env.DATABASE_URL!);
+    signedQualification ??= await openSignedSettlementQualification(prisma, process.env.DATABASE_URL!, { historicalPaymentBasis: true });
     const signedPath = `/projects/${projectId}/signed-contract-settlements`;
     const signedTarget = signedQualification.baseUrl;
     const picker = await request<SignedSettlementOption[]>("contract_staff", `${signedPath}/contracts`, "GET", undefined, signedTarget);
@@ -417,8 +417,12 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     const confirmedYuan = zero ? "10.0000" : "70.0000";
     expect(await request("contract_staff", overviewPath, "GET", undefined, signedTarget))
       .toMatchObject({ status: 200, body: { confirmedYuan } });
+    signedQualification.takeQueryFailure();
     const paymentBasis = await request("contract_staff", overviewPath.replace("/contract-overview?", "/payment-basis?"),
       "GET", undefined, signedTarget);
+    if (paymentBasis.status !== 200) {
+      throw new Error(`A28_SIGNED_PAYMENT_BASIS_HTTP(${paymentBasis.status},${signedQualification.takeQueryFailure() ?? "QUERY_UNAVAILABLE"})`);
+    }
     expect(paymentBasis).toMatchObject({
       status: 200,
       body: {

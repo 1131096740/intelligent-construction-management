@@ -7,7 +7,7 @@ import { createApiValidationPipe } from "../validation/api-validation";
 import { PrismaService } from "./prisma.service";
 
 const { createSignedSettlementQualification } = createRequire(__filename)("../../prisma/signed-settlement-qualification.cjs") as {
-  createSignedSettlementQualification(databaseUrl: string, options: { existingReadWitness: boolean }): {
+  createSignedSettlementQualification(databaseUrl: string, options: { existingReadWitness: boolean; historicalPaymentBasis: boolean }): {
     role: string;
     databaseUrl: string;
     writeKey: string;
@@ -18,11 +18,16 @@ const { createSignedSettlementQualification } = createRequire(__filename)("../..
 };
 
 /** Use the live HTTP controllers on a non-owner PG session so the same witness checks as Line A run. */
-export async function openSignedSettlementQualification(owner: PrismaService, databaseUrl: string) {
+export async function openSignedSettlementQualification(
+  owner: PrismaService,
+  databaseUrl: string,
+  { historicalPaymentBasis = false } = {}
+) {
   const previousWriteKey = process.env.SIGNED_SETTLEMENT_DRAFT_WITNESS_KEY;
   const previousReadKey = process.env.SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY;
   const { role, databaseUrl: runtimeUrl, writeKey, ownedReadKey, install, uninstall } = createSignedSettlementQualification(databaseUrl, {
-    existingReadWitness: previousReadKey !== undefined
+    existingReadWitness: previousReadKey !== undefined,
+    historicalPaymentBasis
   });
   const safeFailure = (stage: string, cause: unknown) => {
     const error = cause as { errorCode?: string; code?: string; meta?: { code?: string } };
@@ -70,6 +75,18 @@ export async function openSignedSettlementQualification(owner: PrismaService, da
         AND NOT has_schema_privilege(session_user, 'public', 'CREATE')
         AND NOT has_table_privilege(session_user, 'public.jg_signed_settlement_draft_witness_key', 'SELECT') AS restricted
     `;
+    if (historicalPaymentBasis) {
+      const [proxy] = await runtime.$queryRaw<Array<{ restricted: boolean }>>`
+        SELECT NOT has_table_privilege(session_user, 'public."ContractProxyExecution"', 'SELECT')
+          AND NOT has_any_column_privilege(session_user, 'public."ContractProxyExecution"', 'INSERT,UPDATE')
+          AND NOT has_table_privilege(session_user, 'public."ContractProxyExecution"', 'DELETE')
+          AND has_column_privilege(session_user, 'public."ContractProxyExecution"', 'frozenSource', 'SELECT') AS restricted
+      `;
+      if (!proxy?.restricted) {
+        stage = "SESSION_PRIVILEGES";
+        throw new Error("历史已签结算付款依据的代付读取权限超出范围");
+      }
+    }
     if (!session?.restricted) {
       stage = "SESSION_PRIVILEGES";
       throw new Error("已签结算验收会话权限超出范围");
