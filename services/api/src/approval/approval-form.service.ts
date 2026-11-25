@@ -1,4 +1,5 @@
 import { isRetiredWageOutflow } from "../fund-execution/fund-execution-wage-retirement";
+import { PAYMENT_TEXT_AGREEMENT_BASIS, readTextAgreementContractLimit } from "../payment/payment-text-agreement";
 import { isRetiredProjectEmployeeLoan } from "../project-expense/project-employee-loan-retirement";
 import { isPendingLegacyContractCutover, readLegacyContractSignature } from "../contract/contract-approval-cutover";
 import { isDeepStrictEqual } from "node:util";
@@ -276,6 +277,9 @@ interface ProjectPaymentApprovalRowsInput {
   payment: {
     sourceType?: string | null;
     paymentTermsStageId?: string | null;
+    contractDueBasis?: string | null;
+    paymentMatter?: string | null;
+    amountCalculationExplanation?: string | null;
     requestedAmountCents: bigint;
     approvedAmountCents?: bigint | null;
     createdAt?: Date | null;
@@ -298,6 +302,7 @@ interface ProjectPaymentApprovalRowsInput {
   cumulativeSettledCents?: bigint | null;
   cumulativePaidCents?: bigint | null;
   paymentTermsStageName?: string | null;
+  submittedTextAgreement?: string | null;
 }
 
 type ApprovalFormRow = { label: string; value: string };
@@ -315,7 +320,8 @@ function sourceTypeLabel(input: ProjectPaymentApprovalRowsInput): string {
   const sourceType = input.payment.sourceType;
   if (sourceType === "contract_advance") return "合同预付款";
   if (isFrozenContractStagePayment(input)) return "合同冻结阶段直接付款";
-  if (sourceType === "contract_due") return "合同累计付款";
+  if (sourceType === "contract_due") return input.payment.contractDueBasis === PAYMENT_TEXT_AGREEMENT_BASIS
+    ? "按合同约定直接付款" : "合同累计付款";
   return "结算付款";
 }
 
@@ -327,7 +333,8 @@ function paymentReason(input: ProjectPaymentApprovalRowsInput): string {
     if (isFrozenContractStagePayment(input)) {
       return `${empty(input.contract?.name)}·${empty(input.paymentTermsStageName)}直接付款`;
     }
-    return `${empty(input.contract?.name)}合同累计付款`;
+    return input.payment.contractDueBasis === PAYMENT_TEXT_AGREEMENT_BASIS
+      ? empty(input.payment.paymentMatter) : `${empty(input.contract?.name)}合同累计付款`;
   }
   const period = input.settlement?.periodLabel;
   const code = input.settlement?.code;
@@ -409,6 +416,7 @@ export function buildProjectPaymentApprovalRows(
 ): ApprovalFormRow[] {
   const companyName = input.companyName || input.contract?.companyEntityName || "";
   const frozenContractStagePayment = isFrozenContractStagePayment(input);
+  const textAgreement = input.payment.contractDueBasis === PAYMENT_TEXT_AGREEMENT_BASIS;
 
   return [
     { label: "项目名称", value: empty(input.projectName) },
@@ -421,10 +429,13 @@ export function buildProjectPaymentApprovalRows(
     { label: "合同编号", value: empty(input.contract?.code) },
     { label: "付款方式", value: "网银转账" },
     { label: "付款类型", value: sourceTypeLabel(input) },
-    { label: "合同金额", value: formatOptionalYuan(input.contractAmountCents) },
-    frozenContractStagePayment
+    { label: "合同金额", value: textAgreement && input.contractAmountCents == null ? "无确定总价" : formatOptionalYuan(input.contractAmountCents) },
+    ...(textAgreement ? [
+      { label: "提交时付款约定", value: empty(input.submittedTextAgreement) },
+      { label: "金额计算说明", value: empty(input.payment.amountCalculationExplanation) }
+    ] : [frozenContractStagePayment
       ? { label: "合同冻结付款阶段", value: empty(input.paymentTermsStageName) }
-      : { label: "累计生效结算金额", value: formatOptionalYuan(input.cumulativeSettledCents) },
+      : { label: "累计生效结算金额", value: formatOptionalYuan(input.cumulativeSettledCents) }]),
     { label: "累计已付款", value: formatOptionalYuan(input.cumulativePaidCents) },
     { label: "发票类型提醒", value: "按合同约定提交" },
     { label: "本次付款金额", value: formatYuan(input.payment.requestedAmountCents) },
@@ -432,7 +443,8 @@ export function buildProjectPaymentApprovalRows(
     { label: "开户银行", value: "—" },
     { label: "银行账号", value: "—" },
     { label: "转款手续费", value: "—" },
-    { label: "备注", value: "付款申请创建时已完成可付款额度校验" }
+    { label: "备注", value: textAgreement && input.contractAmountCents == null
+      ? "无法计算合同余额，实付以本次批准金额为限" : "付款申请创建时已完成可付款额度校验" }
   ];
 }
 
@@ -2653,6 +2665,16 @@ export class ApprovalFormService {
           })
         ]);
 
+      const textAgreement = payment.contractDueBasis === PAYMENT_TEXT_AGREEMENT_BASIS;
+      const [submittedAgreement] = textAgreement ? await prisma.$queryRaw<Array<{ submittedText: string | null }>>`
+        SELECT "submittedText" FROM public.jg_read_payment_contract_agreement_detail_v1(
+          ${payment.id}::text, ${payment.projectId}::text, ${payment.contractId}::text)
+      ` : [];
+      if (textAgreement && !submittedAgreement?.submittedText) {
+        throw new BadRequestException("付款申请缺少提交时的合同付款约定，暂不能下载审批单");
+      }
+      const textAgreementLimit = textAgreement && contractVersion
+        ? await readTextAgreementContractLimit(prisma, contractVersion, payment.projectId) : null;
       return [{label:"合同分类",value:CONTRACT_RELATIONSHIP_LABELS[downstreamContractRelationship(contractVersion??{})]},{label:"原签约主体",value:contractVersion?.signingSubjectType==="affiliate"?contractVersion.affiliateNameSnapshot??"待核对":contractVersion?.companyEntityNameSnapshot??"待核对"},...buildProjectPaymentApprovalRows({
         payment,
         applicantName: context.applicantName,
@@ -2660,7 +2682,8 @@ export class ApprovalFormService {
         projectName: project?.name,
         contract,
         settlement,
-        contractAmountCents: contractVersion?.amountCents,
+        contractAmountCents: textAgreement ? textAgreementLimit : contractVersion?.amountCents,
+        submittedTextAgreement: submittedAgreement?.submittedText,
         cumulativeSettledCents: sumCents(effectiveSettlements),
         cumulativePaidCents: sumCents(paidPayments),
         paymentTermsStageName:

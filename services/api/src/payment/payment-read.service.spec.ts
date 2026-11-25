@@ -2615,6 +2615,39 @@ describe("PaymentReadService", () => {
     expect(preview.formula).toContain("当前生效合同金额 - 合同已占用金额");
   });
 
+  it("previews an effective V2 text-only agreement with genuinely unknown remaining capacity", async () => {
+    const prisma = {
+      contractVersion: { findUnique: jest.fn().mockResolvedValue({
+        id: "version", contractId: "contract", versionNo: 1, status: "effective",
+        numericProtocolVersion: 2, amountCents: 0n, amountLimitType: "unlimited",
+        settlementMode: "direct_payment", settlementModeConfirmedAt: new Date("2026-06-01"),
+        settlementModeConfirmedByUserId: "director", effectiveAt: new Date("2026-06-04")
+      }) },
+      contract: { findUnique: jest.fn().mockResolvedValue({
+        id: "contract", code: "HT-1", name: "巡检服务合同", projectId: "project", contractTypeKey: "other"
+      }) },
+      project: { findUnique: jest.fn().mockResolvedValue({ name: "示例项目" }) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentTermsVersion: { findMany: jest.fn().mockResolvedValue([{ id: "terms", originalText: "按实际服务经双方确认后付款" }]) },
+      paymentTermsStage: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
+      settlementArchiveFile: { findMany: jest.fn().mockResolvedValue([]) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([{
+        settlementId: null, sourceType: "contract_due", paymentTermsVersionId: "terms", status: "partially_paid",
+        requestedAmountCents: 40_000n, approvedAmountCents: 35_000n, paidAmountCents: 20_000n, paymentTermsStageId: null
+      }]) },
+      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([{ agreementText: "按月核对服务记录后付款" }])
+    };
+    const service = new PaymentReadService(withSignedAgreementLookup(prisma));
+    await expect(service.getContractApplication("version", "2026-07-20")).resolves.toMatchObject({
+      paymentMode: "text_agreement", availableStages: [],
+      textAgreement: { paymentTermsVersionId: "terms", agreementText: "按月核对服务记录后付款", fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u) },
+      genericContractCapacity: { contractAmountCents: null, contractRemainingCents: null },
+      capacity: { maxRequestableCents: null, duePayableCents: null, actualPaidCents: "20000" },
+      directPaymentSummary: { cumulativeApprovedCents: "35000", cumulativePaidCents: "20000" }
+    });
+  });
+
   it("returns unlimited direct-payment cumulative risk without inventing a contract cap", async () => {
     const prisma = {
       contractVersion: {

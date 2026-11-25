@@ -245,6 +245,96 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     await owner?.$disconnect();
   });
 
+  if (process.env.RUN_LINE_A_TEXT_DIRECT_330 === "1") it("serializes the actual text agreement cap and freezes the reviewed supplement fingerprint", async () => {
+    const agreement = "完成服务经双方确认后支付";
+    const supplement = "补充协议约定每月核对实际服务后付款";
+    const actualDays = new Date();
+    actualDays.setUTCDate(actualDays.getUTCDate() - 1);
+    const seed = async (name: string, knownLimit: boolean) => {
+      const contract = await owner.contract.create({ data: {
+        projectId: ids.project, ownerUserId: ids.director, code: "LINEA-TEXT-" + name,
+        name: "隔离零阶段服务合同", counterparty: "隔离相对方", contractTypeKey: "other",
+        companyEntityId: ids.company, companyEntityName: "隔离参与公司"
+      } });
+      const version = await owner.contractVersion.create({ data: {
+        contractId: contract.id, versionNo: 1, changeType: "original", status: "effective", effectiveAt: actualDays,
+        numericProtocolVersion: 2, amountCents: knownLimit ? 60_000n : 0n, amountYuan: knownLimit ? "600.0000" : null,
+        pricingNature: knownLimit ? "fixed_total" : "framework", amountLimitType: knownLimit ? "capped" : "unlimited",
+        settlementMode: "direct_payment", settlementModeSource: "contract_director",
+        settlementModeConfirmedByUserId: ids.director, settlementModeConfirmedAt: actualDays,
+        signingSubjectType: "our_company", companyEntityIdSnapshot: ids.company,
+        companyEntityVersionId: ids.companyVersion, companyEntityNameSnapshot: "隔离参与公司",
+        companyEntityCreditCodeSnapshot: "91350100LINEA00001", draftData: {}, templateSnapshot: {}, clauseSnapshot: []
+      } });
+      const terms = await owner.paymentTermsVersion.create({ data: {
+        contractId: contract.id, contractVersionId: version.id, versionNo: 1, status: "effective", originalText: agreement
+      } });
+      return { contract, version, terms };
+    };
+
+    const capped = await seed("CAPPED", true);
+    const uncapped = await seed("UNKNOWN", false);
+    const preview = (versionId: string) => call("staff", "/payments/contract-application?contractVersionId=" + versionId);
+    const start = await preview(capped.version.id);
+    expect(start.body).toMatchObject({ paymentMode: "text_agreement", availableStages: [],
+      capacity: { maxRequestableCents: "60000", duePayableCents: null },
+      textAgreement: { paymentTermsVersionId: capped.terms.id, agreementText: agreement } });
+    expect((await preview(uncapped.version.id)).body).toMatchObject({
+      paymentMode: "text_agreement", availableStages: [],
+      capacity: { maxRequestableCents: null, duePayableCents: null },
+      genericContractCapacity: { contractAmountCents: null, contractRemainingCents: null }
+    });
+    const input = {
+      sourceType: "contract_due", contractVersionId: capped.version.id, paymentTermsVersionId: capped.terms.id,
+      expectedAgreementFingerprint: start.body.textAgreement.fingerprint,
+      paymentMatter: "实际巡检服务", amountCalculationExplanation: "按工单核对的服务费用"
+    };
+    const simultaneous = await Promise.all(["A", "B"].map(key => callRaw("staff", "/payments", {
+      ...input, code: "LINEA-TEXT-RACE-" + key, requestedAmountCents: "40000"
+    })));
+    expect(simultaneous.map(result => result.status).sort()).toEqual([201, 400]);
+    const approvedCapacity = await owner.paymentRequest.findMany({ where: { contractId: capped.contract.id } });
+    expect(approvedCapacity).toHaveLength(1);
+    expect(approvedCapacity[0]).toMatchObject({
+      status: "approval_pending", requestedAmountCents: 40_000n, paidAmountCents: 0n,
+      approvedAmountCents: null, contractDueBasis: "text_agreement_v1", paymentTermsStageId: null, settlementId: null
+    });
+    const firstId = approvedCapacity[0].id;
+    expect(await owner.paymentRequestAgreementSnapshot.findUnique({ where: { paymentRequestId: firstId } })).toMatchObject({ agreementText: agreement });
+
+    const pdf = await PDFDocument.create();
+    pdf.addPage();
+    const bytes = Buffer.from(await pdf.save());
+    const objectKey = "uploads/line-a/text-agreement-supplement.pdf";
+    await writeFile(join(process.env.FILE_STORAGE_ROOT!, objectKey), bytes, { mode: 0o600 });
+    const appendix = await owner.fileObject.create({ data: { bucket: "private-local", objectKey,
+      originalName: "零阶段合同已签补充协议.pdf", mimeType: "application/pdf", sizeBytes: bytes.length,
+      uploadedByUserId: ids.staff, contentSha256: sha(bytes), storageStatus: "active" } });
+    const pending = await call("staff", "/contracts/" + capped.version.id + "/signed-changes", {
+      fileId: appendix.id, summary: "核对零阶段服务合同付款约定",
+      amountDeltaYuan: "0.0000", paymentAgreementText: supplement
+    });
+    expect(pending.status).toBe(201);
+    expect((await call("director", "/contracts/" + capped.version.id + "/signed-changes/" + pending.body.id + "/review", {
+      decision: "approve"
+    })).body.status).toBe("approved");
+    expect(await owner.paymentRequestAgreementSnapshot.findUnique({ where: { paymentRequestId: firstId } })).toMatchObject({ agreementText: agreement });
+    const stale = await callRaw("staff", "/payments", { ...input, code: "LINEA-TEXT-STALE", requestedAmountCents: "10000" });
+    expect(stale.status).toBe(409);
+    const next = await preview(capped.version.id);
+    expect(next.body).toMatchObject({ textAgreement: { paymentTermsVersionId: capped.terms.id, agreementText: supplement },
+      capacity: { maxRequestableCents: "20000" } });
+    expect(next.body.textAgreement.fingerprint).not.toBe(input.expectedAgreementFingerprint);
+    const current = await call("staff", "/payments", {
+      ...input, code: "LINEA-TEXT-FRESH", requestedAmountCents: "10000", expectedAgreementFingerprint: next.body.textAgreement.fingerprint
+    });
+    expect(current.status).toBe(201);
+    const request = await owner.paymentRequest.findUniqueOrThrow({ where: { code: "LINEA-TEXT-FRESH" } });
+    expect(await owner.paymentRequestAgreementSnapshot.findUnique({ where: { paymentRequestId: request.id } })).toMatchObject({ agreementText: supplement });
+    expect(await owner.paymentTermsStage.count({ where: { paymentTermsVersionId: { in: [capped.terms.id, uncapped.terms.id] } } })).toBe(0);
+    expect(await owner.settlement.count({ where: { contractId: { in: [capped.contract.id, uncapped.contract.id] } } })).toBe(0);
+  });
+
   it("reads an effective contract through both candidate read functions", async () => {
     const initial = await call("staff", `/contracts/${ids.contractA}?versionId=${ids.versionA}`);
     expect(initial.status).toBe(200);

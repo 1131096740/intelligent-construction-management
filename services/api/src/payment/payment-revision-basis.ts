@@ -1,3 +1,4 @@
+import { PAYMENT_TEXT_AGREEMENT_BASIS } from "./payment-text-agreement";
 import type { PaymentRequest } from "@prisma/client";
 import { isOrdinaryPaymentParallelRound } from "./ordinary-payment-parallel";
 
@@ -9,7 +10,7 @@ export function paymentRevisionAction(round: { status: string; frozenNodes?: unk
 
 export function hasPaymentRevisionBasis(payment: Pick<PaymentRequest,
   "sourceType" | "settlementId" | "signedSettlementId" | "paymentTermsStageId" |
-  "requestedAmountCents" | "approvedAmountCents" | "paidAmountCents">): boolean {
+  "contractDueBasis" | "requestedAmountCents" | "approvedAmountCents" | "paidAmountCents">): boolean {
   if (payment.requestedAmountCents <= 0n || payment.approvedAmountCents !== null || payment.paidAmountCents !== 0n) return false;
   switch (payment.sourceType) {
     case "settlement":
@@ -17,7 +18,8 @@ export function hasPaymentRevisionBasis(payment: Pick<PaymentRequest,
     case "signed_settlement":
       return Boolean(payment.signedSettlementId) && !payment.settlementId && !payment.paymentTermsStageId;
     case "contract_due":
-      return Boolean(payment.paymentTermsStageId) && !payment.signedSettlementId && !payment.settlementId;
+      return (Boolean(payment.paymentTermsStageId) || payment.contractDueBasis === PAYMENT_TEXT_AGREEMENT_BASIS) &&
+        !payment.signedSettlementId && !payment.settlementId;
     case "contract_advance":
       return !payment.paymentTermsStageId && !payment.signedSettlementId && !payment.settlementId;
     default:

@@ -39,8 +39,10 @@ describe("payment workbench structure", () => {
   it("makes the contract-specific payment route explicit and only exposes valid sources", () => {
     expect(workbench).toContain("contractPaymentRoute");
     expect(workbench).toContain("availablePaymentSourceOptions");
-    expect(workbench).toContain("通用合同按已冻结付款阶段直接申请付款");
-    expect(workbench).toContain("其他合同必须从已生效结算发起付款");
+    expect(workbench).toContain("依据生效的合同付款约定办理");
+    expect(workbench).toContain("需要结算的合同从已生效结算发起付款");
+    expect(workbench).toContain("contract.canApplyContractDirectPayment");
+    expect(workbench).toContain("合同总价未确定，无法计算余额");
     expect(workbench).toContain('contract.contractTypeKey === "generic_contract"');
     expect(workbench).toContain('"unselected" | "generic_direct" | "settlement_required" | "unsupported"');
     expect(workbench).toContain("当前合同类型尚未明确，不能判断合法付款来源");

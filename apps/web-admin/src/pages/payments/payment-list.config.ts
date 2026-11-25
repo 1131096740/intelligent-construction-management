@@ -252,8 +252,8 @@ function ledgerSelectOptions(values: readonly string[], allLabel: string) {
   return [{ label: allLabel, value: "" }, ...unique.map((value) => ({ label: value, value }))];
 }
 
-function formatPaymentCents(amountCents: string) {
-  return `¥${centsTextToYuanText(amountCents)}`;
+function formatPaymentCents(amountCents: string | null) {
+  return amountCents === null ? "无法计算余额" : `¥${centsTextToYuanText(amountCents)}`;
 }
 
 function formatPaymentDate(value: string | null, fallback: string) {

@@ -34,7 +34,8 @@ BEGIN
       'public.jg_read_payment_detail_pdf_v1(text,text,text)',
       'public.jg_read_payment_detail_snapshots_v1(text,text,text,boolean)',
       'public.jg_read_payment_contract_agreement_detail_v1(text,text,text)',
-      'public.jg_read_effective_contract_change_amount_v1(text,text,text)'
+      'public.jg_read_effective_contract_change_amount_v1(text,text,text)',
+      'public.jg_read_text_payment_agreement_v1(text,text,text,text)'
     ]) AS signature
   LOOP
     IF pg_catalog.to_regprocedure(routine) IS NOT NULL THEN
@@ -42,6 +43,9 @@ BEGIN
     END IF;
   END LOOP;
   EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_delete_unsubmitted_operating_batch(TEXT,TEXT,TEXT,INTEGER) TO %I', runtime_role);
+  IF pg_catalog.to_regprocedure('public.jg_append_text_payment_allocation_v1(text)') IS NOT NULL THEN
+    EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_append_text_payment_allocation_v1(text) TO %I', runtime_role);
+  END IF;
 
   FOR routine IN
     SELECT signature FROM unnest(ARRAY[
@@ -50,7 +54,8 @@ BEGIN
       'public.jg_read_payment_detail_pdf_v1(text,text,text)',
       'public.jg_read_payment_detail_snapshots_v1(text,text,text,boolean)',
       'public.jg_read_payment_contract_agreement_detail_v1(text,text,text)',
-      'public.jg_read_effective_contract_change_amount_v1(text,text,text)'
+      'public.jg_read_effective_contract_change_amount_v1(text,text,text)',
+      'public.jg_read_text_payment_agreement_v1(text,text,text,text)'
     ]) AS signature
   LOOP
     IF pg_catalog.to_regprocedure(routine) IS NOT NULL

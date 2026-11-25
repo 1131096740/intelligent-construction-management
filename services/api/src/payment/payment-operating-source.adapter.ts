@@ -1,3 +1,4 @@
+import { PAYMENT_TEXT_AGREEMENT_BASIS } from "./payment-text-agreement";
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { registeredPaymentInstalled } from "../database/registered-payment-catalog";
@@ -262,9 +263,24 @@ export class PaymentExecutionOperatingSourceAdapter
     if (!version || !counterparty?.businessPartyVersionId) {
       throw new BadRequestException("付款执行缺少合同主体或下游相对方快照");
     }
-    const approvedAmountCents =
-      request.approvedAmountCents ?? request.requestedAmountCents;
-    if ((executionTotal._sum.amountCents ?? 0n) > approvedAmountCents) {
+    const textAgreement = request.contractDueBasis === PAYMENT_TEXT_AGREEMENT_BASIS;
+    const approvedAmountCents = request.approvedAmountCents ?? request.requestedAmountCents;
+    let executionTotalCents = executionTotal._sum.amountCents ?? 0n;
+    if (textAgreement) {
+      const [refunds, corrections] = await Promise.all([
+        tx.paymentExecutionRefund.aggregate({
+          where: { paymentRequestId: request.id, executionType: "payment_execution" },
+          _sum: { amountCents: true }
+        }),
+        tx.paymentExecutionCorrection.aggregate({
+          where: { paymentRequestId: request.id, status: "confirmed" },
+          _sum: { amountDeltaCents: true }
+        })
+      ]);
+      executionTotalCents += (corrections._sum.amountDeltaCents ?? 0n) - (refunds._sum.amountCents ?? 0n);
+    }
+    if (executionTotalCents > approvedAmountCents || (textAgreement &&
+        (request.approvedAmountCents === null || executionTotalCents < 0n))) {
       throw new BadRequestException("付款执行累计金额超过付款申请批复金额");
     }
     const affiliate = await readAffiliateSnapshot(tx, {
@@ -294,6 +310,10 @@ export class PaymentExecutionOperatingSourceAdapter
         row.amountCents
     ) {
       throw new BadRequestException("合同到期付款必须完整关联本次应付核销来源");
+    }
+    if (textAgreement && (dueAllocations.length !== 1 || dueAllocations[0].settlementId !== null ||
+        dueAllocations[0].sourceRowId !== `payment-request:${request.id}`)) {
+      throw new BadRequestException("实付分摊缺少本次合同付款申请批准依据");
     }
     const payable = dueAllocations.map((allocation) => ({
       sourceId: allocation.settlementId ?? allocation.sourceRowId,
@@ -373,6 +393,7 @@ interface PaymentRequestRow {
   projectId: string;
   settlementId: string | null;
   signedSettlementId?: string | null;
+  contractDueBasis?: string | null;
   sourceType: string;
   contractId: string;
   contractVersionId: string;

@@ -1,3 +1,4 @@
+import { isConfirmedTextAgreementContract, PAYMENT_TEXT_AGREEMENT_BASIS, readTextAgreementContractLimit, readTextPaymentAgreement } from "./payment-text-agreement";
 import { sensitiveBusinessReadAllowed, hasSensitiveLedgerReadRole } from "../auth/sensitive-business-read";
 import type { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
@@ -760,7 +761,8 @@ export class PaymentReadService {
           ? (settlementById.get(payment.settlementId)?.code ?? payment.settlementId)
           : payment.paymentTermsStageId && payment.sourceType === "contract_due"
             ? "合同冻结阶段直接付款"
-            : this.paymentSourceLabel(payment.sourceType),
+            : payment.contractDueBasis === PAYMENT_TEXT_AGREEMENT_BASIS
+              ? "按合同约定直接付款" : this.paymentSourceLabel(payment.sourceType),
         project: projectById.get(payment.projectId)?.name ?? payment.projectId,
         projectId: payment.projectId,
         contractId: payment.contractId,
@@ -1181,6 +1183,9 @@ export class PaymentReadService {
           select: { originalText: true }
         })
       : null;
+    if (payment.contractDueBasis === PAYMENT_TEXT_AGREEMENT_BASIS && !agreement?.submittedText) {
+      throw new NotFoundException("付款申请缺少提交时冻结的合同付款约定，请核对原申请");
+    }
     const submittedAgreement = agreement?.submittedText ?? terms.originalText;
     const currentAgreement = agreement?.currentText ?? effectiveTerms?.originalText ?? terms.originalText;
     const agreementChanged = currentAgreement !== submittedAgreement;
@@ -1261,7 +1266,7 @@ export class PaymentReadService {
     const correctionDeltaCents = correctionRows.reduce((sum, row) => sum + row.amountDeltaCents, 0n);
     const executionAllocations = await this.prisma.$queryRaw<Array<{
       id: string; paymentExecutionId: string; settlementId: string | null; stageName: string | null;
-      stageType: string; allocationType: string; amountCents: bigint; allocationOrder: number;
+      stageType: string | null; allocationType: string; amountCents: bigint; allocationOrder: number;
     }>>`
       SELECT * FROM public.jg_read_payment_detail_allocations_v1(${payment.id}::text, ${payment.projectId}::text, ${payment.contractId}::text)
     `;
@@ -1493,7 +1498,9 @@ export class PaymentReadService {
         : payment.sourceType === "contract_due"
           ? payment.paymentTermsStageId
             ? `${payment.code} · 合同冻结阶段直接付款申请`
-            : `${payment.code} · 合同累计结算付款申请`
+            : payment.contractDueBasis === PAYMENT_TEXT_AGREEMENT_BASIS
+              ? `${payment.code} · 按合同约定直接付款申请`
+              : `${payment.code} · 合同累计结算付款申请`
         : isSignedSettlementPayment
           ? `${payment.code} · ${signedSettlement?.number ?? "已签结算"}付款申请`
           : `${payment.code} · ${settlement?.periodLabel}付款申请`,
@@ -1592,7 +1599,8 @@ export class PaymentReadService {
                 label: "付款来源",
                 value: payment.paymentTermsStageId && payment.sourceType === "contract_due"
                   ? "合同冻结阶段直接付款"
-                  : this.paymentSourceLabel(payment.sourceType)
+                  : payment.contractDueBasis === PAYMENT_TEXT_AGREEMENT_BASIS
+                    ? "按合同约定直接付款" : this.paymentSourceLabel(payment.sourceType)
               },
               {
                 label: "关联合同",
@@ -1676,11 +1684,13 @@ export class PaymentReadService {
           settlementNo: allocationSettlement
             ? `${allocationSettlement.code} · ${allocationSettlement.periodLabel}`
             : (allocation.settlementId ?? "-"),
-          stageName: allocation.stageName ?? allocation.stageType,
+          stageName: allocation.stageType === null
+            ? "付款申请批准金额" : allocation.stageName ?? allocation.stageType,
           allocationType:
             payment.paymentTermsStageId && allocation.allocationType === "contract_due_payment"
               ? "合同冻结阶段直接付款"
-              : this.allocationTypeLabel(allocation.allocationType),
+              : allocation.stageType === null
+                ? "按合同约定直接付款" : this.allocationTypeLabel(allocation.allocationType),
           amountCents: moneyCentsToApi(allocation.amountCents)
         };
       }),
@@ -1712,7 +1722,9 @@ export class PaymentReadService {
           : payment.sourceType === "contract_due"
             ? payment.paymentTermsStageId
               ? "付款申请按合同冻结付款阶段执行，实付沿用申请时冻结的付款条款与阶段"
-              : "付款申请按合同下全部已生效结算累计计算，实付后自动生成分摊台账"
+              : payment.contractDueBasis === PAYMENT_TEXT_AGREEMENT_BASIS
+                ? "实付按申请时保存的合同约定和本次批准金额办理，可以分次登记"
+                : "付款申请按合同下全部已生效结算累计计算，实付后自动生成分摊台账"
           : "付款申请只能来自已生效结算",
         "审批通过进入已批待付",
         "审批通过不等于实际付款完成",
@@ -1775,7 +1787,8 @@ export class PaymentReadService {
     if (!contract) {
       throw new NotFoundException("未找到关联合同，请先核对合同台账");
     }
-    if (contract.contractTypeKey !== "generic_contract") {
+    const textAgreementContract = isConfirmedTextAgreementContract(contract, contractVersion);
+    if (contract.contractTypeKey !== "generic_contract" && !textAgreementContract) {
       throw new BadRequestException("该合同类型应从生效结算发起付款");
     }
     if (contractVersion.settlementMode !== undefined) {
@@ -1812,13 +1825,23 @@ export class PaymentReadService {
         contractVersionId: contractVersion.id,
         status: "effective"
       },
-      select: { id: true },
+      select: { id: true, originalText: true },
       orderBy: { versionNo: "desc" }
     });
-    const paymentTermsVersionId = paymentTermsVersions[0]?.id;
+    const selectedTerms = paymentTermsVersions[0];
+    const paymentTermsVersionId = selectedTerms?.id;
     if (!paymentTermsVersionId) {
       throw new BadRequestException("未找到已生效的付款条款，请先补齐合同付款条款");
     }
+    const textAgreement = textAgreementContract && selectedTerms.originalText?.trim() &&
+      !await this.prisma.paymentTermsStage.findFirst({ where: { paymentTermsVersionId }, select: { id: true } })
+      ? await readTextPaymentAgreement(this.prisma, {
+          contractVersionId, paymentTermsVersionId, contractId: contract.id, projectId: contract.projectId
+        })
+      : null;
+    const textContractLimit = textAgreement
+      ? await readTextAgreementContractLimit(this.prisma, contractVersion, contract.projectId)
+      : null;
     const historicalBalance = await this.confirmedHistoricalBalanceForContract(contract.id);
     const paymentTermsVersionIds = [
       ...new Set([
@@ -1984,18 +2007,18 @@ export class PaymentReadService {
         );
       }
     );
+    const directContractAmountCents = textAgreement
+      ? textContractLimit ?? 0n : dbMoneyToBigInt(contractVersion.amountCents, "合同金额");
     const genericStageCapacity = this.genericContractStageCapacity({
       asOf,
       contractEffectiveAt: contractVersion.effectiveAt,
-      contractAmountCents: dbMoneyToBigInt(contractVersion.amountCents, "合同金额"),
+      contractAmountCents: directContractAmountCents,
       stages: eligibleStages,
       paymentRequests,
       externalOccupancyCents:
         proxyPaidCents + this.historicalConservativeOccupancyCents(historicalBalance)
     });
-    const genericContractRemainingCents =
-      dbMoneyToBigInt(contractVersion.amountCents, "合同金额") -
-      genericStageCapacity.contractOccupiedCents;
+    const genericContractRemainingCents = directContractAmountCents - genericStageCapacity.contractOccupiedCents;
     const settlementById = new Map(settlements.map((settlement) => [settlement.id, settlement]));
     const occupancy = this.paymentOccupancyBreakdown(settlementPaymentRequests);
     const actualPaidCents =
@@ -2041,7 +2064,7 @@ export class PaymentReadService {
         : {})
     };
     const contractDirectPaymentSummary = directPaymentSummary(
-      contractVersion.amountLimitType,
+      textAgreement && textContractLimit === null ? "unlimited" : contractVersion.amountLimitType,
       paymentRequests
     );
     const unlimitedDirectPayment =
@@ -2058,15 +2081,14 @@ export class PaymentReadService {
         projectId: contract.projectId,
         projectName: project?.name ?? contract.projectId
       },
-      paymentMode: "generic_contract_stage" as const,
+      paymentMode: textAgreement ? "text_agreement" : "generic_contract_stage",
+      ...(textAgreement ? { textAgreement } : {}),
       genericContractCapacity: {
-        contractAmountCents: moneyCentsToApi(
-          dbMoneyToBigInt(contractVersion.amountCents, "合同金额")
-        ),
+        contractAmountCents: textAgreement && unlimitedDirectPayment ? null : moneyCentsToApi(directContractAmountCents),
         contractOccupiedCents: moneyCentsToApi(
           genericStageCapacity.contractOccupiedCents
         ),
-        contractRemainingCents: moneyCentsToApi(
+        contractRemainingCents: textAgreement && unlimitedDirectPayment ? null : moneyCentsToApi(
           unlimitedDirectPayment
             ? 0n
             : genericStageCapacity.contractRemainingCents
@@ -2118,7 +2140,12 @@ export class PaymentReadService {
         status: settlement.status,
         isFinal: settlement.isFinal
       })),
-      capacity,
+      capacity: textAgreement ? {
+        ...capacity,
+        duePayableCents: null,
+        occupiedCents: moneyCentsToApi(genericStageCapacity.contractOccupiedCents),
+        maxRequestableCents: unlimitedDirectPayment ? null : moneyCentsToApi(genericStageCapacity.contractRemainingCents)
+      } : capacity,
       advanceDeduction: preview.advanceDeduction,
       capacityExplanation: unlimitedDirectPayment
         ? [
@@ -2150,9 +2177,7 @@ export class PaymentReadService {
         : [
             {
               label: "合同金额",
-              amountCents: moneyCentsToApi(
-                dbMoneyToBigInt(contractVersion.amountCents, "合同金额")
-              ),
+              amountCents: moneyCentsToApi(directContractAmountCents),
               operator: "add" as const,
               note: "按当前生效合同版本的金额上限",
               tone: "primary" as const
@@ -2174,7 +2199,7 @@ export class PaymentReadService {
                   : 0n
               ),
               operator: "result" as const,
-              note: "实际申请仍受所选冻结付款阶段额度约束",
+              note: textAgreement ? "本次申请仍须经审批" : "实际申请仍受所选冻结付款阶段额度约束",
               tone: "success" as const
             }
           ],
@@ -2204,7 +2229,8 @@ export class PaymentReadService {
       })),
       formula: unlimitedDirectPayment
         ? "无固定总价合同不设置合同金额上限；每次申请必须填写付款事项和金额计算说明，并继续执行完整审批、实付凭证和项目资金检查"
-        : "当前生效合同金额 - 合同已占用金额 = 合同当前剩余额度；本次申请同时受所选冻结付款阶段约束"
+        : textAgreement ? "当前生效合同金额 - 合同已占用金额 = 合同当前剩余额度"
+          : "当前生效合同金额 - 合同已占用金额 = 合同当前剩余额度；本次申请同时受所选冻结付款阶段约束"
     };
   }
 

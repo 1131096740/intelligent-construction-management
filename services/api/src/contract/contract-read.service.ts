@@ -1,3 +1,4 @@
+import { isConfirmedTextAgreementContract } from "../payment/payment-text-agreement";
 import { isLegacyContractParallelRound, isPendingLegacyContractCutover } from "./contract-approval-cutover";
 import { contractApprovalFormHasReaderRole, contractParallelApprovalEpoch, contractParallelDutyIdentity, contractPendingApprovalSnapshot, pendingContractApprovalFormHasReaderRole } from "./contract-parallel-duty-access";
 import { directPendingNumbers, directPendingNumberLabel } from "./contract-direct-pending-numbers";
@@ -1277,8 +1278,9 @@ export class ContractReadService {
       const settlementClosedReason = contract.settlementClosedAt || contract.finalSettlementId
         ? "该合同已完成最终结算，不能再发起新的结算"
         : null;
+      const canApplyContractDirectPayment = effectiveVersion && isConfirmedTextAgreementContract(contract, effectiveVersion);
       const paymentTypeBlockReason =
-        contract.contractTypeKey === "generic_contract" || !settlementTypeBlockReason
+        contract.contractTypeKey === "generic_contract" || canApplyContractDirectPayment || !settlementTypeBlockReason
           ? null
           : "请先明确合同类型，再发起付款申请";
 
@@ -1309,6 +1311,7 @@ export class ContractReadService {
           ? settlementClosedReason ?? settlementTypeBlockReason
           : "合同尚未生效，不能发起结算",
         canCreatePayment: !paymentUnavailableReason && !paymentTypeBlockReason,
+        ...(canApplyContractDirectPayment ? { canApplyContractDirectPayment: true } : {}),
         paymentUnavailableReason: paymentUnavailableReason ?? paymentTypeBlockReason,
         settlements: (settlementsByContractId.get(contract.id) ?? []).map((settlement) => {
           const canCreatePayment = canCreatePaymentFromSettlementStatus(settlement.status as SettlementStatus);

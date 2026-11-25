@@ -330,6 +330,7 @@ describe("PaymentRequestService", () => {
       contractVersionId: string;
       paymentTermsVersionId: string;
       paymentTermsStageId: string | null;
+      contractDueBasis: string | null;
       settlementId: string | null;
       sourceType: string;
       updatedAt: Date;
@@ -575,6 +576,50 @@ name: "签批人甲",
       const future = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, paidAt: "2026-11-05T00:31:00+08:00" }) });
       expect(future.status).toBe(400); expect(tx.paymentExecution.create).not.toHaveBeenCalled(); expect(prisma.$transaction).not.toHaveBeenCalled();
     } finally { await app.close(); jest.useRealTimers(); }
+  });
+
+  it("funds one approved text agreement installment and replays its original execution", async () => {
+    const { tx, payment, prisma, createdExecution } = hardenedPaymentExecutionFixture({
+      contractTypeKey: "other", settlementId: null, sourceType: "contract_due", paymentTermsVersionId: "terms",
+      contractDueBasis: "text_agreement_v1", paymentTermsStageId: null,
+      status: "partially_paid", requestedAmountCents: 65_000n, approvedAmountCents: 60_000n, paidAmountCents: 20_000n
+    });
+    const executeRaw = jest.fn();
+    const approval = { businessType: "payment_request", businessId: payment.id, flowType: "payment.approve",
+      status: "approved", createdAt: new Date("2026-06-06") };
+    Object.assign(tx, {
+      approvalInstance: { findMany: jest.fn().mockResolvedValue([approval]) },
+      $executeRaw: executeRaw,
+      contractVersion: { findUnique: jest.fn().mockResolvedValue({
+        id: payment.contractVersionId, contractId: payment.contractId, effectiveAt: new Date("2026-06-01"),
+        amountCents: 0n, amountLimitType: "unlimited", signingSubjectType: "our_company",
+        companyEntityIdSnapshot: payment.companyEntityIdSnapshot, companyEntityNameSnapshot: payment.companyEntityNameSnapshot,
+        companyEntityCreditCodeSnapshot: payment.companyEntityCreditCodeSnapshot
+      }) }
+    });
+    tx.$queryRaw.mockReset().mockResolvedValue([payment]);
+    tx.paymentRequest.update.mockResolvedValue({ id: payment.id, status: "partially_paid", paidAmountCents: 50_000n });
+    const service = paymentExecutionService(new PaymentAmountService(), prisma as never, audit as never,
+      fileAccess as never, auth as never, undefined, undefined, projectFunding as never);
+    const append = jest.fn().mockResolvedValue(null);
+    Reflect.set(service, "operatingSources", { appendConfirmedSourceIfEnabledInTransaction: append });
+    const input = { ...paymentExecutionCoordinates, amountCents: "30000", paidAt: "2026-06-22T00:00:00.000Z",
+      voucherFileId: "file-1", confirmationPassword: "current-password", bankReceiptReference: undefined };
+
+    const result = await service.recordExecution(payment.id, "cashier-1", input);
+    expect(result).toMatchObject({ id: createdExecution.id, amountCents: "30000" });
+    expect(tx.paymentRequest.update).toHaveBeenCalledWith({ where: { id: payment.id }, data: {
+      status: "partially_paid", paidAmountCents: 50_000n
+    } });
+    tx.paymentExecution.findUnique.mockResolvedValue(createdExecution);
+    await expect(service.recordExecution(payment.id, "cashier-1", input)).resolves.toEqual(result);
+    expect(projectFunding.allocateExecution).toHaveBeenCalledTimes(1);
+    const appendAllocation = "SELECT public.jg_append_text_payment_allocation_v1(";
+    expect(executeRaw.mock.calls.filter(([parts]) => parts[0] === appendAllocation)).toEqual([
+      [[appendAllocation, "::text)"], createdExecution.id]
+    ]);
+    expect(append).toHaveBeenCalledTimes(1);
+    expect(tx.settlement.update).not.toHaveBeenCalled();
   });
 
   it("requires payment execution CAS and UUID v4 idempotency coordinates", async () => {
@@ -2580,6 +2625,51 @@ name: "签批人甲",
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
+  it("submits a text-only service payment on its actual agreement without creating a stage or settlement", async () => {
+    const version = {
+      id: "v2", contractId: "contract", status: "effective", numericProtocolVersion: 2,
+      amountCents: 0n, amountLimitType: "unlimited", amountYuan: null, effectiveAt: new Date("2026-06-01"),
+      settlementMode: "direct_payment", settlementModeConfirmedAt: new Date("2026-06-01"),
+      settlementModeConfirmedByUserId: "director", signingSubjectType: "our_company"
+    };
+    const tx = {
+      contractVersion: { findUnique: jest.fn().mockResolvedValue(version) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project", contractTypeKey: "other" }) },
+      contractTakeover: { findUnique: jest.fn().mockResolvedValue(null), findFirst: jest.fn().mockResolvedValue(null) },
+      paymentTermsVersion: { findFirst: jest.fn().mockResolvedValue({ id: "terms", originalText: "按实际服务付款" }) },
+      paymentTermsStage: { findFirst: jest.fn().mockResolvedValue(null) },
+      paymentRequest: {
+        create: jest.fn(({ data }) => ({ id: "payment", ...data })),
+        findMany: jest.fn().mockResolvedValue([{ status: "paid", requestedAmountCents: 24_000n,
+          approvedAmountCents: 24_000n, paidAmountCents: 24_000n }])
+      },
+      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn((query: TemplateStringsArray) => Array.isArray(query) && query.join("").includes("jg_read_text_payment_agreement_v1")
+        ? [{ agreementText: "按实际服务付款" }]
+        : Array.isArray(query) && query.join("").includes("jg_read_effective_contract_change_amount_v1")
+          ? [{ effectiveAmountYuan: new Prisma.Decimal("600.0040") }] : [{ id: "contract" }])
+    };
+    const prisma = { $transaction: jest.fn(async (callback) => callback(tx)) };
+    const service = new PaymentRequestService(new PaymentAmountService(), prisma as never);
+    const input = { sourceType: "contract_due" as const, contractVersionId: "v2", paymentTermsVersionId: "terms",
+      expectedAgreementFingerprint: "6aedb478397e188fe34bec6efde3e4e40e3922e4e3f369883fe4559ff327121a",
+      code: "FK-TEXT-1", requestedAmountCents: "55000", paymentMatter: "巡检服务",
+      amountCalculationExplanation: "服务工单共计550元" };
+    await expect(service.create(input)).resolves.toMatchObject({
+      sourceType: "contract_due", requestedAmountCents: "55000", paymentTermsVersionId: "terms", settlementId: null
+    });
+    expect(tx.paymentRequest.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      paymentTermsStageId: null, contractDueBasis: "text_agreement_v1"
+    }) });
+    await expect(service.create({ ...input, paymentTermsVersionId: "stale" })).rejects.toMatchObject({ status: 409 });
+    await expect(service.create({ ...input, expectedAgreementFingerprint: "0".repeat(64) })).rejects.toMatchObject({ status: 409 });
+    tx.contractVersion.findUnique.mockResolvedValue({ ...version, amountLimitType: "capped", amountYuan: new Prisma.Decimal("1000") });
+    await expect(service.create(input)).rejects.toThrow("当前最多可申请 360.00 元");
+    await expect(service.create({ ...input, requestedAmountCents: "36000" })).resolves.toMatchObject({ requestedAmountCents: "36000" });
+    tx.paymentTermsStage.findFirst.mockResolvedValue({ id: "actual-stage" });
+    await expect(service.create(input)).rejects.toThrow("请选择合同已冻结的付款阶段");
+  });
+
   it("requires payment matter and calculation explanation for an unlimited direct-payment contract", async () => {
     const tx = {
       contractVersion: {
@@ -2775,14 +2865,15 @@ name: "签批人甲",
     const paymentService = new PaymentRequestService(new PaymentAmountService(), {} as never);
     const assertCapacity = (
       paymentService as unknown as {
-        assertGenericContractPaymentStageCapacity(
+        assertDirectPaymentApplicationCapacity(
           tx: unknown,
           contractVersion: unknown,
           stage: unknown,
-          requestedAmountCents: bigint
+          requestedAmountCents: bigint,
+          textAgreementLimit: null
         ): Promise<void>;
       }
-    ).assertGenericContractPaymentStageCapacity.bind(paymentService);
+    ).assertDirectPaymentApplicationCapacity.bind(paymentService);
 
     await expect(assertCapacity(
       tx,
@@ -2804,7 +2895,8 @@ name: "签批人甲",
         allowsEarlyPayment: false,
         allowsInstallments: true
       },
-      90_000n
+      90_000n,
+      null
     )).rejects.toThrow("合同付款阶段当前可申请金额不足，当前最多可申请 500.00 元");
     expect(tx.paymentRequest.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -2914,14 +3006,15 @@ name: "签批人甲",
     const paymentService = new PaymentRequestService(new PaymentAmountService(), {} as never);
     const assertCapacity = (
       paymentService as unknown as {
-        assertGenericContractPaymentStageCapacity(
+        assertDirectPaymentApplicationCapacity(
           tx: unknown,
           contractVersion: unknown,
           stage: unknown,
-          requestedAmountCents: bigint
+          requestedAmountCents: bigint,
+          textAgreementLimit: null
         ): Promise<void>;
       }
-    ).assertGenericContractPaymentStageCapacity.bind(paymentService);
+    ).assertDirectPaymentApplicationCapacity.bind(paymentService);
 
     await expect(assertCapacity(
       tx,
@@ -2943,7 +3036,8 @@ name: "签批人甲",
         allowsEarlyPayment: false,
         allowsInstallments: true
       },
-      50_000n
+      50_000n,
+      null
     )).rejects.toThrow("合同付款阶段当前可申请金额不足，当前最多可申请 400.00 元");
   });
 
@@ -2955,14 +3049,15 @@ name: "签批人甲",
     const paymentService = new PaymentRequestService(new PaymentAmountService(), {} as never);
     const assertCapacity = (
       paymentService as unknown as {
-        assertGenericContractPaymentStageCapacity(
+        assertDirectPaymentApplicationCapacity(
           tx: unknown,
           contractVersion: unknown,
           stage: unknown,
-          requestedAmountCents: bigint
+          requestedAmountCents: bigint,
+          textAgreementLimit: null
         ): Promise<void>;
       }
-    ).assertGenericContractPaymentStageCapacity.bind(paymentService);
+    ).assertDirectPaymentApplicationCapacity.bind(paymentService);
 
     await expect(assertCapacity(
       tx,
@@ -2984,7 +3079,8 @@ name: "签批人甲",
         allowsEarlyPayment: true,
         allowsInstallments: true
       },
-      100_000n
+      100_000n,
+      null
     )).resolves.toBeUndefined();
   });
 
@@ -2996,14 +3092,15 @@ name: "签批人甲",
     const paymentService = new PaymentRequestService(new PaymentAmountService(), {} as never);
     const assertCapacity = (
       paymentService as unknown as {
-        assertGenericContractPaymentStageCapacity(
+        assertDirectPaymentApplicationCapacity(
           tx: unknown,
           contractVersion: unknown,
           stage: unknown,
-          requestedAmountCents: bigint
+          requestedAmountCents: bigint,
+          textAgreementLimit: null
         ): Promise<void>;
       }
-    ).assertGenericContractPaymentStageCapacity.bind(paymentService);
+    ).assertDirectPaymentApplicationCapacity.bind(paymentService);
 
     await expect(assertCapacity(
       tx,
@@ -3025,7 +3122,8 @@ name: "签批人甲",
         allowsEarlyPayment: false,
         allowsInstallments: false
       },
-      50_000n
+      50_000n,
+      null
     )).rejects.toThrow(
       "该付款阶段不允许分次申请，本次申请金额必须等于当前可申请金额 1,000.00 元"
     );

@@ -303,6 +303,31 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
     })).rejects.toThrow("付款执行银行法定持有人核验快照不完整");
   });
 
+  it("keeps direct agreement repayment after a real refund within the approved net amount", async () => {
+    const adapter = new PaymentExecutionOperatingSourceAdapter();
+    const tx = paymentTx();
+    tx.paymentRequest.findUnique.mockResolvedValue({
+      ...(await tx.paymentRequest.findUnique()), contractDueBasis: "text_agreement_v1"
+    });
+    tx.paymentExecution.aggregate.mockResolvedValue({ _sum: { amountCents: 1_200_00n } });
+    tx.paymentExecutionAllocation.findMany.mockResolvedValue([{
+      allocationType: "contract_due_payment", settlementId: null, allocationOrder: 0,
+      sourceRowId: "payment-request:payment-request-1", amountCents: 600_00n
+    }]);
+    const refunds = jest.fn().mockResolvedValue({ _sum: { amountCents: 200_00n } });
+    Object.assign(tx, {
+      paymentExecutionRefund: { aggregate: refunds },
+      paymentExecutionCorrection: { aggregate: jest.fn().mockResolvedValue({ _sum: { amountDeltaCents: null } }) }
+    });
+    const source = { projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1" };
+    const snapshot = await adapter.readSourceSnapshot(tx as never, source);
+    expect(adapter.toOperatingFactInput(snapshot!).input.impacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sourceImpactKey: "payable:payment-request:payment-request-1", amountCents: 600_00n })
+    ]));
+    refunds.mockResolvedValue({ _sum: { amountCents: 199_99n } });
+    await expect(adapter.readSourceSnapshot(tx as never, source)).rejects.toThrow("超过付款申请批复金额");
+  });
+
   it("fails closed when formal executions exceed the approved amount", async () => {
     const adapter = new PaymentExecutionOperatingSourceAdapter();
     const tx = paymentTx();

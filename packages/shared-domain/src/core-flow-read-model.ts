@@ -500,6 +500,7 @@ export type ContractPaymentApplicationSectionType =
 
 export type ContractPaymentApplicationMode =
   | "generic_contract_stage"
+  | "text_agreement"
   | "settlement_required";
 
 export interface ContractPaymentStageOptionReadModel {
@@ -532,10 +533,11 @@ export interface ContractPaymentApplicationPreviewReadModel {
   };
   paymentMode: ContractPaymentApplicationMode;
   availableStages: ContractPaymentStageOptionReadModel[];
+  textAgreement?: { paymentTermsVersionId: string; agreementText: string; fingerprint: string };
   genericContractCapacity: {
-    contractAmountCents: MoneyCents;
+    contractAmountCents: MoneyCents | null;
     contractOccupiedCents: MoneyCents;
-    contractRemainingCents: MoneyCents;
+    contractRemainingCents: MoneyCents | null;
   };
   directPaymentSummary: DirectPaymentSummaryReadModel;
   asOf: string;
@@ -551,7 +553,7 @@ export interface ContractPaymentApplicationPreviewReadModel {
     cumulativeEffectiveSettlementCents: MoneyCents;
     systemCumulativeEffectiveSettlementCents?: MoneyCents;
     historicalSettledCents?: MoneyCents;
-    duePayableCents: MoneyCents;
+    duePayableCents: MoneyCents | null;
     occupiedCents: MoneyCents;
     historicalOccupiedCents?: MoneyCents;
     actualPaidCents: MoneyCents;
@@ -566,7 +568,7 @@ export interface ContractPaymentApplicationPreviewReadModel {
     historicalRetentionReleasedCents?: MoneyCents;
     historicalOtherConfirmedOccupancyCents?: MoneyCents;
     advanceDeductionCents: MoneyCents;
-    maxRequestableCents: MoneyCents;
+    maxRequestableCents: MoneyCents | null;
   };
   advanceDeduction: {
     paidAdvanceCents: MoneyCents;
@@ -651,6 +653,7 @@ export interface ContractBusinessOptionReadModel {
   canCreateSettlement: boolean;
   settlementUnavailableReason: string | null;
   canCreatePayment: boolean;
+  canApplyContractDirectPayment?: true;
   paymentUnavailableReason: string | null;
   settlements: Array<{
     settlementId: string;
