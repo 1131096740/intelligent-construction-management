@@ -439,30 +439,42 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
       approvalInstanceId: submitted.approvalInstanceId, requestKey: archive.idempotencyKey, documentContentRevision: submission.documentContentRevision,
       documentContentFingerprint: submission.documentContentFingerprint, originals }, true));
 
-    stage = "ARCHIVE";
+    stage = "ARCHIVE_ACCESS";
     await expectStatus(send(7, contract + "/signed-archive", "POST", { json: archive }), 403);
+    stage = "ARCHIVE_REQUEST";
+    const archiveWindowStart = Date.now();
     const archived = await post(0, contract + "/signed-archive", archive);
     expect(archived).toMatchObject({ status: "effective", contractVersionId: versionId, fileIds });
+    stage = "ARCHIVE_REPLAY";
     expect(await post(0, contract + "/signed-archive", archive)).toEqual(archived);
     expect((await get(0, contract + "/archive-requests/" + archive.idempotencyKey)).result).toEqual(archived);
     expect(await pending(0)).toBe(0);
+    stage = "ARCHIVE_DOWNLOAD";
     for (const original of originals) {
       expect(hash(await download(original.id, "application/pdf"))).toBe(original.sha256);
       await expectStatus(send(7, "/files/" + original.id + "/download-ticket", "POST", {
         json: { confirmationPassword: passwords[7], downloadReason: "隔离测试访问限制" }
       }), 403);
     }
+    stage = "ARCHIVE_OWNER_PROOF";
     const activatedVersion = await owner.contractVersion.findUniqueOrThrow({ where: { id: versionId } });
     const project = await owner.project.findUniqueOrThrow({ where: { id: seed.project.id } });
     expect(activatedVersion.status).toBe("effective");
-    expect(project.constructionEnterpriseLockedAt).toEqual(activatedVersion.effectiveAt);
     expect(project.constructionEnterpriseLockedAt).toBeInstanceOf(Date);
+    expect(project.constructionEnterpriseLockedAt?.getTime()).toBeGreaterThanOrEqual(archiveWindowStart);
+    expect(project.constructionEnterpriseLockedAt?.getTime()).toBeLessThanOrEqual(activatedVersion.effectiveAt!.getTime());
+    const durableArchive = await owner.contractArchiveFile.findUniqueOrThrow({ where: { id: archived.archiveId } });
+    expect(durableArchive).toMatchObject({ contractVersionId: versionId, archiveSource: "generated_approval", status: "confirmed" });
+    expect(durableArchive.authoritySha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(durableArchive.fileManifestSha256).toMatch(/^[a-f0-9]{64}$/u);
     expect((await detail()).contractVersionId).toBe(versionId);
+    stage = "ARCHIVE_AUDIT";
     for (const [action, actor] of [["contract.seal_task.create", null], ["contract.seal.complete", seed.users[6].id], ["contract.archive.complete", seed.users[0].id]] as const) {
       expect(await owner.auditLog.count({ where: { action, businessId: versionId, ...(actor ? { actorUserId: actor } : {}) } })).toBe(1);
     }
     process.stdout.write("SEAL_329_NATIVE_PROOF " + JSON.stringify({ candidate: packet.candidate, docxSha256: hash(docx), pdfSha256: hash(pdf),
-      contractType: "equipment_rental", originalSha256: originals.map(original => original.sha256), approvals: actors.length, legacyRouteResponses: [410,410,410,410], sealTasks: 1, storage: "local" }) + "\n");
+      contractType: "equipment_rental", originalSha256: originals.map(original => original.sha256),
+      authoritySha256: durableArchive.authoritySha256, fileManifestSha256: durableArchive.fileManifestSha256, approvals: actors.length, legacyRouteResponses: [410,410,410,410], sealTasks: 1, storage: "local" }) + "\n");
   } catch (error) {
     const detail = error as { code?: unknown; status?: unknown; expected?: unknown; message?: unknown };
     const code = typeof detail?.code === "string" && /^[A-Z0-9_]{1,100}$/u.test(detail.code) ? detail.code : undefined;
