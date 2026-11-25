@@ -455,6 +455,10 @@ export class TemplateSyntheticStore {
     $queryRaw: async (queryInput: Prisma.Sql | TemplateStringsArray, ...bindings: unknown[]): Promise<Row[]> => {
       const query = "strings" in queryInput ? queryInput : Prisma.sql(queryInput, ...bindings);
       const text = query.strings.join("?").replace(/\s+/gu, " ").trim();
+      if (text === 'SELECT "versionId" FROM public."SpotProcurementAttachment" WHERE "fileId" = ?') {
+        if (query.values.length !== 1 || typeof query.values[0] !== "string") throw new Error("合成采购附件只接受固定文件坐标");
+        return this.table("spotProcurementAttachment").findMany({ where: { fileId: query.values[0] }, select: { versionId: true } });
+      }
       if (text.startsWith("/* contract_upward_archive_projection_probe_v2 */")) return [{ status: "absent", projectionOid: null, closureOid: null }];
       if (text === 'UPDATE public."ContractVersion" SET "originalSignedNumber" = ? WHERE "id" = ? AND "contractId" = ? RETURNING "id", "originalSignedNumber"') {
         if (query.values.length !== 3 || (query.values[0] !== null && typeof query.values[0] !== "string") || typeof query.values[1] !== "string" || typeof query.values[2] !== "string") throw new Error("合成原号写入拒绝未知参数");

@@ -2,7 +2,7 @@ import { currentSpotMaterialRoleKeys } from "./spot-procurement-material-role-sc
 import {scopedSpotDutyNodeIndexes} from "../approval/spot-approval-duty-access";
 import {isParallelApprovalRound} from "../approval/parallel-approval-protocol";
 import { ForbiddenException, Injectable } from "@nestjs/common";
-import { type Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import {
   resolveEffectiveRoleKeys,
   type RoleKey
@@ -791,10 +791,10 @@ export class SpotProcurementAccessService {
       invoiceExceptionBindings
     ] =
       await Promise.all([
-        client.spotProcurementAttachment.findMany({
-          where: { fileId },
-          select: { versionId: true }
-        }),
+        // Prisma's model read also projects the primary key. The ordinary file reader only needs the two binding columns.
+        client.$queryRaw<Array<{ versionId: string }>>(Prisma.sql`
+          SELECT "versionId" FROM public."SpotProcurementAttachment" WHERE "fileId" = ${fileId}
+        `),
         client.spotProcurementPayment.findMany({
           where: {
             OR: [

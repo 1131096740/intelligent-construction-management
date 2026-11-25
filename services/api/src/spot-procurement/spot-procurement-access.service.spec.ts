@@ -1,4 +1,5 @@
 import { ForbiddenException } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
 import { SpotProcurementAccessService } from "./spot-procurement-access.service";
 
 type AccessFixture = {
@@ -219,13 +220,14 @@ function buildPrisma(fixture: AccessFixture = {}) {
         )
       )
     },
-    spotProcurementAttachment: {
-      findMany: jest.fn(({ where }: { where: { fileId: string } }) =>
-        Promise.resolve(
-          (fixture.attachments ?? []).filter((row) => row.fileId === where.fileId)
-        )
-      )
-    },
+    $queryRaw: jest.fn(async (statement: Prisma.Sql) => {
+      const sql = statement.sql.trim();
+      if (sql.startsWith('SELECT d."id", d."fromUserId", d."toUserId" FROM "ApprovalDelegation" d')) return [];
+      if (sql !== 'SELECT "versionId" FROM public."SpotProcurementAttachment" WHERE "fileId" = ?'
+        || statement.values.length !== 1) throw new Error("unexpected attachment binding read");
+      return (fixture.attachments ?? []).filter(row => row.fileId === statement.values[0])
+        .map(({ versionId }) => ({ versionId }));
+    }),
     spotProcurementPayment: {
       findUnique: jest.fn(({ where }: { where: { id: string } }) =>
         Promise.resolve(fixture.payments?.find((row) => row.id === where.id) ?? null)
@@ -736,11 +738,15 @@ function invoiceEvidenceFixture(
 
 describe("SpotProcurementAccessService", () => {
   it("returns not_spot only when no Spot business record binds the file", async () => {
-    const service = new SpotProcurementAccessService(buildPrisma() as never);
+    const prisma = buildPrisma();
+    const service = new SpotProcurementAccessService(prisma as never);
 
     await expect(service.resolveFileDownloadAccess("ordinary-file", "user-1")).resolves.toBe(
       "not_spot"
     );
+    const [statement] = prisma.$queryRaw.mock.calls[0];
+    expect(statement.values).toEqual(["ordinary-file"]);
+    expect(statement.sql).not.toContain('"id"');
   });
 
   it.each([
