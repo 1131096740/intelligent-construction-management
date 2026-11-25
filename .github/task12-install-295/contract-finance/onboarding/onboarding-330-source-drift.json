@@ -5,7 +5,7 @@
   "apps/web-admin/e2e/helpers/contract-grid-synthetic-server.cjs": "6d4b9ceb1f2c682ede094842ffef700786ceaa9510b7501369f5c0d6d55925a3",
   "apps/web-admin/e2e/helpers/responsive-viewports.ts": "bb9a1ee5422c29812901be76175b8f39fe5889c4f34ab6785388301bcf315f23",
   "apps/web-admin/e2e/ledger-responsive.e2e.ts": "3f88256435bca5871cb74c655af7790e4eea952db30ce71e2da5226848127783",
-  "apps/web-admin/e2e/pol113-project-profile-real.e2e.ts": "bd2496c42499a4232e98f175d416e0f4b0b844d5778debd1a01592418f3c882b",
+  "apps/web-admin/e2e/pol113-project-profile-real.e2e.ts": "73de7563be2a51aceeceaa7dbcfa197e9057da6af6387dffad3fdb17f95b1394",
   "apps/web-admin/e2e/responsive-layout-foundation.e2e.ts": "f6b96ff83bb111e85639a54a9d5d265cb5599083c03e2de43935a3b54e836750",
   "apps/web-admin/src/api/core-flow-read.api.ts": "64088cb039bb773fc9561978f0bad1440717c16654241ddb62ff4285ebb5dd9e",
   "apps/web-admin/src/app/AdminLayout.vue": "8637add4352275a833efb60013d1dab3887d0051650f2d6e2a3593f9a620ef96",

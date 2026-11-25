@@ -289,15 +289,10 @@ test("综合部主管统一填写施工企业版本日期原因，预检失败�
   await expect(form).toHaveCount(0);
   await expect(page.getByText("绑定后固定，不提供更换", { exact: true })).toBeVisible();
   await expect(save).toHaveCount(0);
-  const deepLink = await page.context().newPage();
-  try {
-    await deepLink.goto("/项目经营?projectId=unavailable-project&tab=settings", { waitUntil: "domcontentloaded" });
-    await expect(deepLink.getByText("指定项目已停用或无权查看，请重新选择项目", { exact: true })).toBeVisible();
-    await expect(deepLink.locator(".project-picker input")).toHaveValue("");
-    await expect(deepLink.getByRole("button", { name: "绑定唯一施工企业", exact: true })).toHaveCount(0);
-  } finally {
-    await deepLink.close();
-  }
+  await page.goto("/项目经营?projectId=unavailable-project&tab=settings", { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("指定项目已停用或无权查看，请重新选择项目", { exact: true })).toBeVisible();
+  await expect(page.locator(".project-picker input")).toHaveValue("");
+  await expect(page.getByRole("button", { name: "绑定唯一施工企业", exact: true })).toHaveCount(0);
 });
 
 test("项目创建使用服务端定义预检，原创建响应冻结真实项目且手机无溢出", async ({ page }) => {

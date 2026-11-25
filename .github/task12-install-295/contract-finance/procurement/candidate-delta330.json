@@ -32,7 +32,7 @@
   {
     "path": "apps/web-admin/e2e/pol113-project-profile-real.e2e.ts",
     "expected": "e6f65e9bbe3e93cc5677c6b0745639eaa83cc1fc693e272fe75f809c163dcfbf",
-    "candidate": "bd2496c42499a4232e98f175d416e0f4b0b844d5778debd1a01592418f3c882b"
+    "candidate": "73de7563be2a51aceeceaa7dbcfa197e9057da6af6387dffad3fdb17f95b1394"
   },
   {
     "path": "apps/web-admin/e2e/responsive-layout-foundation.e2e.ts",

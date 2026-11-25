@@ -4,7 +4,7 @@
 +const {createHash}=require('node:crypto');
 @@ -33,0 +35 @@
 +        error:test.results.find(run=>['failed','timedOut','interrupted'].includes(run.status))?.error,
-@@ -42 +44,14 @@
+@@ -42 +44,15 @@
 -    return {boot:bootSummary((Array.isArray(report.errors)?report.errors:[]).slice(0,32).map(error=>error?.message)),
 +    const failures=rows.filter(row=>row.status==='unexpected').slice(0,6).map(row=>{
 +      const message=typeof row.error?.message==='string'?row.error.message.slice(0,8192):'';
@@ -15,7 +15,8 @@
 +        titleSha256:createHash('sha256').update(row.title).digest('hex'),
 +        kind:row.runs.includes('timedOut')||/timed out|timeout/iu.test(message)?'TIMEOUT':
 +          /expect\(|AssertionError|locator/iu.test(message)?'ASSERTION':
-+          /ERR_ABORTED|NS_BINDING_ABORTED|load request cancell?ed|navigation.{0,120}interrupted|another navigation/iu.test(message)?'NAVIGATION_ABORTED':'OTHER',
++          /ERR_ABORTED|NS_BINDING_ABORTED|load request cancell?ed|navigation.{0,120}interrupted|another navigation/iu.test(message)?'NAVIGATION_ABORTED':
++          /target page, context or browser has been closed|browser disconnected|page closed/iu.test(message)?'BROWSER_CLOSED':'OTHER',
 +        ...(frame?{spec:frame[1],line:Number(frame[2]),column:Number(frame[3])}:{})
 +      };
 +    });
