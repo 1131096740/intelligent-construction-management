@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 ) ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 ) ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -15,11 +15,13 @@ plan=$(cd "$(dirname "$0")" && pwd -P)
 prior="$root/.github/task12-install-289"
 finance="$root/.github/task12-install-295/contract-finance"
 common="$finance/common"
-node - "$prepared/source.json" "$sha" "$plan/contract-adjacent-profiles.json" "$lane" "$common/multi-witness.cjs" ${mode_args[@]+"${mode_args[@]}"} <<'JS'
-const [sourceFile,sha,profilesFile,lane,terminalFile,mode]=process.argv.slice(2);
+node - "$prepared/source.json" "$sha" "$plan/contract-adjacent-profiles.json" "$lane" "$common/multi-witness.cjs" "$plan/upward-archive-332-profile.cjs" ${mode_args[@]+"${mode_args[@]}"} <<'JS'
+const [sourceFile,sha,profilesFile,lane,terminalFile,archiveProfile,mode]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||!Object.hasOwn(require(profilesFile).profiles,lane))process.exit(65);
-if(mode!==undefined) {
+if(mode==='--upward-archive-332') {
+  require(archiveProfile).assertSource(source,sha,terminal.final);
+} else if(mode!==undefined) {
   const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331}[mode];
   if(source.mode!==mode.slice(2)||source.migrationCount!==count||source.predecessor?.migrationCount!==295||
      source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==count-295) process.exit(65);
@@ -55,6 +57,9 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$plan/contract-adjacent-entry.cjs,dst=/qualification/contract-adjacent-entry.cjs,readonly"
   --mount "type=bind,src=$prior/contract-ci.cjs,dst=/qualification/contract-ci.cjs,readonly"
   --mount "type=bind,src=$plan/contract-adjacent-profiles.json,dst=/qualification/contract-adjacent-profiles.json,readonly")
+if [[ ${6:-} == --upward-archive-332 ]]; then
+  args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
+fi
 for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
@@ -66,7 +71,7 @@ done < "$work/fixture-mounts.tsv"
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 count=295
-case "${6:-}" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; esac
+case "${6:-}" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; --upward-archive-332) count=332;; esac
 printf '%s\n' "假设原 $lane 业务断言和迁移状态在同一 $count 隔离库通过。观察 settlement、combinedAfterBusiness 和 cleanup。" > "$work/hypothesis.txt"
 printf '%s\n' "$work"
 status=0
