@@ -4,23 +4,23 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 879,
-    "classificationOverrideCount": 288,
-    "derivedProductionPageCount": 591,
-    "classificationOverrideSha256": "7a71d84ed8ac9e067eb8438ec4d12ce932deb425775d75860d89c6d7ee57ebdb",
-    "consumerSurfaceOverrideSha256": "aecd8b55f30ad018e11d328e7529b559a22fb60ff1bfdbbd52538c2044a6466a",
+    "classificationOverrideCount": 293,
+    "derivedProductionPageCount": 586,
+    "classificationOverrideSha256": "5f071a545a7b35ceb1a73e0a44fc1c6f5cc3028801c974f96c5bc3e4fab6402d",
+    "consumerSurfaceOverrideSha256": "505b02d24585f9728dc28c9f86099d352a0f49ec9f22ad9b269849075062c91a",
     "usageCounts": {
-      "page": 610,
+      "page": 605,
       "external_takeover": 70,
       "exit_candidate": 133,
-      "internal_task": 66,
+      "internal_task": 71,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 662,
+      "web_api_wrapper": 657,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 2,
-      "operator_endpoint": 64,
+      "operator_endpoint": 69,
       "none": 144
     }
   },

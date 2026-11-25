@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 432,
+    "activeBusinessActionCount": 428,
     "technicalActionCount": 8,
-    "activeBindingCount": 526,
+    "activeBindingCount": 522,
     "retiredWriteEntryCount": 120,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
@@ -4275,38 +4275,6 @@
       "causalVerified": true
     },
     {
-      "id": "payable-settlement.allocate",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/工资应付核销工作台"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
-      "capabilityKind": "server_boolean",
-      "bindingKeys": [
-        "POST /payable-settlements/wage-payable-cases/:param/allocations"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "payable-settlement.confirm",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/工资应付核销工作台"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
-      "capabilityKind": "server_boolean",
-      "bindingKeys": [
-        "POST /payable-settlements/:param/confirm"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
       "id": "payable-settlement.inter-entity-return",
       "status": "unified_candidate",
       "usage": "background",
@@ -4333,38 +4301,6 @@
       "capabilityKind": "server_boolean",
       "bindingKeys": [
         "POST /payable-settlements/inter-entity-relationships/:param/evidence"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "payable-settlement.return",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/工资应付核销工作台"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
-      "capabilityKind": "server_boolean",
-      "bindingKeys": [
-        "POST /payable-settlements/:param/return"
-      ],
-      "bindingCount": 1,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
-      "id": "payable-settlement.submit",
-      "status": "unified_candidate",
-      "usage": "background",
-      "routePaths": [
-        "/工资应付核销工作台"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue",
-      "capabilityKind": "server_boolean",
-      "bindingKeys": [
-        "POST /payable-settlements/:param/submit"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

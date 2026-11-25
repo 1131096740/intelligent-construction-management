@@ -13,29 +13,29 @@
     "routeCount": 879,
     "exactRouteCount": 879,
     "normalizedRouteCount": 879,
-    "classificationOverrideCount": 288,
-    "consumerSurfaceOverrideCount": 68,
-    "classificationOverrideSha256": "7a71d84ed8ac9e067eb8438ec4d12ce932deb425775d75860d89c6d7ee57ebdb",
-    "consumerSurfaceOverrideSha256": "aecd8b55f30ad018e11d328e7529b559a22fb60ff1bfdbbd52538c2044a6466a",
-    "derivedProductionPageCount": 591,
-    "pageRouteCount": 610,
+    "classificationOverrideCount": 293,
+    "consumerSurfaceOverrideCount": 73,
+    "classificationOverrideSha256": "5f071a545a7b35ceb1a73e0a44fc1c6f5cc3028801c974f96c5bc3e4fab6402d",
+    "consumerSurfaceOverrideSha256": "505b02d24585f9728dc28c9f86099d352a0f49ec9f22ad9b269849075062c91a",
+    "derivedProductionPageCount": 586,
+    "pageRouteCount": 605,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 133,
-    "internalTaskCount": 66,
+    "internalTaskCount": 71,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 662,
+      "web_api_wrapper": 657,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 2,
-      "operator_endpoint": 64,
+      "operator_endpoint": 69,
       "none": 144
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 662,
+    "productionWrapperRouteCount": 657,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -7814,26 +7814,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_historical_wage_settlement_revision_read",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
-            "wrapper": "fetchPaymentExecutionCandidates",
-            "method": "GET",
-            "normalizedPath": "/payable-settlements/wage-payable-cases/:param/payment-execution-candidates",
-            "normalizedKey": "GET /payable-settlements/wage-payable-cases/:param/payment-execution-candidates",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_425_historical_wage_settlement_revision_read"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -25063,26 +25052,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_immutable_wage_settlement_receipt_replay_only",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
-            "wrapper": "confirmPayableSettlement",
-            "method": "POST",
-            "normalizedPath": "/payable-settlements/:param/confirm",
-            "normalizedKey": "POST /payable-settlements/:param/confirm",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_425_immutable_wage_settlement_receipt_replay_only"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -25106,26 +25084,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_immutable_wage_settlement_receipt_replay_only",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
-            "wrapper": "returnPayableSettlement",
-            "method": "POST",
-            "normalizedPath": "/payable-settlements/:param/return",
-            "normalizedKey": "POST /payable-settlements/:param/return",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_425_immutable_wage_settlement_receipt_replay_only"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -25150,26 +25117,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_immutable_wage_settlement_receipt_replay_only",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
-            "wrapper": "submitPayableSettlement",
-            "method": "POST",
-            "normalizedPath": "/payable-settlements/:param/submit",
-            "normalizedKey": "POST /payable-settlements/:param/submit",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_425_immutable_wage_settlement_receipt_replay_only"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null
@@ -25280,26 +25236,15 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "internal_task",
+      "classificationSource": "registry_override",
+      "classificationReason": "issue_425_immutable_wage_settlement_receipt_replay_only",
+      "consumerSurface": "operator_endpoint",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/payable-settlement.api.ts",
-            "wrapper": "allocatePayableSettlement",
-            "method": "POST",
-            "normalizedPath": "/payable-settlements/wage-payable-cases/:param/allocations",
-            "normalizedKey": "POST /payable-settlements/wage-payable-cases/:param/allocations",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/payable-settlements/PayableSettlementWorkbenchPage.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
-        "manualSurfaceReason": null
+        "manualSurfaceReason": "issue_425_immutable_wage_settlement_receipt_replay_only"
       },
       "deletionAuthorized": false,
       "exitCandidateSemantics": null

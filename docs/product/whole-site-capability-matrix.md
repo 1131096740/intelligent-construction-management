@@ -7,31 +7,31 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `0227dbadedb7c9b2c24d91e769749093ac6afa276034dbccef0b5988dd9ca853` |
-| webApiWrappers | ready | `ec096f6f523eace3b4f3929485373fe5cf7bc136f9d791ca5e72827af207cacd` |
-| webPageActions | ready | `2f8a492f9d3b83608b5bd13d39a14c6a6dd74fdbb444796d3ed49bf083d7d4e7` |
-| routeUsage | ready | `17ac2e2437436bcd6341dcb989789ebee3a771b411a1f71e9d74e7dad4264497` |
+| webApiWrappers | ready | `8d55011abaf9e2b07f9755755970be5665363a30cbdb0ec2bffce408b943dafc` |
+| webPageActions | ready | `5238840bddba73657280a1a783809c56ef3f9ef59e15bfaf5d3560111432c4db` |
+| routeUsage | ready | `9662edf7f22b49f47d917683a2a8797fc98b70275f175a8854aa5957fbc4c723` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 879 |
-| pageRouteCount | 610 |
+| pageRouteCount | 605 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 133 |
-| internalTaskRouteCount | 66 |
+| internalTaskRouteCount | 71 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 824 |
+| mainRequestBindingCount | 819 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 444 |
-| actionBindingCount | 539 |
-| acceptedActionBindingCount | 494 |
+| registeredActionCount | 440 |
+| actionBindingCount | 535 |
+| acceptedActionBindingCount | 490 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 435 |
-| coveredProductionMutationConsumerPairCount | 435 |
+| productionMutationConsumerPairCount | 431 |
+| coveredProductionMutationConsumerPairCount | 431 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -218,7 +218,7 @@
 | GET | /other-project-payments | page | web_api_wrapper | apps/web-admin/src/api/other-project-payment.api.ts#fetchOtherProjectPayments | — | not_applicable | — |
 | GET | /payable-settlements/capabilities | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPayableSettlementCapabilities | — | not_applicable | — |
 | GET | /payable-settlements/inter-entity-relationships | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchInterEntityRelationships | — | not_applicable | — |
-| GET | /payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPaymentExecutionCandidates | — | not_applicable | — |
+| GET | /payable-settlements/wage-payable-cases/:payableRef/payment-execution-candidates | internal_task | operator_endpoint | — | — | not_applicable | — |
 | GET | /payable-settlements/wage-payable-cases | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchWagePayableCases | — | not_applicable | — |
 | GET | /payable-settlements/workbench | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#fetchPayableSettlementWorkbench | — | not_applicable | — |
 | GET | /payment-executions/:paymentId/duty-sms | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#fetchDutySms | — | not_applicable | — |
@@ -644,12 +644,12 @@
 | POST | /other-project-payments/:claimId/payments | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /other-project-payments/:claimId/submission | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /other-project-payments | internal_task | operator_endpoint | — | — | not_applicable | — |
-| POST | /payable-settlements/:settlementCaseId/confirm | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#confirmPayableSettlement | payable-settlement.confirm | covered | — |
-| POST | /payable-settlements/:settlementCaseId/return | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#returnPayableSettlement | payable-settlement.return | covered | — |
-| POST | /payable-settlements/:settlementCaseId/submit | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#submitPayableSettlement | payable-settlement.submit | covered | — |
+| POST | /payable-settlements/:settlementCaseId/confirm | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /payable-settlements/:settlementCaseId/return | internal_task | operator_endpoint | — | — | not_applicable | — |
+| POST | /payable-settlements/:settlementCaseId/submit | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /payable-settlements/inter-entity-relationships/:relationshipEntryId/evidence | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#uploadInterEntityRelationshipEvidence | payable-settlement.inter-entity-return.upload-evidence | covered | — |
 | POST | /payable-settlements/inter-entity-relationships/:relationshipEntryId/returns | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#returnInterEntityRelationship | payable-settlement.inter-entity-return | covered | — |
-| POST | /payable-settlements/wage-payable-cases/:payableRef/allocations | page | web_api_wrapper | apps/web-admin/src/api/payable-settlement.api.ts#allocatePayableSettlement | payable-settlement.allocate | covered | — |
+| POST | /payable-settlements/wage-payable-cases/:payableRef/allocations | internal_task | operator_endpoint | — | — | not_applicable | — |
 | POST | /payment-executions/:paymentId/duty-sms/retry | page | web_api_wrapper | apps/web-admin/src/api/duty-sms.api.ts#retryDutySms | duty-sms.retry | covered | — |
 | POST | /payment-executions/:paymentId/recovery-proof | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#verifyRegisteredPaymentRecovery | registered-payment.lookup-original | covered | — |
 | POST | /payment-executions/:paymentId/registrations | page | web_api_wrapper | apps/web-admin/src/api/registered-payment-execution.api.ts#recordRegisteredPayment | registered-payment.register | covered | — |
