@@ -4,6 +4,24 @@ import { PayableRegistryController } from "./payable-registry.controller";
 import { PayableRegistryService } from "./payable-registry.service";
 
 describe("PayableRegistryService", () => {
+  it.each([[0n, "1000"], [300n, "700"]])("reads a historical company debt with %s cents repaid", async (received, remaining) => {
+    const prisma = {
+      interEntityRelationshipEntry: { findMany: jest.fn().mockResolvedValue([{
+        id: "historical-relationship", amountCents: 1000n, adjustments: []
+      }]) },
+      companyTransfer: { findMany: jest.fn().mockResolvedValue([]) },
+      companyTransferEvent: { findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([{ delta: received }])
+    };
+    const service = new PayableRegistryService(
+      prisma as never, { resolveActiveRoleScopes: async () => ["finance_staff"] } as never, { record: jest.fn() } as never
+    );
+
+    await expect(service.listInterEntityRelationships("finance-user")).resolves.toEqual([
+      expect.objectContaining({ relationshipEntryId: "historical-relationship", remainingAmountCents: remaining, status: "open" })
+    ]);
+  });
+
   it("retains an exact historical allocation replay through HTTP and refuses fresh writes", async () => {
     const historicalUuid = "00000000-0000-4000-8000-000000000460";
     const futureUuid = "00000000-0000-4000-8000-000000000461";

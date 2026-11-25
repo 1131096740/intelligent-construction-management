@@ -267,10 +267,10 @@ export class PayableRegistryService {
       }
     });
     return Promise.all(rows.map(async (row) => {
-      const usage=await transferRepaymentUsage(this.prisma,{originalInterEntityRelationshipId:row.id});
+      const usage = await transferRepaymentUsage(this.prisma, { originalInterEntityRelationshipId: row.id });
       const balance = deriveInterEntityRelationshipBalance([
         { direction: "increase", amountCents: row.amountCents },
-        { direction: "decrease", amountCents: usage.received },
+        ...(usage.received === 0n ? [] : [{ direction: "decrease" as const, amountCents: usage.received }]),
         ...row.adjustments.map((entry) => ({
           direction: entry.direction as InterEntityRelationshipEntryInput["direction"],
           amountCents: entry.amountCents
