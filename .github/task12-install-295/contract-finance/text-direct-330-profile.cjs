@@ -2,11 +2,11 @@
 
 const assert = require('node:assert/strict');
 const mode = 'text-direct-330';
-const ledgerSha256 = '7ebd200accecfa799ebcb6fe9fa9e50985d7234710b729c2c463b96ecc271782';
+const ledgerSha256 = '12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f';
 const predecessorSha256 = '3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2';
 const terminal = {
   name: '20261128000000_text_agreement_direct_payment',
-  sha256: '46765295a3a943a5605cc1fc2ce0d743f05ff360ed0bfa1451f02fbd125c0314'
+  sha256: '4d99963155b37e091f37db7a1648d2fed6e6464aee7c643002a3297b4120991c'
 };
 
 function assertSource(source, sourceSha, base295Sha256) {

@@ -4,7 +4,6 @@ import { loadSignedSettlementPaymentBasis } from "../payment/signed-settlement-p
 import { buildRegisteredPgFixturePlan } from "./registered-payment-postgres.fixture";
 import { seedSharedPaymentPredecessors } from "./task16-shared-standard-fixture";
 import { type PrismaService } from "./prisma.service";
-import { projectTask16RegistrationError } from "./task16-registration-error-diagnostic";
 
 export async function verifySignedSettlementRoundedPayment(
   owner: PrismaService,
@@ -84,26 +83,9 @@ export async function verifySignedSettlementRoundedPayment(
     openingTreatment: "not_included", openingReason: "付款未含期初", openingEvidence: "隔离合成证据", confirmationPassword: password,
     sourceAllocations: [{ sourceBatchId: opening.sources[0].id, amountCents: "10001" }]
   };
-  const transaction = owner.$transaction.bind(owner);
-  const transactionFailures: ReturnType<typeof projectTask16RegistrationError>[] = [];
-  const recordFailure = (error: unknown) => {
-    transactionFailures.push(projectTask16RegistrationError(error));
-    throw error;
-  };
-  const observedTransaction = jest.spyOn(owner, "$transaction").mockImplementation((
-    (work: Parameters<typeof owner.$transaction>[0], options?: Parameters<typeof owner.$transaction>[1]) =>
-      transaction(async tx => {
-        await tx.$executeRaw`SET LOCAL log_error_verbosity = 'verbose'`;
-        return work(tx).catch(recordFailure);
-      }, options).catch(recordFailure)
-  ) as typeof owner.$transaction);
   let execution: { id: string };
   try {
-    try {
-      execution = await call(finance, `${path}/registrations`, registration) as { id: string };
-    } finally {
-      observedTransaction.mockRestore();
-    }
+    execution = await call(finance, `${path}/registrations`, registration) as { id: string };
   } catch (error) {
     const fact = await owner.paymentExecution.findUnique({
       where: { idempotencyKey: registration.idempotencyKey }, select: { id: true }
@@ -112,7 +94,7 @@ export async function verifySignedSettlementRoundedPayment(
       where: { id: paymentRequestId }, select: { status: true, paidAmountCents: true }
     });
     throw new Error(
-      `四位结算实付未确认（实付事实：${Boolean(fact)}，付款状态：${payment.status}，累计已付：${payment.paidAmountCents} 分，事务诊断：${JSON.stringify(transactionFailures)}）`,
+      `四位结算实付未确认（实付事实：${Boolean(fact)}，付款状态：${payment.status}，累计已付：${payment.paidAmountCents} 分）`,
       { cause: error }
     );
   }
@@ -130,6 +112,18 @@ export async function verifySignedSettlementRoundedPayment(
   })).toEqual([{ amountCents: 10_001n, sourceBatchId: opening.sources[0].id }]);
   expect(await owner.registeredPaymentEvent.count({ where: { executionId: execution.id } })).toBe(1);
   expect(await owner.auditLog.count({ where: { businessId: paymentRequestId, action: "payment.execution.record" } })).toBe(1);
+  expect(await owner.operatingFact.findFirstOrThrow({
+    where: { sourceType: "payment_execution", sourceBusinessId: execution.id }
+  })).toMatchObject({ sourceSnapshot: {
+    paymentSourceType: "signed_settlement", payableAllocations: [{ sourceId: signedSettlementId, amountCents: "10001" }]
+  } });
+  expect(await owner.operatingImpactEntry.findMany({
+    where: { sourceType: "payment_execution", sourceBusinessId: execution.id },
+    select: { impactKind: true, amountCents: true }
+  })).toEqual(expect.arrayContaining([
+    { impactKind: "payable_decrease", amountCents: 10_001n },
+    { impactKind: "company_project_funds_decrease", amountCents: 10_001n }
+  ]));
   const rounded = await owner.$transaction(tx => loadSignedSettlementPaymentBasis(tx, contractId));
   expect(rounded).toMatchObject({ confirmedCents: 10_001n, netPaidCents: 10_001n, remainingCents: 0n,
     overpayCents: 0n, capacityShortfallCents: 0n, suspended: false });

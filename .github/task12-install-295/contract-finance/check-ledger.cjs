@@ -25,7 +25,7 @@ if(current320) {
   assert.equal(ledgerHash(ledger.slice(0,295)),predecessor295Sha256,'CONTRACT_FINANCE_CURRENT_320_PREDECESSOR');
   assert.equal(ledgerHash(ledger.slice(0,329)),'3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2',
     'CONTRACT_FINANCE_CURRENT_320_LEDGER_DIGEST');
-  if(textDirect) assert.equal(digest,'7ebd200accecfa799ebcb6fe9fa9e50985d7234710b729c2c463b96ecc271782',
+  if(textDirect) assert.equal(digest,'12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f',
     'CONTRACT_FINANCE_TEXT_DIRECT_330_LEDGER_DIGEST');
 } else {
   assert.ok(ledger.length===294||ledger.length===295,'CONTRACT_FINANCE_HOSTED_LEDGER_COUNT');

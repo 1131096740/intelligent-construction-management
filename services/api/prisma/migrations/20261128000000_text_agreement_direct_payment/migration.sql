@@ -226,27 +226,39 @@ $$;
 REVOKE ALL ON FUNCTION public.jg_append_text_payment_allocation_v1(text) FROM PUBLIC;
 
 
--- Bring the existing registered-payment write and permanent provenance gates
--- in line with the signed settlement source admitted by PaymentRequest.
+-- Keep the registered write, provenance and commit conservation rules in
+-- sync with the signed settlement source admitted by PaymentRequest.
 DO $$
 DECLARE
   routine record;
   definition text;
-  previous_sources CONSTANT text := '(''settlement'',''contract_due'',''contract_advance'')';
-  current_sources CONSTANT text := '(''settlement'',''signed_settlement'',''contract_due'',''contract_advance'')';
+  old_sources CONSTANT text := '(''settlement'',''contract_due'',''contract_advance'')';
+  new_sources CONSTANT text := '(''settlement'',''signed_settlement'',''contract_due'',''contract_advance'')';
+  old_payable_basis CONSTANT text := $basis$
+ IF due_count=0 AND e."settlementId" IS NOT NULL THEN
+   IF pg_catalog.length(pg_catalog.btrim(e."settlementId"))=0 THEN RAISE EXCEPTION 'registered settlement source is empty'; END IF;
+   expected_payables:=pg_catalog.jsonb_build_object(pg_catalog.btrim(e."settlementId"),e."amountCents"::TEXT);
+ END IF;$basis$;
+  new_payable_basis CONSTANT text := $basis$
+ IF due_count=0 AND (e."settlementId" IS NOT NULL OR frozen_source_type='signed_settlement') THEN
+   source_id := CASE WHEN frozen_source_type='signed_settlement' THEN request."signedSettlementId" ELSE e."settlementId" END;
+   IF source_id IS NULL OR pg_catalog.length(pg_catalog.btrim(source_id))=0 THEN RAISE EXCEPTION 'registered settlement source is empty'; END IF;
+   expected_payables:=pg_catalog.jsonb_build_object(pg_catalog.btrim(source_id),e."amountCents"::TEXT);
+ END IF;$basis$;
 BEGIN
   FOR routine IN SELECT * FROM (VALUES
-    ('public.jg_assert_registered_payment_write_authority(text,jsonb,boolean)'::regprocedure, 'request."sourceType" NOT IN '),
-    ('public.jg_registered_payment_source_matches(text,text,bigint,text,text)'::regprocedure, '->>''sourceType'' IN ')
-  ) AS expected(signature, predicate)
+    ('public.jg_assert_registered_payment_write_authority(text,jsonb,boolean)'::regprocedure, 'request."sourceType" NOT IN ' || old_sources, 'request."sourceType" NOT IN ' || new_sources),
+    ('public.jg_registered_payment_source_matches(text,text,bigint,text,text)'::regprocedure, '->>''sourceType'' IN ' || old_sources, '->>''sourceType'' IN ' || new_sources),
+    ('public.jg_assert_registered_payment_intercompany_complete(text)'::regprocedure, 'frozen_source_type NOT IN ' || old_sources, 'frozen_source_type NOT IN ' || new_sources),
+    ('public.jg_assert_registered_payment_intercompany_complete(text)'::regprocedure, old_payable_basis, new_payable_basis)
+  ) AS expected(signature, anchor, replacement)
   LOOP
     definition := pg_catalog.pg_get_functiondef(routine.signature);
-    IF (length(definition) - length(replace(definition, routine.predicate || previous_sources, '')))
-      <> length(routine.predicate || previous_sources)
+    IF (length(definition) - length(replace(definition, routine.anchor, ''))) <> length(routine.anchor)
     THEN
       RAISE EXCEPTION '实付付款来源校验的数据库前态不符合预期' USING ERRCODE = '23514';
     END IF;
-    EXECUTE replace(definition, routine.predicate || previous_sources, routine.predicate || current_sources);
+    EXECUTE replace(definition, routine.anchor, routine.replacement);
   END LOOP;
 END;
 $$;

@@ -117,7 +117,7 @@
   {
     "path": "services/api/prisma/database-dynamic-gate-manifest.json",
     "expected": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
-    "candidate": "38d3cbb6215c135bd8456603a0250b9817f95112a5aa57e5e9c6979589eef79e"
+    "candidate": "f1fe21938ba2dce4346546b5e98d2022ebc309f468e3d133db711faa94f9cd0f"
   },
   {
     "path": "services/api/prisma/general-procurement-runtime-grants.sql",

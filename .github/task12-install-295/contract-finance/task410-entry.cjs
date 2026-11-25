@@ -57,32 +57,7 @@ async function withGuardedReplay(context, consume) {
 async function main(){
   assert.equal(source.migrationCount,count);
   assert.equal((current320?source.predecessor:source).ledgerSha256,require('./multi-witness.cjs').final);
-  const consume=async context=>{
-    if(!textDirect) return runTask398Owned282Voucher(context,lane+'-'+count,receipt);
-    const before=context.readPostgresLog();
-    try {
-      return await runTask398Owned282Voucher(context,lane+'-'+count,receipt);
-    } catch(error) {
-      const after=context.readPostgresLog();
-      if(after.startsWith(before)){
-        const lines=after.slice(before.length).split('\n');
-        const has=literal=>lines.some(line=>/^NATIVE_TASK16 \[\d+\] ERROR:/u.test(line)&&line.includes(literal));
-        receipt.postgresFailure={
-          serialization:has('could not serialize access'),
-          deadlock:has('deadlock detected'),
-          sqlstates:[...new Set(lines.flatMap(line=>{
-            const match=/^NATIVE_TASK16 \[\d+\] ERROR: +([0-9A-Z]{5}):/u.exec(line);
-            return match?[match[1]]:[];
-          }))],
-          uniqueConstraints:[...new Set(lines.flatMap(line=>{
-            const match=/^NATIVE_TASK16 \[\d+\] ERROR: +duplicate key value violates unique constraint "([A-Za-z_][A-Za-z0-9_]{0,62})"/u.exec(line);
-            return match?[match[1]]:[];
-          }))],
-        };
-      }
-      throw error;
-    }
-  };
+  const consume=context=>runTask398Owned282Voucher(context,lane+'-'+count,receipt);
   if(current320){
     const install=textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
     await install(receipt,context=>withGuardedReplay(context,consume),{sourceTree:source.sourceTree,

@@ -1341,7 +1341,7 @@ function readForward320({sourceTree,migrations,tails},textDirect=false) {
     Array.isArray(tails) && tails.length===(textDirect?35:34),'FORWARD_320_SOURCE');
   if(textDirect) {
     need(tails.at(-1)?.name==='20261128000000_text_agreement_direct_payment' &&
-      tails.at(-1)?.sha256==='46765295a3a943a5605cc1fc2ce0d743f05ff360ed0bfa1451f02fbd125c0314',
+      tails.at(-1)?.sha256==='4d99963155b37e091f37db7a1648d2fed6e6464aee7c643002a3297b4120991c',
       'TEXT_DIRECT_330_TERMINAL');
   }
   let previous='20261119003900';
