@@ -6,15 +6,18 @@ const source=require('./contract-finance-source.json');
 const {sourceSha}=source;
 const requestedMode=process.argv[2];
 const textDirect=requestedMode==='--text-direct-330';
-const current320=textDirect||requestedMode==='--current-320';
-const count=textDirect?330:current320?329:295;
+const paymentRemainder=requestedMode==='--payment-remainder-331';
+const forward=paymentRemainder||textDirect||requestedMode==='--current-320';
+const count=paymentRemainder?331:textDirect?330:forward?329:295;
+const profile331=paymentRemainder?require('./payment-remainder-331-profile.cjs'):undefined;
 const installer=require('./installer.cjs');
 const original='/qualification/workspace/services/api/prisma/pol275-original-evidence.cjs';
 const receipt={schemaVersion:1,sourceSha,purpose:'ORIGINAL_POL275_COLD_EXACT_'+count,business:'NOT_ENTERED',stages:[]};
 Promise.resolve().then(()=>{
-  assert.equal(process.argv.length,current320?3:2);
+  assert.equal(process.argv.length,forward?3:2);
   assert.equal(source.migrationCount,count);
-  if(current320) {
+  if(profile331) profile331.assertSource(source,sourceSha,require('./multi-witness.cjs').final);
+  else if(forward) {
     assert.equal(source.mode,requestedMode.slice(2));
     assert.equal(source.predecessor.migrationCount,295);
   }
@@ -24,8 +27,10 @@ Promise.resolve().then(()=>{
     const catalog=await require(original).collectEvidence(context.ownerUrl,count);
     receipt.pol275={migrationCount:catalog.migrationCount,originalTerminal:catalog.terminalMigration};
   };
-  return current320
-    ? (textDirect?installer.withCombined330TextAgreement:installer.withCombined320ContractPayment)(receipt,consume,{
+  const install=paymentRemainder?installer.withCombined331PaymentRemainder:
+    textDirect?installer.withCombined330TextAgreement:installer.withCombined320ContractPayment;
+  return forward
+    ? install(receipt,consume,{
       sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
     })
     : installer.withCombined295MultiWitness(receipt,consume);
@@ -33,7 +38,7 @@ Promise.resolve().then(()=>{
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.installOnly295.count,295);
   assert.equal(receipt.pol275.migrationCount,count);
-  if(current320) {
+  if(forward) {
     assert.equal(receipt.installOnly295.ledgerSha256,source.predecessor.ledgerSha256);
     assert.equal(receipt.forward320.count,count);
     assert.equal(receipt.forward320.sourceTree,source.sourceTree);
@@ -42,6 +47,7 @@ Promise.resolve().then(()=>{
     assert.equal(receipt.combinedAfterBusiness.count,count);
     assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
   }
+  if(profile331) profile331.assertInstallation(receipt,source);
   assert.equal(receipt.combinedAfterBusiness.exactB7,true);
   assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
   assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);

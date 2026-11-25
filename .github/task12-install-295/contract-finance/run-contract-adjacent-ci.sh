@@ -3,8 +3,8 @@ set -euo pipefail
 umask 077
 
 [[ $# == 2 || ( $# == 3 && ( $3 == --current-320 || $3 == --text-direct-330 ) && $2 != pol275 ) ||
-  ( $# == 3 && $3 == --payment-remainder-331 ) ||
-  ( $# == 4 && $2 == pol275 && ( $3 == --current-320 || $3 == --text-direct-330 ) && $4 =~ ^[a-f0-9]{40}$ ) ]] || exit 64
+  ( $# == 3 && $3 == --payment-remainder-331 && $2 != pol275 ) ||
+  ( $# == 4 && $2 == pol275 && ( $3 == --current-320 || $3 == --text-direct-330 || $3 == --payment-remainder-331 ) && $4 =~ ^[a-f0-9]{40}$ ) ]] || exit 64
 sha=$1
 lane=$2
 mode_args=()
@@ -16,7 +16,7 @@ if [[ ${3:-} == --text-direct-330 ]]; then
 fi
 if [[ ${3:-} == --payment-remainder-331 ]]; then
   case "$lane" in
-    line-a|task398-ledger-loss|task398-standard|company-proxy|browser-partial|browser-completion|cash-handover|principal-return|payment-execution|settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|expense-execution|expense-finance|expense-receipt|pol115-workbench|pfq|onboarding|procurement) ;;
+    line-a|task398-ledger-loss|task398-standard|company-proxy|browser-partial|browser-completion|cash-handover|principal-return|payment-execution|settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|expense-execution|expense-finance|expense-receipt|pol115-workbench|pfq|onboarding|procurement|pol275) ;;
     *) exit 64 ;;
   esac
 fi

@@ -2,28 +2,35 @@
 const assert=require('node:assert/strict');
 const source=require('./contract-finance-source.json');
 const {sourceSha}=source;
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder}=require('./installer.cjs');
 const lane=process.argv[2];
 assert.ok(['warm','collision'].includes(lane));
 const requestedMode=process.argv[3];
 const textDirect=requestedMode==='--text-direct-330';
-const current320=textDirect||requestedMode==='--current-320';
-const count=textDirect?330:current320?329:295;
+const paymentRemainder=requestedMode==='--payment-remainder-331';
+const forward=paymentRemainder||textDirect||requestedMode==='--current-320';
+const count=paymentRemainder?331:textDirect?330:forward?329:295;
+const profile331=paymentRemainder?require('./payment-remainder-331-profile.cjs'):undefined;
 const purpose='ORIGINAL_POL275_'+lane.toUpperCase()+'_EXACT_'+count;
 const receipt={schemaVersion:1,sourceSha,purpose,business:'NOT_ENTERED',stages:[]};
 Promise.resolve().then(()=>{
-  assert.equal(process.argv.length,current320?4:3);
+  assert.equal(process.argv.length,forward?4:3);
   assert.equal(source.migrationCount,count);
-  if(current320) {
+  if(forward) {
     assert.equal(lane,'warm','POL275_COLLISION_320_FORBIDDEN');
-    assert.equal(source.mode,requestedMode.slice(2));
-    assert.equal(source.predecessor.migrationCount,295);
+    if(profile331) profile331.assertSource(source,sourceSha,require('./multi-witness.cjs').final);
+    else {
+      assert.equal(source.mode,requestedMode.slice(2));
+      assert.equal(source.predecessor.migrationCount,295);
+    }
   }
-  const material=current320 ? {sourceTree:source.sourceTree,count,
+  const material=forward ? {sourceTree:source.sourceTree,count,
     migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails} : undefined;
   const consume=lane==='warm' ? context=>require('./pol275.cjs').verifyPol275(context,receipt,true,material) : undefined;
-  return current320
-    ? (textDirect?withCombined330TextAgreement:withCombined320ContractPayment)(receipt,consume,material)
+  const install=paymentRemainder?withCombined331PaymentRemainder:
+    textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
+  return forward
+    ? install(receipt,consume,material)
     : withCombined295MultiWitness(receipt,consume);
 }).then(()=>{
   if(lane==='warm'){
@@ -34,7 +41,7 @@ Promise.resolve().then(()=>{
     assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
     assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);
     assert.equal(receipt.pol275.migrationCount,count);
-    if (current320) {
+    if (forward) {
       assert.equal(receipt.installOnly295.ledgerSha256,source.predecessor.ledgerSha256);
       assert.equal(receipt.forward320.count,count);
       assert.equal(receipt.forward320.sourceTree,source.sourceTree);
@@ -43,6 +50,7 @@ Promise.resolve().then(()=>{
       assert.equal(receipt.combinedAfterBusiness.count,count);
       assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
     }
+    if(profile331) profile331.assertInstallation(receipt,source);
     assert.equal(receipt.currentProcess.passed,10);
     assert.equal(receipt.legacyProcess.passed,1);
   } else {

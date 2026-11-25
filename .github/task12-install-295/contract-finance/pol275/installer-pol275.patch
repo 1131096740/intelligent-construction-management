@@ -64,13 +64,15 @@
   if(profileIdentity) need(equal(bound,profileIdentity),'REMAINING_PROFILE_HISTORY_IDENTITY');
   const migrationPlan={...bound,runId:randomUUID(),nonce:randomBytes(32).toString('hex'),appName:'jg_fixture_app_'+randomBytes(12).toString('hex'),schemaName:'jg_fixture_'+randomBytes(12).toString('hex'),technicalProfile:'CURRENT259_OWNED_TECHNICAL_V1',resourceRunId:plan.runId,migrations:migrations.slice(0,205)};
   const setup=await jsonSql(controls.setupSql(migrationPlan));controls.checkSetup(setup,migrationPlan);
-@@ -267,6 +307,10 @@
+@@ -267,6 +307,12 @@
  const installOnly292 = Symbol('install-only292');
  const exactMultiWitness295 = Symbol('exact-multi-witness295');
  async function installer(receipt, probeOnly, consume, release=stableRelease, purpose, restore=false, forward320, retainedMode) {
-+  const pol275Mode=({ORIGINAL_POL275_WARM_EXACT_295:"warm",ORIGINAL_POL275_WARM_EXACT_329:"warm",ORIGINAL_POL275_WARM_EXACT_330:"warm",ORIGINAL_POL275_COLLISION_EXACT_295:"collision"})[receipt.purpose];
-+  if (pol275Mode) need((!forward320 && !/_(?:329|330)$/u.test(receipt.purpose)) ||
-+    (forward320 && receipt.purpose==='ORIGINAL_POL275_WARM_EXACT_'+(forward320.textDirect?330:329)),
++  const pol275Mode=({ORIGINAL_POL275_WARM_EXACT_295:"warm",ORIGINAL_POL275_WARM_EXACT_329:"warm",
++    ORIGINAL_POL275_WARM_EXACT_330:"warm",ORIGINAL_POL275_WARM_EXACT_331:"warm",ORIGINAL_POL275_COLLISION_EXACT_295:"collision"})[receipt.purpose];
++  const pol275ForwardCount=forward320?.paymentRemainder?331:forward320?.textDirect?330:329;
++  if (pol275Mode) need((!forward320 && receipt.purpose.endsWith('_295')) ||
++    (forward320 && receipt.purpose==='ORIGINAL_POL275_WARM_EXACT_'+pol275ForwardCount),
 +    'POL275_ORIGINAL_MODE_SCOPE');
    const combined = purpose===installOnly292 || purpose===exactMultiWitness295;
    if(combined) need(!probeOnly && release===ordinaryApprovalRelease,'INSTALL_ONLY_292_MODE');
@@ -110,9 +112,9 @@
  
      const roleIdentity = receipt.databaseIdentity;
 @@ -1406,3 +1457,15 @@
-   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,true),'cleanup');
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'cleanup');
  module.exports.withCombined330MultiWitnessForProfile=(receipt,consume,material)=>
-   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,true),'profile');
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'profile');
 +
 +
 +function projectOriginalPol275Collision(result) {

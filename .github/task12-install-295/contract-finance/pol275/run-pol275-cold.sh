@@ -2,12 +2,13 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 ) ) ]] || exit 64
 count=295
 mode=()
 case ${5-} in
   --current-320) count=329; mode=(--current-320) ;;
   --text-direct-330) count=330; mode=(--text-direct-330) ;;
+  --payment-remainder-331) count=331; mode=(--payment-remainder-331) ;;
 esac
 purpose="ORIGINAL_POL275_COLD_EXACT_$count"
 repo=$(cd "$1" && pwd -P)
@@ -24,9 +25,13 @@ node -e '
   const source=require(process.argv[1]);
   const count=Number(process.argv[3]);
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
-  const modes={329:"current-320",330:"text-direct-330"};
+  const modes={329:"current-320",330:"text-direct-330",331:"payment-remainder-331"};
   if(modes[count] && (source.mode!==modes[count] || source.predecessor?.migrationCount!==295))process.exit(1);
-' "$prepared/source.json" "$sha" "$count"
+  if(count===331){
+    const base=process.argv[4];
+    require(base+"/payment-remainder-331-profile.cjs").assertSource(source,process.argv[2],require(base+"/common/multi-witness.cjs").final);
+  }
+' "$prepared/source.json" "$sha" "$count" "$base"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -51,6 +56,9 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
 for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
+if [[ $count == 331 ]]; then
+  args+=(--mount "type=bind,src=$base/payment-remainder-331-profile.cjs,dst=/qualification/payment-remainder-331-profile.cjs,readonly")
+fi
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 exit_code=0

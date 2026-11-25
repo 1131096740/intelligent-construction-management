@@ -413,6 +413,7 @@ jobs:
           case "$count" in
             329) mode_args=(--current-320) ;;
             330) mode_args=(--text-direct-330) ;;
+            331) mode_args=(--payment-remainder-331) ;;
           esac
           predecessor=a187dc73a133114e1cfbbc891a4aec923abe2545
           if [[ "$DYNAMIC_GROUP" == contract_finance_acceptance && -z "$DYNAMIC_SHARD" && -f .github/task12-install-295/contract-finance/run.sh ]]; then
