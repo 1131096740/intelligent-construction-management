@@ -30,9 +30,10 @@ export async function openSignedSettlementQualification(
     historicalPaymentBasis
   });
   const safeFailure = (stage: string, cause: unknown) => {
-    const error = cause as { errorCode?: string; code?: string; meta?: { code?: string } };
-    const code = error?.meta?.code ?? error?.errorCode ?? error?.code ?? "";
-    const marker = /^(?:[0-9A-Z]{5}|EADDRINUSE|EACCES|ECONNREFUSED)$/u.test(code) ? code : "UNCLASSIFIED";
+    const error = cause as { errorCode?: string; code?: string; meta?: { code?: string }; message?: string };
+    const postgresCode = /PostgresError \{ code: "([0-9A-Z]{5})"/u.exec(error?.message ?? "")?.[1];
+    const marker = [error?.meta?.code, postgresCode, error?.errorCode, error?.code]
+      .find((code) => code && /^(?:[0-9A-Z]{5}|EADDRINUSE|EACCES|ECONNREFUSED)$/u.test(code)) ?? "UNCLASSIFIED";
     return new Error(`POL114_SIGNED_SETTLEMENT_${stage}_${marker}`);
   };
   try {
@@ -44,10 +45,25 @@ export async function openSignedSettlementQualification(
   if (ownedReadKey) process.env.SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY = ownedReadKey;
   const runtime = new PrismaService({ datasourceUrl: runtimeUrl });
   let lastQueryFailure: string | undefined;
-  runtime.$use(async (_params, next) => {
-    try { return await next(_params); }
+  runtime.$use(async (params, next) => {
+    try { return await next(params); }
     catch (error) {
       lastQueryFailure = safeFailure("QUERY", error).message;
+      if (historicalPaymentBasis) {
+        const models = [
+          "ContractProxyExecution", "ProjectProxyPayment", "ContractArchiveFile",
+          "ContractTakeover", "PaymentTermsVersion", "Settlement", "ContractEconomicReview"
+        ];
+        const operation = params.model && models.includes(params.model)
+          && ["findMany", "findFirst", "findUnique", "aggregate"].includes(params.action)
+          ? `${params.model}.${params.action}`
+          : params.action === "queryRaw" ? "queryRaw" : "OTHER";
+        const errorName = error instanceof Error && [
+          "PrismaClientKnownRequestError", "PrismaClientUnknownRequestError", "PrismaClientValidationError",
+          "PrismaClientInitializationError", "Error", "TypeError"
+        ].includes(error.name) ? error.name : "OTHER";
+        lastQueryFailure += `,${operation},${errorName}`;
+      }
       throw error;
     }
   });
