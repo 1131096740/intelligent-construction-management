@@ -2,34 +2,69 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || $# == 5 || ( $# == 6 && $6 == --current-320 ) ]] || exit 64
+[[ $# -ge 4 && $# -le 7 ]] || exit 64
 mode=295
-selected_lane=${5-}
-if [[ $selected_lane == --current-320 ]]; then mode=329; selected_lane=''
-elif [[ $# == 6 ]]; then mode=329
-fi
+selected_lane=
+host_only=
+for option in "${@:5}"; do
+  case "$option" in
+    --current-320) [[ $mode == 295 ]] || exit 64; mode=329 ;;
+    --text-direct-330) [[ $mode == 295 ]] || exit 64; mode=330 ;;
+    --host-only) [[ -z $host_only ]] || exit 64; host_only=1 ;;
+    --*) exit 64 ;;
+    *) [[ -z $selected_lane ]] || exit 64; selected_lane=$option ;;
+  esac
+done
+[[ -z $host_only || $mode == 330 ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
-build=$(cd "$4" && pwd -P)
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$plan/../common"
 scope=onboarding
 
-node -e '
-  const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==Number(process.argv[3])||(process.argv[3]==="329"&&source.mode!=="current-320"))process.exit(1);
-' "$prepared/source.json" "$sha" "$mode"
+node - "$prepared/source.json" "$sha" "$mode" "$plan" <<'JS'
+const [file,sha,mode,plan]=process.argv.slice(2);
+const source=require(file);
+if(mode==='330') {
+  require(plan+'/../text-direct-330-profile.cjs').assertSource(source,sha,require(plan+'/../common/multi-witness.cjs').final);
+} else if(source.sourceSha!==sha||source.migrationCount!==Number(mode)||(mode==='329'&&source.mode!=='current-320')) {
+  process.exit(1);
+}
+JS
+if [[ $mode == 330 ]]; then
+  [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
+  [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$common/installer.cjs") ]] || exit 65
+fi
+work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
+material="$work/material"
+python3 "$plan/stage-onboarding.py" "$repo/.github/task12-install-290/onboarding" "$common" "$prepared/prepared/context/workspace" "$material" "$prepared/source.json"
+
+if [[ -n $host_only ]]; then
+  node - "$material" "$sha" "$repo/.github/task12-install-290/onboarding/pins.json" "$selected_lane" <<'JS'
+const [root,sourceSha,pinFile,lane]=process.argv.slice(2);
+const assert=require('node:assert/strict');
+const {readFileSync,writeFileSync}=require('node:fs');
+const {createHash}=require('node:crypto');
+const sha=file=>createHash('sha256').update(readFileSync(root+'/'+file)).digest('hex');
+const {lanes}=require(pinFile),profiles=require(root+'/lanes.json');
+assert.ok(!lane||lanes.includes(lane));
+const receipt={status:'ONBOARDING_330_HOST_INPUTS_VERIFIED',sourceSha,
+  lanes:Object.fromEntries(lanes.map(name=>[name,profiles[name].caseCount])),
+  workspaceInputsSha256:sha('workspace-inputs.json'),installerSha256:sha('installer.cjs'),
+  laneProfilesSha256:sha('lanes.json'),database:'NOT_STARTED'};
+writeFileSync(root+'/../host-receipt.json',JSON.stringify(receipt,null,2)+'\n',{flag:'wx',mode:0o600});
+console.log(JSON.stringify({receipt:root+'/../host-receipt.json',...receipt}));
+JS
+  exit 0
+fi
+build=$(cd "$4" && pwd -P)
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
 [[ $(node "$plan/../context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
 [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
-
-work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
-material="$work/material"
-python3 "$plan/stage-onboarding.py" "$repo/.github/task12-install-290/onboarding" "$common" "$prepared/prepared/context/workspace" "$material" "$prepared/source.json"
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
   --security-opt no-new-privileges --user postgres --init --memory 4g
@@ -61,6 +96,9 @@ for file in lanes.json verify-application-source.cjs workspace-inputs.json; do
   args+=(--mount "type=bind,src=$material/$file,dst=/qualification/$file,readonly")
 done
 args+=(--mount "type=bind,src=$plan/onboarding-preflight.cjs,dst=/qualification/onboarding-preflight.cjs,readonly")
+if [[ $mode == 330 ]]; then
+  args+=(--mount "type=bind,src=$plan/../text-direct-330-profile.cjs,dst=/qualification/text-direct-330-profile.cjs,readonly")
+fi
 while IFS= read -r lane; do
   case "$lane" in
     lifecycle-rest|lifecycle-mobile) pids=256; tmp=512m ;;

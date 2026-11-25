@@ -9,21 +9,25 @@ try {
   assert.notEqual(process.env.NODE_ENV,'production');
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
   const current320=process.argv[2]==='--current-320';
-  assert.equal(process.argv.length,current320?3:2);
-  const count=current320?329:295;
+  const textDirect330=process.argv[2]==='--text-direct-330';
+  const forward=current320||textDirect330;
+  assert.equal(process.argv.length,forward?3:2);
+  const count=textDirect330?330:current320?329:295;
   assert.equal(source.migrationCount,count);
-  if(current320) {
+  if(textDirect330) {
+    require('./text-direct-330-profile.cjs').assertSource(source,source.sourceSha,multi.final);
+  } else if(current320) {
     assert.equal(source.mode,'current-320');
     assert.match(source.sourceTree,/^[a-f0-9]{40}$/u);
     assert.equal(source.predecessor.migrationCount,295);
     assert.equal(source.predecessor.ledgerSha256,multi.final);
     assert.equal(source.tails.length,34);
   }
-  if(!current320) assert.equal(source.ledgerSha256,multi.final);
+  if(!forward) assert.equal(source.ledgerSha256,multi.final);
   const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
   assert.equal(baseline.expectedDirectoryCount,count);
-  assert.equal(baseline.terminalMigrationChecksum,current320?source.tails.at(-1).sha256:multi.digest);
-  if(current320) assert.equal(baseline.terminalMigration,source.tails.at(-1).name);
+  assert.equal(baseline.terminalMigrationChecksum,forward?source.tails.at(-1).sha256:multi.digest);
+  if(forward) assert.equal(baseline.terminalMigration,source.tails.at(-1).name);
   admitSource('/qualification','/qualification/source/services/api/prisma','/qualification/source-seal.txt');
   require('./consumer.cjs');
 } catch(error) {

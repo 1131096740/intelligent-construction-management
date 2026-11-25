@@ -14,22 +14,26 @@ for name, expected in pins['resources'].items():
         raise SystemExit('ONBOARDING_295_ARCHIVE_PIN '+name)
 source_record=json.loads(source.read_text())
 count=source_record['migrationCount']
-current320=source_record.get('mode')=='current-320'
-if count!=(329 if current320 else 295):
+mode=source_record.get('mode')
+text_direct=mode=='text-direct-330'
+forward=mode in ('current-320','text-direct-330')
+if count!=(330 if text_direct else 329 if forward else 295):
     raise SystemExit('ONBOARDING_SOURCE_LEDGER')
-application_tree=source_record['sourceTree'] if current320 else '67644d9465a0ab4ee80ede099139d9c129d66f14'
-if current320:
+application_tree=source_record['sourceTree'] if forward else '67644d9465a0ab4ee80ede099139d9c129d66f14'
+if forward:
     import re
     if not re.fullmatch('[0-9a-f]{40}',application_tree):
         raise SystemExit('ONBOARDING_320_SOURCE_TREE')
 old=json.loads(gzip.decompress((archive/'workspace-inputs.json.gz').read_bytes()))
-expected_drift=json.loads((plan/f'onboarding-{count}-source-drift.json').read_text())
+expected_drift=json.loads((plan/f'onboarding-{329 if forward else 295}-source-drift.json').read_text())
+if text_direct:
+    expected_drift.update(json.loads((plan/'onboarding-330-source-drift.json').read_text()))
 actual={}
 changes={}
 absent=[]
 for name, previous in old['files'].items():
     file=workspace/name
-    if current320 and name in expected_drift and expected_drift[name] is None and not file.exists() and not file.is_symlink():
+    if forward and name in expected_drift and expected_drift[name] is None and not file.exists() and not file.is_symlink():
         changes[name]=None
         absent.append(name)
         continue
@@ -55,7 +59,7 @@ for lane in pins['lanes']:
         file=out/'lanes'/lane/'fixtures'/name
         if hashlib.sha256(file.read_bytes()).hexdigest()!=sha:
             raise SystemExit('ONBOARDING_295_FIXTURE_PIN '+name)
-    if current320 and lane=='roster':
+    if forward and lane=='roster':
         fixture_name='services/api/src/database/project-roster-http-postgres.owned282.spec.ts'
         fixture_file=out/'lanes'/lane/'fixtures'/fixture_name
         fixture=fixture_file.read_text()
@@ -75,17 +79,17 @@ for lane in pins['lanes']:
     lane_root=out/'lanes'/lane
     entry=lane_root/'entry.cjs'
     text=entry.read_text().replace('290','295').replace('?.size!==289','?.size!==295')
-    if current320:
+    if forward:
         if text.count('_295_PASSED')!=1:
             raise SystemExit('ONBOARDING_320_STATUS_ANCHOR')
-        text=text.replace('_295_PASSED','_329_PASSED')
+        text=text.replace('_295_PASSED',f'_{count}_PASSED')
     entry.write_text(text)
     runner=lane_root/'onboarding-full.cjs'
     text=runner.read_text()
     if text.count('a1be083076018686dd8afba68c44ff9c75502014')!=1:
         raise SystemExit('ONBOARDING_295_RUNTIME_ANCHOR')
     text=text.replace('a1be083076018686dd8afba68c44ff9c75502014',application_tree)
-    if current320 and lane=='roster':
+    if forward and lane=='roster':
         anchor="          return {caseSha256:createHash('sha256').update(test.fullName).digest('hex'),"
         frame=r"          const frame=/\bproject-roster-http-postgres(?:\.owned282)?\.spec\.ts:(\d{1,5}):(\d{1,4})\b/u.exec(failure);"
         if text.count(anchor)!=1:
@@ -100,7 +104,7 @@ for lane in pins['lanes']:
         seed.write_bytes(material.replace(b'a1be083076018686dd8afba68c44ff9c75502014',application_tree.encode()))
         subprocess.run(['node','--check',str(seed)],check=True)
     staged_scripts = [entry,runner]
-    if current320:
+    if forward:
         admission = lane_root/'task12-onboarding-282-admission.cjs'
         if hashlib.sha256(admission.read_bytes()).hexdigest()!='799d0d437bc7dee46f6426526b66cededadbf9f50143b929c8f9ff0491578a91':
             raise SystemExit('ONBOARDING_329_FILE_REGISTRY_PREIMAGE')
@@ -110,12 +114,12 @@ for lane in pins['lanes']:
     for file in staged_scripts:
         subprocess.run(['node','--check',str(file)],check=True)
 manifest={'tree':application_tree,'sourceSha':source_record['sourceSha'],'files':actual}
-if current320:
+if forward:
     manifest['absent']=sorted(absent)
 (out/'workspace-inputs.json').write_text(json.dumps(manifest,ensure_ascii=False)+'\n')
 verifier=(archive/'verify-application-source.cjs').read_text()
 verifier=verifier.replace(old['tree'],application_tree).replace('return {tree:manifest.tree,',"assert.equal(manifest.sourceSha,require('./contract-finance-source.json').sourceSha);\n  return {sourceSha:manifest.sourceSha,tree:manifest.tree,")
-if current320:
+if forward:
     anchor='  for(const [file,want] of Object.entries(rows)){'
     if verifier.count(anchor)!=1:
         raise SystemExit('ONBOARDING_329_ABSENCE_CHECK_ANCHOR')
@@ -125,13 +129,40 @@ if current320:
   }
 '''+anchor)
 (out/'verify-application-source.cjs').write_text(verifier)
-if current320:
+if forward:
     (out/'lanes.json').write_text(json.dumps(profiles,ensure_ascii=False)+'\n')
 else:
     (out/'lanes.json').write_bytes((archive/'lanes.json').read_bytes())
 installer=out/'installer.cjs'
 installer.write_bytes((common/'installer.cjs').read_bytes())
-subprocess.run(['patch','--batch','--forward','--fuzz=0','--silent',str(installer),str(plan/'installer-onboarding.patch')],check=True)
+if text_direct:
+    role_patch, marker, old_entry = (plan/'installer-onboarding.patch').read_bytes().rpartition(b'\n@@ -1388,3 ')
+    if not marker or old_entry.count(b'module.exports.withInstalled295Onboarding')!=1:
+        raise SystemExit('ONBOARDING_330_INSTALLER_ENTRY_ANCHOR')
+    subprocess.run(['patch','--batch','--forward','--fuzz=0','--silent',str(installer)],
+                    input=role_patch+b'\n',check=True)
+    with installer.open('a') as script:
+        script.write("""
+module.exports.withInstalled295Onboarding = receipt => {
+  const source=require('./contract-finance-source.json');
+  const profile=require('./text-direct-330-profile.cjs');
+  profile.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
+  const consume=async context=>{
+    profile.assertInstallation(receipt,source);
+    const verify=async ()=>
+      assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,true))).stdout.trim()));
+    await verify();
+    await require('./onboarding-full.cjs').run(context,receipt);
+    await verify();
+    receipt.sameInstancePostConsume=true;
+  };
+  return module.exports.withCombined330TextAgreement(receipt,consume,{
+    sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
+  });
+};
+""")
+else:
+    subprocess.run(['patch','--batch','--forward','--fuzz=0','--silent',str(installer),str(plan/'installer-onboarding.patch')],check=True)
 subprocess.run(['node','--check',str(installer)],check=True)
 for file in [out/'workspace-inputs.json',out/'verify-application-source.cjs',out/'lanes.json',installer]:
     file.chmod(0o644)

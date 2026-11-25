@@ -6,7 +6,8 @@ const {randomBytes}=require('node:crypto');
 const {spawnSync}=require('node:child_process');
 const {pgDumpArgs,classifyArchive}=require('./archive-contract.cjs');
 const {key,operatingVerifier,operatingContext}=require('./technical-relations.json');
-const {legacy,successor}=require('./restore-profile.cjs');
+const {legacy,successor,textDirect}=require('./restore-profile.cjs');
+const {paymentRowsSql,paymentRows,paymentCatalogChecks}=require('./text-direct-330.cjs');
 const {scope,exactCatalog,catalogSql}=require('./successor.cjs');
 const notice=require('./terminal.cjs');
 const payout=require('./payout-terminal.cjs');
@@ -292,8 +293,9 @@ function importAsNamedBackup(sql,invoke,tables,sequences,dataArchive,dataList,pr
   return {role:backupRole,tls:true,restoredTables:tables.length,restoredSequences:sequences.length,targetWritesRevoked:true};
 }
 
-async function restoreBusinessDatabase(context,credentials,enter,forward320) {
-  const profile=forward320 ? successor : legacy;
+async function restoreBusinessDatabase(context,credentials,enter,forward320,textDirectInputs) {
+  const profile=textDirectInputs?textDirect:forward320?successor:legacy;
+  assert.equal(forward320?.count===330,Boolean(textDirectInputs),'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
   const expectedTree=forward320?.sourceTree ?? scope.tree;
   assert.match(expectedTree,/^[a-f0-9]{40}$/u);
   const {technical}=profile;
@@ -312,6 +314,29 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320) {
   const expectedHistory=readBusinessHistory(statement=>sql(owner,source,statement));
   validateHistory(expectedHistory);
   const before=businessFingerprint(sql,source,business);
+  let paymentChecks;
+  if(textDirectInputs) {
+    const {terminal}=textDirectInputs;
+    paymentChecks=paymentCatalogChecks(fs.readFileSync('/qualification/current320/migrations/'+terminal.name+'/migration.sql'),
+      terminal.sha256);
+  }
+  const paymentProof=paymentChecks?readTextDirect330(source):undefined;
+  function readTextDirect330(db) {
+    const historical=paymentRows(sql(owner,db,paymentRowsSql(true)),true);
+    assert.deepEqual(historical,textDirectInputs.historical,'BACKUP330_HISTORICAL_PAYMENTS_CHANGED');
+    return {historical,ddlAclSha256:paymentChecks.parse(sql(owner,db,paymentChecks.sql)),
+      ...(paymentChecks.allocationWriterSha256?{allocationWriterSha256:paymentChecks.allocationWriterSha256}:{})};
+  }
+  function verifyTextDirect330NamedDenials(db) {
+    for (const role of [backupRole,bankRuntime]) {
+      sql(role,db,"SELECT * FROM public.jg_read_text_payment_agreement_v1('missing','missing','missing','missing');",
+        /42501:[^\n]*permission denied for function jg_read_text_payment_agreement_v1/u);
+      if(paymentChecks.allocationWriterSha256) {
+        sql(role,db,"SELECT public.jg_append_text_payment_allocation_v1('missing');",
+          /42501:[^\n]*permission denied for function jg_append_text_payment_allocation_v1/u);
+      }
+    }
+  }
   assert.equal(sql(owner,source,`SELECT NOT EXISTS (SELECT FROM pg_database WHERE datname='${restoreDb}');`),'t','BACKUP292_DESTINATION_EXISTS');
 
   const readBaseline=sql(owner,source,`SELECT NOT EXISTS (
@@ -351,6 +376,7 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320) {
       COMMIT;`);
     granted=true;
     verifyNamedAccess(sql,source,profile);
+    if (paymentProof) verifyTextDirect330NamedDenials(source);
     for(const table of technical){
       sql(backupRole,source,`SELECT 1 FROM public.${quote(table)} LIMIT 1;`,/42501:[^\n]*permission denied/u);
     }
@@ -405,6 +431,11 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320) {
     assert.equal(exactCatalog({...shape,keyUnprovisioned:true}),true,'BACKUP292_RESTORED_BALANCE_CATALOG');
     const probes=validateHistory(readBusinessHistory(statement=>sql(owner,restoreDb,statement)),expectedHistory);
     verifyNamedAccess(sql,restoreDb,profile);
+    if (paymentProof) {
+      assert.deepEqual(readTextDirect330(restoreDb),paymentProof,'BACKUP330_RESTORED_PAYMENT_CATALOG');
+      assert.deepEqual(readTextDirect330(source),paymentProof,'BACKUP330_SOURCE_PAYMENT_CATALOG');
+      verifyTextDirect330NamedDenials(restoreDb);
+    }
     if (forward320) {
       for (const role of [backupRole,bankRuntime])
         for (const table of profile.technical)
@@ -420,7 +451,9 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320) {
       preparedContextRolledBack:true,sourceStatePreserved:true,businessPreserved:true},
       businessTables:dataCount.tables,restoredDataPayloads:dataCount.payloads,
       protectedTables:technicalCount.tables,protectedPayloads:technicalCount.payloads,
-      history,sourceKeyRows:beforeKeys.keyCount,ownerOnlyRekeyed:true,namedNegativeTests:true,probes};
+      history,sourceKeyRows:beforeKeys.keyCount,ownerOnlyRekeyed:true,namedNegativeTests:true,probes,
+      ...(paymentProof?{textDirect330:{...paymentProof,oldColumnProjectionMatched:true,newColumnNull:true,
+        sourceAndRestoredCatalogMatched:true,sourceAndRestoredNamedExecutionDenied:true}}:{})};
   } finally {
     restoredKey?.fill(0);
     try {

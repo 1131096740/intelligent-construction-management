@@ -7,9 +7,11 @@ import sys
 
 plan = Path(__file__).resolve().parent
 lane, repo_name, workspace_name, out_name, *opts = sys.argv[1:]
-if opts not in ([], ['--current-320']):
+text_direct = len(opts) == 2 and opts[0] == '--text-direct-330'
+if not text_direct and opts not in ([], ['--current-320']):
     sys.exit('PROCUREMENT_MODE')
-current320 = bool(opts)
+forward = bool(opts)
+count = 330 if text_direct else 329 if forward else 295
 if lane not in ('general16', 'project11'):
     sys.exit('PROCUREMENT_295_MODE')
 repo, workspace, out = map(Path, (repo_name, workspace_name, out_name))
@@ -17,8 +19,10 @@ prior = repo / '.github/task12-install-290/procurement'
 common = repo / '.github/task12-install-295/contract-finance/common'
 port = json.loads((plan / 'port-pins.json').read_bytes())
 original = json.loads((prior / 'pins.json').read_bytes())[lane]
-delta_file = 'candidate-delta320.json' if current320 else 'candidate-delta.json'
+delta_file = 'candidate-delta320.json' if forward else 'candidate-delta.json'
 delta = {row['path']: row for row in json.loads((plan / delta_file).read_bytes())}
+if text_direct:
+    delta.update({row['path']: row for row in json.loads((plan / 'candidate-delta330.json').read_bytes())})
 digest = lambda data: sha256(data).hexdigest()
 out.mkdir()
 
@@ -91,7 +95,7 @@ current_test_fixtures = {
         '    expect((await request(`${claimRoute}/submission`, director, {})).status).toBe(201);\n',
         '    expect((await request(claimRoute, director)).body).toMatchObject({ projectId: second, status: "approved_pending_payment",',
     ),
-} if current320 else {}
+} if forward else {}
 staged_role = set()
 for row in json.loads(manifest)['files']:
     relative, expected = row['file'], row['sha256']
@@ -133,10 +137,42 @@ if staged_role != role_material:
 if seen != set(delta):
     raise ValueError('PROCUREMENT_295_DELTA_CLOSURE')
 
-patch(common / 'installer.cjs', out / 'installer.cjs', port['installer'], 'installer-procurement.patch')
+if text_direct:
+    source = json.loads(read(Path(opts[1])))
+    installer = out / 'installer.cjs'
+    before = read(common / 'installer.cjs')
+    relative = (common / 'installer.cjs').relative_to(repo)
+    if before != subprocess.check_output(['git', '-C', str(repo), 'show', source['sourceSha'] + ':' + str(relative)]):
+        raise ValueError('PROCUREMENT_330_INSTALLER_SOURCE_PIN')
+    write(installer, before)
+    role_patch, marker, old_entry = read(plan / 'installer-procurement.patch').rpartition(b'\n@@ -1388,3 ')
+    if not marker or old_entry.count(b'function withProcurement') != 1:
+        raise ValueError('PROCUREMENT_330_INSTALLER_ENTRY_ANCHOR')
+    subprocess.run(['patch', '--batch', '--fuzz=0', '--no-backup-if-mismatch', str(installer)],
+                   input=role_patch+b'\n', stdout=subprocess.DEVNULL, check=True)
+    with installer.open('a') as script:
+        script.write("""
+function withProcurement(receipt,consume,lane) {
+  const source=require('./contract-finance-source.json');
+  const profile=require('./text-direct-330-profile.cjs');
+  profile.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
+  const material=readForward320({
+    sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
+  },true);
+  return withCombinedOrdinaryLoan(receipt,async context=>{
+    profile.assertInstallation(receipt,source);
+    await consume(context);
+  },exactMultiWitness295,false,material,undefined,lane);
+}
+module.exports.withCombined295GeneralProcurement=(receipt,consume)=>withProcurement(receipt,consume,'general16');
+module.exports.withCombined295ProjectProcurement=(receipt,consume)=>withProcurement(receipt,consume,'project11');
+""")
+    subprocess.run(['node', '--check', str(installer)], check=True)
+else:
+    patch(common / 'installer.cjs', out / 'installer.cjs', port['installer'], 'installer-procurement.patch')
 for name, pin in port[lane].items():
     patch(runtime / name, out / name, pin, pin['patch'])
-if current320:
+if forward:
     consumer = out/'consumer.cjs'
     text = consumer.read_text()
     replacements = {
@@ -144,12 +180,12 @@ if current320:
             'context.candidateTree===require("./contract-finance-source.json").sourceTree',
         'receipt.combinedAfterBusiness?.ledgerSha256===terminal.final':
             "receipt.combinedAfterBusiness?.ledgerSha256===require('./contract-finance-source.json').ledgerSha256 && "
-            "receipt.forward320?.count===329 && "
+            f"receipt.forward320?.count==={count} && "
             "receipt.forward320?.sourceTree===require('./contract-finance-source.json').sourceTree && "
-            "receipt.forward320?.sameBaseB7===true && receipt.combinedAfterBusiness?.count===329",
+            f"receipt.forward320?.sameBaseB7===true && receipt.combinedAfterBusiness?.count==={count}",
     }
     status = ('GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1' if lane=='general16' else 'PROJECT_SCOPE_ORIGINAL_11')
-    replacements[status+'_295_PASSED'] = status+'_329_PASSED'
+    replacements[status+'_295_PASSED'] = status+f'_{count}_PASSED'
     for old, new in replacements.items():
         if text.count(old)!=1:
             raise ValueError('PROCUREMENT_320_CONSUMER_ANCHOR')

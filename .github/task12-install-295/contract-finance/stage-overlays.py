@@ -11,11 +11,12 @@ workspace, destination = map(Path, sys.argv[1:3])
 lane = sys.argv[3]
 assert lane in ('bank', 'restore')
 mode = sys.argv[4:]
-assert mode == [] or (lane == 'bank' and mode == ['--current-320'])
+assert mode == [] or (lane == 'bank' and mode in (['--current-320'], ['--text-direct-330']))
 os.umask(0o022)
 rows = json.loads((plan / 'staging-manifest.json').read_bytes())
 if mode:
-    current = json.loads((plan / 'bank/staging-320.json').read_bytes())
+    manifest = 'staging-330.json' if mode == ['--text-direct-330'] else 'staging-320.json'
+    current = json.loads((plan / 'bank' / manifest).read_bytes())
     assert all(name.startswith('bank/') and name in rows for name in current)
     rows.update(current)
 destination.mkdir()

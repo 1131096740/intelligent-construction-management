@@ -8,14 +8,15 @@ const {restoreBusinessDatabase} = require('./restore.cjs');
 const {ledgerSha256: ledger294} = require('./combined294-source.json');
 const {final:finalLedger}=require('./multi-witness.cjs');
 const notice = require('./terminal.cjs');
-const {legacy,successor}=require('./restore-profile.cjs');
+const {legacy,successor,textDirect}=require('./restore-profile.cjs');
+const {paymentRowsSql,paymentRows}=require('./text-direct-330.cjs');
 const forwardInventory=require('./forward-320-inventory.json');
 
 const expectedCorrection={status:201,replay:201,queued:1,sent:0,oneTransaction:true,rollback:true};
 const expectedLoan={file:'src/database/project-affiliate-company-contract-db.spec.ts',passed:1,skipped:11};
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 
-async function verifyLease(context,forward320) {
+async function verifyLease(context,forward320,textDirectSource) {
   assert.match(context.runId,/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/u);
   assert.equal(context.database,'jg_task01_'+context.runId.replaceAll('-',''));
   const {stdout}=await context.sql(`
@@ -29,13 +30,16 @@ async function verifyLease(context,forward320) {
   `);
   const observed=JSON.parse(stdout);
   assert.equal(observed.ownedTls,true);
-  assert.equal(observed.ledger.length,forward320?329:295);
+  const count=textDirectSource?330:forward320?329:295;
+  assert.equal(observed.ledger.length,count);
   const ledger=observed.ledger.map(({name,sha256,finished,rolledBack})=>({name,sha256,finished,rolledBack}));
   assert.equal(sha(JSON.stringify(ledger.slice(0,295))),finalLedger,'BACKUP294_LIVE_LEDGER');
   if(forward320) {
-    assert.equal(sha(JSON.stringify(ledger)),forwardInventory.ledgerSha256,'BACKUP320_LIVE_LEDGER');
-    assert.equal(forward320.ledgerSha256,forwardInventory.ledgerSha256,'BACKUP320_FORWARD_LEDGER');
-    assert.equal(forward320.count,329,'BACKUP320_FORWARD_COUNT');
+    const digest=textDirectSource?.ledgerSha256??forwardInventory.ledgerSha256;
+    assert.equal(sha(JSON.stringify(ledger.slice(0,329))),forwardInventory.ledgerSha256,'BACKUP320_LIVE_LEDGER');
+    assert.equal(sha(JSON.stringify(ledger)),digest,'BACKUP_FORWARD_LIVE_LEDGER');
+    assert.equal(forward320.ledgerSha256,digest,'BACKUP320_FORWARD_LEDGER');
+    assert.equal(forward320.count,count,'BACKUP320_FORWARD_COUNT');
     assert.equal(forward320.sameIdentity,true,'BACKUP320_FORWARD_INSTANCE');
     assert.equal(forward320.sameBaseB7,true,'BACKUP320_FORWARD_B7');
     assert.equal(context.candidateTree,forward320.sourceTree,'BACKUP320_CANDIDATE_TREE');
@@ -43,7 +47,7 @@ async function verifyLease(context,forward320) {
 }
 
 // The owned 294 installer invokes this only after both tail catalogs have been proved.
-async function prepareBackup295(context,receipt,admission,{correction,loan}) {
+async function prepareBackup295(context,receipt,admission,{correction,loan,textDirect330=false}) {
   assert.equal(admission.status,'FINANCE294_COMMITTED_MIGRATION_INPUTS_ADMITTED_OFFLINE');
   assert.match(admission.head,/^[a-f0-9]{40}$/u);
   assert.equal(admission.ledger294,ledger294);
@@ -64,21 +68,26 @@ async function prepareBackup295(context,receipt,admission,{correction,loan}) {
   assert.equal(lending.scopeLimit,'ORIGINAL_SERVICE_APPROVAL_ONLY');
   assert.deepEqual(lending.suites,[expectedLoan]);
   enter('BACKUP294_ORIGINAL_SETTLEMENT');
-  receipt.settlementFixture=await seedSettlementHistory(context);
+  receipt.settlementFixture=await seedSettlementHistory(context,{textDirect330});
   await verifyLease(context);
+  if (textDirect330) {
+    const {stdout}=await context.sql(paymentRowsSql(false));
+    receipt.historicalPayment295=paymentRows(stdout,false);
+  }
 }
 
-async function runNamedBackup(context,receipt,namedRoles,forward320) {
+async function runNamedBackup(context,receipt,namedRoles,forward320,textDirectSource) {
   assert.equal(typeof namedRoles,'function');
   assert.ok(receipt.settlementFixture,'BACKUP_ORIGINAL_FIXTURE_REQUIRED');
   assert.deepEqual(receipt.businessOracle,expectedCorrection);
-  const profile=forward320?successor:legacy;
+  const profile=textDirectSource?textDirect:forward320?successor:legacy;
   const enter=stage=>receipt.stages.push(stage);
-  await verifyLease(context,forward320);
-  enter(forward320?'BACKUP320_NAMED_EXPORT_IMPORT':'BACKUP294_NAMED_EXPORT_IMPORT');
+  await verifyLease(context,forward320,textDirectSource);
+  enter(textDirectSource?'BACKUP330_NAMED_EXPORT_IMPORT':forward320?'BACKUP320_NAMED_EXPORT_IMPORT':'BACKUP294_NAMED_EXPORT_IMPORT');
   const named=await namedRoles(context);
   try {
-    receipt.restore=await restoreBusinessDatabase(context,named.credentials,enter,forward320);
+    receipt.restore=await restoreBusinessDatabase(context,named.credentials,enter,forward320,
+      textDirectSource?{historical:receipt.historicalPayment295,terminal:textDirectSource.tails.at(-1)}:undefined);
     assert.equal(receipt.restore.businessTables,profile.businessCount);
     assert.equal(receipt.restore.restoredDataPayloads,profile.businessCount);
     assert.equal(receipt.restore.protectedTables,profile.technical.length);
@@ -93,7 +102,7 @@ async function runNamedBackup(context,receipt,namedRoles,forward320) {
     AND NOT EXISTS(SELECT FROM pg_database WHERE datname='contract_restored');`);
   assert.equal(stdout.trim(),'t','BACKUP294_ROLES_AND_TARGET_WITHDRAWN');
   receipt.backupFixtureCleanup={rolesWithdrawn:true,restoredDatabaseRemoved:true};
-  await verifyLease(context,forward320);
+  await verifyLease(context,forward320,textDirectSource);
 }
 
 async function runBackup295(context,receipt,admission,{correction,loan,namedRoles}) {
@@ -101,9 +110,10 @@ async function runBackup295(context,receipt,admission,{correction,loan,namedRole
   return runNamedBackup(context,receipt,namedRoles);
 }
 
-async function runBackup320(context,receipt,{namedRoles}) {
+async function runBackup320(context,receipt,{namedRoles,textDirectSource}) {
   assert.ok(receipt.forward320,'BACKUP320_FORWARD_RECEIPT_REQUIRED');
-  return runNamedBackup(context,receipt,namedRoles,receipt.forward320);
+  if (textDirectSource) assert.ok(receipt.historicalPayment295,'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
+  return runNamedBackup(context,receipt,namedRoles,receipt.forward320,textDirectSource);
 }
 
 module.exports={runBackup295,prepareBackup295,runBackup320,verifyLease};
