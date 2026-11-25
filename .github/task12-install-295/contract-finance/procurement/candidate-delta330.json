@@ -30,6 +30,11 @@
     "candidate": "3f88256435bca5871cb74c655af7790e4eea952db30ce71e2da5226848127783"
   },
   {
+    "path": "apps/web-admin/e2e/payment-workbench.e2e.ts",
+    "expected": "529fe0fda777cd0927b0be7c968726da1de0d5c76cfef0102843d1cc4d4c7d36",
+    "candidate": "9d82e1d8d227967a6ecfd66b9aa2a975e8194ba56c853065eafc04421e65aed6"
+  },
+  {
     "path": "apps/web-admin/e2e/pol113-project-profile-real.e2e.ts",
     "expected": "e6f65e9bbe3e93cc5677c6b0745639eaa83cc1fc693e272fe75f809c163dcfbf",
     "candidate": "73de7563be2a51aceeceaa7dbcfa197e9057da6af6387dffad3fdb17f95b1394"
@@ -72,7 +77,7 @@
   {
     "path": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
     "expected": "5553d23fc09b235929485308fa8c674c1a091e428774a1d3b393623faf56374e",
-    "candidate": "87ef5636452bcdc96221375c106ab665fccdc09c52ff9c608b2e9e7e6d770e2d"
+    "candidate": "567885e0089419defd55fa57916a8134e6337e15fbe405ce4aca5d843493fa86"
   },
   {
     "path": "apps/web-admin/src/pages/payments/payment-list.config.ts",

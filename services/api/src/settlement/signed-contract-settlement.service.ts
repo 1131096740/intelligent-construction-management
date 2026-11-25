@@ -126,11 +126,13 @@ export class SignedContractSettlementService {
       }));
       let contractAttachmentIds: string[] = [];
       let downstreamCapacity: Awaited<ReturnType<typeof loadDownstreamPaymentBasis>>["capacity"] | null = null;
+      let paymentAgreementText: string | null = null;
       if (contract.contractVersionId) {
         const basis = await loadDownstreamPaymentBasis(tx, projectId, contractId, contract.contractVersionId, confirmedYuan, canReadSignedAttachments);
         entries.push(...basis.legacyConfirmed);
         contractAttachmentIds = basis.contractAttachmentIds;
         downstreamCapacity = basis.capacity;
+        paymentAgreementText = basis.paymentAgreementText;
       } else {
         const historical = await tx.projectAffiliateSettlementFact.findMany({
           where: { projectId, status: "confirmed", confirmedAt: { not: null }, ...(contractKind === "upward"
@@ -145,7 +147,7 @@ export class SignedContractSettlementService {
         contractAttachmentIds = canReadSignedAttachments && contract.originalFileId ? [contract.originalFileId] : [];
       }
       const [latestConfirmed = null, ...confirmedHistory] = orderConfirmedPaymentSettlements(entries);
-      return { latestConfirmed, confirmedHistory, contractAttachmentIds, canReadSignedAttachments, confirmedYuan, downstreamCapacity };
+      return { latestConfirmed, confirmedHistory, contractAttachmentIds, canReadSignedAttachments, confirmedYuan, downstreamCapacity, paymentAgreementText };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   }
 

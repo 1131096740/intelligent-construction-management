@@ -88,7 +88,7 @@ export function signedSettlementPaymentBalance(input: {
 }
 
 export async function loadDownstreamPaymentBasis(tx: Prisma.TransactionClient, projectId: string, contractId: string, contractVersionId: string, confirmedYuan: string, includeAttachments: boolean) {
-  const [legacy, archive, requests, history] = await Promise.all([
+  const [legacy, archive, requests, history, terms] = await Promise.all([
     tx.settlement.findMany({ where: { projectId, contractId, status: { in: [...CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES] } },
       select: { id: true, code: true, amountCents: true, sourceType: true, sourceTakeoverId: true } }),
     includeAttachments ? tx.contractArchiveFile.findFirst({ where: { contractVersionId, status: "confirmed", confirmedAt: { not: null } },
@@ -99,7 +99,12 @@ export async function loadDownstreamPaymentBasis(tx: Prisma.TransactionClient, p
       select: { historicalPaidCents: true, historicalProxyPaidCents: true,
         historicalAdvancePaidCents: true, historicalAdvanceDeductedCents: true,
         historicalRetentionWithheldCents: true, historicalRetentionReleasedCents: true, otherConfirmedOccupancyCents: true,
-        historicalApprovalPendingPaymentCents: true, historicalApprovedPendingPaymentCents: true } })
+        historicalApprovalPendingPaymentCents: true, historicalApprovedPendingPaymentCents: true } }),
+    tx.paymentTermsVersion.findFirst({
+      where: { contractId, contractVersionId, status: "effective" },
+      orderBy: { versionNo: "desc" },
+      select: { originalText: true }
+    })
   ]);
   if (history.length > 1) throw new ConflictException("存在多个已确认的历史付款起点，请先核对");
   const ordinary = legacy.filter(row => row.sourceType !== "historical_takeover" && row.sourceTakeoverId === null);
@@ -136,6 +141,7 @@ export async function loadDownstreamPaymentBasis(tx: Prisma.TransactionClient, p
   return {
     legacyConfirmed,
     contractAttachmentIds: contractEvidence.length ? contractEvidence.map(row => row.fileId) : archive?.fileId ? [archive.fileId] : [],
+    paymentAgreementText: terms?.originalText ?? null,
     capacity: signedSettlementPaymentBalance({ confirmedYuan, recordedPaidCents, proxyPaidCents, historicalOutstandingCents, requests, opening })
   };
 }

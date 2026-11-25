@@ -132,6 +132,10 @@
                 </template>
               </template>
             </span>
+            <p v-if="signedSettlementBasis?.paymentAgreementText" class="signed-settlement-basis__agreement">
+              <strong>付款约定原文</strong>
+              {{ signedSettlementBasis.paymentAgreementText }}
+            </p>
             <p>
               付款上限按合同累计结算扣减已占用计算；本期为负数时不直接当作可付金额，合同约定比例也不会单独阻断。
             </p>
@@ -1078,6 +1082,11 @@ onMounted(() => {
   margin: 0;
   color: var(--jg-color-text-secondary);
   font-size: var(--jg-font-size-meta);
+}
+
+.signed-settlement-basis__agreement {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .signed-settlement-basis span {

@@ -139,6 +139,7 @@ export function fetchSignedSettlementPaymentBasis(projectId: string, contractId:
     contractAttachmentIds: string[];
     canReadSignedAttachments: boolean;
     confirmedYuan: string;
+    paymentAgreementText: string | null;
     downstreamCapacity: {
       recordedPaidYuan: string;
       outstandingYuan: string;

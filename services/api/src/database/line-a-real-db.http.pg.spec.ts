@@ -214,7 +214,7 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { id: "linea-terms-e", contractId: ids.contractE, contractVersionId: ids.versionE, versionNo: 1,
         status: "effective", originalText: "隔离付款约定：结算后三十日支付" },
       { id: "linea-terms-f", contractId: ids.contractF, contractVersionId: ids.versionF, versionNo: 1,
-        status: "effective", originalText: "隔离付款约定：结算后三十日支付" },
+        status: "effective", originalText: "隔离付款约定：按累计结算的 80% 支付" },
       { id: "linea-terms-h", contractId: ids.contractH, contractVersionId: ids.versionH, versionNo: 1,
         status: "effective", originalText: "隔离付款约定：结算后三十日支付" },
       { id: "linea-terms-i", contractId: ids.contractI, contractVersionId: ids.versionI, versionNo: 1,
@@ -697,7 +697,7 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     });
   });
 
-  it("pauses all unpaid applications after a negative settlement and auto-releases when a later positive settlement restores the balance (PAY-04/PAY-05/A14)", async () => {
+  it("restores payment capacity after a correction and exposes the frozen and current basis (A12/A14)", async () => {
     await seedConfirmedSignedSettlement({
       id: "linea-f-signed-100", contractId: ids.contractF, versionId: ids.versionF,
       number: "JS-F-100", amountYuan: "100.0000", confirmationNo: 1n, reviewedAt: new Date()
@@ -738,6 +738,38 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       confirmedCents: 9_000n, occupiedCents: 8_000n,
       rawRemainingCents: 1_000n, remainingCents: 1_000n, suspended: false
     });
+
+    const latest = await seedConfirmedSignedSettlement({
+      id: "linea-f-signed-minus-5", contractId: ids.contractF, versionId: ids.versionF,
+      number: "JS-F--5", amountYuan: "-5.0000", confirmationNo: 4n,
+      reviewedAt: new Date(Date.now() + 3_000)
+    });
+    const basis = await call("staff", `${settlementPath}/payment-basis?contractKind=downstream&contractId=${ids.contractF}`);
+    expect(basis.body).toMatchObject({
+      confirmedYuan: "85.0000", latestConfirmed: { id: latest.id, amountYuan: "-5.0000" },
+      downstreamCapacity: { wholeCentLimit: "500", suspended: false },
+      paymentAgreementText: "隔离付款约定：按累计结算的 80% 支付"
+    });
+
+    const payment = { sourceType: "signed_settlement", code: "LINEA-FK-F-LATEST", requestedAmountCents: "500" };
+    const stale = await callRaw("staff", "/payments", { ...payment, signedSettlementId: "linea-f-signed-plus-40" });
+    expect(stale).toMatchObject({ status: 409, body: { message: expect.stringContaining("最近确认的一期") } });
+    const applied = await call("staff", "/payments", { ...payment, signedSettlementId: latest.id });
+    expect(applied.status).toBe(201);
+    const application = await owner.paymentRequest.findUniqueOrThrow({ where: { code: payment.code } });
+    expect(application.requestedAmountCents).toBe(500n);
+
+    await seedConfirmedSignedSettlement({
+      id: "linea-f-signed-plus-5", contractId: ids.contractF, versionId: ids.versionF,
+      number: "JS-F-+5", amountYuan: "5.0000", confirmationNo: 5n,
+      reviewedAt: new Date(Date.now() + 4_000)
+    });
+    const detail = await call("staff", `/payments/${application.id}`);
+    expect(detail.body.baseInfo).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "依据快照", value: "本期 -5.0000 元 · 发起时合同累计 85.0000 元" }),
+      expect.objectContaining({ label: "当前合同累计", value: "90.0000 元 · 最新确认已变化" }),
+      expect.objectContaining({ label: "付款约定原文", value: "隔离付款约定：按累计结算的 80% 支付" })
+    ]));
   });
 
   it("confirms work completion through three duties and posts one operating cost", async () => {

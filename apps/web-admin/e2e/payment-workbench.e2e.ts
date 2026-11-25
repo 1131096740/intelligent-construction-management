@@ -706,6 +706,24 @@ test("separates the payment ledger from the contract-linked creation workbench",
       body: JSON.stringify({ projectId: "project-1", availableActions: ["create_payment"] })
     })
   );
+  const paymentAgreementText = "结算后 30 日支付 80%，提交验收证明。";
+  await page.route("**/api/projects/project-1/signed-contract-settlements/payment-basis?*", (route) =>
+    route.fulfill({
+      json: {
+        latestConfirmed: {
+          id: "signed-negative", number: "JS-NEG-001", amountYuan: "-5.0000",
+          confirmedAt: "2026-11-25T01:00:00.000Z", source: "signed_registration", attachmentFileIds: []
+        },
+        confirmedHistory: [], contractAttachmentIds: [], canReadSignedAttachments: false,
+        confirmedYuan: "85.0000", paymentAgreementText,
+        downstreamCapacity: {
+          recordedPaidYuan: "0.0000", outstandingYuan: "80.0000", unoccupiedYuan: "5.0000",
+          wholeCentLimit: "500", advancePaidYuan: "0.0000", unsettledAdvanceYuan: "0.0000",
+          overpayYuan: "0.0000", abnormalOverpayYuan: "0.0000", capacityShortfallYuan: "0.0000", suspended: false
+        }
+      }
+    })
+  );
   await page.route(/\/api\/payments(?:\?.*)?$/u, async (route) => {
     if (route.request().method() === "POST") {
       createdBody = route.request().postDataJSON() as Record<string, unknown>;
@@ -755,6 +773,12 @@ test("separates the payment ledger from the contract-linked creation workbench",
     .getByText("HT-2026-001 · 科技园钢材采购合同 · 城建物资公司", { exact: true })
     .last()
     .click();
+  await selects.nth(2).click();
+  await page.getByText("已签结算最近确认一期", { exact: true }).last().click();
+  const signedBasis = page.getByLabel("已签结算付款依据", { exact: true });
+  await expect(signedBasis).toContainText(paymentAgreementText);
+  await expect(signedBasis).toContainText("最近确认：JS-NEG-001 · 本期 -5.0000 元");
+  await expect(signedBasis).toContainText("可付 500 分");
   await selects.nth(2).click();
   await page.getByText("单张结算付款", { exact: true }).last().click();
   await selects.nth(3).click();
