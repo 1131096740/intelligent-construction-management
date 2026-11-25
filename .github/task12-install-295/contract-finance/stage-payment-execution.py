@@ -54,7 +54,7 @@ if options == ['--upward-archive-332']:
         ('valid.cjs', 'payment-execution-332-valid.cjs.patch',
          '677fee72f86c38beab8cb47938be858aa59a648146d0fed1556bf5d9028eb6c0', '213b61fbd163f4ac150f33c463419e382240cd1b78d6ed1a60f724c001a2bd2f'),
         ('payment-execution-concurrency.spec.ts', 'payment-execution-332-payment-execution-concurrency.spec.ts.patch',
-         '0cd8ebc9938760d0af40b4825cd00d23d4bcdf733df65a5cc96e7b178e20e020', '38a8ce57ceb7393f928c597d375f8c1c4d8a2621d89f5588f02c21f4553e4e69'),
+         '0cd8ebc9938760d0af40b4825cd00d23d4bcdf733df65a5cc96e7b178e20e020', '60fadabef257b2eab2eb359f8add2e8c2455a1b44be09aba4bcf8d8bece1b56e'),
         ('contract-finance-owned.test-support.ts', 'payment-execution-332-contract-finance-owned.test-support.ts.patch',
          '2c3ab7ebeedc7da20ae1a1b1c189fb3e36781b9b6fd6e69e62c59a1d00d70377', '1801de35588da4a1628e55042cb8f0839f492ee66065b880ccb274381a3d49ba'),
     ]:
