@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "ba5340eb5152ff2df50c5818c5da37ba6996e4dbf68a99b4f109e06a62426bfa",
+      "sha256": "1a47ffc967f1aef78f2b6d5211f634fa38c9372cddc50c81232f31c7743485b5",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
@@ -42,18 +42,18 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "238df76960573257209faf114a21986af23b27f34b3a24d95f8fed6ba739069e",
+      "sha256": "a68a39a298b6588584378404eb2f66a8448367fd3ee9470d410e95c34218ee27",
       "status": "ready",
       "summary": {
         "registeredActionCount": 434,
         "pageActionCount": 108,
         "backgroundActionCount": 326,
-        "reachableVueFileCount": 235,
-        "routeRootCount": 80,
-        "totalVueFileCount": 255,
-        "parsedVueFileCount": 255,
-        "reachableProductionModuleCount": 405,
-        "templateEventDirectiveCount": 1528,
+        "reachableVueFileCount": 236,
+        "routeRootCount": 82,
+        "totalVueFileCount": 256,
+        "parsedVueFileCount": 256,
+        "reachableProductionModuleCount": 406,
+        "templateEventDirectiveCount": 1535,
         "propCallbackDirectiveCount": 8,
         "coveredProductionMutationConsumerCount": 425,
         "candidateProductionMutationConsumerCount": 425,
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "072544a2160add2a3d3ce305e61df8c193159596aab8a66070feec971fb39e3a",
+      "sha256": "b99ab169a3dba60fac998314256879d806e98272b6962eaa48e7d7644f1d0ebf",
       "status": "ready",
       "summary": {
         "routeCount": 879,
@@ -13063,6 +13063,7 @@
             "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
             "apps/web-admin/src/pages/settlements/HistoricalSettlementDraftPage.vue",
             "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue",
+            "apps/web-admin/src/pages/settlements/SignedSettlementLedgerPage.vue",
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue",
             "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
           ],
@@ -14162,7 +14163,8 @@
           "normalizedKey": "GET /settlements/signed-ledger-export",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
+            "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
+            "apps/web-admin/src/pages/settlements/SignedSettlementLedgerPage.vue"
           ],
           "testConsumers": []
         }
@@ -14222,7 +14224,8 @@
           "normalizedKey": "GET /settlements/signed-ledger",
           "bodyKind": "none",
           "productionConsumers": [
-            "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
+            "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
+            "apps/web-admin/src/pages/settlements/SignedSettlementLedgerPage.vue"
           ],
           "testConsumers": []
         }

@@ -8733,6 +8733,7 @@
               "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
               "apps/web-admin/src/pages/settlements/HistoricalSettlementDraftPage.vue",
               "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue",
+              "apps/web-admin/src/pages/settlements/SignedSettlementLedgerPage.vue",
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue",
               "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
             ]
@@ -12574,7 +12575,8 @@
             "normalizedPath": "/settlements/signed-ledger",
             "normalizedKey": "GET /settlements/signed-ledger",
             "productionConsumers": [
-              "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
+              "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
+              "apps/web-admin/src/pages/settlements/SignedSettlementLedgerPage.vue"
             ]
           }
         ],
@@ -12621,7 +12623,8 @@
             "normalizedPath": "/settlements/signed-ledger-export",
             "normalizedKey": "GET /settlements/signed-ledger-export",
             "productionConsumers": [
-              "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
+              "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
+              "apps/web-admin/src/pages/settlements/SignedSettlementLedgerPage.vue"
             ]
           }
         ],
