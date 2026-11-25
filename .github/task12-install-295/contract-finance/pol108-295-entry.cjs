@@ -3,11 +3,13 @@ const assert=require('node:assert/strict');
 const source=require('./contract-finance-source.json');
 const {sourceSha}=source;
 const mode=process.argv.at(-1);
+const upwardArchive=mode==='--upward-archive-332';
 const paymentRemainder=mode==='--payment-remainder-331';
 const textDirect=mode==='--text-direct-330';
-const current320=paymentRemainder||textDirect||mode==='--current-320';
-const count=paymentRemainder?331:textDirect?330:current320?329:295;
-const {withPol108At295,withPol108At320,withPol108At330,withPol108At331}=require('./installer.cjs');
+const current320=upwardArchive||paymentRemainder||textDirect||mode==='--current-320';
+const count=upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
+const {withPol108At295,withPol108At320,withPol108At330,withPol108At331,withPol108At332}=require('./installer.cjs');
+const upwardArchiveProfile=upwardArchive?require('./upward-archive-332-profile.cjs'):undefined;
 const {selectShards}=require('./pol108-shards.cjs');
 const [shard]=process.argv.slice(2);
 assert.equal(process.argv.length,current320?4:3);
@@ -18,7 +20,8 @@ Promise.resolve().then(()=>{
   if(current320) {
     assert.equal(source.mode,mode.slice(2));
     assert.equal(source.predecessor.migrationCount,295);
-    const install=paymentRemainder?withPol108At331:textDirect?withPol108At330:withPol108At320;
+    upwardArchiveProfile?.assertSource(source,sourceSha,require('./multi-witness.cjs').final);
+    const install=upwardArchive?withPol108At332:paymentRemainder?withPol108At331:textDirect?withPol108At330:withPol108At320;
     return install(receipt,shard,{sourceTree:source.sourceTree,
       migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails});
   }

@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 historical, archive, common, out, shard, count = sys.argv[1:]
-if count not in {'295', '329', '330', '331'}:
+if count not in {'295', '329', '330', '331', '332'}:
     raise SystemExit('POL108_MIGRATION_COUNT')
 historical,archive,common,out=map(Path,(historical,archive,common,out))
 plan=Path(__file__).parent

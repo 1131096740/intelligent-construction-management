@@ -3,11 +3,13 @@ const assert=require('node:assert/strict');
 const source=require('./contract-finance-source.json');
 const {sourceSha}=source;
 const mode=process.argv.at(-1);
+const upwardArchive=mode==='--upward-archive-332';
 const paymentRemainder=mode==='--payment-remainder-331';
 const textDirect=mode==='--text-direct-330';
-const current320=paymentRemainder||textDirect||mode==='--current-320';
-const count=paymentRemainder?331:textDirect?330:current320?329:295;
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder}=require('./installer.cjs');
+const current320=upwardArchive||paymentRemainder||textDirect||mode==='--current-320';
+const count=upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive}=require('./installer.cjs');
+const upwardArchiveProfile=upwardArchive?require('./upward-archive-332-profile.cjs'):undefined;
 const receipt={schemaVersion:1,sourceSha,purpose:'ORIGINAL_POL109_EXACT_'+count,business:'NOT_ENTERED',stages:[]};
 Promise.resolve().then(()=>{
   assert.equal(process.argv.length,current320?3:2);
@@ -15,10 +17,14 @@ Promise.resolve().then(()=>{
   if(current320){
     assert.equal(source.mode,mode.slice(2));
     assert.equal(source.predecessor.migrationCount,295);
+    upwardArchiveProfile?.assertSource(source,sourceSha,require('./multi-witness.cjs').final);
   }
   const proof=require('./workspace-proof.cjs').verifyWorkspace();
-  const consume=context=>require('./workspace/services/api/prisma/task12-pol109-ci.cjs').runPol109(context,receipt,proof);
-  const install=paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
+  const consume=context=>{
+    upwardArchiveProfile?.assertInstallation(receipt,source);
+    return require('./workspace/services/api/prisma/task12-pol109-ci.cjs').runPol109(context,receipt,proof);
+  };
+  const install=upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
   if(current320) return install(receipt,consume,{
     sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
   });

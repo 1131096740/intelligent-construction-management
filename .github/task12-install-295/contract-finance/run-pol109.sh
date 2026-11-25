@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 ) ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -11,7 +11,7 @@ mode_args=()
 count=295
 if [[ $# == 5 ]]; then
   mode_args=("$5")
-  case "$5" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; esac
+  case "$5" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; --upward-archive-332) count=332;; esac
 fi
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -20,9 +20,13 @@ scope=pol109
 
 node -e '
   const source=require(process.argv[1]);
-  const modes={329:"current-320",330:"text-direct-330",331:"payment-remainder-331"};
+  const modes={329:"current-320",330:"text-direct-330",331:"payment-remainder-331",332:"upward-archive-332"};
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==Number(process.argv[3])||source.mode!==modes[process.argv[3]])process.exit(1);
-' "$prepared/source.json" "$sha" "$count"
+  if(source.mode==="upward-archive-332"){
+    const plan=process.argv[4];
+    require(plan+"/upward-archive-332-profile.cjs").assertSource(source,process.argv[2],require(plan+"/common/multi-witness.cjs").final);
+  }
+' "$prepared/source.json" "$sha" "$count" "$plan"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -47,6 +51,9 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
 for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
+if [[ $count == 332 ]]; then
+  args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
+fi
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 

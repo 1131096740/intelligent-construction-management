@@ -14,6 +14,7 @@ current_tails = {
     (329, 'current-320'): '20261127000000_contract_takeover_pending_finance',
     (330, 'text-direct-330'): '20261128000000_text_agreement_direct_payment',
     (331, 'payment-remainder-331'): '20261129000000_payment_remaining_withdrawal',
+    (332, 'upward-archive-332'): '20261129001000_contract_upward_archive_verifier_pin_forward',
 }
 current_tail = current_tails.get((count, source_record.get('mode')))
 if current_tail:

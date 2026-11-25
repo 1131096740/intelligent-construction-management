@@ -18,11 +18,11 @@
  log_parameter_max_length_on_error=0
  log_error_verbosity='terse'
 -statement_timeout='60s'
-+${/^ORIGINAL_POL108_EXACT_(?:295|329|330|331)$/.test(receipt.purpose) ? "track_functions='all'\ntrack_io_timing=on\n" : ''}statement_timeout='60s'
++${/^ORIGINAL_POL108_EXACT_(?:295|329|330|331|332)$/.test(receipt.purpose) ? "track_functions='all'\ntrack_io_timing=on\n" : ''}statement_timeout='60s'
  `;
      fs.writeFileSync(abs('data/postgresql.conf'),config);
      const ownerEnv = {
-@@ -1416,3 +1416,27 @@
+@@ -1416,3 +1416,35 @@
    withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'cleanup');
  module.exports.withCombined330MultiWitnessForProfile=(receipt,consume,material)=>
    withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'profile');
@@ -49,4 +49,12 @@
 +  need(receipt.purpose==='ORIGINAL_POL108_EXACT_331' && ['core','facts','impacts'].includes(shard),'POL108_331_SCOPE');
 +  return module.exports.withCombined331PaymentRemainder(receipt,context=>
 +    require('./pol108-289.cjs').runPol108(context,shard,receipt,runCommand,baseEnv,need),material);
++};
++
++module.exports.withPol108At332 = (receipt,shard,material) => {
++  need(receipt.purpose==='ORIGINAL_POL108_EXACT_332' && ['core','facts','impacts'].includes(shard),'POL108_332_SCOPE');
++  return module.exports.withCombined332UpwardArchive(receipt,context=>{
++    require('./upward-archive-332-profile.cjs').assertInstallation(receipt,require('./contract-finance-source.json'));
++    return require('./pol108-289.cjs').runPol108(context,shard,receipt,runCommand,baseEnv,need);
++  },material);
 +};
