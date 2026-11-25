@@ -23,6 +23,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  GoneException,
   HttpException,
   Inject,
   Injectable,
@@ -92,10 +93,6 @@ import type { GeneratePaymentPdfArchiveDto } from "./dto/generate-payment-pdf-ar
 import type { RecordFinanceRecordDto } from "./dto/record-finance-record.dto";
 import type { RecordPaymentPdfArchiveDto } from "./dto/record-payment-pdf-archive.dto";
 import type { RecordPaymentExecutionDto } from "./dto/record-payment-execution.dto";
-import {
-  deriveEffectiveWagePayableAmount,
-  payableSourceAdapterRegistry
-} from "../payable-registry/wage-payable-source.adapter";
 import type { ReviewPaymentApprovalDto } from "./dto/review-payment-approval.dto";
 import type { RevisePaymentRequestDto } from "./dto/revise-payment-request.dto";
 import { hasPaymentRevisionBasis, paymentRevisionAction } from "./payment-revision-basis";
@@ -146,12 +143,6 @@ const SETTLEMENT_PAYMENT_CONTRACT_TYPES = new Set([
   "labor_subcontract",
   "professional_subcontract"
 ]);
-
-function auditFingerprint(kind: string, value: string) {
-  return createHash("sha256")
-    .update(JSON.stringify({ kind, value }))
-    .digest("hex");
-}
 
 function paymentPostResponseToApi<T>(value: T) {
   return mapBigIntMoneyFieldsToApi(value, PAYMENT_POST_MONEY_FIELDS);
@@ -342,12 +333,6 @@ function normalizePayerAttestation(
     authorization,
     fingerprint
   };
-}
-
-function jsonSafe<T>(value: T): T {
-  return JSON.parse(
-    JSON.stringify(value, (_key, nested) => typeof nested === "bigint" ? nested.toString() : nested)
-  ) as T;
 }
 
 function optionalTrimmedText(value: string | undefined): string | null {
@@ -4006,8 +3991,6 @@ export class PaymentRequestService {
           return existingExecution;
         }
         if (existingExecution) {
-          if(input.bankReceiptReference){const claim=await tx.contractBankEventClaim.findUnique({where:{sourceType_sourceId:{sourceType:"payment_execution",sourceId:existingExecution.id!}}});const bank=claim?await tx.verifiedBankTransactionObservation.findUnique({where:{id:claim.observationId}}):null;if(bank?.reference!==input.bankReceiptReference)throw new ConflictException("原实付银行流水引用已变化，不能复用提交凭据");}
-
           await this.assertPaymentExecutionReceiptReplay(tx, existingExecution, {
             paymentId,
             actorUserId,
@@ -4017,7 +4000,8 @@ export class PaymentRequestService {
             voucherFileId,
             wagePayableBindings,
             payerAttestation,
-            observationSelectionRef
+            observationSelectionRef,
+            bankReceiptReference: input.bankReceiptReference
           });
           return existingExecution;
         }
@@ -4054,6 +4038,13 @@ export class PaymentRequestService {
           actorUserId,
           payment.projectId
         );
+        if (wagePayableBindings.length > 0) {
+          throw new GoneException("付款登记已停止新增工资应付关联，可查询历史记录");
+        }
+        if (observationSelectionRef) {
+          // Short-lived bank references remain valid only for matching historical wage receipts.
+          throw new BadRequestException("只有完整关联已确认工资应付的付款执行才能认领银行流水");
+        }
         if (registered && !(await currentRegisteredPaymentDomain(tx,payment.id)).supportedDomain) throw new ConflictException("当前付款不属于统一实付办理范围，请经原业务权限入口核验");
         if (
           payment.paymentSubjectType === "affiliate" ||
@@ -4211,7 +4202,7 @@ export class PaymentRequestService {
         if (!registered && payment.companyDirectoryIsActive === false) {
           await this.assertInactiveOriginalCompanyReference(tx, payment);
         }
-        const bankEvent = registered || observationSelectionRef ? null : await requireContractBankEvent(tx, {projectId:payment.projectId,reference:input.bankReceiptReference,companyId:payerAttestation?(await tx.paymentExecutionPayerVerification.findUniqueOrThrow({where:{reference:payerAttestation.bankAccountReference}})).holderCompanyEntityId:companyEntityIdSnapshot!,amountCents,occurredAt:paidAt,direction:"outflow"});
+        const bankEvent = registered ? null : await requireContractBankEvent(tx, {projectId:payment.projectId,reference:input.bankReceiptReference,companyId:payerAttestation?(await tx.paymentExecutionPayerVerification.findUniqueOrThrow({where:{reference:payerAttestation.bankAccountReference}})).holderCompanyEntityId:companyEntityIdSnapshot!,amountCents,occurredAt:paidAt,direction:"outflow"});
         if (!registered && payment.companyDirectoryIsActive === false && !payerAttestation) {
           if (!bankEvent?.payerVerificationId) {
             throw new ConflictException("停用公司原单缺少可核实的当前银行账户依据");
@@ -4264,27 +4255,7 @@ export class PaymentRequestService {
           );
         }
         if(bankEvent)await claimContractBankEvent(tx,bankEvent.id,"payment_execution",execution.id,actorUserId);
-        await this.createWagePayableBindings(
-          tx,
-          execution.id,
-          payment,
-          actorUserId,
-          wagePayableBindings
-        );
-        const sharedAllocation = observationSelectionRef
-          ? await this.sharedAllocations!.materializeInTransaction(tx, {
-              actorUserId,
-              auditRequestId: idempotencyKey,
-              observationSelectionRef,
-              paymentExecutionId: execution.id,
-              paymentRequestId: payment.id,
-              projectId: payment.projectId,
-              amountCents,
-              occurredAt: paidAt,
-              wagePayableBindings
-            })
-          : null;
-        const fundingAllocation = registered || sharedAllocation
+        const fundingAllocation = registered
           ? null
           : await projectFunding!.allocateExecution(tx, {
               projectId: payment.projectId,
@@ -4337,14 +4308,12 @@ export class PaymentRequestService {
           });
         }
 
-        if (!sharedAllocation) {
-          await this.appendOperatingPaymentExecution(
-            tx,
-            payment.projectId,
-            execution.id,
-            actorUserId
-          );
-        }
+        await this.appendOperatingPaymentExecution(
+          tx,
+          payment.projectId,
+          execution.id,
+          actorUserId
+        );
 
         await this.audit.record(tx, {
           actorUserId,
@@ -4354,12 +4323,10 @@ export class PaymentRequestService {
           metadata: {
             code: payment.code,
             projectId: payment.projectId,
-            ...(wagePayableBindings.length > 0
-              ? { executionFingerprint: auditFingerprint("payment_execution", execution.id) }
-              : { executionId: execution.id }),
+            executionId: execution.id,
             amountCents: moneyCentsToApi(amountCents),
             paidAt: paidAt.toISOString(),
-            ...(wagePayableBindings.length > 0 ? {} : { voucherFileId: registered ? null : voucherFileId }),
+            voucherFileId: registered ? null : voucherFileId,
             ...(registeredFunding ? { voucherPending: true, actualPayer: registeredFunding.actualPayer } : {}),
             ...(registeredFunding?.projectAdvance ? { projectAdvanceAmountCents: registeredFunding.projectAdvance.amount.toString() } : {}),
             idempotencyKey,
@@ -4386,23 +4353,13 @@ export class PaymentRequestService {
                     })
                   )
                 }
-              : registeredFunding ? { kind: "registered_fund_account", accountId: registeredFunding.account.id, balanceRegistrationId: registeredFunding.current.id, openingTreatment: registered!.openingTreatment }
-              : {
-                  kind: "shared_execution_allocation",
-                  allocationLineCount: sharedAllocation!.allocationLineCount
-                },
+              : { kind: "registered_fund_account", accountId: registeredFunding!.account.id, balanceRegistrationId: registeredFunding!.current.id, openingTreatment: registered!.openingTreatment },
             fromStatus: payment.status,
             toStatus: newPaymentStatus
           }
         });
 
         if (registeredFunding) await enforceRegisteredPaymentAdvanceConstraints(tx, registeredFunding);
-        if (sharedAllocation) {
-          // Claimed executions depend on deferred shared-allocation contracts.
-          // Evaluate them before the interactive transaction callback returns
-          // so a rejected COMMIT cannot be reported to the caller as success.
-          await tx.$executeRawUnsafe("SET CONSTRAINTS ALL IMMEDIATE");
-        }
         return execution;
       }, {
         isolationLevel: Prisma.TransactionIsolationLevel.Serializable
@@ -4455,7 +4412,8 @@ export class PaymentRequestService {
           voucherFileId,
           wagePayableBindings,
           payerAttestation,
-          observationSelectionRef
+          observationSelectionRef,
+          bankReceiptReference: input.bankReceiptReference
         });
         if (concurrentExecution) {
           return wagePayableBindings.length > 0
@@ -4795,166 +4753,6 @@ export class PaymentRequestService {
     });
   }
 
-  private async createWagePayableBindings(
-    tx: Prisma.TransactionClient,
-    paymentExecutionId: string,
-    payment: PaymentExecutionLockRow,
-    actorUserId: string,
-    bindings: readonly NormalizedWagePayableBinding[]
-  ) {
-    if (!bindings.length) return;
-    await this.persistWagePayableBindings(
-      tx,
-      paymentExecutionId,
-      payment,
-      actorUserId,
-      bindings,
-      true
-    );
-  }
-
-  private async persistWagePayableBindings(
-    tx: Prisma.TransactionClient,
-    paymentExecutionId: string,
-    payment: PaymentExecutionLockRow,
-    actorUserId: string,
-    bindings: readonly NormalizedWagePayableBinding[],
-    create: boolean
-  ) {
-    const bindingClient = (tx as unknown as {
-      paymentExecutionWagePayableBinding?: {
-        findMany(args: {
-          where: Record<string, unknown>;
-          select: Record<string, boolean>;
-        }): Promise<Array<{ wagePayableRefId: string; amountCents: bigint }>>;
-        create(args: { data: Record<string, unknown> }): Promise<unknown>;
-      };
-    }).paymentExecutionWagePayableBinding;
-    if (!bindingClient) {
-      throw new ConflictException("工资债权关联服务暂不可用，请稍后重试");
-    }
-    if (payment.contractTypeKey !== "labor_subcontract") {
-      throw new ConflictException("工资债权关联仅适用于劳动分包付款");
-    }
-    const payableRefIds = bindings.map((binding) => binding.payableRef);
-    const existingForExecution = await bindingClient.findMany({
-      where: { paymentExecutionId },
-      select: { wagePayableRefId: true, amountCents: true }
-    });
-    if (create && existingForExecution.length > 0) {
-      throw new ConflictException("实际付款的工资债权关联已存在，请使用原幂等键重试");
-    }
-    if (!create) {
-      if (
-        existingForExecution.length !== bindings.length ||
-        existingForExecution.some((existing) => {
-          const requested = bindings.find(
-            (binding) => binding.payableRef === existing.wagePayableRefId
-          );
-          return !requested || requested.amountCents !== existing.amountCents;
-        })
-      ) {
-        throw new ConflictException("幂等键已用于不同工资债权关联载荷");
-      }
-      return;
-    }
-
-    // Wage statement projection writers and payment writers use the same
-    // deterministic reference order. Locking the refs before reading their
-    // existing bridges prevents two installments from oversubscribing a ref.
-    for (const payableRefId of [...payableRefIds].sort()) {
-      await tx.$queryRaw(
-        Prisma.sql`SELECT "id" FROM "WagePayableRef" WHERE "id" = ${payableRefId} FOR UPDATE`
-      );
-    }
-    const payableRows = await tx.wagePayableRef.findMany({
-      where: { id: { in: payableRefIds } },
-      include: {
-        confirmedVersion: { select: { status: true } },
-        creditorBreakdown: {
-          select: {
-            creditorSubjectType: true,
-            creditorUserId: true,
-            creditorBusinessPartyVersionId: true,
-            creditorSubjectIdentityKey: true,
-            creditorNameSnapshot: true,
-            creditorUnifiedIdentitySnapshot: true,
-            creditorVersionFingerprint: true
-          }
-        },
-        adjustments: { select: { direction: true, amountCents: true } }
-      }
-    });
-    const payableById = new Map(payableRows.map((row) => [row.id, row]));
-    if (payableById.size !== payableRefIds.length) {
-      throw new ConflictException("工资债权关联引用不存在或已变化");
-    }
-    const historicalBindings = await bindingClient.findMany({
-      where: { wagePayableRefId: { in: payableRefIds } },
-      select: { wagePayableRefId: true, amountCents: true }
-    });
-    const historicalAmountByRef = new Map<string, bigint>();
-    for (const binding of historicalBindings) {
-      historicalAmountByRef.set(
-        binding.wagePayableRefId,
-        (historicalAmountByRef.get(binding.wagePayableRefId) ?? 0n) + binding.amountCents
-      );
-    }
-
-    for (const binding of bindings) {
-      const payable = payableById.get(binding.payableRef)!;
-      const registered = payableSourceAdapterRegistry.require("wage_payable_ref").toRegisteredPayable(payable);
-      if (
-        registered.beneficiaryProjectId !== payment.projectId ||
-        registered.debtorCompanyId !== payment.companyEntityIdSnapshot
-      ) {
-        throw new ConflictException("工资债权关联的公司或项目与付款申请不一致");
-      }
-      const effectiveAmountCents = deriveEffectiveWagePayableAmount(
-        payable.amountCents,
-        payable.adjustments
-      );
-      if (
-        (historicalAmountByRef.get(binding.payableRef) ?? 0n) + binding.amountCents >
-        effectiveAmountCents
-      ) {
-        throw new ConflictException("工资债权关联金额超过该应付引用当前有效余额");
-      }
-      const creditor = payable.creditorBreakdown;
-      if (!creditor.creditorVersionFingerprint?.trim()) {
-        throw new ConflictException("工资债权关联缺少主体版本指纹");
-      }
-      const subjectPrefix = `${registered.payeeSubjectType}:`;
-      if (!registered.payeeSubjectId.startsWith(subjectPrefix)) {
-        throw new ConflictException("工资债权关联主体身份快照不完整");
-      }
-      const subjectId = registered.payeeSubjectId.slice(subjectPrefix.length);
-      if (!subjectId) throw new ConflictException("工资债权关联主体身份快照不完整");
-      await bindingClient.create({
-        data: {
-          id: randomUUID(),
-          paymentExecutionId,
-          wagePayableRefId: binding.payableRef,
-          debtorCompanyId: registered.debtorCompanyId,
-          debtorCompanySnapshot: jsonSafe(payable.debtorCompanySnapshot) as Prisma.InputJsonValue,
-          projectId: registered.beneficiaryProjectId,
-          projectSnapshot: jsonSafe(payable.projectSnapshot) as Prisma.InputJsonValue,
-          creditorSubjectType: registered.payeeSubjectType,
-          creditorUserId: registered.payeeSubjectType === "employee_user" ? subjectId : null,
-          creditorBusinessPartyVersionId: registered.payeeSubjectType === "business_party" ? subjectId : null,
-          creditorSubjectIdentityKey: registered.payeeSubjectId,
-          creditorNameSnapshot: creditor.creditorNameSnapshot,
-          creditorUnifiedIdentitySnapshot: creditor.creditorUnifiedIdentitySnapshot,
-          creditorVersionFingerprint: creditor.creditorVersionFingerprint,
-          creditorSnapshot: jsonSafe(payable.creditorSnapshot) as Prisma.InputJsonValue,
-          amountCents: binding.amountCents,
-          currencyCode: "CNY",
-          createdByUserId: actorUserId
-        }
-      });
-    }
-  }
-
   private async lockPaymentExecutionReceipt(
     tx: Prisma.TransactionClient,
     idempotencyKey: string
@@ -4979,6 +4777,7 @@ export class PaymentRequestService {
       wagePayableBindings: readonly NormalizedWagePayableBinding[];
       payerAttestation: NormalizedPayerAttestation | null;
       observationSelectionRef: string | null;
+      bankReceiptReference?: string;
     }
   ) {
     const payment = await tx.paymentRequest.findFirst({
@@ -5048,6 +4847,9 @@ export class PaymentRequestService {
           select: { wagePayableRefId: true, amountCents: true }
         })
       : [];
+    if (persistedBindings.length > 0 || input.wagePayableBindings.length > 0) {
+      await this.assertCurrentProjectFinanceStaff(tx, input.actorUserId, payment.projectId);
+    }
     if (
       persistedBindings.length !== input.wagePayableBindings.length ||
       persistedBindings.some((persisted) => {
@@ -5058,6 +4860,19 @@ export class PaymentRequestService {
       })
     ) {
       throw new ConflictException("幂等键已用于不同工资债权关联载荷");
+    }
+
+    if (persistedBindings.length > 0 && !input.observationSelectionRef) {
+      const bankReceiptReference = optionalTrimmedText(input.bankReceiptReference);
+      const contractClaim = await tx.contractBankEventClaim.findUnique({
+        where: { sourceType_sourceId: { sourceType: "payment_execution", sourceId: existing.id } }
+      });
+      const bank = contractClaim
+        ? await tx.verifiedBankTransactionObservation.findUnique({ where: { id: contractClaim.observationId } })
+        : null;
+      if ((contractClaim && !bank) || (bank?.reference ?? null) !== bankReceiptReference) {
+        throw new ConflictException("原实付银行流水引用已变化，不能复用提交凭据");
+      }
     }
 
     const claimClient = (tx as unknown as {
@@ -5151,6 +4966,7 @@ export class PaymentRequestService {
     wagePayableBindings: readonly NormalizedWagePayableBinding[];
     payerAttestation: NormalizedPayerAttestation | null;
     observationSelectionRef: string | null;
+    bankReceiptReference?: string;
   }): Promise<PaymentExecutionFactRow | null> {
     if (!this.prisma) return null;
     return this.prisma.$transaction(async (tx) => {

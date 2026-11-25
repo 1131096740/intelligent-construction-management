@@ -680,146 +680,52 @@ name: "签批人甲",
     expect(auth.confirmPassword).not.toHaveBeenCalled();
   });
 
-  it("freezes multiple employee and business-party wage creditors on one payment execution", async () => {
-    const fixture = hardenedPaymentExecutionFixture();
-    const employeeRef = "00000000-0000-4000-8000-000000000032";
-    const institutionRef = "00000000-0000-4000-8000-000000000033";
-    const wagePayableRow = (input: {
-      id: string;
-      subjectType: "employee_user" | "business_party";
-      identityKey: string;
-      name: string;
-      amountCents: bigint;
-    }) => ({
-      id: input.id,
-      confirmedVersionId: "version-1",
-      projectAllocationId: "project-allocation-1",
-      creditorBreakdownId: `creditor-${input.id}`,
-      debtorCompanyId: "company-1",
-      costBearingCompanyId: "company-1",
-      projectId: "project-1",
-      personLineId: "person-line-1",
-      amountCents: input.amountCents,
-      direction: "increase",
-      adjustsPayableRefId: null,
-      debtorCompanySnapshot: { companyId: "company-1" },
-      projectSnapshot: { projectId: "project-1" },
-      creditorSnapshot: {
-        subjectType: input.subjectType,
-        identityKey: input.identityKey,
-        name: input.name
-      },
-      confirmedVersion: { status: "confirmed" },
-      creditorBreakdown: {
-        creditorSubjectType: input.subjectType,
-        creditorUserId: input.subjectType === "employee_user" ? "user-1" : null,
-        creditorBusinessPartyVersionId: input.subjectType === "business_party" ? "party-version-1" : null,
-        creditorSubjectIdentityKey: input.identityKey,
-        creditorNameSnapshot: input.name,
-        creditorUnifiedIdentitySnapshot: input.subjectType === "business_party" ? "统一社会信用代码-1" : null,
-        creditorVersionFingerprint: "version-fingerprint-1"
-      },
-      adjustments: []
-    });
-    const payableRows = [
-      wagePayableRow({
-        id: employeeRef,
-        subjectType: "employee_user",
-        identityKey: "employee_user:user-1",
-        name: "员工冻结名",
-        amountCents: 20_000n
-      }),
-      wagePayableRow({
-        id: institutionRef,
-        subjectType: "business_party",
-        identityKey: "business_party:party-version-1",
-        name: "代发机构冻结名",
-        amountCents: 10_000n
-      })
-    ];
-    const tx = fixture.tx as typeof fixture.tx & {
-      wagePayableRef: { findMany: jest.Mock };
-      paymentExecutionWagePayableBinding: { findMany: jest.Mock; create: jest.Mock };
-    };
-    tx.wagePayableRef = {
-      findMany: jest.fn().mockResolvedValue(payableRows)
-    };
-    tx.paymentExecutionWagePayableBinding = {
-      findMany: jest.fn().mockResolvedValue([]),
-      create: jest.fn().mockResolvedValue({})
-    };
-
+  it("returns 410 for new wage bindings before creating ordinary payment facts", async () => {
+    const { tx, prisma, payment } = hardenedPaymentExecutionFixture();
+    tx.$queryRaw.mockReset().mockResolvedValue([payment]);
     const paymentService = paymentExecutionService(
-      new PaymentAmountService(),
-      fixture.prisma as never,
-      audit as never,
-      fileAccess as never,
-      auth as never,
-      undefined,
-      undefined,
-      projectFunding as never
+      new PaymentAmountService(), prisma as never, audit as never, fileAccess as never, auth as never,
+      undefined, undefined, projectFunding as never
     );
-
-    const result = await paymentService.recordExecution("FK-2026-012", "cashier-1", {
-      ...paymentExecutionCoordinates,
-      amountCents: "30000",
-      paidAt: "2026-06-22T00:00:00.000Z",
-      voucherFileId: "file-1",
-      confirmationPassword: "current-password",
-      wagePayableBindings: [
-        { payableRef: employeeRef, amountCents: "20000" },
-        { payableRef: institutionRef, amountCents: "10000" }
+    const module = await Test.createTestingModule({
+      controllers: [PaymentController],
+      providers: [
+        { provide: PaymentRequestService, useValue: paymentService },
+        { provide: PaymentReadService, useValue: {} },
+        { provide: ProjectVisibilityService, useValue: {} },
+        { provide: FileService, useValue: fileAccess }
       ]
+    }).compile();
+    const app = module.createNestApplication({ logger: false });
+    app.use((request: { user?: unknown }, _response: unknown, next: () => void) => {
+      request.user = { id: "cashier-1" };
+      next();
     });
-
-    expect(result).toEqual({
-      amountCents: "30000",
-      paidAt: new Date("2026-06-22T00:00:00.000Z"),
-      paymentSubjectType: "our_company"
-    });
-    for (const forbiddenField of [
-      "id",
-      "idempotencyKey",
-      "paymentRequestId",
-      "settlementId",
-      "executedByUserId",
-      "voucherFileId",
-      "companyEntityIdSnapshot",
-      "companyEntityNameSnapshot",
-      "companyEntityCreditCodeSnapshot"
-    ]) {
-      expect(result).not.toHaveProperty(forbiddenField);
+    try {
+      await app.listen(0, "127.0.0.1");
+      const body = {
+        ...paymentExecutionCoordinates, amountCents: "30000", paidAt: "2026-06-22T00:00:00.000Z",
+        voucherFileId: "file-1", confirmationPassword: "current-password",
+        wagePayableBindings: [
+          { payableRef: "00000000-0000-4000-8000-000000000032", amountCents: "20000" },
+          { payableRef: "00000000-0000-4000-8000-000000000033", amountCents: "10000" }
+        ]
+      };
+      const post = () => fetch(`${url}/payments/FK-2026-012/executions`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
+      });
+      const url = await app.getUrl();
+      expect((await post()).status).toBe(410);
+      tx.projectMember.findMany.mockResolvedValue([]);
+      expect((await post()).status).toBe(403);
+      expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+      expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+      expect(tx.settlement.update).not.toHaveBeenCalled();
+      expect(projectFunding.allocateExecution).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    } finally {
+      await app.close();
     }
-    expect(JSON.stringify(result)).not.toContain("execution-hardened-1");
-    const auditMetadata = audit.record.mock.calls.at(-1)?.[1]?.metadata;
-    expect(auditMetadata).toEqual(expect.objectContaining({ executionFingerprint: expect.any(String) }));
-    expect(auditMetadata).not.toHaveProperty("executionId");
-    expect(auditMetadata).not.toHaveProperty("voucherFileId");
-    expect(JSON.stringify(auditMetadata)).not.toContain("execution-hardened-1");
-
-    expect(tx.paymentExecutionWagePayableBinding.create).toHaveBeenCalledTimes(2);
-    expect(tx.paymentExecutionWagePayableBinding.create).toHaveBeenNthCalledWith(1, {
-      data: expect.objectContaining({
-        paymentExecutionId: "execution-hardened-1",
-        wagePayableRefId: employeeRef,
-        creditorSubjectType: "employee_user",
-        creditorUserId: "user-1",
-        creditorBusinessPartyVersionId: null,
-        creditorSubjectIdentityKey: "employee_user:user-1",
-        amountCents: 20_000n
-      })
-    });
-    expect(tx.paymentExecutionWagePayableBinding.create).toHaveBeenNthCalledWith(2, {
-      data: expect.objectContaining({
-        paymentExecutionId: "execution-hardened-1",
-        wagePayableRefId: institutionRef,
-        creditorSubjectType: "business_party",
-        creditorUserId: null,
-        creditorBusinessPartyVersionId: "party-version-1",
-        creditorSubjectIdentityKey: "business_party:party-version-1",
-        amountCents: 10_000n
-      })
-    });
   });
 
   it.each([
@@ -847,61 +753,14 @@ name: "签批人甲",
     const fault = activeProxy ? scenario.slice("active_proxy_".length) : scenario;
     const fixture = hardenedPaymentExecutionFixture();
     const tx = fixture.tx as typeof fixture.tx & {
-      $executeRawUnsafe: jest.Mock;
-      wagePayableRef: { findMany: jest.Mock };
-      paymentExecutionWagePayableBinding: {
-        findMany: jest.Mock;
-        create: jest.Mock;
-      };
-      paymentExecutionPayerVerification: { findUnique: jest.Mock };
+      paymentExecutionPayerVerification: { findUnique: jest.Mock; findUniqueOrThrow: jest.Mock };
       companyEntity: { findUnique: jest.Mock };
       companyEntityVersion: { findUnique: jest.Mock };
       fileObject: { findUnique: jest.Mock };
       paymentExecutionPayerAttestation: { create: jest.Mock };
     };
     const verifiedAt = new Date("2026-06-20T00:00:00.000Z");
-    tx.$executeRawUnsafe = jest.fn().mockResolvedValue(0);
-    tx.wagePayableRef = {
-      findMany: jest.fn().mockResolvedValue([
-        {
-          id: "00000000-0000-4000-8000-000000000034",
-          confirmedVersionId: "version-1",
-          projectAllocationId: "project-allocation-1",
-          creditorBreakdownId: "creditor-1",
-          debtorCompanyId: "company-1",
-          costBearingCompanyId: "company-1",
-          projectId: "project-1",
-          personLineId: "person-line-1",
-          amountCents: 30_000n,
-          direction: "increase",
-          adjustsPayableRefId: null,
-          debtorCompanySnapshot: { companyId: "company-1" },
-          projectSnapshot: { projectId: "project-1" },
-          creditorSnapshot: {
-            subjectType: "employee_user",
-            identityKey: "employee_user:user-1",
-            name: "测试员工"
-          },
-          confirmedVersion: { status: "confirmed" },
-          creditorBreakdown: {
-            creditorSubjectType: "employee_user",
-            creditorUserId: "user-1",
-            creditorBusinessPartyVersionId: null,
-            creditorSubjectIdentityKey: "employee_user:user-1",
-            creditorNameSnapshot: "测试员工",
-            creditorUnifiedIdentitySnapshot: null,
-            creditorVersionFingerprint: "version-fingerprint-1"
-          },
-          adjustments: []
-        }
-      ])
-    };
-    tx.paymentExecutionWagePayableBinding = {
-      findMany: jest.fn().mockResolvedValue([]),
-      create: jest.fn().mockResolvedValue({})
-    };
-    tx.paymentExecutionPayerVerification = {
-      findUnique: jest.fn().mockResolvedValue({
+    const verification = {
         id: "payer-verification-1",
         reference: "server-payer-verification-reference",
         holderCompanyEntityId: activeProxy ? "company-active-proxy" : fault === "foreign" ? "company-new" : "company-1",
@@ -915,7 +774,10 @@ name: "签批人甲",
         status: fault === "revoked" ? "revoked" : "verified",
         sourceType: "bank_account_legal_holder",
         sourceRecordId: "bank-source-record-1"
-      })
+    };
+    tx.paymentExecutionPayerVerification = {
+      findUnique: jest.fn().mockResolvedValue(verification),
+      findUniqueOrThrow: jest.fn().mockResolvedValue(verification)
     };
     tx.user.findUnique = jest.fn().mockResolvedValue({ id: "user", isActive: true, name: "签批人甲" });
     tx.userPosition.findMany = jest.fn(
@@ -954,12 +816,6 @@ name: "签批人甲",
       });
       tx.fileObject.findUnique.mockImplementation(({ where }: { where: { id: string } }) => Promise.resolve({ id: where.id, uploadedByUserId: where.id === "authorization-evidence" ? "reauthorizer" : "finance-director-1", storageStatus: "active", contentSha256: "a".repeat(64) }));
     }
-    const sharedAllocations = {
-      materializeInTransaction: jest.fn().mockResolvedValue({
-        allocationLineCount: 1
-      }),
-      assertReplayInTransaction: jest.fn()
-    };
     const operatingSources = {
       appendConfirmedSourceIfEnabledInTransaction: jest.fn()
     };
@@ -973,8 +829,7 @@ name: "签批人甲",
       undefined,
       projectFunding as never,
       undefined,
-      operatingSources as never,
-      sharedAllocations as never
+      operatingSources as never
     );
 
     const payload = {
@@ -983,22 +838,14 @@ name: "签批人甲",
       paidAt: "2026-06-22T00:00:00.000Z",
       voucherFileId: "file-1",
       confirmationPassword: "current-password",
-      observationSelectionRef: fault === "no_attestation" ? undefined : "server-signed-observation-selection",
-      bankReceiptReference: fault === "no_attestation" ? "server-bank-reference" : undefined,
+      bankReceiptReference: "server-bank-reference",
       payerAttestation: fault === "no_attestation" ? undefined : {
         bankAccountReference: "server-payer-verification-reference",
         ...(activeProxy ? { authorization: { reason: "已有批准的跨主体代付", evidenceFileId: "authorization-evidence", reauthorizationReference: "reauth-action", reauthorizedByUserId: "reauthorizer", reauthorizedAt: "2026-06-20T00:00:00Z" } } : {})
-      },
-      wagePayableBindings: [
-        {
-          payableRef: "00000000-0000-4000-8000-000000000034",
-          amountCents: "30000"
-        }
-      ]
+      }
     };
     if (error) {
       await expect(paymentService.recordExecution("FK-2026-012", "cashier-1", payload)).rejects.toThrow(error);
-      expect(sharedAllocations.materializeInTransaction).not.toHaveBeenCalled();
       expect(tx.paymentRequest.update).not.toHaveBeenCalled();
       if (activeProxy) {
         expect(tx.paymentExecution.create).not.toHaveBeenCalled();
@@ -1026,35 +873,12 @@ name: "签批人甲",
         verificationEvidenceContentSha256: "a".repeat(64)
       })
     });
-    expect(sharedAllocations.materializeInTransaction).toHaveBeenCalledWith(tx, {
-      actorUserId: "cashier-1",
-      auditRequestId: paymentExecutionCoordinates.idempotencyKey,
-      observationSelectionRef: "server-signed-observation-selection",
-      paymentExecutionId: "execution-hardened-1",
-      paymentRequestId: "payment-1",
-      projectId: "project-1",
-      amountCents: 30_000n,
-      occurredAt: new Date("2026-06-22T00:00:00.000Z"),
-      wagePayableBindings: [
-        {
-          payableRef: "00000000-0000-4000-8000-000000000034",
-          amountCents: 30_000n
-        }
-      ]
-    });
-    expect(projectFunding.allocateExecution).not.toHaveBeenCalled();
-    expect(
-      operatingSources.appendConfirmedSourceIfEnabledInTransaction
-    ).not.toHaveBeenCalled();
-    expect(tx.$executeRawUnsafe).toHaveBeenCalledWith(
-      "SET CONSTRAINTS ALL IMMEDIATE"
-    );
-    expect(
-      sharedAllocations.materializeInTransaction.mock.invocationCallOrder[0]
-    ).toBeLessThan(tx.paymentRequest.update.mock.invocationCallOrder[0]);
-    expect(audit.record.mock.invocationCallOrder[0]).toBeLessThan(
-      tx.$executeRawUnsafe.mock.invocationCallOrder[0]
-    );
+    expect(projectFunding.allocateExecution).toHaveBeenCalledWith(tx, expect.objectContaining({
+      projectId: "project-1", executionId: "execution-hardened-1", amountCents: 30_000n
+    }));
+    expect(tx.paymentRequest.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "partially_paid", paidAmountCents: 30_000n })
+    }));
   });
 
   it("rejects payment request creation when the service is unavailable", async () => {
@@ -1104,6 +928,7 @@ name: "签批人甲",
             companyEntityCreditCodeSnapshot: "91310000TEST000001"
           })
         },
+        contractBankEventClaim: { findUnique: jest.fn().mockResolvedValue(null) },
         paymentExecutionWagePayableBinding: {
           findMany: jest.fn().mockResolvedValue([{
             wagePayableRefId: "00000000-0000-4000-8000-000000000031",
@@ -1141,6 +966,64 @@ name: "签批人甲",
       });
     }
   );
+
+  it("replays only the frozen wage binding and bank reference for the original current project actor", async () => {
+    const { tx, createdExecution, prisma } = hardenedPaymentExecutionFixture();
+    tx.paymentExecution.findUnique.mockResolvedValue(createdExecution);
+    const payableRef = "00000000-0000-4000-8000-000000000031";
+    const bindings = [{ wagePayableRefId: payableRef, amountCents: 30_000n }];
+    const contractClaim = { observationId: "bank-observation-1" };
+    Object.assign(tx, {
+      paymentExecutionWagePayableBinding: { findMany: jest.fn().mockResolvedValue(bindings) },
+      contractBankEventClaim: { findUnique: jest.fn().mockResolvedValue(contractClaim) },
+      verifiedBankTransactionObservation: { findUnique: jest.fn().mockResolvedValue({ reference: "original-bank" }) }
+    });
+    const actual = paymentExecutionService(
+      new PaymentAmountService(), prisma as never, audit as never, fileAccess as never, auth as never,
+      undefined, undefined, projectFunding as never
+    );
+    const input = {
+      ...paymentExecutionCoordinates, amountCents: "30000", paidAt: "2026-06-22T00:00:00.000Z",
+      voucherFileId: "file-1", confirmationPassword: "current-password", bankReceiptReference: "original-bank",
+      wagePayableBindings: [{ payableRef, amountCents: "30000" }]
+    };
+
+    await expect(actual.recordExecution("FK-2026-012", "cashier-1", input)).resolves.toEqual({
+      amountCents: "30000", paidAt: createdExecution.paidAt, paymentSubjectType: "our_company"
+    });
+    await expect(actual.recordExecution("FK-2026-012", "cashier-1", {
+      ...input, wagePayableBindings: [{ payableRef: "00000000-0000-4000-8000-000000000032", amountCents: "30000" }]
+    })).rejects.toMatchObject({ status: 409 });
+    await expect(actual.recordExecution("FK-2026-012", "cashier-1", {
+      ...input, bankReceiptReference: undefined
+    })).rejects.toMatchObject({ status: 409 });
+
+    tx.projectMember.findMany.mockResolvedValue([]);
+    await expect(actual.recordExecution("FK-2026-012", "cashier-1", input)).rejects.toMatchObject({ status: 403 });
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+    expect(tx.paymentRequest.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("replays ordinary payments with a bank reference through the existing receipt path", async () => {
+    const { tx, createdExecution, prisma } = hardenedPaymentExecutionFixture();
+    tx.paymentExecution.findUnique.mockResolvedValue(createdExecution);
+    const contractClaim = { findUnique: jest.fn().mockResolvedValue(null) };
+    Object.assign(tx, { contractBankEventClaim: contractClaim });
+    const service = paymentExecutionService(
+      new PaymentAmountService(), prisma as never, audit as never, fileAccess as never, auth as never,
+      undefined, undefined, projectFunding as never
+    );
+
+    await expect(service.recordExecution("FK-2026-012", "cashier-1", {
+      ...paymentExecutionCoordinates, amountCents: "30000", paidAt: "2026-06-22T00:00:00.000Z",
+      voucherFileId: "file-1", confirmationPassword: "current-password", bankReceiptReference: "ordinary-bank-reference"
+    })).resolves.toMatchObject({
+      id: createdExecution.id, amountCents: "30000", paidAt: createdExecution.paidAt, paymentSubjectType: "our_company"
+    });
+    expect(contractClaim.findUnique).not.toHaveBeenCalled();
+    expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+  });
 
   it("maps explicit PostgreSQL 40001 but preserves 40P01 on payment execution", async () => {
     const serialization = {
