@@ -88,6 +88,11 @@ if options:
         subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                         str(work / relative), str(Path(__file__).with_name(delta))], check=True)
 if options == ['--text-direct-330']:
+    spec = work / 'services/api/src/database/company-proxy-repayment.http.pg.spec.ts'
+    verify(spec.read_bytes(), '54740e4a9fcef9c331eaf2943b850d29a6438bdb06a47a854511effc7c8db6cc', spec.name)
+    subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent', str(spec),
+                    str(Path(__file__).with_name('task410-signed-settlement-330.patch'))], check=True)
+    verify(spec.read_bytes(), '4a0279858087eddb69d5bb5692d261ec90ba83b343649ece908265ae11116401', spec.name)
     for relative, delta, earlier, final in [
         ('services/api/prisma/run-task398-shared-standard-local.cjs', 'task410-runner-330.patch',
          '6861d210dfa7c70e3e79f2eaaf3a25e6665cfe829469400afbfc2095204511e7',

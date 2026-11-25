@@ -39,7 +39,6 @@
   "services/api/src/contract/contract.controller.ts": "22ad5d74f1d9566e03bfda5935e87ee3aa70b1e622e64b84bb845ece3e49cddf",
   "services/api/src/contract/contract.module.ts": "5a4cad5586302ddffe5fed14d2a8fe4b078b1f4242e837f48a278c7a0bd43132",
   "services/api/src/database/direct-payment-capacity-concurrency.spec.ts": "a29c42e5969183edbf80cb0677db37f45efe11cedc1704b1826af95da0be92c7",
-  "services/api/src/database/task16-registration-error-diagnostic.ts": "06842e282a57ead889a4e66c464f750b1e5677951ee2ee54bce8fbaf4b20e18f",
   "services/api/src/database/task16-shared-standard-fixture.ts": "9a596a48851f73b80d45eccd2ffcf95d5c52b5af0f8df86f16c3d35148065cb3",
   "services/api/src/fund-movement/fund-movement.service.ts": "d34592585082c223b383520253e32e289551d28e9ca604ea9e1415b8cf2976de",
   "services/api/src/me/me.service.ts": "cdccd68bde81f461dc4bbe7cd1b6d94f8a399eb4465ddf9c84f0c0c727aa6ae3",

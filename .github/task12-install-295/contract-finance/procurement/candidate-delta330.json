@@ -200,11 +200,6 @@
     "candidate": "a29c42e5969183edbf80cb0677db37f45efe11cedc1704b1826af95da0be92c7"
   },
   {
-    "path": "services/api/src/database/task16-registration-error-diagnostic.ts",
-    "expected": "4e9143963a5c14e28b818d1693a7e8273d0981d537bc4863f5a904a3a398764f",
-    "candidate": "06842e282a57ead889a4e66c464f750b1e5677951ee2ee54bce8fbaf4b20e18f"
-  },
-  {
     "path": "services/api/src/database/task16-shared-standard-fixture.ts",
     "expected": "a89ccc4373a973d88c67b93c75b2d0072aa745a81c6b9c47401febdcf0822dc7",
     "candidate": "9a596a48851f73b80d45eccd2ffcf95d5c52b5af0f8df86f16c3d35148065cb3"

@@ -9,7 +9,6 @@ import { apiJsonReplacer } from "../api-json-replacer";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { buildRegisteredPgFixturePlan } from "./registered-payment-postgres.fixture";
 import { PrismaService } from "./prisma.service";
-import { loadSignedSettlementPaymentBasis } from "../payment/signed-settlement-payment-capacity";
 import { armTask16RegistrationError, takeTask16RegistrationError, Task16RegistrationErrorFilter } from "./task16-registration-error-diagnostic";
 import { seedSharedPaymentPredecessors } from "./task16-shared-standard-fixture";
 
@@ -195,94 +194,6 @@ run("records a two-part text agreement payment with original replay, real refund
         expect.objectContaining({ sourceBusinessId: id, impactKind, amountCents: 6_000n })))));
     expect(await owner.paymentTermsStage.count({ where: { paymentTermsVersionId: plan.ids.terms } })).toBe(0);
     expect(await owner.settlement.count({ where: { contractId: plan.ids.contract } })).toBe(0);
-
-    const rounding = buildRegisteredPgFixturePlan(runId.slice(12, 24), plan.paidAt, plan.openingDate);
-    const roundingActors = await seedSharedPaymentPredecessors(owner, rounding, {
-      financeHash: passwordHash, keeperHash: passwordHash, directorHash: passwordHash
-    }, process.env.FILE_STORAGE_ROOT!, true);
-    const [contractId, versionId, termsId, signedSettlementId, paymentRequestId] = Array.from({ length: 5 }, () => randomUUID());
-    const checkedAt = new Date(rounding.openingDate);
-    const company = await owner.companyEntity.findUniqueOrThrow({ where: { id: rounding.ids.companyA } });
-    const party = await owner.contractPartySnapshot.findFirstOrThrow({
-      where: { contractVersionId: rounding.ids.version, roleKey: "party_b" }, select: { businessPartyVersionId: true }
-    });
-    await owner.$transaction([
-      owner.contract.create({ data: {
-        id: contractId, projectId: rounding.ids.project, companyEntityId: company.id, companyEntityName: company.name,
-        code: `T16-${rounding.runId}-HT-R`, name: "合成四位劳务合同", counterparty: "虚构供应商",
-        contractTypeKey: "labor_subcontract", ownerUserId: rounding.ids.actor
-      } }),
-      owner.contractVersion.create({ data: {
-        id: versionId, contractId, versionNo: 1, changeType: "original", status: "effective", effectiveAt: checkedAt,
-        amountCents: 10_001n, amountYuan: "100.0050", amountLimitType: "capped", numericProtocolVersion: 2,
-        pricingNature: "fixed_total", settlementMode: "settlement_required", settlementModeSource: "contract_director",
-        settlementModeConfirmedAt: checkedAt, settlementModeConfirmedByUserId: roundingActors.director,
-        signingSubjectType: "our_company", companyEntityIdSnapshot: company.id, companyEntityVersionId: rounding.ids.companyVersionA,
-        companyEntityNameSnapshot: company.name, companyEntityCreditCodeSnapshot: company.unifiedSocialCreditCode,
-        draftData: {}, templateSnapshot: {}, clauseSnapshot: []
-      } }),
-      owner.contractPartySnapshot.create({ data: {
-        contractVersionId: versionId, roleKey: "party_b", displayOrder: 0,
-        businessPartyVersionId: party.businessPartyVersionId, snapshot: { name: "虚构供应商" }
-      } }),
-      owner.paymentTermsVersion.create({ data: {
-        id: termsId, contractId, contractVersionId: versionId, versionNo: 1, status: "effective", originalText: "按确认的结算付款"
-      } }),
-      owner.signedContractSettlement.create({ data: {
-        id: signedSettlementId, contractKind: "downstream", contractId,
-        projectId: rounding.ids.project, ownerUserId: rounding.ids.actor, number: "合成四位结算",
-        amountYuan: "100.0050", state: "confirmed", revision: 2, confirmationNo: 1n,
-        submittedAt: checkedAt, reviewedAt: checkedAt, reviewedByUserId: roundingActors.director,
-        confirmedContractSource: { sourceRecordId: versionId, sourceVersion: "1", relationship: "inside",
-          contractTypeKey: "labor_subcontract" }
-      } }),
-      owner.paymentRequest.create({ data: {
-        id: paymentRequestId, projectId: rounding.ids.project, contractId, contractVersionId: versionId,
-        paymentTermsVersionId: termsId, code: `T16-${rounding.runId}-FK-R`,
-        sourceType: "signed_settlement", signedSettlementId, signedSettlementConfirmationNo: 1n,
-        signedSettlementConfirmedYuan: "100.0050", signedSettlementContractConfirmedYuan: "100.0050",
-        signedSettlementOccupiedCents: 0n, signedSettlementBasisAt: checkedAt, paymentSubjectType: "our_company",
-        status: "approved_pending_payment", requestedAmountCents: 10_001n, approvedAmountCents: 10_001n, paidAmountCents: 0n
-      } }),
-      owner.approvalInstance.create({ data: {
-        flowType: "payment.approve", businessType: "payment_request", businessId: paymentRequestId,
-        status: "approved", currentNodeIndex: 0, frozenNodes: [], applicantUserId: rounding.ids.actor
-      } })
-    ]);
-    const roundingFinance = await login(rounding.phone);
-    const roundingScope = "company:" + rounding.ids.companyA;
-    const roundingOpening = await json("/fund-accounts/openings", roundingFinance, {
-      scopeKey: roundingScope, balanceYuan: "100.01", asOfDate: rounding.openingDate, evidenceReference: "合成资金期初",
-      reconciliationNote: "合成项目来源", reason: "四位结算按分实付复验", idempotencyKey: randomUUID(),
-      sources: [{ projectId: rounding.ids.project, amountYuan: "100.01", sourceStatus: "known", sourceName: "合成项目资金", projectStatus: "project" }]
-    });
-    expect(roundingOpening.status).toBe(201);
-    const roundingPath = "/payment-executions/" + paymentRequestId;
-    const roundingOptions = await json(roundingPath + "/registration-options", roundingFinance);
-    expect(roundingOptions).toMatchObject({ status: 200, body: { remainingAmountCents: "10001" } });
-    const roundingKey = randomUUID();
-    const roundingTicket = armTask16RegistrationError(registrationErrors, server, paymentRequestId, roundingKey);
-    let actual: Awaited<ReturnType<typeof json>>;
-    let diagnostic: ReturnType<typeof takeTask16RegistrationError>;
-    try {
-      actual = await json(roundingPath + "/registrations", roundingFinance, {
-        idempotencyKey: roundingKey, expectedPaymentUpdatedAt: roundingOptions.body.expectedPaymentUpdatedAt,
-        amountCents: "10001", paidAt: rounding.paidAt, scopeKey: roundingScope, expectedRegistrationId: roundingOpening.body.id,
-        openingTreatment: "not_included", openingReason: "付款未含期初", openingEvidence: "隔离合成证据", confirmationPassword: password,
-        sourceAllocations: [{ sourceBatchId: roundingOpening.body.sources[0].id, amountCents: "10001" }]
-      });
-    } finally {
-      diagnostic = takeTask16RegistrationError(registrationErrors, server, roundingTicket);
-    }
-    expect({ status: actual.status, diagnostic }).toEqual({ status: 201, diagnostic: undefined });
-    expect(await owner.paymentRequest.findUniqueOrThrow({ where: { id: paymentRequestId } }))
-      .toMatchObject({ status: "paid", paidAmountCents: 10_001n });
-    expect(await owner.paymentExecution.count({ where: { paymentRequestId: paymentRequestId, amountCents: 10_001n } })).toBe(1);
-    const rounded = await owner.$transaction(tx => loadSignedSettlementPaymentBasis(tx, contractId));
-    expect(rounded).toMatchObject({ confirmedCents: 10_001n, netPaidCents: 10_001n, remainingCents: 0n,
-      overpayCents: 0n, capacityShortfallCents: 0n, suspended: false });
-    expect((await owner.signedContractSettlement.findUniqueOrThrow({ where: { id: signedSettlementId } })).amountYuan?.toFixed(4))
-      .toBe("100.0050");
   } finally {
     await app?.close();
     await owner.$disconnect();
