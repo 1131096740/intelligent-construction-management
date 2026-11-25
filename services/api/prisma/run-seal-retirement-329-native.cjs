@@ -34,11 +34,13 @@ function captureSource(candidate) {
   assert.match(candidate, /^[a-f0-9]{40}$/u);
   assert.equal(git(["rev-parse", "HEAD"]).toString().trim(), candidate);
   assert.equal(tracked(), "");
-  const archive = JSON.parse(execFileSync(process.execPath,
-    [path.join(root, ".github/task12-install-295/contract-finance/check-ledger.cjs"), root, candidate, "--current-320"], { env }));
   const ledger = git(["ls-tree", "-r", "--name-only", "-z", candidate, "--", "services/api/prisma/migrations"]).toString().split("\0")
     .filter(name => name.endsWith("/migration.sql"))
     .map(name => ({ name: path.basename(path.dirname(name)), sha256: hash(fs.readFileSync(path.join(root, name))), finished: true, rolledBack: false }));
+  assert.ok(ledger.length === 329 || ledger.length === 330);
+  const mode = ledger.length === 330 ? "--text-direct-330" : "--current-320";
+  const archive = JSON.parse(execFileSync(process.execPath,
+    [path.join(root, ".github/task12-install-295/contract-finance/check-ledger.cjs"), root, candidate, mode], { env }));
   assert.equal(hash(JSON.stringify(ledger)), archive.ledgerSha256);
   return { candidate, sourceTree: archive.sourceTree, ledgerDigest: archive.ledgerSha256, ledger };
 }
@@ -105,7 +107,8 @@ function localPort() {
 }
 
 function migrationPrefixes(directory, ledger) {
-  const sizes = [203, 205, 213, 215, 218, 221, 263, 271, 289, 295, ledger.length];
+  const sizes = [203, 205, 213, 215, 218, 221, 263, 271, 289, 295, 329];
+  if (ledger.length === 330) sizes.push(330);
   return new Map(sizes.map(size => {
     const prefix = path.join(directory, "prefix-" + size);
     fs.mkdirSync(path.join(prefix, "migrations"), { recursive: true, mode: 0o700 });
@@ -182,7 +185,7 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
   deploy(263);
   verify(inspect(), 263);
   const archiveMaterial = installArchive(archive, sql, runId, port, { name: plan.appName, oid: setup.appOid, nonce: plan.nonce }, stage);
-  for (const size of [271, 289, 295, source.ledger.length]) {
+  for (const size of [271, 289, 295, 329, 330].filter(size => prefixes.has(size))) {
     deploy(size);
     verify(inspect(), size);
   }

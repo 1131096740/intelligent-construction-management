@@ -2,6 +2,10 @@
 
 ## 2026-11-25 #382 集成进度
 
+[#425 已关闭](https://github.com/1131096740/intelligent-construction-management/issues/425)。草稿 PR #428 的精确候选 `c44dd86490ec0372bad2650fc15a192708895f3f` [托管 CI 56 项全过](https://github.com/1131096740/intelligent-construction-management/actions/runs/45585497433)，包含合同资金、剩余真库和发布汇总。相同 SHA 本地回归剩余真库后半段 15 组全过，数据库及导出镜像均已回收，聚合回执 SHA-256 为 `6c8b8a1a2ba377c3baca28b52c9d6f60a2dbd75842d0a8875c965b7d8c62e390`。上一候选的本地 POL113 浏览器运行被超时终止，同 SHA 托管原 30 项和浏览器 23 项通过，保留原定手机模拟跳过 1 项。当前候选托管连同后续 POL114 通过。
+
+45 项中 43 项已关闭。已领取 [#426](https://github.com/1131096740/intelligent-construction-management/issues/426)，使用 `c44dd864` 启动隔离的合同结算治理、试运行和双浏览器角色链，并逐项核对 A01–A38。生产部署、真实短信送达和微信真机仍无验收结论。#427 等待 #426。
+
 [#424](https://github.com/1131096740/intelligent-construction-management/issues/424) 的授权备份开发演练已关闭。草稿 PR #428 的精确候选 `218960714acdc9ef37141402747b3700fa5764de` [CI 56 项通过](https://github.com/1131096740/intelligent-construction-management/actions/runs/45428642921)。同提交的隔离 PostgreSQL 16 回执核对了六类旧业务来源和 46 张正式账簿。11 月 24 日 03:00:01 的备份中，合同、普通合同付款和现货采购付款的目标在途记录均为零。正式冻写后须用同判据重查。异地数据库日备、同点 25 份附件及非生产 COS 版本恢复已核实。[演练证据索引](docs/progress/2026-11-24-issue-424.md#恢复与切换证据索引)
 
 45 项子工单中 42 项已关闭。#425 按依赖推进。项目支出旧收货确认在 `e4ede471111ad99a5f3680051541e75630ef8acd` 返回 410，历史收货状态和作废限制保持可查，采购执行与财务入账继续可用。精确候选通过 329 隔离数据库当前应用、历史记录保留和七项拒绝检查，以及桌面、移动浏览器回归，已在本地合入 `fc459cdca621d7d61cdced6e9099b04760de5017`。真库运行日志 SHA-256 为 `688cbc78d1c2031d613efe8df81f759a26cf7ea17aa0f1e56dcd90333c548818`。
