@@ -3,8 +3,8 @@
 @@ -215,4 +215,14 @@
   const requirements=require("./task16-current259-voucher-acl.requirements.json");
   const plan=runtimePlan();
-+ // The owned 329 browser reads use late-migration facts projected by the API.
-+ const browserReads=browserScenario&&ownedMigrationBaseline?.expectedDirectoryCount===329?{
++ // The current browser reads use late-migration facts projected by the API.
++ const browserReads=browserScenario&&[329,330].includes(ownedMigrationBaseline?.expectedDirectoryCount)?{
 +  PaymentExecutionRefund:["id","paymentRequestId","paymentExecutionId","amountCents","receivedAt","fundRegistrationId"],
 +  PaymentExecutionCorrection:["id","paymentRequestId","amountDeltaCents","status"],
 +  OperatingCostAttributionConfirmation:["id","projectId","status","operatingFactId","companyEntityVersionId","companyNameSnapshot"]
