@@ -234,9 +234,12 @@ it.each([
   }
 
   const original = "22222222-2222-4222-8222-222222222222";
-  logs.push({ id: original, approvalInstanceId: "flow", actorUserId: "owner", action: "remind",
-    createdAt: new Date(0), metadata: { kind: "sms_request", currentNodeIndex: 0, recipientIds: ["first"] }
-  } as ApprovalActionLog);
+  logs.push({
+    id: original, approvalInstanceId: "flow", actorUserId: "owner", action: "remind",
+    createdAt: new Date(0), metadata: { kind: "sms_request", currentNodeIndex: 0, recipientIds: ["first"] },
+    comment: null, approvedRoleKey: null, representedUserId: null, signatureFileIdSnapshot: null,
+    signatureSha256Snapshot: null, signatureVersionIdSnapshot: null
+  });
   expect(detail.remindableRecipients).toEqual([]);
   await expect(service.remind("flow", "owner", requestId, detail.reminderToken)).rejects.toMatchObject({ status: 410 });
   await expect(service.remind("flow", "stranger", original, detail.reminderToken)).rejects.toMatchObject({ status: 404 });
