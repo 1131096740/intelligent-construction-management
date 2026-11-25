@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { ledgerSha256: predecessor332 } = require('./upward-archive-332-profile.cjs');
+const predecessor332 = 'b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4';
 
 const mode = 'historical-takeover-333';
 const installerSha256 = '0af924527e7f6fdb70c51348ee0567f51f722da9035467341c43df53737aa420';

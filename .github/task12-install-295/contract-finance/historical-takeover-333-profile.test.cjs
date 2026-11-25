@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
-const { assertCatalog, assertSource, ledgerSha256, predecessor332, terminal, mode } = require('./historical-takeover-333-profile.cjs');
+const { assertCatalog, assertSource, ledgerSha256, terminal, mode } = require('./historical-takeover-333-profile.cjs');
 
 const catalog = (after) => ({
   ContractTakeover_level_check: {
@@ -27,7 +27,7 @@ const catalog = (after) => ({
 
 test('binds 333 to the old 332 ledger and rejects another terminal migration', () => {
   const source = { mode, sourceSha: 'a'.repeat(40), sourceTree: 'b'.repeat(40), migrationCount: 333, ledgerSha256,
-    predecessor332: { migrationCount: 332, ledgerSha256: predecessor332 }, predecessor: { migrationCount: 295, ledgerSha256: 'fixture' },
+    predecessor332: { migrationCount: 332, ledgerSha256: "b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4" }, predecessor: { migrationCount: 295, ledgerSha256: 'fixture' },
     tails: [...Array(37), { ...terminal, finished: true, rolledBack: false }] };
   assertSource(source, 'fixture');
   assert.throws(() => assertSource({ ...source, predecessor332: { ...source.predecessor332, ledgerSha256: 'wrong' } }, 'fixture'));

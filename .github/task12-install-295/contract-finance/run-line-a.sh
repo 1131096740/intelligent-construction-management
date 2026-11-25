@@ -49,9 +49,7 @@ for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof
 done
 
 if [[ "$entry" == historical-takeover-333-entry.cjs ]]; then
-  for file in historical-takeover-333-profile.cjs upward-archive-332-profile.cjs; do
-    args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
-  done
+  args+=(--mount "type=bind,src=$plan/historical-takeover-333-profile.cjs,dst=/qualification/historical-takeover-333-profile.cjs,readonly")
 fi
 
 [[ -z $(docker ps -q) ]] || exit 65
