@@ -1,0 +1,36 @@
+--- onboarding-full.cjs
++++ onboarding-full.cjs
+@@ -21,6 +21,17 @@
+   if (!condition) throw new Error('ONBOARDING_CANVAS_'+stage);
+ }
+
++function observeMemory() {
++  const read = file => {
++    try { return fs.readFileSync('/sys/fs/cgroup/'+file,'utf8').trim(); }
++    catch { return ''; }
++  };
++  const bytes = file => /^(?:max|\d{1,16})$/u.test(file) ? file : null;
++  const events = Object.fromEntries([...read('memory.events').matchAll(
++    /^(oom|oom_kill|oom_group_kill) (\d{1,12})$/gmu)].map(([,key,value])=>[key,Number(value)]));
++  return {limitBytes:bytes(read('memory.max')),peakBytes:bytes(read('memory.peak')),events};
++}
++
+ async function run(context, receipt) {
+   const { database, runId } = context;
+   const url = new URL(context.onboardingUrl);
+@@ -80,12 +91,15 @@
+       const args=[path.join(api,'node_modules/jest/bin/jest.js'),'--runInBand','--json','--runTestsByPath',
+         ...entries.map(([file])=>file),'--testNamePattern',exactCase+'$'];
+       const logSize=context.readPostgresLog().length;
++      const memoryBefore=observeMemory();
++      const start=performance.now();
+       const result=await new Promise(resolve=>execFile(process.execPath,args,{
+         cwd:api,encoding:'utf8',timeout:180_000,maxBuffer:32*1024*1024,env,
+       },(error,stdout,stderr)=>resolve({
+         status:error ? (typeof error.code==='number' ? error.code : null) : 0,
+         signal:error?.signal ?? null, stdout,stderr,error,
+       })));
++      receipt.cgroupMemory={before:memoryBefore,after:observeMemory(),jestElapsedMs:Math.round(performance.now()-start)};
+       let json;
+       try {json=JSON.parse(result.stdout||'{}');}catch{json={};}
+       const messages=(result.stderr??'')+(json.testResults??[]).flatMap(suite=>suite.assertionResults??[])

@@ -79,7 +79,7 @@ fingerprint=$(cat "$build/context.sha256")
 [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
-  --security-opt no-new-privileges --user postgres --init --memory 4g
+  --security-opt no-new-privileges --user postgres --init
   --env HOME=/tmp --env PLAYWRIGHT_BROWSERS_PATH=/opt/jg-playwright
   --mount "type=bind,src=$prepared/prepared/product/predecessor,dst=/qualification/product289,readonly"
   --mount "type=bind,src=$prepared/prepared/product/intermediate,dst=/qualification/product,readonly"
@@ -118,8 +118,12 @@ while IFS= read -r lane; do
     roster) pids=512; tmp=768m ;;
     *) exit 65 ;;
   esac
+  memory=4g
+  if [[ ${GITHUB_ACTIONS-} == true && ( $mode == 331 || $mode == 332 ) && $lane == reset-case12 ]]; then
+    memory=6g
+  fi
   dir="$material/lanes/$lane"
-  lane_args=("${args[@]}" --pids-limit "$pids" --tmpfs "/tmp:rw,noexec,nosuid,nodev,size=$tmp")
+  lane_args=("${args[@]}" --memory "$memory" --pids-limit "$pids" --tmpfs "/tmp:rw,noexec,nosuid,nodev,size=$tmp")
   for file in "$dir"/*.cjs "$dir"/*.sql "$dir"/*.json; do
     case "${file##*/}" in checkout.cjs|owner-observation.cjs) continue ;; esac
     lane_args+=(--mount "type=bind,src=$file,dst=/qualification/${file##*/},readonly")
