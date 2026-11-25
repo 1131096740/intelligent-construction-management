@@ -99,7 +99,7 @@ if options == ['--text-direct-330']:
          'e972ef88289361db2249dd2bab43409ee6db00850b8e1f663027cd56b38a51e7'),
         ('services/api/src/database/task410-owned-test-database.ts', 'task410-support-330.patch',
          'b0fd93f5e586d78a5570a3caaa2ef9a455ad7706b4b2af073199c916639af717',
-         'cb2a6b973a8edf3c785a296920601d23b54c7474b95cd409e60e9f7bdcfdfd24'),
+         '60600aceffcb182f0b1ade0ab01440aa9ef403087937c63cc6066d159c54e767'),
     ]:
         target = work / relative
         verify(target.read_bytes(), earlier, relative)

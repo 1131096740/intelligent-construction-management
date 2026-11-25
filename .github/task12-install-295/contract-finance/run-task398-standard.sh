@@ -50,10 +50,10 @@ if [[ $count == 330 ]]; then
   runner_sha() { node -e 'const fs=require("node:fs"),{createHash}=require("node:crypto"); console.log(createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$runner"; }
   [[ $(runner_sha) == 08bacc09e2870c23bc4e73ff5d6473ae1a64c005d3ed92790713609406369b96 ]] || exit 65
   patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-text-direct-330.patch"
-  [[ $(runner_sha) == 724b8a5f646bcfad6190c321ed0ce15cf2d8a57be16bde9842c66f04dd282d15 ]] || exit 65
+  [[ $(runner_sha) == 3288c25ee59fae2dbd1ef6cd73ad8708e8940e2e1deaaeafa38060434288e174 ]] || exit 65
   if [[ ${5-} == ledger-loss-330 ]]; then
     patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-330.patch"
-    [[ $(runner_sha) == 74c9442665e006eb110837fb20e4ee8f29974c0523a90d4241273d3307f68bec ]] || exit 65
+    [[ $(runner_sha) == 1fc3ea9dd55bab96a284b1260a91a6813d117d17d597e185d5f4d904cbc0c983 ]] || exit 65
   fi
 fi
 

@@ -7,4 +7,4 @@
 +  const textDirect = process.env.TASK410_OWNED_TEXT_DIRECT_330 === "1";
 +  const count = textDirect ? 330 : current320 ? 329 : 295;
 +  const migration = textDirect ? "20261128000000_text_agreement_direct_payment" : current320 ? "20261127000000_contract_takeover_pending_finance" : terminalMigration;
-+  const checksum = textDirect ? "f23deb645af8b4fa273d6f15e0b31d0f71fa47be563bfbdc523ed1a7c83d01e7" : current320 ? "0bfe144cae30a7a29973c06dfb51737965fb9709e408db412f8d137d0663db4e" : terminalChecksum;
++  const checksum = textDirect ? "46765295a3a943a5605cc1fc2ce0d743f05ff360ed0bfa1451f02fbd125c0314" : current320 ? "0bfe144cae30a7a29973c06dfb51737965fb9709e408db412f8d137d0663db4e" : terminalChecksum;

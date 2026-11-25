@@ -77,17 +77,27 @@ export async function verifySignedSettlementRoundedPayment(
   const path = `/payment-executions/${paymentRequestId}`;
   const options = await call(finance, `${path}/registration-options`) as { remainingAmountCents: string; expectedPaymentUpdatedAt: string };
   expect(options.remainingAmountCents).toBe("10001");
-  const execution = await call(finance, `${path}/registrations`, {
+  const registration = {
     idempotencyKey: randomUUID(), expectedPaymentUpdatedAt: options.expectedPaymentUpdatedAt,
     amountCents: "10001", paidAt: rounding.paidAt, scopeKey, expectedRegistrationId: opening.id,
     openingTreatment: "not_included", openingReason: "付款未含期初", openingEvidence: "隔离合成证据", confirmationPassword: password,
     sourceAllocations: [{ sourceBatchId: opening.sources[0].id, amountCents: "10001" }]
-  }) as { id: string };
+  };
+  const execution = await call(finance, `${path}/registrations`, registration) as { id: string };
+  expect(await call(finance, `/payment-executions/results/${registration.idempotencyKey}`)).toMatchObject({
+    status: "recorded", execution: { executionId: execution.id, amountCents: "10001" }
+  });
+  expect(await call(finance, `${path}/registrations`, registration)).toMatchObject({ id: execution.id });
   expect(await owner.paymentExecution.findUniqueOrThrow({ where: { id: execution.id } }))
     .toMatchObject({ paymentRequestId, amountCents: 10_001n });
   expect(await owner.paymentRequest.findUniqueOrThrow({ where: { id: paymentRequestId } }))
     .toMatchObject({ status: "paid", paidAmountCents: 10_001n });
   expect(await owner.paymentExecution.count({ where: { paymentRequestId } })).toBe(1);
+  expect(await owner.registeredFundPaymentAllocation.findMany({
+    where: { executionId: execution.id }, select: { amountCents: true, sourceBatchId: true }
+  })).toEqual([{ amountCents: 10_001n, sourceBatchId: opening.sources[0].id }]);
+  expect(await owner.registeredPaymentEvent.count({ where: { executionId: execution.id } })).toBe(1);
+  expect(await owner.auditLog.count({ where: { businessId: paymentRequestId, action: "payment.execution.record" } })).toBe(1);
   const rounded = await owner.$transaction(tx => loadSignedSettlementPaymentBasis(tx, contractId));
   expect(rounded).toMatchObject({ confirmedCents: 10_001n, netPaidCents: 10_001n, remainingCents: 0n,
     overpayCents: 0n, capacityShortfallCents: 0n, suspended: false });

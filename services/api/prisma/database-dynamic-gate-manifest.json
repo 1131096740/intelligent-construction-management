@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 330,
     "terminalMigration": "20261128000000_text_agreement_direct_payment",
-    "terminalMigrationChecksum": "f23deb645af8b4fa273d6f15e0b31d0f71fa47be563bfbdc523ed1a7c83d01e7",
+    "terminalMigrationChecksum": "46765295a3a943a5605cc1fc2ce0d743f05ff360ed0bfa1451f02fbd125c0314",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false

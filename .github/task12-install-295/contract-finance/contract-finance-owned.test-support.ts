@@ -56,7 +56,7 @@ export async function assertOwnedContractFinanceLedger(client: PrismaClient, sco
       (count >= 329 && createHash("sha256").update(JSON.stringify(ledger.slice(0,329))).digest("hex") !==
         "3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2") ||
       (count === 330 && createHash("sha256").update(JSON.stringify(ledger)).digest("hex") !==
-        "0e683661f4216f15039ae285aa100a82de66ed4c6e098d5ef4cca776839f3ccf")) {
+        "7ebd200accecfa799ebcb6fe9fa9e50985d7234710b729c2c463b96ecc271782")) {
     throw new Error("CONTRACT_FINANCE_OWNED_LEDGER_MISMATCH");
   }
   return true;
