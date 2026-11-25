@@ -89,9 +89,9 @@ if payment_remainder:
     new_installer = patch(new_installer,remainder_patch)
     assert digest(new_installer) == 'd9212c0ddb78d8feb513b446a8b8eb59f67c8508e1d29fe4de790ff9c143a0dd'
 if upward_archive:
-    archive_patch = read_pinned(plan/'installer-named332.patch','ba481f1617727cf20a495263adc363904428fa0e7bd4dda6423c55c19e4f828c')
+    archive_patch = read_pinned(plan/'installer-named332.patch','178e348ef894be6f3c4d6470a6ddfacb2f9b1a0001b8c8ee62c939d78fa5e998')
     new_installer = patch(new_installer,archive_patch)
-    assert digest(new_installer) == '4e054d091d41c472311a7dba455d50731fa0c0a3e36dc771d7c458d1f5a13751'
+    assert digest(new_installer) == 'b26779cd68adfd38dfe39b9546d39909ebe06c94624b633ecd7e6557dbe3dc39'
 write(context/'installer.cjs',new_installer)
 for name, pin in pins['runtime'].items():
     material = read_pinned(repo/pin['repoFile'] if 'repoFile' in pin else donor/pin['file'],pin['digest'])
