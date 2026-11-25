@@ -897,6 +897,30 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
         changeReason: "POL-109 资料缺口验收"
       }
     });
+    const enabledAt = new Date("2026-01-01T00:00:00.000Z");
+    const participatingCompany = await prisma.projectParticipatingCompany.findFirstOrThrow({
+      where: {
+        projectId,
+        effectiveFrom: { lte: enabledAt },
+        OR: [{ endedAt: null }, { endedAt: { gt: enabledAt } }]
+      },
+      orderBy: { id: "asc" },
+      select: {
+        companyEntityId: true,
+        companyEntityVersionId: true,
+        companyNameSnapshot: true,
+        companyCreditCodeSnapshot: true
+      }
+    });
+    await prisma.projectParticipatingCompany.create({
+      data: {
+        ...participatingCompany,
+        ...where,
+        effectiveFrom: enabledAt,
+        changeReason: "POL-109 资料缺口验收",
+        addedByUserId: "seed-user-finance-director"
+      }
+    });
     await operatingProfile.updateProfile(
       incompleteProjectId,
       "seed-user-finance-director",
