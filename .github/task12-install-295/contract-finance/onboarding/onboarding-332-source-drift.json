@@ -12,6 +12,8 @@
   "services/api/src/contract/contract-upward-legacy-readers.spec.ts": "e8661cf7685b150a88a2380a8b0e164bf7518ee75742f3d2f023f4bec25e5ba5",
   "services/api/src/contract/contract-upward-pending-save.ts": "7fd73c7e91985e51ec269bb31a7acf1674d3958ad04ed67612eab7c695dc4c31",
   "services/api/src/database/line-a-real-db.http.pg.spec.ts": "778ab372345d494f6bdef6881a8d3cce86d21b6d30f27ebdfefd79a54bc50683",
+  "services/api/src/file/file.service.spec.ts": "43497f0f1c8080f98cdc84cfc306d1a7b1fe7d66e2ce63ab97e5460c7fda3fc4",
+  "services/api/src/file/file.service.ts": "8ad78a1b9a00f154384524bdfd7af2def5be00fd4ef64db0d1a51e6e9546727f",
   "services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts": "f285a9fa492fd75763937f25b73dd0fb2907de4397672cf47be6cf18f68819c8",
   "services/api/src/spot-procurement/spot-procurement-access.service.spec.ts": "2cd5d59494c94b3127f65d80c3cb6ded1dbd4fd6946629966a44c92c1ac2ff74",
   "services/api/src/spot-procurement/spot-procurement-access.service.ts": "7b04681b38f7e02c673164c66ee8e8d5454c678600fd4311d31a5676678a18f3"
