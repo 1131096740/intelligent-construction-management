@@ -8,17 +8,23 @@ const {runBackup295,prepareBackup295,runBackup320,verifyLease} = require('./back
 const admission=require('./committed-admission.json');
 const {admitSource} = require('./install-only292.cjs');
 const {checkClosure} = require('./verify-behavior.cjs');
-const {withCombined295MultiWitnessForRestore,withCombined320ContractPaymentForRestore} = require('./installer.cjs');
+const {withCombined295MultiWitnessForRestore,withCombined320ContractPaymentForRestore,withCombined330ContractPaymentForRestore} = require('./installer.cjs');
 const bank = require('./named-roles/contract-finance-owned-ci.cjs');
 const correctionRoot='/qualification/workspace', loanRoot='/qualification/loan-workspace';
 const correction=require(correctionRoot+'/services/api/prisma/run-task398-shared-standard-local.cjs').runTask398Owned282Voucher;
 const loan=require(loanRoot+'/services/api/prisma/contract-finance-owned-ci.cjs').verify;
 const args=process.argv.slice(2);
 const current320=args[0]==='--current-320';
-const runArgs=current320?args.slice(1):args;
-const source=current320?require('./current320-source.json'):undefined;
-const receipt={schemaVersion:1,purpose:'NTF04_NAMED_RESTORE_EXACT_'+(current320?329:295),
-  candidateSha:source?.sourceSha??admission.head,...(current320?{fixturePredecessorSha:admission.head}:{}),operation:'NAMED_BANK_BACKUP_AND_RECOVERY',stages:[]};
+const textDirect330=args[0]==='--text-direct-330';
+const forward=current320||textDirect330;
+const count=textDirect330?330:current320?329:295;
+const runArgs=forward?args.slice(1):args;
+const source=forward?require('./current320-source.json'):undefined;
+const profile330=textDirect330?require('./text-direct-330-profile.cjs'):undefined;
+const receipt={schemaVersion:1,purpose:'NTF04_NAMED_RESTORE_EXACT_'+count,
+  candidateSha:source?.sourceSha??admission.head,...(forward?{fixturePredecessorSha:admission.head}:{}),
+  ...(textDirect330?{candidateTree:source.sourceTree,fixturePredecessorSourceSha256:admission.predecessorSourceSha256}:{}),
+  operation:'NAMED_BANK_BACKUP_AND_RECOVERY',stages:[]};
 
 function requireNoCrossLinks(root){
   for(const relative of ['services/api/node_modules/@prisma/client','services/api/node_modules/jest','node_modules/.pnpm']) {
@@ -44,7 +50,7 @@ function preflight(){
   receipt.stages.push('BACKUP292_BOTH_WORKSPACE_CLOSURES');
 }
 async function namedRoles(context,forward320){
-  await verifyLease(context,forward320);
+  await verifyLease(context,forward320,textDirect330?source:undefined);
   const backup=await bank.prepareDiagnosticBackupIdentity(context);
   try {
     const url=new URL(await bank.prepareBankRuntime(context,backup));
@@ -65,7 +71,12 @@ async function namedRoles(context,forward320){
 }
 async function main(){
   assert.ok(runArgs.length===0||(runArgs.length===1&&runArgs[0]==='--preflight'));
-  if(current320){
+  if(textDirect330){
+    profile330.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
+    assert.match(admission.head,/^[a-f0-9]{40}$/u);
+    assert.notEqual(source.sourceSha,admission.head);
+    assert.match(admission.predecessorSourceSha256,/^[a-f0-9]{64}$/u);
+  } else if(current320){
     assert.equal(source.mode,'current-320');
     assert.equal(source.migrationCount,329);
     assert.equal(source.predecessor.migrationCount,295);
@@ -87,26 +98,36 @@ async function main(){
     assert.equal(check.status,0,'BACKUP292_RELOCATED_JEST_PREFLIGHT');
     const tests=JSON.parse(check.stdout).testResults.flatMap(row=>row.assertionResults);
     assert.equal(tests.filter(test=>test.title===name&&test.status==='pending').length,1,'BACKUP292_LOAN_CASE_PREFLIGHT');
-    receipt.status=current320?'BACKUP329_NO_DB_PREFLIGHT_PASSED':'BACKUP295_NO_DB_PREFLIGHT_PASSED';
+    receipt.status='BACKUP'+count+'_NO_DB_PREFLIGHT_PASSED';
     return;
   }
   const fixtures={
     correction:async(ctx,proof)=>{
-      if(!current320) return correction(ctx,'correction-catalog',proof);
+      if(!forward) return correction(ctx,'correction-catalog',proof);
       const predecessorProof={...proof,purpose:'NTF04_NAMED_RESTORE_EXACT_295',candidateSha:admission.head};
       await correction(ctx,'correction-catalog',predecessorProof);
       for(const field of ['before','successor','businessOracle']) proof[field]=predecessorProof[field];
     },
     loan:async ctx=>{ await verifyLease(ctx); return loan('affiliate',ctx); },
   };
-  if(current320){
-    await withCombined320ContractPaymentForRestore(receipt,
-      context=>prepareBackup295(context,receipt,admission,fixtures),
-      context=>runBackup320(context,receipt,{namedRoles:ctx=>namedRoles(ctx,receipt.forward320)}),
+  if(forward){
+    const install=textDirect330?withCombined330ContractPaymentForRestore:withCombined320ContractPaymentForRestore;
+    await install(receipt,
+      context=>prepareBackup295(context,receipt,admission,{...fixtures,textDirect330}),
+      context=>{
+        if(textDirect330) profile330.assertInstallation(receipt,source);
+        return runBackup320(context,receipt,{namedRoles:ctx=>namedRoles(ctx,receipt.forward320),
+          textDirectSource:textDirect330?source:undefined});
+      },
       {sourceTree:source.sourceTree,migrations:'/qualification/current320/migrations',tails:source.tails});
     assert.equal(receipt.forward320.sourceTree,source.sourceTree);
     assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
     assert.equal(receipt.combinedAfterBusiness.exactB7,true);
+    if(textDirect330) {
+      assert.equal(receipt.combinedAfterBusiness.count,330);
+      assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
+      assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);
+    }
   } else {
     await withCombined295MultiWitnessForRestore(receipt,async context=>{
       await verifyLease(context);
@@ -115,7 +136,7 @@ async function main(){
   }
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
-  receipt.status=current320?'BACKUP329_RESTORED_AND_VERIFIED':'BACKUP295_RESTORED_AND_VERIFIED';
+  receipt.status='BACKUP'+count+'_RESTORED_AND_VERIFIED';
 }
 main().catch(error=>{
   receipt.status='STOPPED';

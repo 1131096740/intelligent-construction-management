@@ -1378,6 +1378,13 @@ module.exports.withCombined320ContractPaymentForRestore = (receipt,prepare295,co
   return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,true,{...forward320,prepare295});
 };
 
+module.exports.withCombined330ContractPaymentForRestore = (receipt,prepare295,consume,material) => {
+  need(typeof prepare295==='function' && typeof consume==='function'
+    && material && typeof material==='object','TEXT_DIRECT_330_RESTORE_ARGUMENTS');
+  const forward330=readForward320(material,true);
+  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,true,{...forward330,prepare295});
+};
+
 
 function cleanupPrimaryDatabaseAclSql(database) {
   need(/^jg_task01_[a-f0-9]{32}$/u.test(database),'REMAINING_PRIMARY_DB_NAME');

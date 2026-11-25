@@ -1,25 +1,21 @@
 #!/bin/bash
 set -euo pipefail
 umask 077
-if [[ ${4-} == restore && ${5-} == --text-direct-330 ]]; then
-  printf '%s\n' 'CONTRACT_FINANCE_330_RESTORE_UNAVAILABLE' >&2
-  exit 64
-fi
 [[ $# == 4 || ( $# == 5 && $4 == bank && ( $5 == --current-320 || $5 == --text-direct-330 ) ) ||
-  ( $# == 6 && $4 == restore && $5 == --current-320 ) ]] || exit 64
+  ( $# == 6 && $4 == restore && ( $5 == --current-320 || $5 == --text-direct-330 ) ) ||
+  ( $# == 7 && $4 == restore && $5 == --text-direct-330 && $7 == --host-only ) ]] || exit 64
 
 prepared=$(cd "$1" && pwd -P)
 sha=$2
-image_dir=$(cd "$3" && pwd -P)
 lane=$4
 mode=${5-}
 bank_args=()
 if [[ $lane == bank && -n $mode ]]; then bank_args=("$mode"); fi
 restore_args=()
 restore_source=()
-if [[ $lane == restore && $mode == --current-320 ]]; then
+if [[ $lane == restore && -n $mode ]]; then
   current_prepared=$(cd "$6" && pwd -P)
-  restore_args=(--current-320)
+  restore_args=("$mode")
   restore_source=("$current_prepared/source.json")
 fi
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -29,10 +25,6 @@ case "$lane" in
   *) exit 64;;
 esac
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
-image=$(cat "$image_dir/image.id")
-context_sha=$(cat "$image_dir/context.sha256")
-[[ $image =~ ^sha256:[a-f0-9]{64}$ && $context_sha =~ ^[a-f0-9]{64}$ ]] || exit 65
-[[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $context_sha" ]] || exit 65
 node - "$prepared/source.json" "$sha" "$plan" ${bank_args[@]+"${bank_args[@]}"} <<'JS'
 const [source,sha,plan,mode]=process.argv.slice(2);
 const candidate=require(source),m=require(plan+'/common/multi-witness.cjs');
@@ -46,12 +38,54 @@ if(mode==='--text-direct-330') {
       candidate.ledgerSha256!=='3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2')process.exit(65);
 } else if(candidate.migrationCount!==295||candidate.ledgerSha256!==m.final) process.exit(65);
 JS
-[[ -z $(docker ps -q) ]] || exit 65
-if pgrep -x postgres >/dev/null; then exit 65; fi
+if [[ $lane == restore && $mode == --text-direct-330 ]]; then
+  node - "$prepared/source.json" "$current_prepared/source.json" "$plan" <<'JS'
+const [oldFile,currentFile,plan]=process.argv.slice(2);
+const assert=require('node:assert/strict');
+const old=require(oldFile),current=require(currentFile);
+require(plan+'/text-direct-330-profile.cjs').assertSource(current,current.sourceSha,old.ledgerSha256);
+assert.notEqual(old.sourceSha,current.sourceSha);
+assert.equal(typeof require(plan+'/common/installer.cjs').withCombined330ContractPaymentForRestore,'function');
+JS
+fi
+if [[ ${7-} != --host-only ]]; then
+  image_dir=$(cd "$3" && pwd -P)
+  image=$(cat "$image_dir/image.id")
+  context_sha=$(cat "$image_dir/context.sha256")
+  [[ $image =~ ^sha256:[a-f0-9]{64}$ && $context_sha =~ ^[a-f0-9]{64}$ ]] || exit 65
+  if [[ $mode == --text-direct-330 ]]; then
+    [[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$image_dir/Dockerfile" "$prepared/source.json") == "$context_sha" ]] || exit 65
+  fi
+  [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $context_sha" ]] || exit 65
+  [[ -z $(docker ps -q) ]] || exit 65
+  if pgrep -x postgres >/dev/null; then exit 65; fi
+fi
 out=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-contract-finance-$lane.XXXXXXXX")
 printf '%s\n' "$out"
 overlay="$out/overlay"
 python3 "$plan/stage-overlays.py" "$prepared/prepared/context/workspace" "$overlay" "$lane" ${bank_args[@]+"${bank_args[@]}"}
+if [[ ${7-} == --host-only ]]; then
+  node - "$out" "$prepared/source.json" "$current_prepared/source.json" "$plan" <<'JS'
+const [out,oldFile,currentFile,plan]=process.argv.slice(2);
+const {readFileSync,writeFileSync}=require('node:fs');
+const {createHash}=require('node:crypto');
+const hash=file=>createHash('sha256').update(readFileSync(file)).digest('hex');
+const old=require(oldFile),current=require(currentFile);
+const receipt={status:'BACKUP330_HOST_INPUTS_VERIFIED',candidateSha:current.sourceSha,candidateTree:current.sourceTree,
+  migrationCount:current.migrationCount,ledgerSha256:current.ledgerSha256,
+  fixturePredecessorSha:old.sourceSha,fixturePredecessorSourceSha256:hash(oldFile),candidateSourceSha256:hash(currentFile),
+  appInputsSha256:hash(out+'/overlay/restore/app-inputs.json'),
+  relocatedLoanSha256:hash(out+'/overlay/restore/loan-relocated-manifest.json'),
+  wrappers:Object.fromEntries(['run.sh','run-bank-restore.sh','common/installer.cjs','text-direct-330-profile.cjs','restore/run.cjs',
+    'restore/backup-fixture.cjs','restore/restore.cjs','restore/restore-profile.cjs','restore/settlement-history.cjs',
+    'restore/text-direct-330.cjs','restore/extract-receipt.cjs'].map(relative=>[relative,hash(plan+'/'+relative)])),
+  database:'NOT_STARTED'};
+const file=out+'/host-restore-receipt.json';
+writeFileSync(file,JSON.stringify(receipt,null,2)+'\n',{flag:'wx',mode:0o600});
+console.log(JSON.stringify({receipt:file,sha256:hash(file),...receipt}));
+JS
+  exit 0
+fi
 
 mounts=()
 readonly_mount(){
@@ -83,18 +117,25 @@ if [[ $lane == bank ]]; then
   readonly_mount "$overlay/bank/execution-files.json" /qualification/execution-files.json
   mount_tree "$overlay/bank/overlay" /qualification/workspace
 else
-  for file in run.cjs backup-fixture.cjs settlement-history.cjs restore.cjs archive-contract.cjs restore-profile.cjs forward-320-inventory.json restore-diagnostic.cjs named-data.cjs technical-relations.json backup-original.sql business-readback.cjs approval-round-catalog.cjs controlled-correction.cjs verify-behavior.cjs combined294-source.json; do
+  for file in run.cjs backup-fixture.cjs settlement-history.cjs restore.cjs archive-contract.cjs restore-profile.cjs forward-320-inventory.json restore-diagnostic.cjs named-data.cjs text-direct-330.cjs technical-relations.json backup-original.sql business-readback.cjs approval-round-catalog.cjs controlled-correction.cjs verify-behavior.cjs combined294-source.json; do
     readonly_mount "$plan/restore/$file" "/qualification/$file"
   done
-  node - "$out/committed-admission.json" "$sha" "$plan/restore/combined294-source.json" <<'JS'
-const [file,head,source]=process.argv.slice(2);
+  node - "$out/committed-admission.json" "$sha" "$plan/restore/combined294-source.json" "$mode" "$prepared/source.json" <<'JS'
+const [file,head,source,mode,predecessorSource]=process.argv.slice(2);
 const {ledgerSha256:ledger294}=require(source);
-require('node:fs').writeFileSync(file,JSON.stringify({status:'FINANCE294_COMMITTED_MIGRATION_INPUTS_ADMITTED_OFFLINE',head,ledger294}),
+const fs=require('node:fs');
+const predecessorSourceSha256=mode==='--text-direct-330'
+  ? require('node:crypto').createHash('sha256').update(fs.readFileSync(predecessorSource)).digest('hex')
+  : undefined;
+fs.writeFileSync(file,JSON.stringify({status:'FINANCE294_COMMITTED_MIGRATION_INPUTS_ADMITTED_OFFLINE',head,ledger294,predecessorSourceSha256}),
   {flag:'wx',mode:0o644});
 JS
   chmod 0644 "$out/committed-admission.json"
   readonly_mount "$out/committed-admission.json" /qualification/committed-admission.json
-  if [[ $mode == --current-320 ]]; then
+  if [[ $mode == --text-direct-330 ]]; then
+    readonly_mount "$plan/text-direct-330-profile.cjs" /qualification/text-direct-330-profile.cjs
+  fi
+  if [[ -n $mode ]]; then
     readonly_mount "$current_prepared/source.json" /qualification/current320-source.json
     readonly_mount "$current_prepared/prepared/context/workspace/services/api/prisma/migrations" /qualification/current320/migrations
   fi

@@ -12,4 +12,7 @@ const legacy=profile(295,356,[],[]);
 const successor=profile(329,forward.businessTables,forward.businessAdditions.map(([,name])=>name),
   forward.ownerSchemaOnlyEmptyAdditions.map(([,name])=>name));
 
-module.exports={legacy,successor};
+// The 330 terminal changes payment columns, constraints and routines only.
+const textDirect=Object.freeze({...successor,count:330});
+
+module.exports={legacy,successor,textDirect};

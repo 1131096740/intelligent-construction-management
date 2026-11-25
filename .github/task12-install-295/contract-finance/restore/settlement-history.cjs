@@ -6,7 +6,7 @@ const {createRequire} = require('node:module');
 // Financial seed follows the effective source-version fixture in
 // contract-bill-transition-confirm-concurrency.spec.ts. Only the historical side
 // of that case is needed here; it stays until the isolated database is dropped.
-async function seedSettlementHistory(context) {
+async function seedSettlementHistory(context,{textDirect330=false}={}) {
   const {PrismaClient} = createRequire('/qualification/workspace/services/api/package.json')('@prisma/client');
   const prisma = new PrismaClient({datasources:{db:{url:context.ownerUrl}}});
   try {
@@ -51,6 +51,14 @@ async function seedSettlementHistory(context) {
       }});
       assert.equal(line.amountCents,settlement.payableAmountCents,'SETTLEMENT_FIXTURE_LINE_AMOUNT');
       assert.equal(settlement.paidAmountCents,0n,'SETTLEMENT_FIXTURE_PAID_AMOUNT');
+      if (textDirect330) {
+        await tx.paymentRequest.create({data:{
+          id:id('historical-payment'), projectId:loan.sourceProjectId, settlementId:settlement.id,
+          sourceType:'settlement', contractId:contract.id, contractVersionId:version.id, paymentTermsVersionId:terms.id,
+          code:id('payment-request'), status:'approved_pending_payment', requestedAmountCents:3000n, approvedAmountCents:3000n,
+          paymentSubjectType:'our_company',
+        }});
+      }
       return 'original-effective-3000-cent-fixture';
     });
   } finally {
