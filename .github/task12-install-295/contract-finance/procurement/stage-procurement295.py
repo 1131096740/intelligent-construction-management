@@ -306,6 +306,24 @@ if current320:
         if text.count(anchor) != 1:
             raise ValueError('PROCUREMENT_329_BUSINESS_READ_ANCHOR')
         text = text.replace(anchor, reads.rstrip())
+        failure_anchor = '        pgPermission,\n        browser:'
+        observation = r'''        pgPermission,
+        jestReport:report?"present":"missing",
+        processSignal:/^SIG(?:ABRT|KILL|TERM)$/u.test(exit[1]??"")?exit[1]:undefined,
+        processFailureKinds:Object.entries({
+          jest_exit:/process\.exit called with|Jest worker encountered/u,
+          heap:/JavaScript heap out of memory|\bENOMEM\b/u,
+          filesystem:/\b(?:ENOSPC|EMFILE|EACCES)\b/u,
+          process_limit:/\bEAGAIN\b|Resource temporarily unavailable/u,
+          browser_launch:/browserType\.launch|Failed to launch browser/iu,
+          browser_deadline:/config\.webServer|Test timeout of [0-9]+ms exceeded/iu,
+          unhandled_exception:/UnhandledPromiseRejection|uncaughtException/u,
+          test_summary:/Test Suites:|Tests:/u
+        }).filter(([,pattern])=>pattern.test(rawOutput)).map(([kind])=>kind),
+        browser:'''
+        if text.count(failure_anchor) != 1:
+            raise ValueError('PROCUREMENT_329_GENERAL_FAILURE_OBSERVATION_ANCHOR')
+        text = text.replace(failure_anchor, observation)
     write(consumer,text.encode())
 for name in ['owner-observation.cjs', *(
     ['project-scope-http-report.cjs', 'project-scope-browser-report.cjs', 'project-scope-browser-pins.json']
