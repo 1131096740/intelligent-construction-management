@@ -65,8 +65,12 @@ image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
 [[ $(node "$finance/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
+memory=4g
+if [[ ${GITHUB_ACTIONS-} == true && $count == 331 && $lane == general16 && -z ${7-} ]]; then
+  memory=6g
+fi
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
-  --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory 4g
+  --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory "$memory"
   --tmpfs /tmp:rw,noexec,nosuid,nodev,size=512m
   --mount "type=bind,src=$prepared/prepared/product/predecessor,dst=/qualification/product289,readonly"
   --mount "type=bind,src=$prepared/prepared/product/intermediate,dst=/qualification/product,readonly"
