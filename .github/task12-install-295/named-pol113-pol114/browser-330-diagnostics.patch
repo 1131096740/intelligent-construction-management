@@ -15,7 +15,7 @@
 +        titleSha256:createHash('sha256').update(row.title).digest('hex'),
 +        kind:row.runs.includes('timedOut')||/timed out|timeout/iu.test(message)?'TIMEOUT':
 +          /expect\(|AssertionError|locator/iu.test(message)?'ASSERTION':
-+          /ERR_ABORTED|NS_BINDING_ABORTED|navigation.{0,120}interrupted|another navigation/iu.test(message)?'NAVIGATION_ABORTED':'OTHER',
++          /ERR_ABORTED|NS_BINDING_ABORTED|load request cancell?ed|navigation.{0,120}interrupted|another navigation/iu.test(message)?'NAVIGATION_ABORTED':'OTHER',
 +        ...(frame?{spec:frame[1],line:Number(frame[2]),column:Number(frame[3])}:{})
 +      };
 +    });

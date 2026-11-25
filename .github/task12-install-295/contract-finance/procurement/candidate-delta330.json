@@ -30,6 +30,11 @@
     "candidate": "3f88256435bca5871cb74c655af7790e4eea952db30ce71e2da5226848127783"
   },
   {
+    "path": "apps/web-admin/e2e/pol113-project-profile-real.e2e.ts",
+    "expected": "e6f65e9bbe3e93cc5677c6b0745639eaa83cc1fc693e272fe75f809c163dcfbf",
+    "candidate": "bd2496c42499a4232e98f175d416e0f4b0b844d5778debd1a01592418f3c882b"
+  },
+  {
     "path": "apps/web-admin/e2e/responsive-layout-foundation.e2e.ts",
     "expected": "b3e69dffa5ec659f7b2c0b8db17502a0871da2b236e9637bcc7a2b34f1f5285e",
     "candidate": "f6b96ff83bb111e85639a54a9d5d265cb5599083c03e2de43935a3b54e836750"
