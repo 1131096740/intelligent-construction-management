@@ -467,7 +467,9 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     expect(durableArchive).toMatchObject({ contractVersionId: versionId, archiveSource: "generated_approval", status: "confirmed" });
     expect(durableArchive.authoritySha256).toMatch(/^[a-f0-9]{64}$/u);
     expect(durableArchive.fileManifestSha256).toMatch(/^[a-f0-9]{64}$/u);
-    expect((await detail()).contractVersionId).toBe(versionId);
+    stage = "ARCHIVE_DETAIL";
+    expect(await detail()).toMatchObject({ contractVersionId: versionId,
+      v2Lifecycle: { status: "ready", state: "archived", approvalInstanceId: submitted.approvalInstanceId, sealTaskId: lifecycle.sealTaskId } });
     stage = "ARCHIVE_AUDIT";
     for (const [action, actor] of [["contract.seal_task.create", null], ["contract.seal.complete", seed.users[6].id], ["contract.archive.complete", seed.users[0].id]] as const) {
       expect(await owner.auditLog.count({ where: { action, businessId: versionId, ...(actor ? { actorUserId: actor } : {}) } })).toBe(1);

@@ -233,6 +233,11 @@ function grantApplication(sql, database, app, appPassword) {
     ["ContractSignedChange", "appendixFormalFileId"],
     ["SignedContractSettlementAttachment", "fileId"]
   ];
+  // The effective contract detail loads these two bound projections together.
+  const effectiveDetailReaders = [
+    "public.jg_read_ordinary_contract_tax_fact_v1(text,text,integer)",
+    "public.jg_read_effective_contract_change_amount_v1(text,text,text)"
+  ];
   sql("BEGIN;" +
     "ALTER ROLE " + role + " LOGIN PASSWORD '" + appPassword + "' CONNECTION LIMIT 12;" +
     "GRANT CONNECT ON DATABASE " + identifier(database) + " TO " + role + ";" +
@@ -247,7 +252,17 @@ function grantApplication(sql, database, app, appPassword) {
     grantColumns("SELECT", "ContractDraftCheckpoint", ["contractVersionId", "id", "sequenceNo", "name", "snapshot", "createdByUserId", "createdAt"]) +
     newBindingReads.map(([table, column]) => grantColumns("SELECT", table, [column])).join("") +
     locks.join("") +
+    "GRANT EXECUTE ON FUNCTION " + effectiveDetailReaders.join(", ") + " TO " + role + ";" +
     "COMMIT;");
+  const detailAcl = sql(`
+    SELECT ${effectiveDetailReaders.map(routine => `has_function_privilege('${app}', '${routine}', 'EXECUTE')
+      AND NOT has_function_privilege('${app}', '${routine}', 'EXECUTE WITH GRANT OPTION')`).join(" AND ")}
+      AND NOT has_function_privilege('${app}', 'public.jg_list_ordinary_contract_tax_facts_v1(text,text,text)', 'EXECUTE')
+      AND NOT has_function_privilege('${app}', 'public.jg_write_ordinary_contract_tax_fact_v1(text,text,text,text,text,text,text,text,text,text,text,text,text)', 'EXECUTE')
+      AND NOT has_any_column_privilege('${app}', 'public."ContractTaxFactRevision"', 'INSERT, UPDATE, REFERENCES')
+      AND NOT has_table_privilege('${app}', 'public."ContractTaxFactRevision"', 'DELETE, TRUNCATE, TRIGGER');
+  `).trim();
+  assert.equal(detailAcl, "t", "NATIVE_329_EFFECTIVE_DETAIL_ACL");
   for (const [table, column] of newBindingReads) {
     const exact = sql(`
       SELECT has_column_privilege('${app}',target.relation,'${column}','SELECT')
