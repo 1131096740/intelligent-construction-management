@@ -12,14 +12,15 @@ jest.mock("./contract-parallel-duty-access", () => ({
 
 it("同一人员承担两个并联职责分别入队，重复入队保持同一标识，不通知无权人员", async () => {
   jest.mocked(contractParallelDutyIdentity).mockImplementation(async (_tx, _round, _project, actor) =>
-    actor === "reviewer" || actor === "delegate" ? { approvedRoleKey: "contract_director", representedUserId: actor, viaAssignment: false, delegationId: null } : null);
+    actor === "reviewer" || actor === "delegate" || actor === "late-reviewer" ? { approvedRoleKey: "contract_director", representedUserId: actor, viaAssignment: false, delegationId: null } : null);
   const createMany = jest.fn();
   const groupBy = jest.fn().mockResolvedValue([{ toUserId: "delegate" }, { toUserId: "reviewer" }, { toUserId: "outsider" }]);
   const findMany = jest.fn().mockRejectedValue(new Error("42501 ApprovalDelegation.id"));
+  const assignments = jest.fn().mockResolvedValue([{ userId: "reviewer" }, { userId: "outsider" }]);
   const tx = {
     project: { findUnique: jest.fn().mockResolvedValue({ isActive: true, name: "合同项目" }) },
     position: { findMany: jest.fn().mockResolvedValue([{ id: "contract-director" }]) },
-    userPosition: { findMany: jest.fn().mockResolvedValue([{ userId: "reviewer" }, { userId: "outsider" }]) },
+    userPosition: { findMany: assignments },
     projectMember: { findMany: jest.fn().mockResolvedValue([]) },
     approvalDelegation: { findMany, groupBy },
     auditLog: { createMany }
@@ -52,6 +53,26 @@ it("同一人员承担两个并联职责分别入队，重复入队保持同一�
     { recipientId: "delegate", nodeIndex: 1, dutyName: "并联合同复核" }
   ]);
   expect(new Set(first.data.map((row: Prisma.AuditLogCreateManyInput) => row.id)).size).toBe(4);
+  expect(sms.sendDutyIntent).not.toHaveBeenCalled();
+
+  const nodes = round.frozenNodes as Prisma.JsonObject[];
+  nodes[1].approvedRoleKeys = ["contract_director"];
+  assignments.mockResolvedValue([{ userId: "reviewer" }, { userId: "late-reviewer" }]);
+  const scoped = {
+    ...tx,
+    approvalInstance: { findMany: jest.fn().mockResolvedValue([round]) },
+    contractVersion: { findUnique: jest.fn().mockResolvedValue({
+      id: "version", contractId: "contract", numericProtocolVersion: 2, signingSubjectType: "our_company", status: "in_approval"
+    }) },
+    contract: { findUnique: jest.fn().mockResolvedValue(contract) }
+  } as unknown as Prisma.TransactionClient;
+  await service.queueNewApprovalDuties(scoped, "late-reviewer", ["round"]);
+  await service.queueNewApprovalDuties(scoped, "late-reviewer", ["round"]);
+  const [[late], [lateReplay]] = createMany.mock.calls.slice(2);
+  expect(late.skipDuplicates).toBe(true);
+  expect(late.data).toHaveLength(1);
+  expect(late.data[0]).toMatchObject({ metadata: { recipientId: "late-reviewer", nodeIndex: 0 } });
+  expect(lateReplay).toEqual(late);
   expect(sms.sendDutyIntent).not.toHaveBeenCalled();
 });
 

@@ -10,6 +10,7 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { AppModule } from "../app.module";
+import type { ApprovalSmsService } from "../approval/approval-sms.service";
 import { AuthRateLimitService } from "../auth/auth-rate-limit.service";
 import { AuthService } from "../auth/auth.service";
 import { apiJsonReplacer } from "../api-json-replacer";
@@ -18,6 +19,7 @@ import { PrismaService } from "./prisma.service";
 import { armTask12AuthError, takeTask12AuthError, Task12AuthErrorFilter, Task12AuthStageInterceptor } from "./task12-auth-error-diagnostic";
 import { projectTask16RegistrationError } from "./task16-registration-error-diagnostic";
 import { CONTRACT_BODY_DOCX4J_ENGINE_VERSION } from "../contract-document/contract-document.service";
+import { ContractDutyNotificationService } from "../contract/contract-duty-notification.service";
 import { issueTask12NativeReviewReadiness, TASK12_NATIVE_REVIEW_CHECKSUM, TASK12_NATIVE_REVIEW_MIGRATION,
   withTask12NativeReviewReadiness } from "../file/task12-native-review-readiness";
 import { createApiValidationPipe } from "../validation/api-validation";
@@ -382,6 +384,8 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     expect((await PDFDocument.load(pdf)).getPageCount()).toBeGreaterThan(0);
 
     stage = "SUBMISSION";
+    const lateAssignment = seed.globalRoles.find(role => role.roleKey === "finance_director")!;
+    await owner.userPosition.delete({ where: { id: lateAssignment.id } });
     const submission = { expectedRevision: version.draftRevision, idempotencyKey: randomUUID(),
       documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint,
       generatedDocumentId: generated.generationId, sourceSha256: source.sourceSha256, blanksReviewed: true };
@@ -394,10 +398,40 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     const pending = async (actor: number) => (await get(actor, pendingPath)).rows
       .filter((row: Payload) => row.contractVersionId === versionId).length;
     expect(await pending(6)).toBe(0);
-    const actors = [1, 2, 3, 4, 5];
-    const approvals = await Promise.all(actors.map(async actor => (await detail(actor)).reviewApprovalContext));
+    const lateNotice = {
+      businessType: "contract_v2_inside_duty_notification", businessId: submitted.approvalInstanceId,
+      action: "queued", metadata: { path: ["recipientId"], equals: lateAssignment.userId }
+    };
+    expect(await owner.auditLog.count({ where: lateNotice })).toBe(0);
+    const firstApproval = (await detail(1)).reviewApprovalContext;
+    await post(1, contract + "/approval", { ...firstApproval, decision: "approve" });
+    expect(await pending(6)).toBe(0);
+
+    stage = "LATE_APPROVAL_ROLE";
+    const notices = app.get(ContractDutyNotificationService);
+    await owner.$transaction(async tx => {
+      await tx.userPosition.create({ data: {
+        id: lateAssignment.id, userId: lateAssignment.userId, positionId: lateAssignment.positionId
+      } });
+      const roundIds = [submitted.approvalInstanceId as string];
+      await notices.queueNewApprovalDuties(tx, lateAssignment.userId, roundIds);
+      await notices.queueNewApprovalDuties(tx, lateAssignment.userId, roundIds);
+    });
+    const queued = await owner.auditLog.findMany({ where: lateNotice });
+    expect(queued).toHaveLength(1);
+    expect(await pending(4)).toBe(1);
+    const mockSend = jest.fn().mockResolvedValue({ status: "accepted", message: "合成接收" });
+    const dispatcher = new ContractDutyNotificationService(app.get(PrismaService),
+      { available: () => true, sendDutyIntent: mockSend } as unknown as ApprovalSmsService);
+    await dispatcher.afterCommit(queued[0].id);
+    await dispatcher.afterCommit(queued[0].id);
+    expect(mockSend).toHaveBeenCalledTimes(1);
+
+    stage = "APPROVAL_AFTER_ROLE";
+    const remainingActors = [2, 3, 4, 5];
+    const approvals = await Promise.all(remainingActors.map(async actor => (await detail(actor)).reviewApprovalContext));
     expect(approvals.every(context => /^[a-f0-9]{64}$/u.test(context?.expectedParallelApprovalEpoch))).toBe(true);
-    await Promise.all(actors.map((actor, index) => post(actor, contract + "/approval", { ...approvals[index], decision: "approve" })));
+    await Promise.all(remainingActors.map((actor, index) => post(actor, contract + "/approval", { ...approvals[index], decision: "approve" })));
     expect(await pending(6)).toBe(1);
     stage = "SEAL";
     for (const path of ["/seal-approval", "/seal/approve", "/seal/complete"]) {
@@ -507,7 +541,9 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
 
     process.stdout.write("SEAL_329_NATIVE_PROOF " + JSON.stringify({ candidate: packet.candidate, docxSha256: hash(docx), pdfSha256: hash(pdf),
       contractType: "equipment_rental", originalSha256: originals.map(original => original.sha256),
-      authoritySha256: durableArchive.authoritySha256, fileManifestSha256: durableArchive.fileManifestSha256, approvals: actors.length, legacyRouteResponses: [410,410,410,410], sealTasks: 1, storage: "local",
+      authoritySha256: durableArchive.authoritySha256, fileManifestSha256: durableArchive.fileManifestSha256, approvals: remainingActors.length + 1,
+      lateApprovalNotice: { pending: 1, queued: queued.length, simulatedSends: mockSend.mock.calls.length },
+      legacyRouteResponses: [410,410,410,410], sealTasks: 1, storage: "local",
       accounts: seed.users.length + additionalUsers.length, concurrentReadStatuses: [handlerView.status, bothRolesView.status, outsiderView.status] }) + "\n");
   } catch (error) {
     const detail = error as { code?: unknown; status?: unknown; expected?: unknown; message?: unknown };

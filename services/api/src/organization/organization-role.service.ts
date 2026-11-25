@@ -2,6 +2,7 @@ import { ConflictException, ForbiddenException, Injectable } from "@nestjs/commo
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
 import { AuthService } from "../auth/auth.service";
+import { ContractDutyNotificationService } from "../contract/contract-duty-notification.service";
 import { PrismaService } from "../database/prisma.service";
 import type { ApplyRoleAdditionDto } from "./dto/apply-role-addition.dto";
 import type { ApplyRoleRemovalDto } from "./dto/apply-role-removal.dto";
@@ -47,7 +48,8 @@ export class OrganizationRoleService {
     private readonly prisma: PrismaService,
     private readonly auth: AuthService,
     private readonly audit: AuditService,
-    private readonly permissionImpacts: PermissionImpactService
+    private readonly permissionImpacts: PermissionImpactService,
+    private readonly contractDutyNotifications: ContractDutyNotificationService
   ) {}
 
   async assertCanMaintainBusinessEntryRole(
@@ -291,6 +293,13 @@ export class OrganizationRoleService {
               revokedRefreshTokens: revoked.count
             }
           });
+          const newlyActionableContractRounds = [...new Set(evaluation.preview.impacts
+            .filter(impact => impact.businessType === "contract_version"
+              && !impact.targetBefore.canReview && impact.targetAfter.canReview)
+            .map(impact => impact.approvalInstanceId))];
+          if (newlyActionableContractRounds.length) {
+            await this.contractDutyNotifications.queueNewApprovalDuties(tx, change.userId, newlyActionableContractRounds);
+          }
           return {
             change,
             assignmentId: assignment.id,

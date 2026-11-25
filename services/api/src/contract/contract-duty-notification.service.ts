@@ -83,7 +83,19 @@ export class ContractDutyNotificationService implements OnModuleInit, OnModuleDe
     })).canUpload;
   }
 
-  async queue(tx: Prisma.TransactionClient, contract: Contract, version: Version, round: ApprovalInstance, code: string, task?: Task) {
+  async queueNewApprovalDuties(tx: Prisma.TransactionClient, recipientId: string, roundIds: string[]) {
+    const rounds = await tx.approvalInstance.findMany({
+      where: { id: { in: roundIds }, status: "in_progress", businessType: "contract_version", flowType: "contract.approve" }
+    });
+    for (const round of rounds) {
+      const version = await tx.contractVersion.findUnique({ where: { id: round.businessId } });
+      if (!version || this.stage(version, round) !== "approval") continue;
+      const contract = await tx.contract.findUnique({ where: { id: version.contractId } });
+      if (contract?.code) await this.queue(tx, contract, version, round, contract.code, undefined, recipientId);
+    }
+  }
+
+  async queue(tx: Prisma.TransactionClient, contract: Contract, version: Version, round: ApprovalInstance, code: string, task?: Task, recipientId?: string) {
     const stage = this.stage(version, round, task);
     if (!stage || (stage !== "approval" && contract.ownerUserId !== round.applicantUserId) || contract.voidedAt || !(await tx.project.findUnique({ where: { id: contract.projectId }, select: { isActive: true } }))?.isActive) return;
     const nodes = isParallelApprovalRound(round.frozenNodes) ? round.frozenNodes : [];
@@ -91,6 +103,7 @@ export class ContractDutyNotificationService implements OnModuleInit, OnModuleDe
     const intents: Prisma.AuditLogCreateManyInput[] = [];
     for (const index of indexes) {
       for (const actor of await this.candidates(tx, contract, round, stage, index)) {
+        if (recipientId && actor !== recipientId) continue;
         if (!await this.authorized(tx, contract, round, stage, index, actor)) continue;
         const dutyName = stage === "approval" ? String(nodes[index].name) : stage === "seal" ? "确认已盖章" : "上传双方签章原件归档";
         intents.push({ id: digest(round.id, stage, index, actor), businessType: KIND, businessId: round.id, actorUserId: round.applicantUserId,

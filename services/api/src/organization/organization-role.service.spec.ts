@@ -116,6 +116,7 @@ function createHarness(input?: {
   };
   const auth = { confirmPassword: jest.fn().mockResolvedValue({ id: "actor-user" }) };
   const audit = { record: jest.fn().mockResolvedValue({ id: "audit-1" }) };
+  const contractNotices = { queueNewApprovalDuties: jest.fn().mockResolvedValue(undefined) };
   const impacts = {
     evaluateRoleRemoval: jest.fn().mockResolvedValue(
       input?.evaluation ?? {
@@ -140,18 +141,19 @@ function createHarness(input?: {
     prismaService: unknown,
     authService: unknown,
     auditService: unknown,
-    permissionImpactService: unknown
+    permissionImpactService: unknown,
+    contractDutyNotificationService: unknown
   ) => {
     applyRoleRemoval(actorUserId: string, body: ApplyRoleRemovalDto): Promise<unknown>;
     applyRoleAddition(actorUserId: string, body: ApplyRoleAdditionDto): Promise<unknown>;
   };
-  return { service: new Service(prisma, auth, audit, impacts), prisma, tx, auth, audit, impacts };
+  return { service: new Service(prisma, auth, audit, impacts, contractNotices), prisma, tx, auth, audit, impacts, contractNotices };
 }
 
 describe("OrganizationRoleService", () => {
   it("统一录入不能把错误类型的项目坐标丢弃后默认为公司授岗", async () => {
     const { tx } = createHarness();
-    const scoped = new OrganizationRoleService(tx as never, {} as never, {} as never, {} as never);
+    const scoped = new OrganizationRoleService(tx as never, {} as never, {} as never, {} as never, {} as never);
     await expect(scoped.assertCanMaintainBusinessEntryRole("actor-user", "target-user", {
       operation: "grant", scope: "global", projectId: 17, roleKey: "contract_staff"
     })).rejects.toThrow("项目");
@@ -163,7 +165,7 @@ describe("OrganizationRoleService", () => {
       const { tx } = createHarness();
       const scoped = new OrganizationRoleService({ ...tx,
         project: { findUnique: jest.fn().mockResolvedValue({ id: "project-1", isActive: true }) }
-      } as never, {} as never, {} as never, {} as never);
+      } as never, {} as never, {} as never, {} as never, {} as never);
       await expect(scoped.assertCanMaintainBusinessEntryRole("actor-user", "target-user", {
         operation: "grant", scope: "project", projectId: "project-1", roleKey
       })).resolves.toBeUndefined();
@@ -425,6 +427,32 @@ describe("OrganizationRoleService", () => {
   });
 
   describe("岗位新增 apply", () => {
+    it("补岗只给新增合同审批职责入队，和岗位新增使用同一事务", async () => {
+      const newDuty = {
+        businessType: "contract_version", approvalInstanceId: "newly-visible",
+        targetBefore: { canReview: false }, targetAfter: { canReview: true }
+      };
+      const { service, tx, contractNotices } = createHarness({
+        additionEvaluation: {
+          preview: additionPreview({ impacts: [
+            newDuty, newDuty,
+            { ...newDuty, approvalInstanceId: "already-visible", targetBefore: { canReview: true } },
+            { ...newDuty, approvalInstanceId: "still-forbidden", targetAfter: { canReview: false } },
+            { ...newDuty, businessType: "expense_claim", approvalInstanceId: "different-domain" }
+          ] }),
+          targetCreate: {
+            source: "user_position", userId: "target-user", projectId: null,
+            roleKey: "finance_director", positionId: "position-finance"
+          }
+        }
+      });
+      await service.applyRoleAddition("actor-user", globalAdditionInput);
+      expect(contractNotices.queueNewApprovalDuties).toHaveBeenCalledTimes(1);
+      expect(contractNotices.queueNewApprovalDuties).toHaveBeenCalledWith(tx, "target-user", ["newly-visible"]);
+      expect(tx.userPosition.create.mock.invocationCallOrder[0])
+        .toBeLessThan(contractNotices.queueNewApprovalDuties.mock.invocationCallOrder[0]);
+    });
+
     it("密码失败时零事务零写入，并保留密码原值", async () => {
       const { service, prisma, auth, tx, audit } = createHarness();
       auth.confirmPassword.mockRejectedValueOnce(new ForbiddenException("当前密码不正确"));

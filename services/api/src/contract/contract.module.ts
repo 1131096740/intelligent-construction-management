@@ -1,7 +1,7 @@
 import { ContractWorkCompletionApprovalService } from "./contract-work-completion-approval.service";
 import { ContractWorkCompletionNotificationService } from "./contract-work-completion-notification.service";
 import { ContractWorkCompletionService } from "./contract-work-completion.service";
-import { ContractDutyNotificationService } from "./contract-duty-notification.service";
+import { ContractDutyNotificationModule } from "./contract-duty-notification.module";
 import { UPWARD_DIRECT_ARCHIVE_AUTHORITY } from "./contract-upward-direct-registration";
 import { nativeUpwardDirectArchiveAuthority } from "./contract-upward-direct-archive-native";
 import { DIRECT_ARCHIVE_EXECUTOR, DIRECT_ARCHIVE_ISSUER_CLIENT, DIRECT_ARCHIVE_RUNTIME_CLIENT,
@@ -49,6 +49,7 @@ import { ContractVersionActivationService } from "./contract-version-activation.
     BusinessNumberModule,
     BusinessEntryTransactionModule,
     ContractBillModule,
+    ContractDutyNotificationModule,
     forwardRef(() => ContractWorkbenchModule),
     FileModule,
     MeModule
@@ -58,7 +59,6 @@ import { ContractVersionActivationService } from "./contract-version-activation.
     ContractService,
     ContractSignedChangeService,
     ContractEffectiveTaxService,
-    ContractDutyNotificationService,
     ContractWorkCompletionService,
     ContractWorkCompletionApprovalService,
     ContractWorkCompletionNotificationService,

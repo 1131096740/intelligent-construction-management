@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { AuthModule } from "../auth/auth.module";
+import { ContractDutyNotificationModule } from "../contract/contract-duty-notification.module";
 import { DatabaseModule } from "../database/database.module";
 import { OrganizationController } from "./organization.controller";
 import { OrganizationRoleService } from "./organization-role.service";
@@ -13,7 +14,7 @@ import { ProjectRosterManagementService } from "./project-roster-management.serv
 import { PersonnelLifecycleService } from "./personnel-lifecycle.service";
 
 @Module({
-  imports: [DatabaseModule, AuthModule, AuditModule],
+  imports: [DatabaseModule, AuthModule, AuditModule, ContractDutyNotificationModule],
   controllers: [OrganizationController, EmployeeOnboardingController, ProjectRosterManagementController],
   providers: [OrganizationService, PermissionImpactService, OrganizationRoleService, EmployeeOnboardingService, ProjectRosterManagementService, PersonnelLifecycleService],
   exports: [OrganizationService, OrganizationRoleService]
