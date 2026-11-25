@@ -223,7 +223,7 @@ async function main(args) {
     if (result.status !== 0) {
       // Some tools return connection strings and fixture secrets on failure.
       // Each command's projection is limited to its status and business stage.
-      const diagnostic = result.stdout?.match(/SEAL_329_NATIVE_FAILURE (\{[^\n]{1,500}\})/u)?.[1];
+      const diagnostic = result.stdout?.match(/SEAL_329_NATIVE_FAILURE (\{[^\n]{1,1500}\})/u)?.[1];
       const errorText = (result.stderr ?? "") + "\n" + (result.stdout ?? "");
       const prismaCode = errorText.match(/(?:Error: |^)(P[0-9]{4})\b/mu)?.[1];
       const sqlState = (errorText.match(/Database error code:\s*([0-9A-Z]{5})\b/u) ??

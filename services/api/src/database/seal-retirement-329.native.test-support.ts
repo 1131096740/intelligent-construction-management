@@ -1,7 +1,7 @@
 import "reflect-metadata";
 import { type INestApplication } from "@nestjs/common";
 import { HttpAdapterHost, NestFactory } from "@nestjs/core";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
@@ -51,7 +51,8 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
   const passwords = Array.from({length: 8}, () => randomBytes(32).toString("hex"));
   let app: INestApplication | undefined;
   let stage = "IDENTITY";
-  let databaseFailure: { model?: string; action: string; code: string; sqlState?: string } | undefined;
+  let databaseFailure: { model?: string; action: string; kind: string; code?: string; sqlState?: string; relation?: string } | undefined;
+  let loginFacts: { rateLimitRows?: number; lastLoginRecorded?: boolean; auditRows?: number; refreshRows?: number } | undefined;
   let authFailure: ReturnType<typeof takeTask12AuthError>;
   let loggedAuthFailure: ReturnType<typeof projectTask16RegistrationError> | undefined;
   let loginBoundary: "RATE_LIMIT" | "AUTH_SERVICE" | undefined;
@@ -126,11 +127,18 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
       try {
         return await next(params);
       } catch (error) {
-        const detail = error as { code?: string; meta?: { code?: string } };
-        if (typeof detail?.code === "string" && /^P[0-9]{4}$/u.test(detail.code)) {
-          const sqlState = detail.meta?.code;
-          databaseFailure = { model: params.model, action: params.action, code: detail.code,
-            sqlState: typeof sqlState === "string" && /^[A-Z0-9]{5}$/u.test(sqlState) ? sqlState : undefined };
+        const projected = projectTask16RegistrationError(error);
+        const unknown = stage === "LOGIN" && projected.serverErrorKind === "UNKNOWN_REQUEST_ERROR";
+        if (projected.serverPrismaCode || unknown) {
+          const message = unknown && error instanceof Error ? error.message : "";
+          const unknownSqlState = /(?:code:\s*"|SQLSTATE[ :]+)([0-9A-Z]{5})\b/u.exec(message)?.[1];
+          const sqlState = projected.serverSqlState ?? (
+            unknownSqlState && ["42501", "23502", "23503", "23505", "23514", "42P01", "42703", "25006", "25P02"].includes(unknownSqlState)
+              ? unknownSqlState : undefined
+          );
+          const relation = /permission denied for (?:table|relation) "?([a-zA-Z0-9_]+)"?/u.exec(message)?.[1];
+          databaseFailure = { model: params.model, action: params.action, kind: projected.serverErrorKind, code: projected.serverPrismaCode,
+            sqlState, relation: relation && Object.hasOwn(Prisma.ModelName, relation) ? relation : undefined };
         }
         throw error;
       }
@@ -161,8 +169,25 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
       loggedAuthFailure = undefined;
       loginBoundary = undefined;
       loginError = undefined;
+      databaseFailure = undefined;
       try {
         await post(actor, "/auth/login", { phone: user.phone, password: passwords[actor] });
+      } catch (error) {
+        // Brokering the failed request has already returned. Inspect only
+        // committed facts for this exact synthetic identity using the owner.
+        const [limits, userRow, audits, refresh] = await Promise.allSettled([
+          owner.authRateLimit.count(),
+          owner.user.findUnique({ where: { id: user.id }, select: { lastLoginAt: true } }),
+          owner.auditLog.count({ where: { action: "auth.login", actorUserId: user.id, businessId: user.id } }),
+          owner.refreshToken.count({ where: { userId: user.id } })
+        ]);
+        loginFacts = {
+          rateLimitRows: limits.status === "fulfilled" ? limits.value : undefined,
+          lastLoginRecorded: userRow.status === "fulfilled" ? Boolean(userRow.value?.lastLoginAt) : undefined,
+          auditRows: audits.status === "fulfilled" ? audits.value : undefined,
+          refreshRows: refresh.status === "fulfilled" ? refresh.value : undefined
+        };
+        throw error;
       } finally {
         authFailure = takeTask12AuthError(authErrors, server, ticket);
       }
@@ -303,7 +328,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     const status = typeof detail?.status === "number" ? detail.status : undefined;
     const expected = typeof detail?.expected === "number" ? detail.expected : undefined;
     const diagnostic = JSON.stringify({ stage, code, marker, status, expected, databaseFailure, authFailure, loggedAuthFailure,
-      loginBoundary, loginError });
+      loginBoundary, loginError, loginFacts });
     process.stdout.write("SEAL_329_NATIVE_FAILURE " + diagnostic + "\n");
     throw new Error(diagnostic);
   } finally {
