@@ -268,11 +268,13 @@ async function main(args) {
   const source = captureSource(sha);
   const normalArchiveRecipeSha = "90b698f5230ae172518e285bf8c4e197eb1d552518c55670c2b3794eb82f1b75";
   file(path.join(__dirname, "task12-normal274-archive-binding.cjs"), normalArchiveRecipeSha);
+  const approvalLockRecipeSha = "5d565dc516cd26c64e3fda295b97968be7912abc62f47ab47ffd93be29fd6c2f";
+  file(path.join(__dirname, "task12-native-approval-lock.cjs"), approvalLockRecipeSha);
   assert.match(archiveSha, shaPattern);
   const archive = captureArchive(archiveAdmission, archiveSha, source, { file, hash });
   const runtime = captureRuntime(pgManifest, pgSha, docManifest, docSha, office, officeSha);
   const receipt = { candidate: sha, sourceTree: source.sourceTree, migrations: source.ledger.length, ledgerSha256: source.ledgerDigest,
-    postgresMaterialSha256: pgSha, historicalSourceAdmissionSha256: archiveSha, normalArchiveRecipeSha256: normalArchiveRecipeSha, documentManifestSha256: docSha, libreOfficeWrapperSha256: officeSha, libreOfficeExecutableSha256: runtime.nativeOfficeSha,
+    postgresMaterialSha256: pgSha, historicalSourceAdmissionSha256: archiveSha, normalArchiveRecipeSha256: normalArchiveRecipeSha, approvalLockRecipeSha256: approvalLockRecipeSha, documentManifestSha256: docSha, libreOfficeWrapperSha256: officeSha, libreOfficeExecutableSha256: runtime.nativeOfficeSha,
     status: "HOST_MATERIAL_VERIFIED", stages: [], cleanup: "NOT_NEEDED" };
   if (mode === "verify") return receipt;
 

@@ -5,6 +5,7 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { AppModule } from "../app.module";
@@ -16,6 +17,8 @@ import { PrismaService } from "./prisma.service";
 import { armTask12AuthError, takeTask12AuthError, Task12AuthErrorFilter, Task12AuthStageInterceptor } from "./task12-auth-error-diagnostic";
 import { projectTask16RegistrationError } from "./task16-registration-error-diagnostic";
 import { CONTRACT_BODY_DOCX4J_ENGINE_VERSION } from "../contract-document/contract-document.service";
+import { issueTask12NativeReviewReadiness, TASK12_NATIVE_REVIEW_CHECKSUM, TASK12_NATIVE_REVIEW_MIGRATION,
+  withTask12NativeReviewReadiness } from "../file/task12-native-review-readiness";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { extractContractDocx } from "../contract-document/contract-docx-extractor";
 import { createTask12Con18DefaultHttp } from "./task12-con18-default-http";
@@ -39,6 +42,10 @@ const {
     checkpoint: ArchiveCheckpoint, voucherInstalled: boolean): string;
   // eslint-disable-next-line @typescript-eslint/no-var-requires
 } = require("../../prisma/task12-normal274-archive-binding.cjs");
+const { renderTask12NativeApprovalLock }: {
+  renderTask12NativeApprovalLock(identity: ArchiveIdentity, fixture: ReturnType<typeof buildTask12GeneratedApprovalFixture>): string;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+} = require("../../prisma/task12-native-approval-lock.cjs");
 type RequestDetails = Pick<Task12LocalLifecycleRequest, "json" | "form" | "headers">;
 // The existing public transport returns untyped JSON. The assertions below check the fields used by the case.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -88,6 +95,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
   let app: INestApplication | undefined;
   let stage = "IDENTITY";
   let databaseFailure: { model?: string; action: string; kind: string; code?: string; sqlState?: string; relation?: string; routine?: string } | undefined;
+  let generatedFacts: { engine: string; docxSha256: string; pdfSha256: string } | undefined;
   let loginFacts: { rateLimitRows?: number; lastLoginRecorded?: boolean; auditRows?: number; refreshRows?: number } | undefined;
   let authFailure: ReturnType<typeof takeTask12AuthError>;
   let loggedAuthFailure: ReturnType<typeof projectTask16RegistrationError> | undefined;
@@ -136,9 +144,29 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
       SELECT d.oid::text AS "databaseOid", (SELECT system_identifier::text FROM pg_control_system()) AS "systemIdentifier",
         inet_server_port() AS "serverPort" FROM pg_database d WHERE datname=current_database() AND datdba=10`;
     const archiveIdentity = { ...coordinates, database: packet.database, ordinaryName: applicationEndpoint.username, ordinaryOid: packet.applicationOid };
+    const readinessIdentity = { ...archiveIdentity, project: seed.project.id, applicant: seed.handler.id };
+    const [ticketOwnerProof] = await owner.$queryRaw<Array<typeof archiveIdentity & { ownerOid: string; ownerSession: boolean; ssl: boolean; completed: boolean }>>`
+      SELECT current_database() AS "database", d.oid::text AS "databaseOid", d.datdba::text AS "ownerOid",
+        current_user=session_user AND current_user::regrole::oid=d.datdba AS "ownerSession",
+        r.oid::text AS "ordinaryOid", r.rolname::text AS "ordinaryName", inet_server_port() AS "serverPort",
+        (SELECT system_identifier::text FROM pg_control_system()) AS "systemIdentifier",
+        (SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()) AS "ssl",
+        (SELECT count(*)=1 AND count(*) FILTER (WHERE finished_at IS NOT NULL AND checksum=${TASK12_NATIVE_REVIEW_CHECKSUM})=1
+         FROM public."_prisma_migrations" WHERE migration_name=${TASK12_NATIVE_REVIEW_MIGRATION} AND rolled_back_at IS NULL) AS "completed"
+      FROM pg_database d JOIN pg_roles r ON r.oid=${packet.applicationOid}::oid
+      WHERE d.datname=current_database()`;
+    const [restricted] = await owner.$queryRaw<Array<{ ledgerDenied: boolean; assignmentWritesDenied: boolean }>>`
+      SELECT NOT has_any_column_privilege(${packet.applicationOid}::oid,'public."_prisma_migrations"'::regclass,'SELECT') AS "ledgerDenied",
+        NOT EXISTS(SELECT FROM (VALUES ('public."ProjectMember"'::regclass), ('public."UserPosition"'::regclass),
+          ('public."Position"'::regclass), ('public."HandwrittenSignatureVersion"'::regclass)) targets(relation)
+          WHERE has_any_column_privilege(${packet.applicationOid}::oid,targets.relation,'UPDATE')) AS "assignmentWritesDenied"`;
+    expect(restricted).toEqual({ ledgerDenied: true, assignmentWritesDenied: true });
     const construction = { party: randomUUID(), version: randomUUID(), assignment: randomUUID() };
     executeOwnerFixtureSql(packet, renderNormal274ConstructionFixture(archiveIdentity, construction, seed.project.id, seed.handler.id));
+    executeOwnerFixtureSql(packet, renderTask12NativeApprovalLock(archiveIdentity, seed));
 
+    const qualifiedFiles = new Set<string>();
+    const qualifiedWrites = new Set<string>();
     stage = "HTTP_BOOT";
     app = await NestFactory.create(AppModule, {
       logger: {
@@ -150,6 +178,22 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
       abortOnError: false
     });
     configureApiSecurity(app);
+    const server = app.getHttpServer() as Server;
+    app.use((request: IncomingMessage, response: ServerResponse, next: (error?: unknown) => void) => {
+      const url = request.url ?? "";
+      const file = /^\/files\/([a-f0-9-]{36})\/download-ticket$/u.exec(url)?.[1];
+      if (request.method !== "POST" || !(qualifiedWrites.has(url) || (file && qualifiedFiles.has(file)))) return next();
+      const token = issueTask12NativeReviewReadiness(readinessIdentity, ticketOwnerProof, () => {
+        if (!server.listening || request.socket.remoteAddress !== "127.0.0.1") throw new Error("NATIVE_329_DOWNLOAD_SCOPE");
+      });
+      // Only the armed fixture's public routes inherit the verified native
+      // scope. The normal role guards and controllers still own the requests.
+      void withTask12NativeReviewReadiness(token, () => new Promise<void>(resolve => {
+        response.once("finish", resolve);
+        response.once("close", resolve);
+        next();
+      })).catch(next);
+    });
     const authErrors = new Task12AuthErrorFilter(app.get(HttpAdapterHost));
     app.useGlobalFilters(authErrors);
     app.useGlobalInterceptors(new Task12AuthStageInterceptor(authErrors));
@@ -190,7 +234,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
           const relation = /permission denied for (?:table|relation) "?([a-zA-Z0-9_]+)"?/u.exec(message)?.[1];
           const routine = /permission denied for function (jg_[a-z0-9_]{1,95})\b/u.exec(message)?.[1];
           databaseFailure = { model: params.model, action: params.action, kind: projected.serverErrorKind, code: projected.serverPrismaCode,
-            sqlState, relation: relation && Object.hasOwn(Prisma.ModelName, relation) ? relation : undefined, routine };
+            sqlState, relation: relation && (Object.hasOwn(Prisma.ModelName, relation) || relation === "_prisma_migrations") ? relation : undefined, routine };
         }
         throw error;
       }
@@ -258,6 +302,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     expect(typeof versionId).toBe("string");
     const draft = "/contract-drafts/" + versionId;
     const contract = "/contracts/" + versionId;
+    for (const path of [draft + "/submission", contract + "/approval", contract + "/seal-confirmation"]) qualifiedWrites.add(path);
     const detail = (actor = 0) => get(actor, "/contracts/" + contractId + "?versionId=" + versionId);
     stage = "DRAFT_LEASE";
     const lease = await post(0, draft + "/edit-lease");
@@ -305,15 +350,21 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
       expect(downloaded.bytes.length).toBe(ticket.sizeBytes);
       return downloaded.bytes;
     };
-    const docx = await download(generated.docxFileId, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-    const pdf = await download(generated.pdfFileId, "application/pdf");
     const job = await owner.contractGeneratedDocument.findUniqueOrThrow({ where: { id: generated.generationId } });
     expect(job).toMatchObject({ status: "success", engineVersion: CONTRACT_BODY_DOCX4J_ENGINE_VERSION,
       docxFileId: generated.docxFileId, pdfFileId: generated.pdfFileId });
-    for (const [id, bytes] of [[generated.docxFileId, docx], [generated.pdfFileId, pdf]] as const) {
-      const file = await owner.fileObject.findUniqueOrThrow({ where: { id } });
-      expect(file.contentSha256).toBe(hash(bytes));
-    }
+    const [docxFact, pdfFact] = await Promise.all([generated.docxFileId, generated.pdfFileId].map(id =>
+      owner.fileObject.findUniqueOrThrow({ where: { id }, select: { contentSha256: true } })));
+    expect(docxFact.contentSha256).toMatch(/^[a-f0-9]{64}$/u);
+    expect(pdfFact.contentSha256).toMatch(/^[a-f0-9]{64}$/u);
+    generatedFacts = { engine: job.engineVersion, docxSha256: docxFact.contentSha256!, pdfSha256: pdfFact.contentSha256! };
+    qualifiedFiles.add(generated.docxFileId);
+    qualifiedFiles.add(generated.pdfFileId);
+    stage = "GENERATED_DOWNLOAD";
+    const docx = await download(generated.docxFileId, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    const pdf = await download(generated.pdfFileId, "application/pdf");
+    expect(hash(docx)).toBe(generatedFacts.docxSha256);
+    expect(hash(pdf)).toBe(generatedFacts.pdfSha256);
     expect(extractContractDocx(docx).blocks.map(block => block.text).join(" ")).toContain(addedClause);
     expect((await PDFDocument.load(pdf)).getPageCount()).toBeGreaterThan(0);
 
@@ -363,6 +414,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
       const uploaded = await expectStatus(send(0, "/files", "POST", { form: form(bytes, "application/pdf", "signed-original-" + (index + 1) + ".pdf") }), 201);
       expect(uploaded).toMatchObject({ contentSha256: hash(bytes), sizeBytes: bytes.length });
       originals.push({ id: uploaded.id as string, sha256: hash(bytes), sizeBytes: bytes.length });
+      qualifiedFiles.add(uploaded.id);
     }
     expect(originals[0].sha256).not.toBe(originals[1].sha256);
     const fileIds = originals.map(original => original.id);
@@ -406,7 +458,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     const status = typeof detail?.status === "number" ? detail.status : undefined;
     const expected = typeof detail?.expected === "number" ? detail.expected : undefined;
     const diagnostic = JSON.stringify({ stage, code, marker, status, expected, databaseFailure, authFailure, loggedAuthFailure,
-      loginBoundary, loginError, loginFacts });
+      loginBoundary, loginError, loginFacts, generatedFacts });
     process.stdout.write("SEAL_329_NATIVE_FAILURE " + diagnostic + "\n");
     throw new Error(diagnostic);
   } finally {
