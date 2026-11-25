@@ -1,8 +1,23 @@
 [
   {
+    "path": "apps/web-admin/e2e/contract-grid-http.e2e.ts",
+    "expected": "73121ea29fa725a68ab593bc4c1b6c07117db05b8046f4f780b033679f53a44f",
+    "candidate": "f296e48b4afbe2b74438a8ba8d6dbc418c20be77f98feeb96edee7e62ccfa760"
+  },
+  {
+    "path": "apps/web-admin/e2e/helpers/contract-grid-synthetic-server.cjs",
+    "expected": "e607d332a42c6bc36e9cd5096d3e585eda6b5ee0cdc4b0eba0cf10158fb8fbfd",
+    "candidate": "31e39fc8b1400f5635a97b22281a1e5b58784297f9a19a1bf3b45c66c593a15e"
+  },
+  {
     "path": "apps/web-admin/src/api/core-flow-read.api.ts",
     "expected": "c83128b15dbd395bae3875c5994c11e54b13ec426b6959b3e677371bb49a303f",
     "candidate": "912c105a15d35cbbb1952db4d45d10b3156d3d3062e6cfc342b15c0925a1daa2"
+  },
+  {
+    "path": "apps/web-admin/src/pages/contracts/workbench/ContractPricingSection.vue",
+    "expected": "0f22c2b44c7ac27a78f6ca6790065a561fc2b03b70d97cc9d5ce42e2f7dbcbc6",
+    "candidate": "a4f1f2d5c893725fea01fb2d6fc4952dd320331e88b394bc78b024f256b204f0"
   },
   {
     "path": "apps/web-admin/src/pages/payments/PaymentDetailPage.vue",

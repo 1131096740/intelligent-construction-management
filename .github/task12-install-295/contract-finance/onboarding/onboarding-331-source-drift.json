@@ -1,5 +1,8 @@
 {
+  "apps/web-admin/e2e/contract-grid-http.e2e.ts": "f296e48b4afbe2b74438a8ba8d6dbc418c20be77f98feeb96edee7e62ccfa760",
+  "apps/web-admin/e2e/helpers/contract-grid-synthetic-server.cjs": "31e39fc8b1400f5635a97b22281a1e5b58784297f9a19a1bf3b45c66c593a15e",
   "apps/web-admin/src/api/core-flow-read.api.ts": "912c105a15d35cbbb1952db4d45d10b3156d3d3062e6cfc342b15c0925a1daa2",
+  "apps/web-admin/src/pages/contracts/workbench/ContractPricingSection.vue": "a4f1f2d5c893725fea01fb2d6fc4952dd320331e88b394bc78b024f256b204f0",
   "apps/web-admin/src/pages/payments/PaymentDetailPage.vue": "623a31dec13fbf30df0e031854f2f6befd8a0a9c296790c8c7fc02dcd208eb8e",
   "services/api/prisma/database-dynamic-gate-manifest.json": "b2a444f14a3cd2be34e47a9f44203d88d40d18b5aab16e0700f4e558d36fcaa0",
   "services/api/prisma/migrations/20261129000000_payment_remaining_withdrawal/migration.sql": "67593637957ba372cbba7633334fb9896ba6adf472b0c1b9b6f1482c0d645fc2",
@@ -8,7 +11,7 @@
   "services/api/prisma/task16-current259-payment-competition.test.cjs": "30e45e5d6e7cddc8f743b6ba55313f5efa13b77d708e51cbdeda6236ec467efa",
   "services/api/src/auth/guards/permission.guard.spec.ts": "fe875ba9595dcfa52bacf37a5b4e0c266947b4108800548a2742cfce2355d40c",
   "services/api/src/auth/guards/permission.guard.ts": "df71d511cf467d0ff93124590b4e71d6ee951d527d089f934879a3033c4b8655",
-  "services/api/src/database/line-a-real-db.http.pg.spec.ts": "359dd87ba894ac23bafc866b7650b3b416542143ec097c7c891ab5ea623fc858",
+  "services/api/src/database/line-a-real-db.http.pg.spec.ts": "8061a3780fd1c52fd7504bd45728b1b43ccc2477639286e1658e8775515fcc86",
   "services/api/src/database/task16-text-agreement-payments.http.pg.spec.ts": "a23a5009503b6683aa545c582ff0e511c85768e417d591555d502a1934686b49",
   "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts": "09696483f30a672b0bc148f5b078ea09f6c82f9219beadaaab0a425abfc37a50",
   "services/api/src/general-procurement/general-procurement-request-access.ts": "dbc611ed6488fa32c8794a0244a087e5239b2fd22117704ba38fbd2c0bbeb456",
