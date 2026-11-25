@@ -151,7 +151,8 @@
 + if(recovery)await recovery.verify();
 + return {plan:migrationPlan,setup,materials,recovery};
  }
-
+-
++
 -function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic} = {}) {
 +function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic, cwd} = {}) {
    const result = spawnSync(file, args, {
@@ -296,20 +297,29 @@
        }
      }
      let cleanupLegacy;
-@@ -830,9 +967,10 @@
-         throw error;
+@@ -835,16 +972,17 @@
+           throw error;
+         }
+         current=await jsonSql(control.inspectSql());
+-        need(equal(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
++        need(migrationLedgerMatches(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
+           .every(key=>current[key]===roleIdentity[key]),'FORWARD_320_LEDGER_IDENTITY');
+-        if (forward320.textDirect && current.ledger.length===329) {
+-          const digest=hash(JSON.stringify(current.ledger));
++        if (forward320.textDirect && qualifiedLedger.length===329) {
++          const digest=hash(JSON.stringify(qualifiedLedger));
+           need(digest==='3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2' &&
+             equal(await jsonSql(finalSql),final),'TEXT_DIRECT_329_PREDECESSOR_CONTINUITY');
+           receipt.textDirectPredecessor={count:329,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true};
+         }
        }
-       const current=await jsonSql(control.inspectSql());
--      need(equal(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
-+      need(migrationLedgerMatches(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
-         .every(key=>current[key]===roleIdentity[key]),'FORWARD_320_LEDGER_IDENTITY');
 -      receipt.forward320={count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
 +      receipt.forward320={count:qualifiedLedger.length,ledgerSha256:hash(JSON.stringify(qualifiedLedger)),sameIdentity:true,sourceTree,tails};
 +      if (retained) receipt.forward320.recoveryLedger={count:current.ledger.length,sha256:hash(JSON.stringify(current.ledger))};
        receipt.forward320.fileGuards=await jsonSql(`SELECT coalesce(jsonb_agg(jsonb_build_object(
          'name',t.tgname,'enabled',t.tgenabled='O','function',p.proname,'definer',p.prosecdef,'sha256',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')
        ) ORDER BY t.tgname),'[]'::jsonb) FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
-@@ -927,7 +1065,7 @@
+@@ -939,7 +1077,7 @@
          active = false;
        }
        const afterConsumer = await jsonSql(control.inspectSql());
@@ -318,7 +328,7 @@
        need(equal(await jsonSql(finalSql), final), 'CONSUMER_PROTECTED_CATALOG_CONTINUITY');
        if(cleanupLegacy){
          const legacy=await jsonSql(control.inspectSql(),{database:cleanupLegacy.database});
-@@ -972,9 +1110,10 @@
+@@ -984,9 +1122,10 @@
            need(equal(await jsonSql(multi.catalogSql),receipt.installOnly295.after),'MULTI_WITNESS_295_CATALOG_AFTER_CONSUMER');
            receipt.multiWitnessCatalogAfterBusiness=true;
          }
@@ -331,7 +341,7 @@
        receipt.business = 'CALLBACK_COMPLETED';
      }
    } finally {
-@@ -988,19 +1127,26 @@
+@@ -1000,19 +1139,26 @@
    }
  }
  
@@ -362,7 +372,7 @@
   const source={candidateSha:stageSha,sourceSealSha256:plan.source.witness.profile.sealSha256,profile:plan.source.witness.profile,tree:stageTree};
   const archive=fromHistory('./task16-current259-archive-install.cjs').beginNativeTask12ArchiveProtocol(JSON.stringify({source,completion:provisioned,serverPort:port}));
   const seven=archive.acceptBefore(await run('ARCHIVE_BEFORE',archive.beforeSql));
-@@ -1271,7 +1417,7 @@
+@@ -1283,7 +1429,7 @@
    return installer(receipt,false,async context => {
      need(context.candidateTree===outsideRelease.tree,'OWNED_289_SETTLEMENT_SOURCE');
      receipt.settlement = require('./contract-ci.cjs').verify('--contract-settlement-ci',context);
@@ -371,7 +381,7 @@
    },outsideRelease);
  };
  
-@@ -1284,7 +1430,7 @@
+@@ -1296,7 +1442,7 @@
    return installer(receipt,false,async context => {
      need(context.candidateTree===outsideRelease.tree,'OWNED_289_ADJACENT_SOURCE');
      const result=require('./contract-ci.cjs').verify(mode,context);
@@ -380,10 +390,10 @@
      receipt.adjacentPostconsume={count:289,exactB7:true};
      receipt[resultKey]=result;
    },outsideRelease);
-@@ -1388,3 +1534,42 @@
-   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'cleanup');
- module.exports.withCombined320MultiWitnessForProfile=(receipt,consume,material)=>
-   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'profile');
+@@ -1423,3 +1569,44 @@
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,true),'cleanup');
+ module.exports.withCombined330MultiWitnessForProfile=(receipt,consume,material)=>
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,true),'profile');
 +module.exports.withExpense295 = (receipt,lane,material) => {
 +  need(['execution','finance','receipt'].includes(lane) && receipt.lane===lane,'EXPENSE_295_LANE');
 +  const mode=receipt.purpose;
@@ -391,7 +401,9 @@
 +    'ORIGINAL_EXPENSE_HISTORICAL_NEGATIVES_295_SOURCE','ORIGINAL_EXPENSE_295_SAME_INSTANCE_RECOVERY_ONLY'].includes(mode),
 +    'EXPENSE_295_MODE');
 +  if(mode==='ORIGINAL_EXPENSE_295_SAME_INSTANCE_RECOVERY_ONLY') need(Object.hasOwn(expenseRecoveryProfiles,lane),'EXPENSE_295_RECOVERY_LANE');
-+  const install=material ? module.exports.withCombined320ContractPayment : module.exports.withCombined295MultiWitness;
++  const install=material
++    ? (material.mode==='text-direct-330' ? module.exports.withCombined330TextAgreement : module.exports.withCombined320ContractPayment)
++    : module.exports.withCombined295MultiWitness;
 +  need(!material || mode!=='ORIGINAL_EXPENSE_HISTORICAL_NEGATIVES_295_SOURCE','EXPENSE_320_NEGATIVE_MUST_RETAIN_HISTORY');
 +  return install(receipt,async context=>{
 +    if(mode==='ORIGINAL_EXPENSE_295_APPLICATION_ONLY') {

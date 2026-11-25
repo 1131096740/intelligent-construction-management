@@ -16,7 +16,7 @@ scope=expense-$lane
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="current-320"?329:295;
+  const count=source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
   console.log(count);
 '  "$prepared/source.json" "$sha")

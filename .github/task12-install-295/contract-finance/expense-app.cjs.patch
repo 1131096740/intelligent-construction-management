@@ -25,7 +25,7 @@
 -  assert.equal(state.ledger.length,290);
 -  assert.deepEqual(state.ledger,expectedLedger(state.ledger.slice(0,-1)));
 +  const forward=receipt.forward320;
-+  assert.equal(state.ledger.length,forward?329:295);
++  assert.equal(state.ledger.length,forward?.count??295);
 +  assert.equal(digest(JSON.stringify(state.ledger.slice(0,295))),expectedLedgerSha256);
 +  if(forward) {
 +    assert.equal(context.candidateTree,forward.sourceTree);
@@ -34,7 +34,7 @@
    const extra={COREPACK_HOME:'/opt/corepack',COREPACK_DEFAULT_TO_LATEST:'0',COREPACK_ENABLE_NETWORK:'0',
      NODE_ENV:'test',CI:'true',DATABASE_URL:context.ownerUrl,[config.runIdKey]:context.runId.replaceAll('-',''),
 -    [config.runFlag]:'1'};
-+    [config.runFlag]:'1',...(forward?{JG_CONTRACT_FINANCE_LEDGER:'329'}:{})};
++    [config.runFlag]:'1',...(forward?{JG_CONTRACT_FINANCE_LEDGER:String(forward.count)}:{})};
    const invoke=['--dir',workspace,'--filter','@jiangkong/api','exec'];
    if (lane !== 'execution') {
 -    receipt.stages.push('EXPENSE_290_MIGRATION_NOOP');

@@ -8,17 +8,17 @@
 -Promise.resolve().then(()=>require('./installer.cjs').withOutside290Fresh(receipt,lane)).then(()=>{
 -  assert.equal(receipt.installOnly290?.count,290);
 +const source=require('./contract-finance-source.json');
-+const current320=source.mode==='current-320';
-+const count=current320?329:295;
-+const material=current320?{sourceTree:source.sourceTree,
++const forward=source.mode==='current-320'||source.mode==='text-direct-330';
++const count=source.mode==='text-direct-330'?330:forward?329:295;
++const material=forward?{mode:source.mode,sourceTree:source.sourceTree,
 +  migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails}:undefined;
 +const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:'ORIGINAL_EXPENSE_295_RETAINED_VALID_ONLY',lane,business:'NOT_ENTERED',stages:[]};
 +Promise.resolve().then(()=>require('./installer.cjs').withExpense295(receipt,lane,material)).then(()=>{
 +  assert.equal(receipt.installOnly295?.count,295);
 +  assert.equal(receipt.combinedAfterBusiness?.count,count);
 +  assert.equal(receipt.combinedAfterBusiness?.ledgerSha256,source.ledgerSha256);
-+  if(current320){
-+    assert.equal(receipt.forward320?.count,329);
++  if(forward){
++    assert.equal(receipt.forward320?.count,count);
 +    assert.equal(receipt.forward320?.sameIdentity,true);
 +    assert.equal(receipt.forward320?.sameBaseB7,true);
 +    assert.equal(receipt.forward320?.sourceTree,source.sourceTree);
