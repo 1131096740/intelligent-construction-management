@@ -3412,25 +3412,7 @@ export class PaymentRequestService {
     actorUserId: string
   ): Promise<void> {
     if (payment.contractDueBasis === PAYMENT_TEXT_AGREEMENT_BASIS) {
-      if (!payment.paymentTermsVersionId || payment.approvedAmountCents === null) {
-        throw new ConflictException("付款申请缺少冻结约定或明确的批准金额");
-      }
-      await tx.paymentExecutionAllocation.createMany({ data: [{
-        paymentExecutionId,
-        paymentRequestId: payment.id,
-        projectId: payment.projectId,
-        contractId: payment.contractId,
-        contractVersionId: payment.contractVersionId,
-        sourceType: "contract_due",
-        allocationType: "contract_due_payment",
-        sourceRowId: `payment-request:${payment.id}`,
-        paymentTermsVersionId: payment.paymentTermsVersionId,
-        stageType: null,
-        sourcePayableAmountCents: payment.approvedAmountCents,
-        amountCents,
-        allocationOrder: 0,
-        createdByUserId: actorUserId
-      }] });
+      await tx.$executeRaw`SELECT public.jg_append_text_payment_allocation_v1(${paymentExecutionId}::text)`;
       return;
     }
     if (payment.paymentTermsStageId && payment.paymentTermsVersionId) {

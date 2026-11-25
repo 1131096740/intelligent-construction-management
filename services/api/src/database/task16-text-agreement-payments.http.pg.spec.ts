@@ -8,6 +8,7 @@ import { AppModule } from "../app.module";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { buildRegisteredPgFixturePlan } from "./registered-payment-postgres.fixture";
+import { PrismaService } from "./prisma.service";
 import { armTask16RegistrationError, takeTask16RegistrationError, Task16RegistrationErrorFilter } from "./task16-registration-error-diagnostic";
 import { seedSharedPaymentPredecessors } from "./task16-shared-standard-fixture";
 
@@ -52,6 +53,14 @@ run("records a two-part text agreement payment with original replay, real refund
     const registrationErrors = new Task16RegistrationErrorFilter(app.get(HttpAdapterHost));
     app.useGlobalFilters(registrationErrors);
     await app.listen(0, "127.0.0.1");
+    const runtimeDb = app.get(PrismaService);
+    const [privileges] = await runtimeDb.$queryRaw<Array<{ role: string; append: boolean; allocationWrite: boolean; executionUpdate: boolean }>>`
+      SELECT session_user::text AS role,
+        pg_catalog.has_function_privilege(session_user, 'public.jg_append_text_payment_allocation_v1(text)', 'EXECUTE') AS append,
+        pg_catalog.has_any_column_privilege(session_user, 'public."PaymentExecutionAllocation"', 'INSERT,UPDATE') AS "allocationWrite",
+        pg_catalog.has_any_column_privilege(session_user, 'public."PaymentExecution"', 'UPDATE') AS "executionUpdate"
+    `;
+    expect(privileges).toEqual({ role: "jg_task01_runtime", append: true, allocationWrite: false, executionUpdate: false });
     const origin = await app.getUrl();
     const json = async (path: string, token?: string, input?: object) => {
       const response = await fetch(origin + path, {
@@ -126,6 +135,8 @@ run("records a two-part text agreement payment with original replay, real refund
     };
     const first = await register(firstBody);
     expect(first.status).toBe(201);
+    await expect(runtimeDb.$executeRaw`SELECT public.jg_append_text_payment_allocation_v1(${first.body.id}::text)`)
+      .rejects.toMatchObject({ code: "P2010", meta: { code: "23514" } });
     expect(await json(registrationPath, finance, firstBody)).toEqual(first);
     expect((await json(optionsPath, finance)).body).toMatchObject({ paidAmountCents: "6000", remainingAmountCents: "4000" });
 

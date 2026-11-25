@@ -584,12 +584,12 @@ name: "签批人甲",
       contractDueBasis: "text_agreement_v1", paymentTermsStageId: null,
       status: "partially_paid", requestedAmountCents: 65_000n, approvedAmountCents: 60_000n, paidAmountCents: 20_000n
     });
-    const createMany = jest.fn();
+    const executeRaw = jest.fn();
     const approval = { businessType: "payment_request", businessId: payment.id, flowType: "payment.approve",
       status: "approved", createdAt: new Date("2026-06-06") };
     Object.assign(tx, {
       approvalInstance: { findMany: jest.fn().mockResolvedValue([approval]) },
-      paymentExecutionAllocation: { createMany },
+      $executeRaw: executeRaw,
       contractVersion: { findUnique: jest.fn().mockResolvedValue({
         id: payment.contractVersionId, contractId: payment.contractId, effectiveAt: new Date("2026-06-01"),
         amountCents: 0n, amountLimitType: "unlimited", signingSubjectType: "our_company",
@@ -611,14 +611,13 @@ name: "签批人甲",
     expect(tx.paymentRequest.update).toHaveBeenCalledWith({ where: { id: payment.id }, data: {
       status: "partially_paid", paidAmountCents: 50_000n
     } });
-    expect(createMany).toHaveBeenCalledWith({ data: [expect.objectContaining({
-      paymentExecutionId: createdExecution.id, paymentRequestId: payment.id,
-      sourceRowId: `payment-request:${payment.id}`, amountCents: 30_000n, sourcePayableAmountCents: 60_000n, stageType: null
-    })] });
     tx.paymentExecution.findUnique.mockResolvedValue(createdExecution);
     await expect(service.recordExecution(payment.id, "cashier-1", input)).resolves.toEqual(result);
     expect(projectFunding.allocateExecution).toHaveBeenCalledTimes(1);
-    expect(createMany).toHaveBeenCalledTimes(1);
+    const appendAllocation = "SELECT public.jg_append_text_payment_allocation_v1(";
+    expect(executeRaw.mock.calls.filter(([parts]) => parts[0] === appendAllocation)).toEqual([
+      [[appendAllocation, "::text)"], createdExecution.id]
+    ]);
     expect(append).toHaveBeenCalledTimes(1);
     expect(tx.settlement.update).not.toHaveBeenCalled();
   });
@@ -2866,14 +2865,15 @@ name: "签批人甲",
     const paymentService = new PaymentRequestService(new PaymentAmountService(), {} as never);
     const assertCapacity = (
       paymentService as unknown as {
-        assertGenericContractPaymentStageCapacity(
+        assertDirectPaymentApplicationCapacity(
           tx: unknown,
           contractVersion: unknown,
           stage: unknown,
-          requestedAmountCents: bigint
+          requestedAmountCents: bigint,
+          textAgreementLimit: null
         ): Promise<void>;
       }
-    ).assertGenericContractPaymentStageCapacity.bind(paymentService);
+    ).assertDirectPaymentApplicationCapacity.bind(paymentService);
 
     await expect(assertCapacity(
       tx,
@@ -2895,7 +2895,8 @@ name: "签批人甲",
         allowsEarlyPayment: false,
         allowsInstallments: true
       },
-      90_000n
+      90_000n,
+      null
     )).rejects.toThrow("合同付款阶段当前可申请金额不足，当前最多可申请 500.00 元");
     expect(tx.paymentRequest.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -3005,14 +3006,15 @@ name: "签批人甲",
     const paymentService = new PaymentRequestService(new PaymentAmountService(), {} as never);
     const assertCapacity = (
       paymentService as unknown as {
-        assertGenericContractPaymentStageCapacity(
+        assertDirectPaymentApplicationCapacity(
           tx: unknown,
           contractVersion: unknown,
           stage: unknown,
-          requestedAmountCents: bigint
+          requestedAmountCents: bigint,
+          textAgreementLimit: null
         ): Promise<void>;
       }
-    ).assertGenericContractPaymentStageCapacity.bind(paymentService);
+    ).assertDirectPaymentApplicationCapacity.bind(paymentService);
 
     await expect(assertCapacity(
       tx,
@@ -3034,7 +3036,8 @@ name: "签批人甲",
         allowsEarlyPayment: false,
         allowsInstallments: true
       },
-      50_000n
+      50_000n,
+      null
     )).rejects.toThrow("合同付款阶段当前可申请金额不足，当前最多可申请 400.00 元");
   });
 
@@ -3046,14 +3049,15 @@ name: "签批人甲",
     const paymentService = new PaymentRequestService(new PaymentAmountService(), {} as never);
     const assertCapacity = (
       paymentService as unknown as {
-        assertGenericContractPaymentStageCapacity(
+        assertDirectPaymentApplicationCapacity(
           tx: unknown,
           contractVersion: unknown,
           stage: unknown,
-          requestedAmountCents: bigint
+          requestedAmountCents: bigint,
+          textAgreementLimit: null
         ): Promise<void>;
       }
-    ).assertGenericContractPaymentStageCapacity.bind(paymentService);
+    ).assertDirectPaymentApplicationCapacity.bind(paymentService);
 
     await expect(assertCapacity(
       tx,
@@ -3075,7 +3079,8 @@ name: "签批人甲",
         allowsEarlyPayment: true,
         allowsInstallments: true
       },
-      100_000n
+      100_000n,
+      null
     )).resolves.toBeUndefined();
   });
 
@@ -3087,14 +3092,15 @@ name: "签批人甲",
     const paymentService = new PaymentRequestService(new PaymentAmountService(), {} as never);
     const assertCapacity = (
       paymentService as unknown as {
-        assertGenericContractPaymentStageCapacity(
+        assertDirectPaymentApplicationCapacity(
           tx: unknown,
           contractVersion: unknown,
           stage: unknown,
-          requestedAmountCents: bigint
+          requestedAmountCents: bigint,
+          textAgreementLimit: null
         ): Promise<void>;
       }
-    ).assertGenericContractPaymentStageCapacity.bind(paymentService);
+    ).assertDirectPaymentApplicationCapacity.bind(paymentService);
 
     await expect(assertCapacity(
       tx,
@@ -3116,7 +3122,8 @@ name: "签批人甲",
         allowsEarlyPayment: false,
         allowsInstallments: false
       },
-      50_000n
+      50_000n,
+      null
     )).rejects.toThrow(
       "该付款阶段不允许分次申请，本次申请金额必须等于当前可申请金额 1,000.00 元"
     );

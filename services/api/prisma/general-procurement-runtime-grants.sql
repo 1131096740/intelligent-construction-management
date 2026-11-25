@@ -43,6 +43,9 @@ BEGIN
     END IF;
   END LOOP;
   EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_delete_unsubmitted_operating_batch(TEXT,TEXT,TEXT,INTEGER) TO %I', runtime_role);
+  IF pg_catalog.to_regprocedure('public.jg_append_text_payment_allocation_v1(text)') IS NOT NULL THEN
+    EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_append_text_payment_allocation_v1(text) TO %I', runtime_role);
+  END IF;
 
   FOR routine IN
     SELECT signature FROM unnest(ARRAY[

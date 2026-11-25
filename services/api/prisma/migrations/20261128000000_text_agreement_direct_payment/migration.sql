@@ -176,4 +176,53 @@ CREATE TRIGGER jg_guard_approved_request_payment_allocation
   FOR EACH ROW WHEN (NEW."stageType" IS NULL)
   EXECUTE FUNCTION public.jg_guard_approved_request_payment_allocation_v1();
 
+-- Keep table writes and the execution lock inside the existing allocation guards.
+CREATE FUNCTION public.jg_append_text_payment_allocation_v1(execution_id text) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp AS $$
+DECLARE
+  execution public."PaymentExecution";
+  transaction_xmin text := (pg_catalog.txid_current() % 4294967296)::text;
+  has_funding boolean;
+BEGIN
+  SELECT e.* INTO execution FROM public."PaymentExecution" e
+  WHERE e."id" = execution_id AND e.xmin::text = transaction_xmin
+    AND e."paymentSubjectType" = 'our_company' AND e."settlementId" IS NULL;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION '合同直接付款只能分摊本事务的实付' USING ERRCODE = '23514';
+  END IF;
+
+  IF execution."voucherFileId" IS NULL THEN
+    SELECT EXISTS (SELECT 1 FROM public."RegisteredPaymentFunding" funding
+      WHERE funding."executionId" = execution_id AND funding.xmin::text = transaction_xmin)
+    INTO has_funding;
+  ELSE
+    SELECT coalesce(sum(funding."amountCents"), 0) = execution."amountCents"
+    INTO has_funding FROM public."ProjectFundingAllocation" funding
+    JOIN public."PaymentRequest" request ON request."id" = funding."businessId" AND request."projectId" = funding."projectId"
+    WHERE funding."executionId" = execution_id AND funding."executionType" = 'payment_execution'
+      AND funding."businessType" = 'payment_request' AND funding."businessId" = execution."paymentRequestId"
+      AND funding."createdByUserId" = execution."executedByUserId" AND funding."direction" = 'debit'
+      AND funding."occurredAt" = execution."paidAt" AND funding."reversalKey" = 'original'
+      AND funding.xmin::text = transaction_xmin;
+  END IF;
+  IF NOT has_funding THEN
+    RAISE EXCEPTION '合同直接付款缺少本事务的资金凭据' USING ERRCODE = '23514';
+  END IF;
+
+  INSERT INTO public."PaymentExecutionAllocation" ("id", "paymentExecutionId", "paymentRequestId", "projectId",
+    "contractId", "contractVersionId", "sourceType", "allocationType", "sourceRowId", "paymentTermsVersionId",
+    "sourcePayableAmountCents", "amountCents", "allocationOrder", "createdByUserId")
+  SELECT pg_catalog.gen_random_uuid()::text, execution."id", request."id", request."projectId",
+    request."contractId", request."contractVersionId", 'contract_due', 'contract_due_payment',
+    'payment-request:' || request."id", request."paymentTermsVersionId", request."approvedAmountCents",
+    execution."amountCents", 0, execution."executedByUserId"
+  FROM public."PaymentRequest" request WHERE request."id" = execution."paymentRequestId"
+    AND request."contractDueBasis" = 'text_agreement_v1' AND request."approvedAmountCents" IS NOT NULL;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION '合同直接付款缺少本次批准的付款申请' USING ERRCODE = '23514';
+  END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.jg_append_text_payment_allocation_v1(text) FROM PUBLIC;
+
 COMMIT;
