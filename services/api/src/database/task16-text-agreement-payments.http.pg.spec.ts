@@ -144,6 +144,8 @@ run("records a two-part text agreement payment with original replay, real refund
     };
     const first = await register(firstBody);
     expect(first.status).toBe(201);
+    await expect(runtimeDb.$executeRaw`UPDATE public."PaymentExecution" SET "id" = "id" WHERE "id" = ${first.body.id}`)
+      .rejects.toMatchObject({ code: "P2010", meta: { code: "23514" } });
     await expect(runtimeDb.$executeRaw`SELECT public.jg_append_text_payment_allocation_v1(${first.body.id}::text)`)
       .rejects.toMatchObject({ code: "P2010", meta: { code: "23514" } });
     expect(await json(registrationPath, finance, firstBody)).toEqual(first);
