@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsISO8601, MaxLength, ValidateIf, ValidateNested } from "class-validator";
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsISO8601, IsString, MaxLength, ValidateIf, ValidateNested } from "class-validator";
 import { IsCanonicalMoneyText, IsRequiredText } from "../../validation/static-field-validation";
 import { ExpenseClaimLineDto } from "./create-expense-claim.dto";
 
@@ -15,6 +15,11 @@ export class EditReturnedExpenseClaimDto {
 
   @IsRequiredText({ requiredMessage: "事由不能为空", typeMessage: "事由必须是文字", blankMessage: "事由不能为空白" })
   reason!: string;
+
+  @ValidateIf((_input, value) => value !== undefined && value !== null)
+  @IsString({ message: "请选择项目成本承担公司或待归属" })
+  @MaxLength(100)
+  costBearingCompanyEntityId?: string | null;
 
   @ValidateIf((_input, value) => value !== undefined)
   @IsCanonicalMoneyText({ typeMessage: "申请金额必须是文字", formatMessage: "申请金额必须按分填写为大于 0 的整数" })

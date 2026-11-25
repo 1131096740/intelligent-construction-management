@@ -393,6 +393,7 @@ model RegisteredFundTransferAction {
 }
 
 model CompanyEntity {
+  bearingExpenseClaims ExpenseClaim[] @relation("ExpenseCostBearingCompany")
   spotPaymentsAsOriginalDebtor        SpotProcurementPayment[]            @relation("SpotFirstApprovedDebtor")
   registeredOperationalDebts          RegisteredOperationalPayment[]      @relation("OperationalPaymentDebtor")
   registeredOperationalPayerFacts     RegisteredOperationalPayment[]      @relation("OperationalPaymentActualPayer")
@@ -5291,6 +5292,7 @@ model ProjectExpenseFinancingQuotaUsage {
 // 新费用与报销域与旧 ProjectExpenseRequest 严格隔离。旧表继续只读承载历史
 // 项目支出事实；新报销、借款、冲销和还款只写入以下账本模型。
 model ExpenseClaim {
+  costBearingCompany CompanyEntity? @relation("ExpenseCostBearingCompany", fields: [costBearingCompanyEntityId], references: [id], onDelete: Restrict)
   actualPurchaseBatchId           String?
   actualPurchaseBatch             ActualPurchaseBatch?        @relation(fields: [actualPurchaseBatchId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   generalProcurementId            String?
@@ -5303,6 +5305,8 @@ model ExpenseClaim {
   status                          String
   companyEntityId                 String
   companyEntityNameSnapshot       String
+  costBearingCompanySpecified     Boolean                     @default(false)
+  costBearingCompanyEntityId      String?
   projectId                       String?
   factWitnessUserId               String?
   factWitnessNameSnapshot         String?

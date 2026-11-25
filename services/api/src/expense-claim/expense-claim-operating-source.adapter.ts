@@ -54,6 +54,8 @@ type ExpenseClaimApprovalRow = {
   actualPurchaseBatchId: string | null;
   projectId: string | null;
   companyEntityId: string;
+  costBearingCompanySpecified: boolean;
+  costBearingCompanyEntityId: string | null;
   applicantUserId: string | null;
   applicantNameSnapshot: string;
   applicantPhoneSnapshot: string | null;
@@ -166,10 +168,11 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
     if (amountCents <= 0n || payableCents < 0n || payableCents > amountCents) {
       throw new BadRequestException("费用确认金额或待付金额不正确");
     }
-    const company: OperatingSubjectReference = {
-      kind: "participating_company",
-      id: requiredJsonText(source, "companyEntityId", "费用确认")
-    };
+    const companyId = source.costBearingCompanyEntityId === null
+      ? null
+      : requiredJsonText(source,
+          source.costBearingCompanyEntityId === undefined ? "companyEntityId" : "costBearingCompanyEntityId", "费用确认");
+    const company: OperatingSubjectReference | null = companyId ? { kind: "participating_company", id: companyId } : null;
     const claimType = requiredJsonText(source, "claimType", "费用确认");
     const payee = claimPayee(source, claimType, "费用确认");
     const batchLinked = typeof source.actualPurchaseBatchId === "string" && source.actualPurchaseBatchId.trim().length > 0;
@@ -206,7 +209,7 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
         confirmedByUserId: requiredJsonText(source, "confirmedByUserId", "费用确认"),
         factKind: "expense",
         direction: "outflow",
-        subjects: { costBearingCompany: company },
+        subjects: company ? { costBearingCompany: company } : {},
         impacts,
         basisSnapshot: sourceJson({
           authority: "approved_expense_claim",
@@ -281,6 +284,7 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
         incidentalExpenseCategory: row.incidentalExpenseCategory,
         actualPurchaseBatchId: row.actualPurchaseBatchId,
         companyEntityId: row.companyEntityId,
+        ...(row.costBearingCompanySpecified ? { costBearingCompanyEntityId: row.costBearingCompanyEntityId } : {}),
         applicantUserId: row.applicantUserId,
         applicantNameSnapshot: row.applicantNameSnapshot,
         applicantPhoneSnapshot: row.applicantPhoneSnapshot,
@@ -802,6 +806,8 @@ function expenseClaimApprovalSelect() {
     actualPurchaseBatchId: true,
     projectId: true,
     companyEntityId: true,
+    costBearingCompanySpecified: true,
+    costBearingCompanyEntityId: true,
     applicantUserId: true,
     applicantNameSnapshot: true,
     applicantPhoneSnapshot: true,
@@ -912,7 +918,7 @@ function claimPayee(
 function reimbursementCostImpacts(
   snapshot: OperatingSourceSnapshot,
   source: Record<string, Prisma.InputJsonValue>,
-  company: OperatingSubjectReference,
+  company: OperatingSubjectReference | null,
   requestedAmountCents: bigint
 ): AppendOperatingFactInput["impacts"] {
   const lines = source.reimbursementLines;
@@ -930,8 +936,7 @@ function reimbursementCostImpacts(
       impactKind: "confirmed_cost" as const,
       amountCents,
       direction: "increase" as const,
-      subjectRole: "cost_bearing_company" as const,
-      subject: company,
+      ...(company ? { subjectRole: "cost_bearing_company" as const, subject: company } : {}),
       costCategoryCode: "project_daily_expense" as const,
       description: `报销费用确认：${requiredJsonText(line, "expenseCategory", "报销费用明细")}`,
       impactSnapshot: sourceJson({
@@ -951,7 +956,7 @@ function reimbursementCostImpacts(
 function incidentalCostImpacts(
   snapshot: OperatingSourceSnapshot,
   source: Record<string, Prisma.InputJsonValue>,
-  company: OperatingSubjectReference,
+  company: OperatingSubjectReference | null,
   amountCents: bigint
 ): AppendOperatingFactInput["impacts"] {
   const category = requiredJsonText(source, "incidentalExpenseCategory", "零星费用确认");
@@ -977,8 +982,7 @@ function incidentalCostImpacts(
       impactKind: "confirmed_cost",
       amountCents,
       direction: "increase",
-      subjectRole: "cost_bearing_company",
-      subject: company,
+      ...(company ? { subjectRole: "cost_bearing_company" as const, subject: company } : {}),
       costCategoryCode,
       description: "零星费用确认项目成本"
     }

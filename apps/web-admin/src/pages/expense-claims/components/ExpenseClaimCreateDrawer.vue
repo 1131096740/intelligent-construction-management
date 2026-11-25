@@ -37,6 +37,7 @@ const form = reactive({
   actualPurchaseBatchId: "",
   incidentalExpenseCategory: "" as IncidentalExpenseCategory | "",
   companyEntityId: "",
+  costBearingCompany: "organization",
   projectId: "",
   applicantMode: "self" as ApplicantMode,
   applicantUserId: "",
@@ -78,6 +79,14 @@ const applicationFields = computed({
     form.requestedAmountYuan = value.requestedAmountYuan;
   }
 });
+const canSelectBearingCompany = computed(() => Boolean(form.projectId && !form.actualPurchaseBatchId && form.claimType !== "loan"));
+const bearingCompanyOptions = computed(() => [
+  { label: "沿用使用单位", value: "organization" },
+  { label: "待归属", value: "pending" },
+  ...(options.value?.bearingCompanyOptions ?? []).filter(option => option.projectId === form.projectId)
+    .map(option => ({ label: option.companyNameSnapshot, value: option.companyEntityId }))
+]);
+watch(() => form.projectId, () => { form.costBearingCompany = "organization"; });
 const companyOptions = computed(() => options.value?.companyEntities.map((item) => ({ label: item.name, value: item.id })) ?? []);
 const incidentalExpenseCategoryOptions = computed(() => options.value?.entryDefinition.fields.find((field) => field.key === "incidentalExpenseCategory")?.options ?? []);
 
@@ -131,6 +140,7 @@ function resetForm() {
   form.actualPurchaseBatchId = "";
   form.incidentalExpenseCategory = "";
   form.companyEntityId = options.value?.companyEntities[0]?.id ?? "";
+  form.costBearingCompany = "organization";
   form.projectId = "";
   form.applicantMode = "self";
   form.applicantUserId = options.value?.selfApplicantUserId ?? "";
@@ -304,6 +314,8 @@ function payload(): CreateExpenseClaimPayload {
     actualPurchaseBatchId: form.claimType === "reimbursement" && form.actualPurchaseBatchId ? form.actualPurchaseBatchId : undefined,
     incidentalExpenseCategory: form.claimType === "incidental_expense" && form.incidentalExpenseCategory ? form.incidentalExpenseCategory : undefined,
     companyEntityId: form.companyEntityId,
+    ...(canSelectBearingCompany.value && form.costBearingCompany !== "organization"
+      ? { costBearingCompanyEntityId: form.costBearingCompany === "pending" ? null : form.costBearingCompany } : {}),
     projectId: form.projectId || undefined,
     factWitnessUserId: showFactWitness.value ? form.factWitnessUserId || undefined : undefined,
     applicantUserId: form.applicantMode === "no_account" ? undefined : form.applicantMode === "self" ? options.value?.selfApplicantUserId : form.applicantUserId,
@@ -502,6 +514,9 @@ function finishRecovery() {
                   :disabled="form.claimType !== 'reimbursement' && !availableProjects.length"
                   :placeholder="form.claimType !== 'reimbursement' && !availableProjects.length ? '暂无可申请的所属项目' : '报销项目可选；零星费用必选'"
                 />
+              </t-form-item>
+              <t-form-item v-if="canSelectBearingCompany" label="成本承担公司">
+                <t-select v-model="form.costBearingCompany" :options="bearingCompanyOptions" />
               </t-form-item>
               <t-form-item
                 v-if="showFactWitness"

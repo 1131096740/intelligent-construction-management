@@ -9,7 +9,7 @@ import { GENERAL_PROCUREMENT_CATEGORIES, GENERAL_PROCUREMENT_PAYMENT_CATEGORIES 
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
 import { BadRequestException, ConflictException, ForbiddenException, GoneException, Inject, Injectable, NotFoundException, Optional, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { GLOBAL_BUSINESS_ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
+import { chinaDateOnly, GLOBAL_BUSINESS_ROLE_KEYS, type RoleKey } from "@jiangkong/shared-domain";
 import { resolveApprovalReviewIdentity, type FrozenApprovalNode } from "../approval/approval-review-identity";
 import { activeApprovalNodeIndexes, hasVersionedApprovalNodes, isParallelApprovalRound } from "../approval/parallel-approval-protocol";
 import { ApprovalProgressService } from "../approval/approval-progress.service";
@@ -89,6 +89,40 @@ const INCIDENTAL_EXPENSE_CATEGORY_SET = new Set<string>(
   INCIDENTAL_EXPENSE_CATEGORIES
 );
 
+function expenseBearingCompanyPeriod(occurredAt: Date) {
+  const day = dateOnly(chinaDateOnly(occurredAt), "项目成本归属日期");
+  return { effectiveFrom: { lte: day }, OR: [{ endedAt: null }, { endedAt: { gt: day } }] };
+}
+
+async function expenseBearingCompanyOptions(tx: Prisma.TransactionClient, projectIds: string[]) {
+  if (!projectIds.length) return [];
+  return tx.projectParticipatingCompany.findMany({
+    where: { projectId: { in: projectIds }, ...expenseBearingCompanyPeriod(new Date()) },
+    select: { projectId: true, companyEntityId: true, companyNameSnapshot: true },
+    orderBy: [{ companyNameSnapshot: "asc" }, { companyEntityId: "asc" }]
+  });
+}
+
+async function expenseCostBearingCompanySelection(
+  tx: Prisma.TransactionClient,
+  input: { companyId: string | null | undefined; projectId?: string | null; linkedPurchase: boolean; occurredAt?: Date }
+) {
+  if (input.companyId === undefined) return;
+  if (!input.projectId || input.linkedPurchase) {
+    throw new BadRequestException("只有独立项目费用可以单独选择成本承担公司");
+  }
+  const companyId = input.companyId === null ? null : requiredText(input.companyId, "请选择成本承担公司或待归属");
+  if (companyId !== null) {
+    const occurredAt = input.occurredAt ?? new Date();
+    const participation = await tx.projectParticipatingCompany.findFirst({
+      where: { projectId: input.projectId, companyEntityId: companyId, ...expenseBearingCompanyPeriod(occurredAt) },
+      select: { id: true }
+    });
+    if (!participation) throw new BadRequestException("请选择当前项目有效的成本承担公司");
+  }
+  return { costBearingCompanySpecified: true, costBearingCompanyEntityId: companyId };
+}
+
 @Injectable()
 export class ExpenseClaimService {
   constructor(
@@ -145,6 +179,7 @@ export class ExpenseClaimService {
     return {
       companyEntities,
       projects,
+      bearingCompanyOptions: await expenseBearingCompanyOptions(this.prisma, projects.map(project => project.id)),
       selfProjectIds: selfProjectIds.filter((id) => projects.some((project) => project.id === id)),
       selfApplicantUserId: actorUserId,
       canProxy,
@@ -524,6 +559,10 @@ export class ExpenseClaimService {
           : await (this.visibility ?? new ProjectVisibilityService(this.prisma)).visibleProjectIdsInTransaction(tx, actorUserId);
         if (!projectIds.includes(project.id)) throw new ForbiddenException("当前账号无权选择该项目");
       }
+      const costBearingCompany = await expenseCostBearingCompanySelection(tx, {
+        companyId: input.costBearingCompanyEntityId, projectId: project?.id,
+        linkedPurchase: Boolean(input.actualPurchaseBatchId || input.generalProcurementId)
+      });
       const factWitness = await this.factWitnessSnapshot(tx, input, project?.id);
       const code = await this.numbering.allocateDaily(
         tx,
@@ -541,6 +580,7 @@ export class ExpenseClaimService {
           status: "draft",
           companyEntityId: company.id,
           companyEntityNameSnapshot: company.name,
+          ...costBearingCompany,
           paymentSubjectCompanyEntityId: company.id,
           paymentSubjectNameSnapshot: company.name,
           projectId: project?.id,
@@ -595,7 +635,8 @@ export class ExpenseClaimService {
     const claim = await this.prisma.expenseClaim.findFirst({
       where: { id: claimId },
       select: {
-        generalProcurementId: true, actualPurchaseBatchId: true, id: true, code: true, claimType: true, incidentalExpenseCategory: true, status: true, projectId: true, applicantUserId: true, handledByUserId: true, companyEntityId: true, companyEntityNameSnapshot: true, approvalInstanceId: true,
+        generalProcurementId: true, actualPurchaseBatchId: true, id: true, code: true, claimType: true, incidentalExpenseCategory: true, status: true, projectId: true, applicantUserId: true, handledByUserId: true, companyEntityId: true, companyEntityNameSnapshot: true,
+        costBearingCompanySpecified: true, costBearingCompanyEntityId: true, approvalInstanceId: true,
         paymentSubjectCompanyEntityId: true, paymentSubjectNameSnapshot: true, paymentSubjectAdjustmentReason: true, paymentSubjectAdjustedAt: true, paymentSubjectAdjustedByUserId: true, paymentSubjectAdjustedByRoleKey: true,
         applicantNameSnapshot: true, applicantPhoneSnapshot: true, handledByNameSnapshot: true, proxyReason: true,
         factWitnessNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true,
@@ -772,9 +813,15 @@ export class ExpenseClaimService {
       ? await this.readSourcePurchase(claim.actualPurchaseBatchId)
       : null;
     const canEditReturnedDraft = claim.claimType !== "loan" && claim.handledByUserId === actorUserId && isReturnedExpenseDraft(claim);
+    const costBearingCompanyName = claim.costBearingCompanyEntityId
+      ? (await this.prisma.companyEntity.findUnique({ where: { id: claim.costBearingCompanyEntityId }, select: { name: true } }))?.name ?? null
+      : null;
     const { companyEntityId, voidedAt, ...displayClaim } = claim;
     return {
       ...displayClaim,
+      costBearingCompanyName,
+      bearingCompanyOptions: canEditReturnedDraft && claim.projectId && !claim.actualPurchaseBatchId && !claim.generalProcurementId
+        ? await expenseBearingCompanyOptions(this.prisma, [claim.projectId]) : [],
       canEditReturnedDraft,
       canWithdrawApproval: parallel && canConsiderIdentity && !voidedAt && !claim.approvedAt &&
         claim.fundedAmountCents === 0n && claim.handledByUserId === actorUserId && instance?.applicantUserId === actorUserId,
@@ -1235,9 +1282,13 @@ export class ExpenseClaimService {
           }
         }
       }
+      const costBearingCompany = await expenseCostBearingCompanySelection(tx, {
+        companyId: input.costBearingCompanyEntityId, projectId: claim.projectId,
+        linkedPurchase: Boolean(claim.actualPurchaseBatchId || claim.generalProcurementId)
+      });
       const updated = await tx.expenseClaim.update({
         where: { id: claimId },
-        data: { reason, requestedAmountCents, updatedAt: new Date(Math.max(Date.now(), claim.updatedAt.getTime() + 1)) },
+        data: { reason, requestedAmountCents, ...costBearingCompany, updatedAt: new Date(Math.max(Date.now(), claim.updatedAt.getTime() + 1)) },
         select: { id: true, status: true, updatedAt: true, requestedAmountCents: true }
       });
       await this.audit.record(tx, {
@@ -1287,7 +1338,11 @@ export class ExpenseClaimService {
       if (claim.handledByUserId !== actorUserId) throw new ForbiddenException("只有经办人可以提交费用申请");
       if (claim.claimType === "loan") throw new GoneException(RETIRED_EMPLOYEE_LOAN);
       if (claim.status !== "draft") throw new BadRequestException("当前费用申请不可提交");
-      const source = await tx.expenseClaim.findUnique({ where: { id: claim.id }, select: { generalProcurementId: true } });
+      const source = await tx.expenseClaim.findUnique({ where: { id: claim.id }, select: { generalProcurementId: true, costBearingCompanySpecified: true, costBearingCompanyEntityId: true } });
+      if (source?.costBearingCompanySpecified) {
+        await expenseCostBearingCompanySelection(tx, { companyId: source.costBearingCompanyEntityId, projectId: claim.projectId,
+          linkedPurchase: Boolean(claim.actualPurchaseBatchId || source.generalProcurementId) });
+      }
       const currentActor = await tx.user.findUnique({ where: { id: actorUserId }, select: { isActive: true } });
       if (!currentActor?.isActive) throw new ForbiddenException("当前办理人不存在或已停用");
       if (!source?.generalProcurementId && claim.applicantUserId === actorUserId && claim.projectId) {
@@ -1399,8 +1454,8 @@ export class ExpenseClaimService {
     const result = await translateProjectOperatingSerializationConflict(
       this.prisma.$transaction(async (tx) => {
       const claims = await tx.$queryRaw<Array<{
-        id: string; claimType: string; status: string; projectId: string | null; actualPurchaseBatchId: string | null; generalProcurementId: string | null; approvalInstanceId: string | null; applicantUserId: string | null; handledByUserId: string; factWitnessUserId: string | null; requestedAmountCents: bigint; loanOffsetAmountCents: bigint; companyPayableAmountCents: bigint; approvedAt: Date | null; voidedAt: Date | null; fundedAmountCents: bigint;
-      }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "actualPurchaseBatchId", "generalProcurementId", "approvalInstanceId", "applicantUserId", "handledByUserId", "factWitnessUserId", "requestedAmountCents", "loanOffsetAmountCents", "companyPayableAmountCents", "approvedAt", "voidedAt", "fundedAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
+        id: string; claimType: string; status: string; projectId: string | null; actualPurchaseBatchId: string | null; generalProcurementId: string | null; approvalInstanceId: string | null; applicantUserId: string | null; handledByUserId: string; factWitnessUserId: string | null; requestedAmountCents: bigint; loanOffsetAmountCents: bigint; companyPayableAmountCents: bigint; approvedAt: Date | null; voidedAt: Date | null; fundedAmountCents: bigint; costBearingCompanySpecified: boolean; costBearingCompanyEntityId: string | null;
+      }>>(Prisma.sql`SELECT "id", "claimType", "status", "projectId", "actualPurchaseBatchId", "generalProcurementId", "approvalInstanceId", "applicantUserId", "handledByUserId", "factWitnessUserId", "requestedAmountCents", "loanOffsetAmountCents", "companyPayableAmountCents", "approvedAt", "voidedAt", "fundedAmountCents", "costBearingCompanySpecified", "costBearingCompanyEntityId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
       const claim = claims[0];
       if (!claim) throw new NotFoundException("费用申请不存在");
       if (claim.status !== "approval_pending") throw new BadRequestException("当前费用申请不可审批");
@@ -1479,11 +1534,18 @@ export class ExpenseClaimService {
       const nextNodeIndex = parallel ? (activeApprovalNodeIndexes(nextNodes, nodeIndex)[0] ?? nextNodes.length)
         : nodeIndex + 1;
       const completed = nextNodeIndex >= nextNodes.length;
+      const approvedAt = completed ? new Date() : null;
+      if (approvedAt && claim.costBearingCompanySpecified) {
+        await expenseCostBearingCompanySelection(tx, {
+          companyId: claim.costBearingCompanyEntityId, projectId: claim.projectId,
+          linkedPurchase: Boolean(claim.actualPurchaseBatchId || claim.generalProcurementId), occurredAt: approvedAt
+        });
+      }
       const postedAmountCents = completed && claim.claimType === "reimbursement"
         ? await this.postLoanOffsetReservations(tx, claim, actorUserId)
         : 0n;
       const claimUpdate = completed
-        ? { status: claim.companyPayableAmountCents > 0n ? "approved_pending_payment" : "offset_completed", approvedAt: new Date() }
+        ? { status: claim.companyPayableAmountCents > 0n ? "approved_pending_payment" : "offset_completed", approvedAt }
         : { status: "approval_pending" };
       const updated = await tx.expenseClaim.update({ where: { id: claim.id }, data: claimUpdate });
       await tx.approvalInstance.update({

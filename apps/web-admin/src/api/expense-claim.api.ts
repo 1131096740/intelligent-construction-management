@@ -30,6 +30,11 @@ export interface ExpenseClaimListItemReadModel {
 }
 
 export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemReadModel, "handledByNameSnapshot"> {
+  costBearingCompanySpecified?: boolean;
+  costBearingCompanyEntityId?: string | null;
+  costBearingCompanyName?: string | null;
+  bearingCompanyOptions?: ExpenseBearingCompanyOption[];
+  actualPurchaseBatchId?: string | null;
   canDeleteDraft?: boolean;
   approvalInstanceId?: string | null;
   canWithdrawApproval?: boolean;
@@ -169,11 +174,18 @@ export interface ExpenseClaimEntrySnapshotReadModel {
   valuesSnapshot: Record<string, unknown>;
 }
 
+export interface ExpenseBearingCompanyOption {
+  projectId: string;
+  companyEntityId: string;
+  companyNameSnapshot: string;
+}
+
 export interface ExpenseClaimCreateOptions {
   entryDefinition: BusinessEntrySceneDefinition;
   companyEntities: Array<{ id: string; name: string }>;
   projects: Array<{ id: string; code: string; name: string }>;
   selfProjectIds: string[];
+  bearingCompanyOptions?: ExpenseBearingCompanyOption[];
   selfApplicantUserId: string;
   canProxy: boolean;
   applicantUsers: Array<{ id: string; name: string }>;
@@ -209,6 +221,7 @@ export interface CreateExpenseClaimPayload {
     | "other_incidental"
     | GeneralProcurementPaymentCategory;
   companyEntityId: string;
+  costBearingCompanyEntityId?: string | null;
   projectId?: string;
   factWitnessUserId?: string;
   applicantUserId?: string;
@@ -413,6 +426,7 @@ export async function submitExpenseClaim(claimId: string) {
 export interface EditReturnedExpenseClaimDraftInput {
   expectedUpdatedAt: string;
   reason: string;
+  costBearingCompanyEntityId?: string | null;
   lines?: CreateExpenseClaimPayload["lines"];
   requestedAmountCents?: string;
 }

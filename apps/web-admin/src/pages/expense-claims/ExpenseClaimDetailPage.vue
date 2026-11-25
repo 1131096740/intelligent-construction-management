@@ -60,7 +60,20 @@ const draftEditorVisible = ref(false);
 const draftWriteError = ref("");
 const withdrawalTarget = ref<{ claimId: string; actorId: string; approvalInstanceId: string } | null>(null);
 const draftEditTarget = ref<{ claimId: string; actorId: string; expectedUpdatedAt: string; originalLines: string } | null>(null);
-const draftForm = ref<{ reason: string; amountYuan: string; lines: ExpenseClaimLineDraft[] }>({ reason: "", amountYuan: "", lines: [] });
+const draftForm = ref<{ reason: string; costBearingCompany: string; amountYuan: string; lines: ExpenseClaimLineDraft[] }>({
+  reason: "", costBearingCompany: "organization", amountYuan: "", lines: []
+});
+const returnedBearingOptions = computed(() => {
+  const row = detail.value;
+  const choices = (row?.bearingCompanyOptions ?? []).map(option => ({ label: option.companyNameSnapshot, value: option.companyEntityId }));
+  if (row?.costBearingCompanyEntityId && !choices.some(option => option.value === row.costBearingCompanyEntityId)) {
+    choices.push({ label: row.costBearingCompanyName ?? "原承担公司（待核对）", value: row.costBearingCompanyEntityId });
+  }
+  return [
+    ...(!row?.costBearingCompanySpecified ? [{ label: "沿用使用单位", value: "organization" }] : []),
+    { label: "待归属", value: "pending" }, ...choices
+  ];
+});
 const reviewVisible = ref(false);
 const reviewConfirmVisible = ref(false);
 const reviewing = ref(false);
@@ -85,7 +98,7 @@ watch([() => route.params.claimId, () => auth.user?.id], () => {
   draftEditorVisible.value = false;
   withdrawalTarget.value = null;
   draftEditTarget.value = null;
-  draftForm.value = { reason: "", amountYuan: "", lines: [] };
+  draftForm.value = { reason: "", costBearingCompany: "organization", amountYuan: "", lines: [] };
   draftWriteError.value = "";
 });
 const reviewTarget = ref<{ claimId: string; actorId?: string; parallel: boolean; approvalInstanceId?: string } | null>(null);
@@ -443,6 +456,7 @@ function openReturnedDraftEditor() {
   draftEditTarget.value = { claimId: row.id, actorId, expectedUpdatedAt: row.updatedAt, originalLines: JSON.stringify(lines) };
   draftForm.value = {
     reason: row.reason,
+    costBearingCompany: row.costBearingCompanySpecified ? (row.costBearingCompanyEntityId ?? "pending") : "organization",
     amountYuan: centsTextToYuanText(row.requestedAmountCents).replaceAll(",", ""),
     lines
   };
@@ -456,9 +470,12 @@ async function saveReturnedDraft() {
   submitting.value = true;
   draftWriteError.value = "";
   try {
-    const { reason, amountYuan, lines } = draftForm.value;
+    const { reason, costBearingCompany, amountYuan, lines } = draftForm.value;
     if (!reason.trim()) throw new Error("请填写费用事由");
     const payload: EditReturnedExpenseClaimDraftInput = { expectedUpdatedAt: target.expectedUpdatedAt, reason: reason.trim() };
+    if (row.projectId && !row.actualPurchaseBatchId && !row.generalProcurement && costBearingCompany !== "organization") {
+      payload.costBearingCompanyEntityId = costBearingCompany === "pending" ? null : costBearingCompany;
+    }
     if (row.claimType === "incidental_expense") {
       const amountCents = yuanTextToCentsText(amountYuan.trim());
       if (BigInt(amountCents) <= 0n) throw new Error("申请金额必须大于 0");
@@ -915,6 +932,9 @@ onMounted(() => void loadDetail());
                 :disabled="submitting"
               />
             </t-form-item>
+            <t-form-item v-if="detail.projectId && !detail.actualPurchaseBatchId && !detail.generalProcurement" label="成本承担公司">
+              <t-select v-model="draftForm.costBearingCompany" :options="returnedBearingOptions" :disabled="submitting" />
+            </t-form-item>
             <t-form-item
               v-if="detail.claimType === 'incidental_expense'"
               label="申请金额"
@@ -1220,6 +1240,9 @@ onMounted(() => void loadDetail());
           >
             <t-descriptions-item label="使用单位">
               {{ detail.companyEntityNameSnapshot }}
+            </t-descriptions-item>
+            <t-descriptions-item v-if="detail.projectId && detail.claimType !== 'loan' && !detail.actualPurchaseBatchId && !detail.generalProcurement" label="成本承担公司">
+              {{ detail.costBearingCompanySpecified ? (detail.costBearingCompanyName ?? "待归属") : detail.companyEntityNameSnapshot }}
             </t-descriptions-item>
             <t-descriptions-item label="实际付款主体">
               <div class="expense-claim-detail__payment-subject">
