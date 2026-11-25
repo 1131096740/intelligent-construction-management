@@ -180,9 +180,12 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     configureApiSecurity(app);
     const server = app.getHttpServer() as Server;
     app.use((request: IncomingMessage, response: ServerResponse, next: (error?: unknown) => void) => {
-      const url = request.url ?? "";
-      const file = /^\/files\/([a-f0-9-]{36})\/download-ticket$/u.exec(url)?.[1];
-      if (request.method !== "POST" || !(qualifiedWrites.has(url) || (file && qualifiedFiles.has(file)))) return next();
+      const pathname = (request.url ?? "").split("?", 1)[0];
+      const filePath = request.method === "GET" ? /^\/files\/([a-f0-9-]{36})\/download$/u :
+        request.method === "POST" ? /^\/files\/([a-f0-9-]{36})\/download-ticket$/u : undefined;
+      const file = filePath?.exec(pathname)?.[1];
+      const allowWrite = request.method === "POST" && qualifiedWrites.has(pathname);
+      if (!allowWrite && !(file && qualifiedFiles.has(file))) return next();
       const token = issueTask12NativeReviewReadiness(readinessIdentity, ticketOwnerProof, () => {
         if (!server.listening || request.socket.remoteAddress !== "127.0.0.1") throw new Error("NATIVE_329_DOWNLOAD_SCOPE");
       });
@@ -346,7 +349,10 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
       const ticket = await post(0, "/files/" + id + "/download-ticket", { confirmationPassword: passwords[0], downloadReason: "隔离验收证据核对" });
       expect(ticket).toMatchObject({ fileId: id, mimeType });
       const downloaded = await http.download(0, ticket.downloadUrl);
-      expect(downloaded).toMatchObject({ status: 200, mimeType });
+      if (downloaded.status !== 200) {
+        throw Object.assign(new Error("NATIVE_329_DOWNLOAD_HTTP"), { status: downloaded.status, expected: 200 });
+      }
+      expect(downloaded.mimeType).toBe(mimeType);
       expect(downloaded.bytes.length).toBe(ticket.sizeBytes);
       return downloaded.bytes;
     };
