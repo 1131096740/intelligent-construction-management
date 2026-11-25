@@ -173,8 +173,8 @@ export class ExpenseClaimController {
     @Param("claimId") claimId: string,
     @UploadedFile() file: MemoryUploadedFile | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Query("scopeKey") scopeKey?: string,
-    @Body() body: { idempotencyKey?: string } = {}
+    @Body() body: { idempotencyKey?: string } = {},
+    @Query("scopeKey") scopeKey?: string
   ) {
     return this.uploadPrivateFile(
       claimId,
