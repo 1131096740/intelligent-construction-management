@@ -230,23 +230,23 @@ test("keeps navigation, page content, and confirmation controls usable across de
 
   try {
     // Simulate the viewport shrinking around a focused editor, as with a soft keyboard.
-    await page.evaluate(() => {
+    await page.getByPlaceholder("编号、项目、节点或下一步").focus();
+    const visibleHeight = await page.evaluate(() => {
       const viewport = window.visualViewport;
       if (!viewport) throw new Error("缺少浏览器可视视口");
       Object.defineProperty(viewport, "height", {
         configurable: true,
         get: () => window.innerHeight - 240
       });
-      const editor = document.createElement("input");
-      editor.id = "simulated-keyboard-editor";
-      editor.style.cssText = "position: fixed; top: 0; opacity: 0";
-      document.body.appendChild(editor);
-      editor.focus({ preventScroll: true });
       viewport.dispatchEvent(new Event("resize"));
+      return viewport.height;
     });
     await expect(page.locator("html")).toHaveAttribute("data-keyboard", "open");
     await expect(bottomNavigation).not.toBeVisible();
-    await expect(toggle).toBeInViewport();
+    await expect(toggle).toBeVisible();
+    const toggleBounds = await toggle.boundingBox();
+    expect(toggleBounds!.y).toBeGreaterThanOrEqual(0);
+    expect(toggleBounds!.y + toggleBounds!.height).toBeLessThan(visibleHeight);
     await toggle.focus();
     await page.keyboard.press("Enter");
     await expect(links.first()).toBeFocused();
@@ -256,7 +256,6 @@ test("keeps navigation, page content, and confirmation controls usable across de
     await expect(page.locator(".t-drawer__content-wrapper")).toHaveCount(0);
   } finally {
     await page.evaluate(() => {
-      document.getElementById("simulated-keyboard-editor")?.remove();
       const viewport = window.visualViewport;
       if (!viewport) return;
       Reflect.deleteProperty(viewport, "height");

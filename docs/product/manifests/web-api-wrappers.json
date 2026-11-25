@@ -22,8 +22,8 @@
     "authTransportExceptionCount": 5
   },
   "evidence": {
-    "productionModuleCount": 436,
-    "reachableProductionModuleCount": 405
+    "productionModuleCount": 437,
+    "reachableProductionModuleCount": 406
   },
   "wrappers": [
     {
@@ -7566,7 +7566,8 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
+        "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
+        "apps/web-admin/src/pages/settlements/SignedSettlementLedgerPage.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []
@@ -9331,6 +9332,7 @@
         "apps/web-admin/src/pages/projects/ProjectRosterPage.vue",
         "apps/web-admin/src/pages/settlements/HistoricalSettlementDraftPage.vue",
         "apps/web-admin/src/pages/settlements/SignedContractSettlementPage.vue",
+        "apps/web-admin/src/pages/settlements/SignedSettlementLedgerPage.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementPaymentWorkbenchPage.vue",
         "apps/web-admin/src/pages/spot-procurement/SpotProcurementWorkbenchPage.vue"
       ],
@@ -9596,7 +9598,8 @@
         }
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/settlements/SettlementListPage.vue"
+        "apps/web-admin/src/pages/settlements/SettlementListPage.vue",
+        "apps/web-admin/src/pages/settlements/SignedSettlementLedgerPage.vue"
       ],
       "testConsumers": [],
       "unreachableConsumers": []

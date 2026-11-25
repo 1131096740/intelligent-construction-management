@@ -475,9 +475,40 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
     for (const [action, actor] of [["contract.seal_task.create", null], ["contract.seal.complete", seed.users[6].id], ["contract.archive.complete", seed.users[0].id]] as const) {
       expect(await owner.auditLog.count({ where: { action, businessId: versionId, ...(actor ? { actorUserId: actor } : {}) } })).toBe(1);
     }
+    stage = "THREE_SESSIONS";
+    const additionalUsers = ["兼岗验收员", "无项目验收员"].map((name, index) => ({
+      id: randomUUID(),
+      name,
+      phone: "198" + seed.users[index].phone.slice(3),
+      password: randomBytes(32).toString("hex")
+    }));
+    for (const { password, ...user } of additionalUsers) {
+      await owner.user.create({ data: {
+        ...user, isActive: true, mustChangePassword: false, sessionVersion: 0,
+        passwordHash: await hashTask12GeneratedAdmissionPassword(password)
+      } });
+    }
+    await owner.projectMember.createMany({ data: ["contract_staff", "project_manager"].map((positionKey) => ({
+      projectId: seed.project.id, userId: additionalUsers[0].id, positionKey
+    })) });
+    const additionalHttp = createTask12Con18DefaultHttp(await app.getUrl(), AbortSignal.timeout(60_000));
+    for (const [actor, { phone, password }] of additionalUsers.entries()) {
+      await expectStatus(additionalHttp.send(actor, { path: "/auth/login", method: "POST", json: { phone, password } }), 201);
+    }
+    const readRequest = { path: detailPath, method: "GET", headers: { "x-contract-numeric-protocol": "2" } } as const;
+    const [handlerView, bothRolesView, outsiderView] = await Promise.all([
+      send(0, detailPath),
+      additionalHttp.send(0, readRequest),
+      additionalHttp.send(1, readRequest)
+    ]);
+    expect(handlerView).toMatchObject({ status: 200, body: { contractVersionId: versionId } });
+    expect(bothRolesView).toMatchObject({ status: 200, body: { contractVersionId: versionId } });
+    expect(outsiderView.status).toBe(404);
+
     process.stdout.write("SEAL_329_NATIVE_PROOF " + JSON.stringify({ candidate: packet.candidate, docxSha256: hash(docx), pdfSha256: hash(pdf),
       contractType: "equipment_rental", originalSha256: originals.map(original => original.sha256),
-      authoritySha256: durableArchive.authoritySha256, fileManifestSha256: durableArchive.fileManifestSha256, approvals: actors.length, legacyRouteResponses: [410,410,410,410], sealTasks: 1, storage: "local" }) + "\n");
+      authoritySha256: durableArchive.authoritySha256, fileManifestSha256: durableArchive.fileManifestSha256, approvals: actors.length, legacyRouteResponses: [410,410,410,410], sealTasks: 1, storage: "local",
+      accounts: seed.users.length + additionalUsers.length, concurrentReadStatuses: [handlerView.status, bothRolesView.status, outsiderView.status] }) + "\n");
   } catch (error) {
     const detail = error as { code?: unknown; status?: unknown; expected?: unknown; message?: unknown };
     const code = typeof detail?.code === "string" && /^[A-Z0-9_]{1,100}$/u.test(detail.code) ? detail.code : undefined;

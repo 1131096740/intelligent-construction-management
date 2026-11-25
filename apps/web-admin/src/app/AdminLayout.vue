@@ -404,6 +404,6 @@ async function loadNavigationBadges(requestId: number, userId: string, offset: n
   .mobile-bottom { flex: 0 0 auto; display: flex; gap: var(--jg-space-xs); padding: var(--jg-space-xs) var(--jg-space-sm) max(var(--jg-space-xs), env(safe-area-inset-bottom)); border-top: var(--jg-border-width-base) solid var(--jg-color-border); background: var(--jg-color-bg-surface); }
   .mobile-bottom .t-button { flex: 1; padding: var(--jg-space-sm) var(--jg-space-xs); color: var(--jg-color-text-tertiary); font-size: var(--jg-font-size-meta); }
   .mobile-bottom .is-active { color: var(--jg-color-brand); background: var(--jg-color-bg-brand-soft); }
-  :global(html[data-keyboard="open"]) .mobile-bottom { display: none; }
+  html[data-keyboard="open"] .mobile-bottom { display: none; }
 }
 </style>

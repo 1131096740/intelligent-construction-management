@@ -12,12 +12,12 @@
     "registeredActionCount": 434,
     "pageActionCount": 108,
     "backgroundActionCount": 326,
-    "reachableVueFileCount": 235,
-    "routeRootCount": 80,
-    "totalVueFileCount": 255,
-    "parsedVueFileCount": 255,
-    "reachableProductionModuleCount": 405,
-    "templateEventDirectiveCount": 1528,
+    "reachableVueFileCount": 236,
+    "routeRootCount": 82,
+    "totalVueFileCount": 256,
+    "parsedVueFileCount": 256,
+    "reachableProductionModuleCount": 406,
+    "templateEventDirectiveCount": 1535,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 425,
     "candidateProductionMutationConsumerCount": 425,
@@ -26,10 +26,10 @@
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 436,
-    "reachableProductionModuleCount": 405,
-    "totalVueFileCount": 255,
-    "parsedVueFileCount": 255
+    "totalProductionModuleCount": 437,
+    "reachableProductionModuleCount": 406,
+    "totalVueFileCount": 256,
+    "parsedVueFileCount": 256
   },
   "actions": [
     {
@@ -371,6 +371,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -443,6 +444,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -3392,6 +3394,7 @@
         "/付款管理",
         "/公司互转台账",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -3464,6 +3467,7 @@
         "/付款管理",
         "/公司互转台账",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -3588,6 +3592,7 @@
         "/付款管理",
         "/公司互转台账",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -3660,6 +3665,7 @@
         "/付款管理",
         "/公司互转台账",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -5836,6 +5842,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -5907,6 +5914,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -5978,6 +5986,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -6047,6 +6056,7 @@
         "/合同工作台"
       ],
       "ownerRoutePaths": [
+        "/合同台账",
         "/合同工作台"
       ],
       "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue",
@@ -6113,6 +6123,7 @@
         "/合同工作台"
       ],
       "ownerRoutePaths": [
+        "/合同台账",
         "/合同工作台"
       ],
       "sourceFile": "apps/web-admin/src/pages/contracts/components/ContractEndedRetentionPanel.vue",
@@ -6869,6 +6880,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -6940,6 +6952,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -7011,6 +7024,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -10805,6 +10819,7 @@
         "/付款管理/:paymentId",
         "/公司互转台账",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/垫资本金归还/:applicationId",
         "/清分工作台",
@@ -24284,6 +24299,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -24356,6 +24372,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -24428,6 +24445,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -24500,6 +24518,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -24608,6 +24627,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -24680,6 +24700,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -24752,6 +24773,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -24824,6 +24846,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -24896,6 +24919,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -24968,6 +24992,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -32252,6 +32277,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -32323,6 +32349,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -32394,6 +32421,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -32470,6 +32498,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",
@@ -32541,6 +32570,7 @@
       "ownerRoutePaths": [
         "/付款管理",
         "/历史经营接管",
+        "/合同台账",
         "/合同工作台",
         "/清分工作台",
         "/结算工作台",

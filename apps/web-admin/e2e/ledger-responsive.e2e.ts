@@ -149,6 +149,10 @@ async function mockSession(page: Page) {
     } satisfies ContractRelationshipLedger;
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(ledger) });
   });
+  await page.route("**/api/projects", (route) => route.fulfill({
+    json: [{ id: "project-responsive", name: "科技园项目" }]
+  }));
+  await page.route("**/api/approval-delegations/duty-options", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/contracts", (route) => route.fulfill({
     contentType: "application/json",
     body: JSON.stringify({ rows: [{
