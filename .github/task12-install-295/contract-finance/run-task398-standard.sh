@@ -74,8 +74,8 @@ if [[ $count == 330 || $count == 331 ]]; then
       [[ $(sha256sum "$spec" | cut -d' ' -f1) == e70aa4d7364f7232f694881bb96fce88bfa57a89bd24fc6f527b4d85dfa6b901 ]] || exit 65
       patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-competition-runner-331.patch"
       patch --batch --forward --fuzz=0 --silent "$spec" < "$plan/task398-competition-spec-331.patch"
-      [[ $(runner_sha) == dd10bfbfe32d1e8b1436394bad44620acb75c09c5ded5be87c2e522ee5dc515d ]] || exit 65
-      [[ $(sha256sum "$spec" | cut -d' ' -f1) == 378a68ea9b54c878f7750b33e42bf7d270389c50362863a32c4f6972f632715a ]] || exit 65
+      [[ $(runner_sha) == e5bc00fab58ecac6786b9bc6a8228f6af3906c8a093bedea2a052bcd9a02973b ]] || exit 65
+      [[ $(sha256sum "$spec" | cut -d' ' -f1) == 05bfdec5b4e12815b6ca7c3ea9345d44b4c27ab77a52223f62ccbda18187ad1c ]] || exit 65
     fi
   fi
 fi

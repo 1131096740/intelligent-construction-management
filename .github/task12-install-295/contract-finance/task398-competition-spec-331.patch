@@ -17,22 +17,38 @@
 +const competitionCorrection=overpay&&process.env.TASK398_COMPETITION_CORRECTION==="1";
  const ledgerLoss=process.env.TASK398_LEDGER_LOSS_MODE==="1";
  const transferRejection=process.env.TASK406_TRANSFER_MODE==="rejection";
-@@ -199,5 +206,9 @@
+@@ -69,5 +76,5 @@
+ @Catch()
+ class SignatureFailureCapture extends Task16RegistrationErrorFilter {
+- constructor(adapter:HttpAdapterHost,private readonly report:(detail:SignatureFailureDetail)=>void,private readonly approval?:{path:string;report:(detail:SignatureFailureDetail)=>void},private readonly workItemsReport?:(detail:SignatureFailureDetail)=>void){super(adapter);}
++ constructor(adapter:HttpAdapterHost,private readonly report:(detail:SignatureFailureDetail)=>void,private readonly approval?:{path:string;report:(detail:SignatureFailureDetail)=>void},private readonly workItemsReport?:(detail:SignatureFailureDetail)=>void,private readonly correctionPath?:(path:string)=>boolean){super(adapter);}
+  override catch(exception:unknown,host:ArgumentsHost){
+   try{
+@@ -76,4 +83,6 @@
+    else if(request.method==="POST"&&this.approval&&request.originalUrl===this.approval.path)this.approval.report(signatureFailureDetail(exception));
+    else if(request.method==="GET"&&request.originalUrl==="/me/work-items"&&this.workItemsReport&&(!(exception instanceof HttpException)||exception.getStatus()===500)&&!projectOperatingConstraintMessage(exception))this.workItemsReport(signatureFailureDetail(exception));
++   else if(request.originalUrl&&this.correctionPath?.(request.originalUrl)&&(!(exception instanceof HttpException)||exception.getStatus()>=500))
++    console.error("TASK398_CORRECTION_FAILURE",JSON.stringify(signatureFailureDetail(exception)));
+   }catch{ /* Diagnostic failure must not change the original HTTP response. */ }
+   super.catch(exception,host);
+@@ -199,6 +208,12 @@
     const outsiderPhone=`196${plan.phone.slice(3)}`;
     await owner.user.create({data:{id:randomUUID(),phone:outsiderPhone,name:"合成无权账号",passwordHash:hashes[3],isActive:true,mustChangePassword:false}});
 -   const module=await Test.createTestingModule({imports:[Task16SharedPaymentApplicationModule]}).overrideProvider(PrismaService).useValue(runtime).overrideProvider(REGISTERED_PAYMENT_IMPACT_READER).useValue(readTask16RegisteredPaymentImpacts).compile();
+-   app=module.createNestApplication({logger:false});app.useGlobalFilters(new SignatureFailureCapture(app.get(HttpAdapterHost),detail=>console.error(`TASK398_SIGNATURE_FAILURE ${JSON.stringify(detail)}`),{path:`/payments/${plan.ids.payment}/approval`,report:detail=>console.error(`TASK398_APPROVAL_FAILURE ${JSON.stringify(detail)}`)},detail=>console.error(`TASK398_ME_FAILURE ${JSON.stringify(detail)}`)));app.getHttpAdapter().getInstance().set("json replacer",apiJsonReplacer);app.useGlobalPipes(createApiValidationPipe());
 +   const module=await Test.createTestingModule({
 +    imports:[Task16SharedPaymentApplicationModule,...(competitionCorrection?[AuthModule,AuditModule]:[])],
 +    controllers:competitionCorrection?[PaymentFinancialController]:[],
 +    providers:competitionCorrection?[PaymentCorrectionService,PaymentRefundService,FinancialCorrectionEntryService]:[]
 +   }).overrideProvider(PrismaService).useValue(runtime).overrideProvider(REGISTERED_PAYMENT_IMPACT_READER).useValue(readTask16RegisteredPaymentImpacts).compile();
-    app=module.createNestApplication({logger:false});app.useGlobalFilters(new SignatureFailureCapture(app.get(HttpAdapterHost),detail=>console.error(`TASK398_SIGNATURE_FAILURE ${JSON.stringify(detail)}`),{path:`/payments/${plan.ids.payment}/approval`,report:detail=>console.error(`TASK398_APPROVAL_FAILURE ${JSON.stringify(detail)}`)},detail=>console.error(`TASK398_ME_FAILURE ${JSON.stringify(detail)}`)));app.getHttpAdapter().getInstance().set("json replacer",apiJsonReplacer);app.useGlobalPipes(createApiValidationPipe());
-    if(transferMode){
-@@ -223,4 +234,12 @@
-     app.useGlobalFilters(new TransferFailureCapture(app.get(HttpAdapterHost)));
-    }
 +   let correctionRequestPath:string|undefined,correctionConfirmationPath:string|undefined;
 +   const correctionReadPath=`/payment-financial/payments/${plan.ids.payment}/corrections`;
++   app=module.createNestApplication({logger:false});app.useGlobalFilters(new SignatureFailureCapture(app.get(HttpAdapterHost),detail=>console.error(`TASK398_SIGNATURE_FAILURE ${JSON.stringify(detail)}`),{path:`/payments/${plan.ids.payment}/approval`,report:detail=>console.error(`TASK398_APPROVAL_FAILURE ${JSON.stringify(detail)}`)},detail=>console.error(`TASK398_ME_FAILURE ${JSON.stringify(detail)}`),path=>competitionCorrection&&[correctionRequestPath,correctionConfirmationPath,correctionReadPath].includes(path)));app.getHttpAdapter().getInstance().set("json replacer",apiJsonReplacer);app.useGlobalPipes(createApiValidationPipe());
+    if(transferMode){
+     const capturePath=process.env.TASK406_PRIVATE_FAILURE_PATH??"";
+@@ -223,4 +238,10 @@
+     app.useGlobalFilters(new TransferFailureCapture(app.get(HttpAdapterHost)));
+    }
 +   if(competitionCorrection)app.use((req:{method:string;url:string},res:{sendStatus:(status:number)=>void},next:()=>void)=>{
 +    if(!req.url.startsWith("/payment-financial/"))return next();
 +    if((req.method==="GET"&&req.url===correctionReadPath)||
@@ -41,7 +57,7 @@
 +   });
     let waiting:Array<()=>void>|undefined,barrierTimer:NodeJS.Timeout|undefined,arrivals=0,barrierExpired=false;
     if(overpay||transferMode)app.use((req:{method:string;url:string},_res:unknown,next:()=>void)=>{
-@@ -615,4 +634,138 @@
+@@ -615,4 +636,138 @@
      expect(await observeRace()).toEqual(recorded);
      expect(await json("/fund-accounts","GET",undefined,finance)).toEqual(accounts);
 +    const expectSharedQueues=async(paidAmountCents:string,remainingAmountCents:string)=>{

@@ -12,7 +12,7 @@
 + if(competitionCorrection){
 +  // FOR UPDATE needs one UPDATE column. The existing original-row guard forbids changing the id.
 +  const correctionRead='"id","idempotencyKey","paymentExecutionId","paymentRequestId","projectId","status","correctionReason","selfReviewReason","reviewNote","originalAmountCents","correctedAmountCents","amountDeltaCents","originalPaidAt","correctedPaidAt","originalSnapshot","reversalSnapshot","correctionSnapshot","fundRegistrationId","requestedByUserId","confirmedByUserId","confirmedAt","confirmationKey","payloadFingerprint","createdAt","updatedAt"';
-+  const correctionWrite='"id","idempotencyKey","paymentExecutionId","paymentRequestId","projectId","status","correctionReason","originalAmountCents","correctedAmountCents","amountDeltaCents","originalPaidAt","correctedPaidAt","originalSnapshot","reversalSnapshot","correctionSnapshot","requestedByUserId","payloadFingerprint","updatedAt"';
++  const correctionWrite='"id","idempotencyKey","paymentExecutionId","paymentRequestId","projectId","status","correctionReason","originalAmountCents","correctedAmountCents","amountDeltaCents","originalPaidAt","correctedPaidAt","originalSnapshot","reversalSnapshot","correctionSnapshot","requestedByUserId","payloadFingerprint","createdAt","updatedAt"';
 +  const correctionConfirm='"status","confirmedByUserId","confirmedAt","confirmationKey","selfReviewReason","reviewNote","fundRegistrationId","updatedAt"';
 +  await sql("jg_task01_owner",`
 +   GRANT UPDATE ("id") ON public."PaymentExecution" TO jg_task01_runtime;
@@ -31,7 +31,13 @@
 + }
   if(textDirectFinance){
    const refundRead='"id","idempotencyKey","executionType","paymentExecutionId","spotProcurementPaymentExecutionId","expenseClaimPaymentExecutionId","paymentRequestId","projectId","accountId","fundRegistrationId","amountCents","receivedAt","reason","evidenceReference","recordedByUserId","payloadFingerprint","createdAt"';
-@@ -356,5 +377,7 @@
+@@ -351,10 +372,12 @@
+  if(transferScenario&&!usesAdvanceRuntime){env.TASK406_TRANSFER_MODE=transferRejection?"rejection":transferBrowser?"browser":"1";env.TASK406_PRIVATE_FAILURE_PATH=path.join(privateLogDir,"transfer-failure.jsonl");}
+  if(browserScenario){const evidenceDir=realpathSync(mkdtempSync(current280?path.join(storage,"browser-evidence-"):"/private/tmp/jg398-browser-evidence-"));chmodSync(evidenceDir,0o700);env.TASK398_BROWSER_MODE=scenario==="src/database/task16-real-browser-completion.pg.spec.ts"?"2":"1";env.TASK398_CANDIDATE_SHA=candidate;env.TASK398_BROWSER_EVIDENCE=path.join(evidenceDir,"receipt.json");console.log(`TASK398_BROWSER_EVIDENCE_DIR ${evidenceDir}`);}
+- const postgresBefore=textDirectFinance?readPostgresLog():null;
++ const postgresBefore=(textDirectFinance||competitionCorrection)?readPostgresLog():null;
+  const scenarios=companyProxyScenario
+   ? [scenario,"src/expense-claim/expense-claim-registered-payment.http.pg.spec.ts"]
    : [scenario];
   try{
 -  const knownTitle="rejects a project source gap, then shares three valid instalments and supplements the voucher";
@@ -50,7 +56,20 @@
 +   }
    }
    if(textDirectFinance){
-@@ -541,12 +569,14 @@
+@@ -389,4 +417,12 @@
+    const postgresAfter=readPostgresLog();
+    writeFileSync(path.join(privateLogDir,"owned-postgresql.log"),postgresAfter,{mode:0o600,flag:"wx"});
++   if(competitionCorrection&&postgresAfter.startsWith(postgresBefore)){
++    const objects=["PaymentRequest","PaymentExecution","PaymentExecutionCorrection","RegisteredPaymentFunding","Settlement",
++     "RegisteredFundAccount","FundAccountBalanceRegistration","FundAccountSourceBatch","CompanyEntity","User","AuditLog"];
++    const denied=objects.filter(object=>postgresAfter.slice(postgresBefore.length).split("\n").some(line=>
++     /^NATIVE_TASK16 \[\d+\] ERROR:  permission denied for (?:table|relation) /u.test(line)&&line.endsWith(" "+object)
++    ));
++    standard290.correctionFailure={denied};
++   }
+    if(textDirectFinance&&postgresAfter.startsWith(postgresBefore)){
+     const failed=postgresAfter.slice(postgresBefore.length);
+@@ -541,12 +577,14 @@
  }
  async function runTask398Owned282Voucher(context, mode="standard", receipt){
 - const modes=new Map([["text-direct-331",["--text-direct-finance"]],["standard-331",[]],["text-direct-330",["--text-direct-finance"]],["standard-330",[]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
@@ -68,7 +87,7 @@
 + if(competition&&receipt?.purpose!=="TASK398_COMPETITION_EXACT_331")throw Error("TASK398_COMPETITION_SCOPE");
   if(standard&&receipt?.purpose!=="TASK398_STANDARD_EXACT_"+paymentCount)throw Error("TASK398_STANDARD_SCOPE");
   if(textDirect&&receipt?.purpose!=="TASK425_TEXT_DIRECT_FINANCE_"+paymentCount)throw Error("TASK425_TEXT_FINANCE_SCOPE");
-@@ -617,5 +647,5 @@
+@@ -617,5 +655,5 @@
   `);
   const catalog=await runBusiness(options,{candidate,short,storage,url,sql,env,current280:true,readPostgresLog,
 -  correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:standard||standard320||standard295||mode==="standard-290"?receipt:undefined,
