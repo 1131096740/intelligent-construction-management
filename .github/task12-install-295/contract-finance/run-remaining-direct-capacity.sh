@@ -44,6 +44,7 @@ if [[ $count == 330 ]]; then
   install -m 0644 "$fixture" "$work/direct-payment-capacity-concurrency.spec.ts"
   fixture="$work/direct-payment-capacity-concurrency.spec.ts"
   (cd "$work" && git apply --unidiff-zero -p0 "$plan/direct-capacity-330.patch")
+  chmod 0644 "$fixture"
   printf '%s  %s\n' "$expected" "$fixture" | shasum -a 256 -c >/dev/null
   sed "s/$archived_sha/$expected/" "$runner" > "$work/remaining-direct-capacity.cjs"
   runner="$work/remaining-direct-capacity.cjs"
