@@ -1848,6 +1848,7 @@ export interface OperatingProjectionAggregateReadModel {
     }>;
     unattributedCostCents: string;
     publicCashCostCents: string;
+    needsReview?: true;
   };
   actualFunds: {
     constructionEnterpriseFundsCents: string;

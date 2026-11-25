@@ -697,6 +697,30 @@ export class ExpenseClaimService {
           select: { publicCashCustody: { select: { currentCustodianId: true } } }
         })
       : null;
+    const canRecordPublicCashPayment = cashAccount?.publicCashCustody?.currentCustodianId === actorUserId;
+    const cashCostImpacts = canRecordPublicCashPayment && claim.projectId
+      ? await this.prisma.operatingImpactEntry.findMany({
+          where: {
+            projectId: claim.projectId, impactKind: "confirmed_cost", direction: "increase", numericProtocolVersion: 1,
+            fact: { sourceType: EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE, sourceBusinessId: claim.id,
+              projectId: claim.projectId, entryKind: "original", status: "confirmed", evidenceLevel: "A",
+              isBeforeOperatingLedgerEffectiveDate: false, adjustments: { none: { status: "confirmed" } } }
+          },
+          select: { id: true, description: true, amountCents: true, sourceImpactKey: true, impactSnapshot: true,
+            expensePublicCashCostLinks: { select: { amountCents: true } } },
+          orderBy: [{ sourceImpactKey: "asc" }, { id: "asc" }]
+        })
+      : [];
+    const cashCostAllocationOptions = cashCostImpacts.flatMap(impact => {
+      const available = (impact.amountCents ?? 0n) - impact.expensePublicCashCostLinks.reduce((sum, link) => sum + link.amountCents, 0n);
+      if (available <= 0n) return [];
+      const lineNumber = /^confirmed_cost:(\d+)$/u.exec(impact.sourceImpactKey)?.[1];
+      const purpose = impact.impactSnapshot && typeof impact.impactSnapshot === "object" && !Array.isArray(impact.impactSnapshot)
+        && typeof impact.impactSnapshot.purpose === "string" ? impact.impactSnapshot.purpose : null;
+      return [{
+        costImpactId: impact.id, lineNumber, description: purpose ?? impact.description, availableAmountCents: available.toString()
+      }];
+    });
     const [project, lines, attachments, paymentSubjectCompanyEntities, paymentExecutions, finalPaymentPdf] = await Promise.all([
       claim.projectId
         ? this.prisma.project.findUnique({ where: { id: claim.projectId }, select: { id: true, code: true, name: true } })
@@ -820,6 +844,7 @@ export class ExpenseClaimService {
     return {
       ...displayClaim,
       costBearingCompanyName,
+      cashCostAllocationOptions,
       bearingCompanyOptions: canEditReturnedDraft && claim.projectId && !claim.actualPurchaseBatchId && !claim.generalProcurementId
         ? await expenseBearingCompanyOptions(this.prisma, [claim.projectId]) : [],
       canEditReturnedDraft,
@@ -849,7 +874,7 @@ export class ExpenseClaimService {
       paymentSubjectCompanyEntities,
       fundsPermissions: {
         canRecordPayment: canPayClaim && roles.includes("finance_staff"),
-        canRecordPublicCashPayment: cashAccount?.publicCashCustody?.currentCustodianId === actorUserId,
+        canRecordPublicCashPayment,
         canRecordReimbursementPayment: claim.claimType === "reimbursement" && ["approved_pending_payment", "partially_paid"].includes(claim.status) && roles.includes("finance_staff"),
         canGenerateFinalPaymentPdf: claim.claimType === "reimbursement" && claim.status === "paid" && roles.includes("finance_staff"),
         canGenerateLoanFinalDisbursementPdf: false,

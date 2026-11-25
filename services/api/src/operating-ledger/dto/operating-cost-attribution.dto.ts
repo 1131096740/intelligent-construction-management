@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min } from "class-validator";
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, ValidateIf, MaxLength, Min } from "class-validator";
 
 export class OperatingCostAttributionRequestDto {
   @IsString({ message: "请选择成本承担公司" })
@@ -12,6 +12,10 @@ export class OperatingCostAttributionRequestDto {
   @IsString({ message: "缺少幂等键" })
   @MaxLength(100)
   idempotencyKey!: string;
+
+  @ValidateIf((_input, value) => value !== undefined)
+  @IsUUID("4", { message: "请选择有效的原费用现金分摊" })
+  expenseCashCostLinkId?: string;
 }
 
 export class OperatingCostAttributionReviewDto {

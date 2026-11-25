@@ -118,6 +118,7 @@ const fundingLoading = ref(false);
 const fundingError = ref("");
 const fundingScopeKey = ref("");
 const fundingAllocations = ref<Record<string, string>>({});
+const cashCostAllocations = ref<Record<string, string>>({});
 type FrozenPayment = Omit<ExpenseClaimPaymentInput, "confirmationPassword"> & { registeredFunding: ExpenseRegisteredFundingInput };
 const frozenPayment = ref<FrozenPayment | null>(null);
 const paymentScope = computed(() => auth.user?.id && route.params.claimId
@@ -146,7 +147,7 @@ const payerAccounts = computed(() => fundingAccounts.value.filter(account => {
 }));
 const payer = computed(() => payerAccounts.value.find(account => account.scopeKey === fundingScopeKey.value));
 const fundingSources = computed(() => payer.value ? eligibleFundingSources(payer.value) : []);
-watch(fundingScopeKey, () => { fundingAllocations.value = {}; });
+watch(fundingScopeKey, () => { fundingAllocations.value = {}; cashCostAllocations.value = {}; });
 watch(paymentScope, (scope) => {
   frozenPayment.value = null;
   paymentVisible.value = false;
@@ -344,7 +345,9 @@ async function recordExpenseClaimPaymentWithCapability(
   const operation = body.registeredFunding?.scopeKey === "public_cash"
     ? "record_expense_claim_public_cash_payment" : "record_expense_claim_payment";
   const operationAllowed = capability.availableActions.includes(operation);
-  if (!operationAllowed) throw new Error("当前费用申请不能登记该笔付款");
+  const recoveringCashReceipt = body.registeredFunding?.scopeKey === "public_cash" &&
+    frozenPayment.value?.voucherFileId === body.voucherFileId;
+  if (!operationAllowed && !recoveringCashReceipt) throw new Error("当前费用申请不能登记该笔付款");
   return recordExpenseClaimPayment(claimId, body);
 }
 async function generateExpenseClaimFinalPaymentPdfWithCapability(claimId: string) {
@@ -548,6 +551,7 @@ function openPayment() {
   paymentVoucherFiles.value = [];
   fundingScopeKey.value = cashOnly.value ? "public_cash" : "";
   fundingAllocations.value = {};
+  cashCostAllocations.value = {};
   registeredFundingMode.value = Boolean(pending) || cashOnly.value || detail.value.claimType === "incidental_expense";
   actionError.value = "";
   paymentVisible.value = true;
@@ -581,8 +585,18 @@ function selectedFunding(): ExpenseRegisteredFundingInput | undefined {
   });
   const total = sourceAllocations.reduce((sum, allocation) => sum + BigInt(allocation.amountCents), 0n);
   if (total <= 0n || total !== BigInt(paymentForm.value.amountCents)) throw new Error("各来源使用金额的合计必须等于本次实付款");
+  const costAllocations = payer.value.kind === "public_cash" ? (detail.value?.cashCostAllocationOptions ?? []).flatMap(line => {
+    const amountCents = cashCostAllocations.value[line.costImpactId];
+    if (!amountCents || BigInt(amountCents) === 0n) return [];
+    if (BigInt(amountCents) > BigInt(line.availableAmountCents)) throw new Error("分摊金额超过原费用明细可分摊余额");
+    return [{ costImpactId: line.costImpactId, amountCents }];
+  }) : [];
+  if (costAllocations.reduce((sum, line) => sum + BigInt(line.amountCents), 0n) > total) {
+    throw new Error("费用分摊合计不能超过本次公共现金实付");
+  }
   return {
     scopeKey: payer.value.scopeKey, expectedRegistrationId: payer.value.currentRegistrationId, sourceAllocations,
+    ...(costAllocations.length ? { costAllocations } : {})
   };
 }
 
@@ -1177,6 +1191,13 @@ onMounted(() => void loadDetail());
                 {{ source.sourceName || (source.sourceStatus === 'pending' ? '出资来源待核对' : '原登记来源') }} · 可用 ¥{{ source.amountYuan }}
                 <YuanMoneyInput v-model="fundingAllocations[source.id!]" />
               </label>
+              <template v-if="payer?.kind === 'public_cash' && detail.cashCostAllocationOptions?.length">
+                <p>可填写本次实际支付对应的原费用，有待核对的金额可以留空。</p>
+                <label v-for="line in detail.cashCostAllocationOptions" :key="line.costImpactId">
+                  {{ line.lineNumber ? `第 ${line.lineNumber} 行 · ` : '' }}{{ line.description || '原确认费用' }} · 可分摊 ¥{{ centsTextToYuanText(line.availableAmountCents) }}
+                  <YuanMoneyInput v-model="cashCostAllocations[line.costImpactId]" />
+                </label>
+              </template>
             </template>
             <t-upload
               v-if="!frozenPayment"

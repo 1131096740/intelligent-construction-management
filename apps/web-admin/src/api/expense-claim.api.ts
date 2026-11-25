@@ -35,6 +35,7 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
   costBearingCompanyName?: string | null;
   bearingCompanyOptions?: ExpenseBearingCompanyOption[];
   actualPurchaseBatchId?: string | null;
+  cashCostAllocationOptions?: Array<{ costImpactId: string; lineNumber?: string; description: string | null; availableAmountCents: string }>;
   canDeleteDraft?: boolean;
   approvalInstanceId?: string | null;
   canWithdrawApproval?: boolean;
@@ -600,6 +601,7 @@ export interface ExpenseRegisteredFundingInput {
   scopeKey: string;
   expectedRegistrationId: string;
   sourceAllocations: Array<{ sourceBatchId: string; amountCents: string }>;
+  costAllocations?: Array<{ costImpactId: string; amountCents: string }>;
 }
 export interface ExpenseClaimPaymentInput {
   amountCents: string;

@@ -30,6 +30,8 @@ interface ClaimLockRow {
   status: string;
   projectId: string | null;
   companyEntityId: string;
+  costBearingCompanySpecified: boolean;
+  costBearingCompanyEntityId: string | null;
   incidentalExpenseCategory: string | null;
   payeeNameSnapshot: string | null;
   companyPayableAmountCents: bigint;
@@ -90,7 +92,8 @@ export class ExpenseClaimCorrectionService {
     return this.prisma.$transaction(async (tx) => {
       const roles = await this.requireDirector(tx, actorUserId);
       const rows = await tx.$queryRaw<ClaimLockRow[]>(Prisma.sql`
-        SELECT "id", "code", "claimType", "status", "projectId", "companyEntityId", "incidentalExpenseCategory",
+        SELECT "id", "code", "claimType", "status", "projectId", "companyEntityId", "costBearingCompanySpecified",
+               "costBearingCompanyEntityId", "incidentalExpenseCategory",
                "payeeNameSnapshot", "companyPayableAmountCents", "handledByUserId", "applicantUserId"
         FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`);
       const claim = rows[0];
@@ -166,10 +169,9 @@ export class ExpenseClaimCorrectionService {
       const costCategoryCode = OTHER_PROJECT_PAYMENT_CATEGORIES.find(
         (item) => item.key === claim.incidentalExpenseCategory
       )?.costCategoryCode ?? "other_project_cost";
-      const company: AppendOperatingFactInput["subjects"]["costBearingCompany"] = {
-        kind: "participating_company",
-        id: claim.companyEntityId
-      };
+      const companyId = claim.costBearingCompanySpecified ? claim.costBearingCompanyEntityId : claim.companyEntityId;
+      const company: AppendOperatingFactInput["subjects"]["costBearingCompany"] = companyId
+        ? { kind: "participating_company", id: companyId } : undefined;
       const payee: AppendOperatingFactInput["subjects"]["payee"] = {
         kind: "downstream_counterparty",
         id: stableNamedSubjectId("downstream_counterparty", claim.payeeNameSnapshot)
@@ -218,7 +220,7 @@ export class ExpenseClaimCorrectionService {
           originalAmountCents: originalAmountCents.toString(),
           correctedAmountCents: correctedAmountCents.toString()
         }),
-        subjects: { costBearingCompany: company, payee },
+        subjects: { ...(company ? { costBearingCompany: company } : {}), payee },
         impacts: [
           {
             idempotencyKey: `${EXPENSE_SOURCE_TYPE}:${correctionBusinessId}:confirmed_cost`,
@@ -226,8 +228,7 @@ export class ExpenseClaimCorrectionService {
             impactKind: "confirmed_cost",
             amountCents: absoluteDeltaCents,
             direction: impactDirection,
-            subjectRole: "cost_bearing_company",
-            subject: company,
+            ...(company ? { subjectRole: "cost_bearing_company" as const, subject: company } : {}),
             costCategoryCode,
             description: deltaCents < 0n ? "其他项目付款更正调减项目成本" : "其他项目付款更正调增项目成本"
           },

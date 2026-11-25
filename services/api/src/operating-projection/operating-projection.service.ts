@@ -1,3 +1,4 @@
+import { expenseCashCostAvailable, expenseCashCostEvidenceSelect } from "../operating-ledger/expense-cash-cost-attribution";
 import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import {readCompanyTransferBalances} from "../company-transfer/company-transfer-summary";
 import { createReadStream } from "node:fs";
@@ -51,6 +52,7 @@ import {
   type OperatingProjectionReadModel,
   type OperatingProjectionV2ReadModel,
   type OperatingProjectionV2AggregateView,
+  type ConfirmedCostBearingSlice,
   type ProjectionV2FactInput,
   type ProjectionV2ImpactInput,
   type ProjectionFactInput,
@@ -129,6 +131,12 @@ export interface AsOfProjectionDetailQuery extends ProjectionFilters, Projection
   asOf?: string;
 }
 
+type ExpenseCashProjectionRow = {
+  cashAmountCents: bigint;
+  confirmedAttribution: ConfirmedCostBearingSlice | null;
+  attributionNeedsReview: boolean;
+};
+
 type ProjectionReadContext = {
   numericProtocolVersion?: 1 | 2;
   readAt: Date;
@@ -136,6 +144,7 @@ type ProjectionReadContext = {
   scope: ProjectionScopeInput;
   projectById: Map<string, { id: string; code: string; name: string }>;
   costAttributionByFactId?: Map<string, { companyEntityVersionId: string; companyName: string }>;
+  expenseCashByImpactId: Map<string, ExpenseCashProjectionRow[]>;
   constructionEnterpriseSubjectIds?: string[];
   companyEntityVersionIds?: string[];
   affiliateAssignments: Array<{
@@ -901,7 +910,7 @@ export class OperatingProjectionService {
         tx as unknown as {
           operatingCostAttributionConfirmation?: {
             findMany(args: {
-              where: { projectId: { in: string[] }; status: string };
+              where: { projectId: { in: string[] }; status: string; expenseCashCostLinkId: null };
               select: {
                 operatingFactId: true;
                 companyEntityVersionId: true;
@@ -919,7 +928,7 @@ export class OperatingProjectionService {
       ).operatingCostAttributionConfirmation;
       const attributionRows = attributionDelegate
         ? await attributionDelegate.findMany({
-            where: { projectId: { in: projectIds }, status: "confirmed" },
+            where: { projectId: { in: projectIds }, status: "confirmed", expenseCashCostLinkId: null },
             select: {
               operatingFactId: true,
               companyEntityVersionId: true,
@@ -936,6 +945,46 @@ export class OperatingProjectionService {
           }
         ])
       );
+      const expenseCashByImpactId = new Map<string, ExpenseCashProjectionRow[]>();
+      const cashLinks = tx.expensePublicCashCostLink
+        ? await tx.expensePublicCashCostLink.findMany({
+            where: { operationalPayment: { projectId: { in: projectIds }, paidAt: { lte: cutoffAt },
+              createdAt: { lte: readAt }, actualPayerCompanyId: null } },
+            select: {
+              ...expenseCashCostEvidenceSelect,
+              costImpact: { select: { ...expenseCashCostEvidenceSelect.costImpact.select, fact: { select: {
+                ...expenseCashCostEvidenceSelect.costImpact.select.fact.select,
+                adjustments: { where: { status: "confirmed", occurredAt: { lte: cutoffAt }, confirmedAt: { lte: readAt } },
+                  select: { id: true }, take: 1 }
+              } } } },
+              confirmations: {
+                where: { status: "confirmed", reviewedAt: { lte: readAt } },
+                select: { companyEntityVersionId: true, companyNameSnapshot: true, attributedAmountCents: true }
+              }
+            },
+            take: MAX_HOLDER_ALIAS_COORDINATES + 1
+          })
+        : [];
+      if (cashLinks.length > MAX_HOLDER_ALIAS_COORDINATES) throw new ProjectionResourceBudgetExceededError();
+      for (const link of cashLinks) {
+        const confirmation = link.confirmations[0];
+        if (link.confirmations.length > 1 ||
+            (confirmation && (!confirmation.attributedAmountCents || confirmation.attributedAmountCents > link.amountCents))) {
+          throw new ConflictException("公共现金费用归属证据不完整，请核对原分摊");
+        }
+        const rows = expenseCashByImpactId.get(link.costImpact.id) ?? [];
+        const cashAmountCents = expenseCashCostAvailable(link, cutoffAt);
+        rows.push({
+          cashAmountCents,
+          attributionNeedsReview: Boolean(confirmation && (cashAmountCents < confirmation.attributedAmountCents! ||
+            link.costImpact.fact.adjustments.length > 0)),
+          confirmedAttribution: confirmation ? {
+            companyEntityVersionId: confirmation.companyEntityVersionId, companyName: confirmation.companyNameSnapshot,
+            amountCents: confirmation.attributedAmountCents!
+          } : null
+        });
+        expenseCashByImpactId.set(link.costImpact.id, rows);
+      }
       const companyEntityId = input.scope.filters?.companyEntityId;
       const companyEntityVersions = companyEntityId
         ? await tx.companyEntityVersion.findMany({
@@ -1131,10 +1180,16 @@ export class OperatingProjectionService {
           accumulator.startFacts(mapped);
         },
         addImpacts: (impacts) => accumulator.addImpacts(
-          impacts.map((impact) => ({ ...versionedProjectionImpactFromStored(
-            input.allowExactOwnerSettlementCents ? projectCloseLegacyOwnerSettlementRow(impact) : impact,
-            input.numericProtocolVersion ?? 1
-          ), factId: impact.factId }))
+          impacts.flatMap((impact) => {
+            const projected = projectExpenseCashCostImpact(
+              versionedProjectionImpactFromStored(
+                input.allowExactOwnerSettlementCents ? projectCloseLegacyOwnerSettlementRow(impact) : impact,
+                input.numericProtocolVersion ?? 1
+              ),
+              expenseCashByImpactId.get(impact.id), companyEntityId, companyEntityVersionIds
+            );
+            return projected ? [{ ...projected, factId: impact.factId }] : [];
+          })
         ),
         finishFacts: () => accumulator.finishFacts()
       });
@@ -1360,6 +1415,7 @@ export class OperatingProjectionService {
             scope,
             projectById,
             costAttributionByFactId,
+            expenseCashByImpactId,
             constructionEnterpriseSubjectIds,
             companyEntityVersionIds: companyEntityVersionIds
               ? Array.from(companyEntityVersionIds)
@@ -1931,6 +1987,7 @@ async function readFactDetailPageInTransaction(
       context.scope.filters?.counterpartyId
   );
   let after = position;
+  const companyVersionIds = new Set(context.companyEntityVersionIds);
   for (;;) {
     if (needsSubjectSnapshots) {
       await preflightDetailSnapshotPageResources(tx, context, after);
@@ -2014,15 +2071,17 @@ async function readFactDetailPageInTransaction(
         ? versionedProjectionFactFromStored({ ...row.fact, sourceSnapshot: row.fact.sourceSnapshot ?? {}, subjectSnapshot: row.fact.subjectSnapshot ?? {} }, context.projectById, 2, context.costAttributionByFactId)
         : projectionFactFromDetailStored(row.fact, context.projectById, context.costAttributionByFactId);
       if (row.numericProtocolVersion === 2 && row.amountCents !== null) throw new BadRequestException("新版经营明细混用了原分金额，请核对原资料");
-      const impact: ProjectionFactInput["impacts"][number] | ProjectionV2ImpactInput = row.numericProtocolVersion === 2
+      const storedImpact: ProjectionFactInput["impacts"][number] | ProjectionV2ImpactInput = row.numericProtocolVersion === 2
         ? { id: row.id, impactKind: row.impactKind, numericProtocolVersion: 2, amountCents: null, amountYuan: row.amountYuan === null ? null : row.amountYuan.toFixed(4), direction: row.direction, subjectKind: row.subjectKind, subjectId: row.subjectId }
         : projectionImpactFromDetailStored(row);
       after = {
         phase: "facts",
         occurredAt: fact.occurredAt,
-        impactId: impact.id
+        impactId: storedImpact.id
       };
-      if (!projectionFactMatchesFilters(
+      const impact = projectExpenseCashCostImpact(storedImpact, context.expenseCashByImpactId.get(storedImpact.id),
+        context.scope.filters?.companyEntityId, companyVersionIds);
+      if (!impact || !projectionFactMatchesFilters(
         fact,
         impact,
         context.scope.filters,
@@ -2250,6 +2309,41 @@ function versionedProjectionImpactFromStored(impact: StoredOperatingImpact, prot
   if (impact.numericProtocolVersion !== 2) return projectionImpactFromStored(impact);
   if (protocol !== 2 || impact.amountCents !== null) throw new BadRequestException("此经营读取协议不能表达新版四位影响，请使用新版经营读取入口");
   return { numericProtocolVersion: 2, amountCents: null, amountYuan: impact.amountYuan === null ? null : impact.amountYuan.toFixed(4), id: impact.id, impactKind: impact.impactKind, direction: impact.direction, subjectRole: impact.subjectRole, subjectKind: impact.subjectKind, subjectId: impact.subjectId, costCategoryCode: impact.costCategoryCode, fundPurpose: impact.fundPurpose, description: impact.description, impactSnapshot: impact.impactSnapshot };
+}
+
+function projectExpenseCashCostImpact(
+  impact: ProjectionFactInput["impacts"][number] | ProjectionV2ImpactInput,
+  rows: ExpenseCashProjectionRow[] | undefined,
+  companyEntityId?: string,
+  companyEntityVersionIds?: Set<string> | null
+) {
+  if (!rows?.length) return impact;
+  if (impact.numericProtocolVersion === 2 || impact.impactKind !== "confirmed_cost" || impact.direction !== "increase") {
+    throw new ConflictException("公共现金分摊没有对应的已确认原费用");
+  }
+  const slices = rows.flatMap(row => row.confirmedAttribution ? [row.confirmedAttribution] : []);
+  const assigned = slices.reduce((sum, slice) => sum + slice.amountCents, 0n);
+  const cash = rows.reduce((sum, row) => sum + row.cashAmountCents, 0n);
+  if (assigned > impact.amountCents || cash > impact.amountCents) {
+    throw new ConflictException("公共现金归属金额超过原确认费用");
+  }
+  if (!companyEntityId || impact.subjectKind || !slices.length) {
+    return { ...impact, costBearingSlices: slices, publicCashCostAmountCents: cash,
+      cashAttributionNeedsReview: rows.some(row => row.attributionNeedsReview) };
+  }
+  const selected = rows.filter(row => {
+    const version = row.confirmedAttribution?.companyEntityVersionId;
+    return version && (version === companyEntityId || companyEntityVersionIds?.has(version));
+  });
+  if (!selected.length) return null;
+  const selectedSlices = selected.map(row => row.confirmedAttribution!);
+  const amountCents = selectedSlices.reduce((sum, slice) => sum + slice.amountCents, 0n);
+  return {
+    ...impact, amountCents, subjectKind: "participating_company", subjectId: selectedSlices[0].companyEntityVersionId,
+    costBearingSlices: selectedSlices,
+    cashAttributionNeedsReview: selected.some(row => row.attributionNeedsReview),
+    publicCashCostAmountCents: selected.reduce((sum, row) => sum + row.cashAmountCents, 0n)
+  };
 }
 
 function projectionFactFromStored(

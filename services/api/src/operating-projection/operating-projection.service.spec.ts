@@ -75,6 +75,63 @@ function overviewVisibility(projectIds: string[]) {
 describe("OperatingProjectionService", () => {
   const project = { id: "project-1", code: "XM-001", name: "一号项目" };
 
+  it("applies a linked cash slice to only its company and retains original cost and post-refund history", async () => {
+    const readAt = new Date("2026-11-26T02:00:00Z");
+    const occurredAt = new Date("2026-11-20T00:00:00Z");
+    const costFact = {
+      id: "approval-fact", projectId: project.id, sourceType: "expense_claim_approval",
+      sourceBusinessId: "claim-1", sourceBusinessCode: "BX-0001", sourceVersion: 1,
+      occurredAt, confirmedAt: occurredAt, affiliateBusinessPartyVersionId: "enterprise-v1",
+      affiliateNameSnapshot: "施工单位", factKind: "expense", operatingLevel: "project", evidenceLevel: "A",
+      amountCents: 800n, numericProtocolVersion: 1, direction: "outflow", sourceSnapshot: {},
+      subjectSnapshot: {}, entryKind: "original", costBearingCompanySubjectKind: null, costBearingCompanySubjectId: null
+    };
+    const originalImpact = {
+      id: "cost-1", factId: costFact.id, impactKind: "confirmed_cost", amountCents: 800n,
+      direction: "increase", numericProtocolVersion: 1, subjectKind: null, subjectId: null,
+      costCategoryCode: "project_daily_expense", fact: costFact
+    };
+    const link = {
+      id: "link-1", amountCents: 300n, costImpact: { id: originalImpact.id, fact: { ...costFact, adjustments: [] } },
+      operationalPayment: { amountCents: 300n, expensePublicCashCosts: [{ id: "link-1" }],
+        expenseExecution: { expenseClaimId: "claim-1", refunds: [] as Array<{ amountCents: bigint; receivedAt: Date }> } },
+      confirmations: [{ companyEntityVersionId: "bearing-v1", companyNameSnapshot: "承担公司", attributedAmountCents: 300n }]
+    };
+    const tx = {
+      ...emptyProjectionTx(readAt, [project]),
+      expensePublicCashCostLink: { findMany: jest.fn().mockResolvedValue([link]) }
+    };
+    tx.companyEntityVersion.findMany.mockResolvedValue([{ id: "bearing-v1", name: "承担公司" }]);
+    const visibility = overviewVisibility([project.id]);
+    visibility.effectiveRoleKeysByProjectInTransaction.mockResolvedValue(new Map([[project.id, ["finance_staff"]]]));
+    const service = new OperatingProjectionService(
+      { $transaction: jest.fn((work) => work(tx)) } as never, visibility as never, zeroRiskReader() as never,
+      { record: jest.fn() } as never, { confirmPassword: jest.fn() } as never
+    );
+    const prepareScan = () => {
+      tx.operatingFact.findMany.mockResolvedValueOnce([costFact]);
+      tx.operatingImpactEntry.findMany.mockResolvedValueOnce([originalImpact]);
+    };
+    prepareScan();
+    const projectView = await service.getProjectView("finance", { projectId: project.id });
+    expect(projectView.operating.confirmedCostCents).toBe("800");
+    expect(projectView.costAttribution).toEqual({
+      byBearingCompany: [{ kind: "participating_company", id: "bearing-v1", name: "承担公司", costCents: "300" }],
+      unattributedCostCents: "500", publicCashCostCents: "300"
+    });
+    prepareScan();
+    const bearingView = await service.getProjectView("finance", { projectId: project.id, companyEntityId: "bearing-company" });
+    expect(bearingView.operating.confirmedCostCents).toBe("300");
+    expect(bearingView.costAttribution.unattributedCostCents).toBe("0");
+
+    link.operationalPayment.expenseExecution.refunds.push({ amountCents: 300n, receivedAt: new Date("2026-11-25") });
+    prepareScan();
+    const afterRefund = await service.getProjectView("finance", { projectId: project.id });
+    expect(afterRefund.operating.confirmedCostCents).toBe("800");
+    expect(afterRefund.costAttribution).toEqual({ ...projectView.costAttribution, publicCashCostCents: "0", needsReview: true });
+    expect(afterRefund.integrity.notices).toContain("原公共现金费用已有归属确认，后续退款或更正影响承担关系的范围待核对。");
+  });
+
   it.each([
     [20_000n, 100_000n, 67_108_864n, false],
     [20_001n, 1n, 1n, true],

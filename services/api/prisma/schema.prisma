@@ -7909,6 +7909,7 @@ model ExpensePublicCashCostLink {
   costImpactId         String
   amountCents          BigInt
   operationalPayment   RegisteredOperationalPayment @relation(fields: [operationalPaymentId], references: [id], onDelete: Restrict)
+  confirmations        OperatingCostAttributionConfirmation[]
   costImpact           OperatingImpactEntry         @relation(fields: [costImpactId], references: [id], onDelete: Restrict)
 
   @@unique([operationalPaymentId, costImpactId])
@@ -7977,6 +7978,9 @@ model OperatingCostAttributionConfirmation {
   operatingFactId            String
   operatingFactProjectId     String
   sourceDedupKey             String?
+  expenseCashCostLinkId      String?
+  expenseCashCostLink        ExpensePublicCashCostLink? @relation(fields: [expenseCashCostLinkId], references: [id], onDelete: Restrict)
+  attributedAmountCents      BigInt?
   status                     String    @default("pending_review")
   activeKey                  String?
   companyEntityId            String
@@ -7996,5 +8000,6 @@ model OperatingCostAttributionConfirmation {
 
   @@unique([operatingFactId, activeKey], map: "OperatingCostAttributionConfirmation_active_key")
   @@index([projectId, status], map: "OperatingCostAttributionConfirmation_project_status_idx")
+  @@index([expenseCashCostLinkId])
   @@index([sourceDedupKey], map: "OperatingCostAttributionConfirmation_source_dedup_idx")
 }
