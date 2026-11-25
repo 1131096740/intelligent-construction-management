@@ -13,7 +13,7 @@ source="$prepared/source.json"
 
 node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="current-320"?329:source.mode==="text-direct-330"?330:null;
+  const count=({"current-320":329,"text-direct-330":330,"payment-remainder-331":331})[source.mode];
   if(!count||source.migrationCount!==count||source.sourceSha!==process.argv[2])process.exit(65);
 ' "$source" "$sha"
 image=$(cat "$build/image.id")
@@ -47,6 +47,7 @@ docker run "${args[@]}" --entrypoint node "$image" /qualification/line-a-entry.c
 node -e '
   const proof=require(process.argv[1]);
   const source=require(process.argv[3]);
-  const expected=source.mode==="text-direct-330"?"LINE_A_TEXT_DIRECT_330_PASSED":"LINE_A_EXACT_329_PASSED";
+  const expected=({"current-320":"LINE_A_EXACT_329_PASSED","text-direct-330":"LINE_A_TEXT_DIRECT_330_PASSED",
+    "payment-remainder-331":"LINE_A_PAYMENT_REMAINDER_331_PASSED"})[source.mode];
   if(proof.status!==expected||proof.sourceSha!==process.argv[2])process.exit(65);
 ' "$work/receipt.json" "$sha" "$source"

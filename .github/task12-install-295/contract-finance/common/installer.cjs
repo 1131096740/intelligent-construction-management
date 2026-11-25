@@ -809,9 +809,9 @@ statement_timeout='60s'
       enter('INSTALL_320_CONTRACT_DETAIL_READERS');
       need(purpose===exactMultiWitness295 && qualifiedLedger.length===295,'FORWARD_320_REQUIRES_295');
       const {tails,sourceTree,sql:tailSources}=forward320;
-      const terminalIndex = tails.length - 1;
       let current;
-      const batches = forward320.textDirect ? [tails.slice(0, terminalIndex), tails.slice(terminalIndex)] : [tails];
+      const batches = forward320.textDirect ? [tails.slice(0,34), tails.slice(34,35)] : [tails];
+      if (forward320.paymentRemainder) batches.push(tails.slice(35));
       for (const batch of batches) {
         for (const row of batch) {
           const index = tails.indexOf(row);
@@ -842,6 +842,12 @@ statement_timeout='60s'
           need(digest==='3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2' &&
             equal(await jsonSql(finalSql),final),'TEXT_DIRECT_329_PREDECESSOR_CONTINUITY');
           receipt.textDirectPredecessor={count:329,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true};
+        }
+        if (forward320.paymentRemainder && current.ledger.length===330) {
+          const digest=hash(JSON.stringify(current.ledger));
+          need(digest==='12a3ffa7cae1b9a54294ebaf38f71788ff4ccb2670a8d539148c84597b5aa99f' &&
+            equal(await jsonSql(finalSql),final),'PAYMENT_REMAINDER_330_PREDECESSOR_CONTINUITY');
+          receipt.paymentRemainderPredecessor={count:330,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true};
         }
       }
       receipt.forward320={count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
@@ -1335,14 +1341,21 @@ module.exports.withCombined295MultiWitnessForRestore = (receipt,consume) =>
   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,true);
 
 
-function readForward320({sourceTree,migrations,tails},textDirect=false) {
+function readForward320({sourceTree,migrations,tails},target=329) {
+  const textDirect=target>=330;
+  const paymentRemainder=target===331;
   need(typeof sourceTree==='string' && /^[0-9a-f]{40}$/u.test(sourceTree) &&
     typeof migrations==='string' && path.isAbsolute(migrations) &&
-    Array.isArray(tails) && tails.length===(textDirect?35:34),'FORWARD_320_SOURCE');
+    Array.isArray(tails) && tails.length===target-295,'FORWARD_320_SOURCE');
   if(textDirect) {
-    need(tails.at(-1)?.name==='20261128000000_text_agreement_direct_payment' &&
-      tails.at(-1)?.sha256==='4d99963155b37e091f37db7a1648d2fed6e6464aee7c643002a3297b4120991c',
+    need(tails[34]?.name==='20261128000000_text_agreement_direct_payment' &&
+      tails[34]?.sha256==='4d99963155b37e091f37db7a1648d2fed6e6464aee7c643002a3297b4120991c',
       'TEXT_DIRECT_330_TERMINAL');
+  }
+  if(paymentRemainder) {
+    need(tails[35]?.name==='20261129000000_payment_remaining_withdrawal' &&
+      tails[35]?.sha256==='67593637957ba372cbba7633334fb9896ba6adf472b0c1b9b6f1482c0d645fc2',
+      'PAYMENT_REMAINDER_331_TERMINAL');
   }
   let previous='20261119003900';
   const rows=tails.map(row => {
@@ -1356,7 +1369,7 @@ function readForward320({sourceTree,migrations,tails},textDirect=false) {
     need(hash(bytes)===row.sha256,'FORWARD_320_TAIL_DIGEST');
     return bytes;
   });
-  return {sourceTree,tails:rows,sql,textDirect};
+  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder};
 }
 
 module.exports.withCombined320ContractPayment = (receipt,consume,material) => {
@@ -1368,7 +1381,12 @@ module.exports.withCombined320ContractPayment = (receipt,consume,material) => {
 
 module.exports.withCombined330TextAgreement = (receipt,consume,material) => {
   need(typeof consume==='function' && material && typeof material==='object','TEXT_DIRECT_330_ARGUMENTS');
-  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,true));
+  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330));
+};
+
+module.exports.withCombined331PaymentRemainder = (receipt,consume,material) => {
+  need(typeof consume==='function' && material && typeof material==='object','PAYMENT_REMAINDER_331_ARGUMENTS');
+  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,331));
 };
 
 module.exports.withCombined320ContractPaymentForRestore = (receipt,prepare295,consume,material) => {
@@ -1381,7 +1399,7 @@ module.exports.withCombined320ContractPaymentForRestore = (receipt,prepare295,co
 module.exports.withCombined330ContractPaymentForRestore = (receipt,prepare295,consume,material) => {
   need(typeof prepare295==='function' && typeof consume==='function'
     && material && typeof material==='object','TEXT_DIRECT_330_RESTORE_ARGUMENTS');
-  const forward330=readForward320(material,true);
+  const forward330=readForward320(material,330);
   return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,true,{...forward330,prepare295});
 };
 
@@ -1420,6 +1438,6 @@ module.exports.withCombined320MultiWitnessForProfile=(receipt,consume,material)=
   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'profile');
 
 module.exports.withCombined330RetainedCleanup=(receipt,consume,material)=>
-  withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,true),'cleanup');
+  withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'cleanup');
 module.exports.withCombined330MultiWitnessForProfile=(receipt,consume,material)=>
-  withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,true),'profile');
+  withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,330),'profile');
