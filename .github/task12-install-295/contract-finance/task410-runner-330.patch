@@ -1,0 +1,28 @@
+--- runner
++++ runner
+@@ -315 +315 @@
+- if(companyProxyScenario){env.RUN_COMPANY_PROXY_REPAYMENT_HTTP="1";env.RUN_EXPENSE_REGISTERED_PAYMENT_PG16="1";env.TASK410_ISOLATED_RUN_ID=short;if(standard290)env.TASK410_OWNED_290="1";if(ownedMigrationBaseline?.expectedDirectoryCount===329)env.TASK410_OWNED_320="1";}
++ if(companyProxyScenario){env.RUN_COMPANY_PROXY_REPAYMENT_HTTP="1";env.RUN_EXPENSE_REGISTERED_PAYMENT_PG16="1";env.TASK410_ISOLATED_RUN_ID=short;if(standard290)env.TASK410_OWNED_290="1";if([329,330].includes(ownedMigrationBaseline?.expectedDirectoryCount))env.TASK410_OWNED_320="1";if(ownedMigrationBaseline?.expectedDirectoryCount===330)env.TASK410_OWNED_TEXT_DIRECT_330="1";}
+@@ -324 +324 @@
+- if(companyProxyScenario&&ownedMigrationBaseline?.expectedDirectoryCount===329){
++ if(companyProxyScenario&&[329,330].includes(ownedMigrationBaseline?.expectedDirectoryCount)){
+@@ -550 +550 @@
+- const modes=new Map([["company-proxy-repayment-329",["--company-proxy-repayment-real"]],["company-proxy-repayment-295",["--company-proxy-repayment-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["company-proxy-repayment-290",["--company-proxy-repayment-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["company-proxy-repayment-330",["--company-proxy-repayment-real"]],["company-proxy-repayment-329",["--company-proxy-repayment-real"]],["company-proxy-repayment-295",["--company-proxy-repayment-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["company-proxy-repayment-290",["--company-proxy-repayment-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+@@ -553 +553,3 @@
+- const exact320=mode==="company-proxy-repayment-329";
++ const exact330=mode==="company-proxy-repayment-330";
++ const exact320=exact330||mode==="company-proxy-repayment-329";
++ const count=exact330?330:329;
+@@ -555,2 +557,3 @@
+- if(exact320&&(receipt?.purpose!=="TASK410_COMPANY_PROXY_EXACT_329"||receipt.lane!=="company-proxy-repayment"
+-  ||forward?.count!==329||!forward.sameIdentity||!forward.sameBaseB7||forward.tails?.length!==34))
++ if(exact320&&(receipt?.purpose!=="TASK410_COMPANY_PROXY_EXACT_"+count||receipt.lane!=="company-proxy-repayment"
++  ||forward?.count!==count||!forward.sameIdentity||!forward.sameBaseB7||forward.tails?.length!==count-295
++  ||(exact330&&(receipt.textDirectPredecessor?.count!==329||receipt.textDirectPredecessor.sameBaseB7!==true))))
+@@ -608 +611 @@
+-   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==(exact320?329:exact295?295:(mode==="correction-catalog"||exact290)?290:282)
++   ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==(exact320?count:exact295?295:(mode==="correction-catalog"||exact290)?290:282)
+@@ -635 +638 @@
+-  expectedDirectoryCount:329,terminalMigration:forward.tails.at(-1).name,terminalMigrationChecksum:forward.tails.at(-1).sha256
++  expectedDirectoryCount:count,terminalMigration:forward.tails.at(-1).name,terminalMigrationChecksum:forward.tails.at(-1).sha256

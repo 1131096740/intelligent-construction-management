@@ -14,12 +14,13 @@ scope=company-proxy-repayment
 
 node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==(source.mode==="current-320"?329:295))process.exit(1);
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==(source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295))process.exit(1);
 ' "$prepared/source.json" "$sha"
 mode_args=()
-if [[ $(node -p 'require(process.argv[1]).mode' "$prepared/source.json") == current-320 ]]; then
-  mode_args=(--current-320)
-fi
+case $(node -p 'require(process.argv[1]).mode' "$prepared/source.json") in
+  current-320) mode_args=(--current-320) ;;
+  text-direct-330) mode_args=(--text-direct-330) ;;
+esac
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65

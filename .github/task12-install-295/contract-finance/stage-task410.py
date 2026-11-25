@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 archive_name, workspace_name, work_name, *options = sys.argv[1:]
-if options not in ([], ['--current-320']):
+if options not in ([], ['--current-320'], ['--text-direct-330']):
     raise SystemExit('TASK410_STAGE_MODE')
 archive, workspace, work = map(Path, (archive_name, workspace_name, work_name))
 pins = json.loads((archive / 'fixed-overlay-pins.json').read_text())
@@ -87,6 +87,20 @@ if options:
     ]:
         subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                         str(work / relative), str(Path(__file__).with_name(delta))], check=True)
+if options == ['--text-direct-330']:
+    for relative, delta, earlier, final in [
+        ('services/api/prisma/run-task398-shared-standard-local.cjs', 'task410-runner-330.patch',
+         '6861d210dfa7c70e3e79f2eaaf3a25e6665cfe829469400afbfc2095204511e7',
+         'e972ef88289361db2249dd2bab43409ee6db00850b8e1f663027cd56b38a51e7'),
+        ('services/api/src/database/task410-owned-test-database.ts', 'task410-support-330.patch',
+         'b0fd93f5e586d78a5570a3caaa2ef9a455ad7706b4b2af073199c916639af717',
+         'cb2a6b973a8edf3c785a296920601d23b54c7474b95cd409e60e9f7bdcfdfd24'),
+    ]:
+        target = work / relative
+        verify(target.read_bytes(), earlier, relative)
+        subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
+                        str(target), str(Path(__file__).with_name(delta))], check=True)
+        verify(target.read_bytes(), final, relative)
 for name in names:
     (work / name).chmod(0o644)
     print(name)

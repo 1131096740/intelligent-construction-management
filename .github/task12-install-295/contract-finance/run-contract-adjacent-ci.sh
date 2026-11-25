@@ -11,7 +11,7 @@ if (( $# >= 3 )); then
   case "$lane" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|cash-handover|principal-return|payment-execution|task398-standard|expense-execution|expense-finance|expense-receipt|company-proxy|onboarding|procurement|pfq|browser-partial|browser-completion|pol115-workbench|pol275|line-a) mode_args=("$3") ;; *) exit 64;; esac
 fi
 if [[ ${3:-} == --text-direct-330 ]]; then
-  case "$lane" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|line-a|onboarding|procurement|task398-standard|cash-handover|principal-return|pol115-workbench) ;; *) exit 64;; esac
+  case "$lane" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|line-a|onboarding|procurement|task398-standard|cash-handover|principal-return|pol115-workbench|company-proxy) ;; *) exit 64;; esac
 fi
 root=$(git rev-parse --show-toplevel)
 plan=$(cd "$(dirname "$0")" && pwd -P)
