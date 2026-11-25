@@ -107,6 +107,9 @@ if options in (['--text-direct-330'], ['--payment-remainder-331']):
                         str(target), str(Path(__file__).with_name(delta))], check=True)
         verify(target.read_bytes(), final, relative)
 if options == ['--payment-remainder-331']:
+    subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent', str(spec),
+                    str(Path(__file__).with_name('task410-signed-competition-331.patch'))], check=True)
+    verify(spec.read_bytes(), 'a847c18dfa554fe0349b9e1cb57a7ace558c312f158c5f77a78b2689e7dd0f6a', spec.name)
     for relative, delta, earlier, final in [
         ('services/api/prisma/run-task398-shared-standard-local.cjs', 'task410-runner-331.patch',
          'e972ef88289361db2249dd2bab43409ee6db00850b8e1f663027cd56b38a51e7', '4d7db1204623533024ab0fef51cc8541645a953be9c4654b8cd19bda658ed5e0'),
