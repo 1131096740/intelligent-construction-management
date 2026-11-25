@@ -750,13 +750,21 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
   });
 
   it("restores payment capacity after a correction and exposes the frozen and current basis (A12/A14)", async () => {
-    await seedConfirmedSignedSettlement({
-      id: "linea-f-signed-100", contractId: ids.contractF, versionId: ids.versionF,
-      number: "JS-F-100", amountYuan: "100.0000", confirmationNo: 1n, reviewedAt: new Date()
-    });
+    const confirm = async (number: string, amountYuan: string) => {
+      const draft = await newSignedDraft(ids.contractF, number, amountYuan);
+      const submitted = await call("staff", `${settlementPath}/${draft.id}/submission`, { revision: draft.revision });
+      expect(submitted.body.state).toBe("pending_review");
+      const reviewed = await call("director", `${settlementPath}/${draft.id}/review`, {
+        revision: submitted.body.revision, decision: "confirm"
+      });
+      expect(reviewed.body).toMatchObject({ id: draft.id, state: "confirmed", amountYuan });
+      return draft.id;
+    };
+    const original = await confirm("JS-F-100", "100.0000");
+    const basisPath = `${settlementPath}/payment-basis?contractKind=downstream&contractId=${ids.contractF}`;
     await owner.paymentRequest.create({ data: {
       id: "linea-f-pending-80", projectId: ids.project, settlementId: null,
-      signedSettlementId: "linea-f-signed-100", signedSettlementConfirmationNo: 1n,
+      signedSettlementId: original, signedSettlementConfirmationNo: 1n,
       signedSettlementConfirmedYuan: "100.0000", signedSettlementContractConfirmedYuan: "100.0000",
       signedSettlementOccupiedCents: 0n, signedSettlementBasisAt: new Date(),
       sourceType: "signed_settlement", contractId: ids.contractF, contractVersionId: ids.versionF,
@@ -768,11 +776,7 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     const before = await owner.$transaction(tx => loadSignedSettlementPaymentBasis(tx as never, ids.contractF));
     expect(before).toMatchObject({ remainingCents: 2_000n, suspended: false });
 
-    await seedConfirmedSignedSettlement({
-      id: "linea-f-signed-minus-50", contractId: ids.contractF, versionId: ids.versionF,
-      number: "JS-F--50", amountYuan: "-50.0000", confirmationNo: 2n,
-      reviewedAt: new Date(Date.now() + 1_000)
-    });
+    await confirm("JS-F--50", "-50.0000");
     const reduced = await owner.$transaction(tx => loadSignedSettlementPaymentBasis(tx as never, ids.contractF));
     expect(reduced).toMatchObject({
       confirmedCents: 5_000n, occupiedCents: 8_000n,
@@ -780,42 +784,33 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       remainingCents: 0n, suspended: true
     });
 
-    await seedConfirmedSignedSettlement({
-      id: "linea-f-signed-plus-40", contractId: ids.contractF, versionId: ids.versionF,
-      number: "JS-F-+40", amountYuan: "40.0000", confirmationNo: 3n,
-      reviewedAt: new Date(Date.now() + 2_000)
+    expect((await call("staff", basisPath)).body).toMatchObject({
+      confirmedYuan: "50.0000", downstreamCapacity: { wholeCentLimit: "0", capacityShortfallYuan: "30.0000", suspended: true }
     });
+    const prior = await confirm("JS-F-+40", "40.0000");
     const restored = await owner.$transaction(tx => loadSignedSettlementPaymentBasis(tx as never, ids.contractF));
     expect(restored).toMatchObject({
       confirmedCents: 9_000n, occupiedCents: 8_000n,
       rawRemainingCents: 1_000n, remainingCents: 1_000n, suspended: false
     });
 
-    const latest = await seedConfirmedSignedSettlement({
-      id: "linea-f-signed-minus-5", contractId: ids.contractF, versionId: ids.versionF,
-      number: "JS-F--5", amountYuan: "-5.0000", confirmationNo: 4n,
-      reviewedAt: new Date(Date.now() + 3_000)
-    });
-    const basis = await call("staff", `${settlementPath}/payment-basis?contractKind=downstream&contractId=${ids.contractF}`);
+    const latest = await confirm("JS-F--5", "-5.0000");
+    const basis = await call("staff", basisPath);
     expect(basis.body).toMatchObject({
-      confirmedYuan: "85.0000", latestConfirmed: { id: latest.id, amountYuan: "-5.0000" },
+      confirmedYuan: "85.0000", latestConfirmed: { id: latest, amountYuan: "-5.0000" },
       downstreamCapacity: { wholeCentLimit: "500", suspended: false },
       paymentAgreementText: "隔离付款约定：按累计结算的 80% 支付"
     });
 
     const payment = { sourceType: "signed_settlement", code: "LINEA-FK-F-LATEST", requestedAmountCents: "500" };
-    const stale = await callRaw("staff", "/payments", { ...payment, signedSettlementId: "linea-f-signed-plus-40" });
+    const stale = await callRaw("staff", "/payments", { ...payment, signedSettlementId: prior });
     expect(stale).toMatchObject({ status: 409, body: { message: expect.stringContaining("最近确认的一期") } });
-    const applied = await call("staff", "/payments", { ...payment, signedSettlementId: latest.id });
+    const applied = await call("staff", "/payments", { ...payment, signedSettlementId: latest });
     expect(applied.status).toBe(201);
     const application = await owner.paymentRequest.findUniqueOrThrow({ where: { code: payment.code } });
     expect(application.requestedAmountCents).toBe(500n);
 
-    await seedConfirmedSignedSettlement({
-      id: "linea-f-signed-plus-5", contractId: ids.contractF, versionId: ids.versionF,
-      number: "JS-F-+5", amountYuan: "5.0000", confirmationNo: 5n,
-      reviewedAt: new Date(Date.now() + 4_000)
-    });
+    await confirm("JS-F-+5", "5.0000");
     const detail = await call("staff", `/payments/${application.id}`);
     expect(detail.body.baseInfo).toEqual(expect.arrayContaining([
       expect.objectContaining({ label: "依据快照", value: "本期 -5.0000 元 · 发起时合同累计 85.0000 元" }),

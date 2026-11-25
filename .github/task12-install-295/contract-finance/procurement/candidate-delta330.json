@@ -2,7 +2,7 @@
   {
     "path": "apps/web-admin/e2e/contract-grid-http.e2e.ts",
     "expected": "73121ea29fa725a68ab593bc4c1b6c07117db05b8046f4f780b033679f53a44f",
-    "candidate": "f8b5e3b667434a83936f971a27b1e90dd92066fca548a20cd93ebbd9c3d9a41d"
+    "candidate": "b0cdee652f41b0d4ae613ed85777353cad2e4a3f3715afabb64c054d30c3486b"
   },
   {
     "path": "apps/web-admin/e2e/expense-claim-workbench.e2e.ts",
