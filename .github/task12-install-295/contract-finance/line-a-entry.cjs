@@ -58,6 +58,7 @@ const functions = [
   'jg_write_ordinary_contract_tax_fact_v1', 'jg_list_contract_signed_changes_v1',
   'jg_submit_contract_signed_change_v1', 'jg_read_contract_signed_change_review_v1', 'jg_review_contract_signed_change_v1',
   'jg_read_signed_settlement_attachment_metadata_v1', 'jg_save_signed_settlement_draft_v1',
+  ...(paymentRemainder ? ['jg_read_signed_settlement_attachment_download_v1(text,text,text,text,text,text)'] : []),
   'jg_submit_signed_settlement_draft_v1', 'jg_review_signed_settlement_draft_v1',
   'jg_list_signed_settlements_v1', 'jg_signed_settlement_contract_read_v1', 'jg_signed_settlement_confirmed_projection_v1',
   'jg_create_contract_work_completion_draft_v1', 'jg_contract_work_completion_approval_v1',

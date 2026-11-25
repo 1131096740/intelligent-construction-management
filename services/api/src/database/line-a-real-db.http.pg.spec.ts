@@ -518,6 +518,42 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { fileId: uploaded.id, sha256: sha(pdfBytes) },
       { fileId: uploadedPhoto.id, sha256: sha(photo) }
     ]));
+    if (paymentRemainder) {
+      const reason = "隔离核对已签结算原件";
+      const files = [
+        { id: uploaded.id, mime: "application/pdf", bytes: pdfBytes },
+        { id: uploadedPhoto.id, mime: "image/png", bytes: photo }
+      ];
+      for (const file of files) {
+        const body = { downloadReason: reason, accessMode: "download" };
+        const wrongSettlement = await callRaw("staff",
+          `${settlementPath}/${duplicate.id}/attachments/${file.id}/download-ticket`, body);
+        expect(wrongSettlement.status).toBe(403);
+
+        const path = `${settlementPath}/${settlementId}/attachments/${file.id}/download-ticket`;
+        expect((await callRaw("manager", path, body)).status).toBe(403);
+        const ticket = await call("staff", path, body);
+        expect(ticket).toMatchObject({ status: 201, body: {
+          fileId: file.id, mimeType: file.mime, sizeBytes: file.bytes.length
+        } });
+        const url = new URL(ticket.body.downloadUrl, base);
+        const readAs = (actor: string) => fetch(url, { headers: { authorization: `Bearer ${tokens.get(actor)}` } });
+        expect((await readAs("manager")).status).toBe(400);
+        const downloaded = await readAs("staff");
+        expect(downloaded.status).toBe(200);
+        expect(downloaded.headers.get("content-type")).toBe(file.mime);
+        expect(downloaded.headers.get("cache-control")).toBe("private, no-store");
+        expect(Buffer.from(await downloaded.arrayBuffer())).toEqual(file.bytes);
+        const audits = await owner.auditLog.findMany({
+          where: { businessId: file.id, action: { in: ["file.download.ticket", "file.download"] } },
+          select: { actorUserId: true, action: true }, orderBy: { action: "asc" }
+        });
+        expect(audits).toEqual([
+          { actorUserId: ids.staff, action: "file.download" },
+          { actorUserId: ids.staff, action: "file.download.ticket" }
+        ]);
+      }
+    }
 
     const basis = await call("staff", `/projects/${ids.project}/signed-contract-settlements/payment-basis?contractKind=downstream&contractId=${ids.contractA}`);
     expect(basis.status).toBe(200);
