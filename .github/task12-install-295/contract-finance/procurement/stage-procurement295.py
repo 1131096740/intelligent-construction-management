@@ -7,9 +7,11 @@ import sys
 
 plan = Path(__file__).resolve().parent
 lane, repo_name, workspace_name, out_name, *opts = sys.argv[1:]
-if opts not in ([], ['--current-320']):
+text_direct = len(opts) == 2 and opts[0] == '--text-direct-330'
+if not text_direct and opts not in ([], ['--current-320']):
     sys.exit('PROCUREMENT_MODE')
-current320 = bool(opts)
+forward = bool(opts)
+count = 330 if text_direct else 329 if forward else 295
 if lane not in ('general16', 'project11'):
     sys.exit('PROCUREMENT_295_MODE')
 repo, workspace, out = map(Path, (repo_name, workspace_name, out_name))
@@ -17,8 +19,10 @@ prior = repo / '.github/task12-install-290/procurement'
 common = repo / '.github/task12-install-295/contract-finance/common'
 port = json.loads((plan / 'port-pins.json').read_bytes())
 original = json.loads((prior / 'pins.json').read_bytes())[lane]
-delta_file = 'candidate-delta320.json' if current320 else 'candidate-delta.json'
+delta_file = 'candidate-delta320.json' if forward else 'candidate-delta.json'
 delta = {row['path']: row for row in json.loads((plan / delta_file).read_bytes())}
+if text_direct:
+    delta.update({row['path']: row for row in json.loads((plan / 'candidate-delta330.json').read_bytes())})
 digest = lambda data: sha256(data).hexdigest()
 out.mkdir()
 
@@ -91,7 +95,7 @@ current_test_fixtures = {
         '    expect((await request(`${claimRoute}/submission`, director, {})).status).toBe(201);\n',
         '    expect((await request(claimRoute, director)).body).toMatchObject({ projectId: second, status: "approved_pending_payment",',
     ),
-} if current320 else {}
+} if forward else {}
 staged_role = set()
 for row in json.loads(manifest)['files']:
     relative, expected = row['file'], row['sha256']
@@ -133,10 +137,39 @@ if staged_role != role_material:
 if seen != set(delta):
     raise ValueError('PROCUREMENT_295_DELTA_CLOSURE')
 
-patch(common / 'installer.cjs', out / 'installer.cjs', port['installer'], 'installer-procurement.patch')
+if text_direct:
+    source = json.loads(read(Path(opts[1])))
+    installer = out / 'installer.cjs'
+    before = read(common / 'installer.cjs')
+    relative = (common / 'installer.cjs').relative_to(repo)
+    if before != subprocess.check_output(['git', '-C', str(repo), 'show', source['sourceSha'] + ':' + str(relative)]):
+        raise ValueError('PROCUREMENT_330_INSTALLER_SOURCE_PIN')
+    write(installer, before)
+    subprocess.run(['patch', '--batch', '--fuzz=0', '--no-backup-if-mismatch', str(installer)],
+                   input=read(plan / 'installer-procurement.patch'), stdout=subprocess.DEVNULL, check=True)
+    text = installer.read_text()
+    old = "const material=source.mode==='current-320' ? readForward320({"
+    end = "}) : undefined;\n  return withCombinedOrdinaryLoan"
+    if text.count(old) != 1 or text.count(end) != 1:
+        raise ValueError('PROCUREMENT_330_INSTALLER_ENTRY_ANCHOR')
+    text = text.replace(old, """const profile=require('./text-direct-330-profile.cjs');
+  profile.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
+  const material=readForward320({""")
+    text = text.replace(end, "},true);\n  return withCombinedOrdinaryLoan")
+    consume = "return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,material,undefined,lane);"
+    if text.count(consume) != 1:
+        raise ValueError('PROCUREMENT_330_INSTALLER_CONSUME_ANCHOR')
+    text = text.replace(consume, """return withCombinedOrdinaryLoan(receipt,async context=>{
+    profile.assertInstallation(receipt,source);
+    await consume(context);
+  },exactMultiWitness295,false,material,undefined,lane);""")
+    write(installer, text.encode())
+    subprocess.run(['node', '--check', str(installer)], check=True)
+else:
+    patch(common / 'installer.cjs', out / 'installer.cjs', port['installer'], 'installer-procurement.patch')
 for name, pin in port[lane].items():
     patch(runtime / name, out / name, pin, pin['patch'])
-if current320:
+if forward:
     consumer = out/'consumer.cjs'
     text = consumer.read_text()
     replacements = {
@@ -144,12 +177,12 @@ if current320:
             'context.candidateTree===require("./contract-finance-source.json").sourceTree',
         'receipt.combinedAfterBusiness?.ledgerSha256===terminal.final':
             "receipt.combinedAfterBusiness?.ledgerSha256===require('./contract-finance-source.json').ledgerSha256 && "
-            "receipt.forward320?.count===329 && "
+            f"receipt.forward320?.count==={count} && "
             "receipt.forward320?.sourceTree===require('./contract-finance-source.json').sourceTree && "
-            "receipt.forward320?.sameBaseB7===true && receipt.combinedAfterBusiness?.count===329",
+            f"receipt.forward320?.sameBaseB7===true && receipt.combinedAfterBusiness?.count==={count}",
     }
     status = ('GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1' if lane=='general16' else 'PROJECT_SCOPE_ORIGINAL_11')
-    replacements[status+'_295_PASSED'] = status+'_329_PASSED'
+    replacements[status+'_295_PASSED'] = status+f'_{count}_PASSED'
     for old, new in replacements.items():
         if text.count(old)!=1:
             raise ValueError('PROCUREMENT_320_CONSUMER_ANCHOR')
@@ -306,6 +339,24 @@ if current320:
         if text.count(anchor) != 1:
             raise ValueError('PROCUREMENT_329_BUSINESS_READ_ANCHOR')
         text = text.replace(anchor, reads.rstrip())
+        failure_anchor = '        pgPermission,\n        browser:'
+        observation = r'''        pgPermission,
+        jestReport:report?"present":"missing",
+        processSignal:/^SIG(?:ABRT|KILL|TERM)$/u.test(exit[1]??"")?exit[1]:undefined,
+        processFailureKinds:Object.entries({
+          jest_exit:/process\.exit called with|Jest worker encountered/u,
+          heap:/JavaScript heap out of memory|\bENOMEM\b/u,
+          filesystem:/\b(?:ENOSPC|EMFILE|EACCES)\b/u,
+          process_limit:/\bEAGAIN\b|Resource temporarily unavailable/u,
+          browser_launch:/browserType\.launch|Failed to launch browser/iu,
+          browser_deadline:/config\.webServer|Test timeout of [0-9]+ms exceeded/iu,
+          unhandled_exception:/UnhandledPromiseRejection|uncaughtException/u,
+          test_summary:/Test Suites:|Tests:/u
+        }).filter(([,pattern])=>pattern.test(rawOutput)).map(([kind])=>kind),
+        browser:'''
+        if text.count(failure_anchor) != 1:
+            raise ValueError('PROCUREMENT_329_GENERAL_FAILURE_OBSERVATION_ANCHOR')
+        text = text.replace(failure_anchor, observation)
     write(consumer,text.encode())
 for name in ['owner-observation.cjs', *(
     ['project-scope-http-report.cjs', 'project-scope-browser-report.cjs', 'project-scope-browser-pins.json']

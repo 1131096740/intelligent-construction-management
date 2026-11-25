@@ -1,0 +1,23 @@
+{
+  "apps/web-admin/src/api/core-flow-read.api.ts": "c4299d2ae60485e02fca9c2361cbfbcf6dcd787dd8070047be7f69316230b3b2",
+  "apps/web-admin/src/pages/contracts/contract-business-options.config.test.ts": "9194b9078117fc15a3d3056199c65b7291bb9b43c2dd52d155b37c1afefcd3eb",
+  "apps/web-admin/src/pages/contracts/contract-business-options.config.ts": "ea24870a87d9508a749c80676a5e9ffdfd7a7d07f92c2b07e6cd2ecd92a0a3b3",
+  "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue": "87ef5636452bcdc96221375c106ab665fccdc09c52ff9c608b2e9e7e6d770e2d",
+  "apps/web-admin/src/pages/payments/payment-list.config.ts": "394146948083d4aca783819de07854e1bffe2834eb677400744408841590b9e3",
+  "apps/web-admin/src/pages/payments/payment-workbench.structure.test.ts": "7f884940bb00db8fff82e315103b682f072ac5ed596729b3efa4f9402b4f5908",
+  "packages/shared-domain/src/core-flow-read-model.ts": "65bd92100eba776f6e9c193cb874d4778702694f71d2b0de17625498a31c96b7",
+  "services/api/prisma/database-dynamic-gate-manifest.json": "e642aeee82fdcb5135f38eab61df30f09cc69f1384c563521be3648d26f10256",
+  "services/api/prisma/general-procurement-runtime-grants.sql": "0176eb828d23a375fe6d490543622df07b4a988ae10d95285df11e9f21aa1adb",
+  "services/api/prisma/schema.prisma": "b0a00a37e3df7190c9b6ca87fafe7301946ae8c983b45f982755a3ac2f86c2bc",
+  "services/api/src/approval/approval-form.service.ts": "8dd223f91898f58a00d38f48d15ba3d570e4260a873550d5e39ef6960af4801e",
+  "services/api/src/contract/contract-read.service.ts": "a670947a7f5da0422793de683b70d32f32fcc1119362fb15c50dbbe78a560027",
+  "services/api/src/database/task16-shared-standard-fixture.ts": "9a596a48851f73b80d45eccd2ffcf95d5c52b5af0f8df86f16c3d35148065cb3",
+  "services/api/src/fund-movement/fund-movement.service.ts": "d34592585082c223b383520253e32e289551d28e9ca604ea9e1415b8cf2976de",
+  "services/api/src/payment/dto/create-payment-request.dto.ts": "01129e70d4f798fc9def706cc4b3fe6301260326e80d8ddfab9629b430786d6c",
+  "services/api/src/payment/payment-operating-source.adapter.spec.ts": "aa1c929ce50e2157d0f4891e86a027ea59dbb58ecf9ef910050939f00637669d",
+  "services/api/src/payment/payment-operating-source.adapter.ts": "790d5983dbabf2444ae6aaab4e1f7ae98a92a2cbc66ce49d214656bdee235610",
+  "services/api/src/payment/payment-read.service.spec.ts": "f1d1f3087700efca25b802471564a5896ec8df58f55a3dc7f3d428c08a62b973",
+  "services/api/src/payment/payment-read.service.ts": "e0e22a9d16dec72e4047bd516c83a27663dad1bdb3eac7e256486b2347be0036",
+  "services/api/src/payment/payment-request.service.spec.ts": "ab7a45b57a4f26af2f5f89bbc1a82c94c7277780ea250b7f4269b2f7cde43be4",
+  "services/api/src/payment/payment-request.service.ts": "c1198b74bab9abdbc960245d7a0f130d4006b11c6ac253c89acfa5b38b1a6d31"
+}
