@@ -16,9 +16,10 @@ source_record=json.loads(source.read_text())
 count=source_record['migrationCount']
 mode=source_record.get('mode')
 text_direct=mode=='text-direct-330'
-payment_remainder=mode=='payment-remainder-331'
-forward=mode in ('current-320','text-direct-330','payment-remainder-331')
-if count!={'payment-remainder-331':331,'text-direct-330':330,'current-320':329}.get(mode,295):
+upward_archive=mode=='upward-archive-332'
+payment_remainder=mode=='payment-remainder-331' or upward_archive
+forward=mode=='current-320' or text_direct or payment_remainder
+if count!={'upward-archive-332':332,'payment-remainder-331':331,'text-direct-330':330,'current-320':329}.get(mode,295):
     raise SystemExit('ONBOARDING_SOURCE_LEDGER')
 application_tree=source_record['sourceTree'] if forward else '67644d9465a0ab4ee80ede099139d9c129d66f14'
 if forward:
@@ -31,10 +32,12 @@ if text_direct or payment_remainder:
     expected_drift.update(json.loads((plan/'onboarding-330-source-drift.json').read_text()))
 additional={}
 if payment_remainder:
-    remainder_drift=json.loads((plan/'onboarding-331-source-drift.json').read_text())
-    expected_drift.update({name:digest for name,digest in remainder_drift.items() if name in old['files']})
-    # The 331 profile also pins reviewed files absent from the sealed inventory.
-    additional={name:digest for name,digest in remainder_drift.items() if name not in old['files']}
+    candidate_drift=json.loads((plan/'onboarding-331-source-drift.json').read_text())
+    if upward_archive:
+        candidate_drift.update(json.loads((plan/'onboarding-332-source-drift.json').read_text()))
+    expected_drift.update({name:digest for name,digest in candidate_drift.items() if name in old['files']})
+    # Also pin reviewed files absent from the sealed inventory.
+    additional={name:digest for name,digest in candidate_drift.items() if name not in old['files']}
 actual={}
 changes={}
 absent=[]
@@ -53,7 +56,7 @@ if changes!=expected_drift:
 for name,want in additional.items():
     file=workspace/name
     if not file.is_file() or file.is_symlink() or hashlib.sha256(file.read_bytes()).hexdigest()!=want:
-        raise SystemExit('ONBOARDING_331_ADDITIONAL_SOURCE_PIN '+name)
+        raise SystemExit(f'ONBOARDING_{count}_ADDITIONAL_SOURCE_PIN '+name)
     actual[name]=want
 with tarfile.open(archive/'lanes.tar.gz') as sealed:
     for row in sealed:
@@ -148,9 +151,11 @@ else:
 installer=out/'installer.cjs'
 installer.write_bytes((common/'installer.cjs').read_bytes())
 if text_direct or payment_remainder:
-    profile_name,installer_method=(('payment-remainder-331-profile.cjs','withCombined331PaymentRemainder')
-                                   if payment_remainder else
-                                   ('text-direct-330-profile.cjs','withCombined330TextAgreement'))
+    profile_name,installer_method={
+        330: ('text-direct-330-profile.cjs','withCombined330TextAgreement'),
+        331: ('payment-remainder-331-profile.cjs','withCombined331PaymentRemainder'),
+        332: ('upward-archive-332-profile.cjs','withCombined332UpwardArchive'),
+    }[count]
     role_patch, marker, old_entry = (plan/'installer-onboarding.patch').read_bytes().rpartition(b'\n@@ -1388,3 ')
     if not marker or old_entry.count(b'module.exports.withInstalled295Onboarding')!=1:
         raise SystemExit('ONBOARDING_330_INSTALLER_ENTRY_ANCHOR')
@@ -165,7 +170,7 @@ module.exports.withInstalled295Onboarding = receipt => {
   const consume=async context=>{
     profile.assertInstallation(receipt,source);
     const verify=async ()=>
-      assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,true))).stdout.trim()));
+      assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,trueUPWARD_ARCHIVE_ARG))).stdout.trim()));
     await verify();
     await require('./onboarding-full.cjs').run(context,receipt);
     await verify();
@@ -175,7 +180,8 @@ module.exports.withInstalled295Onboarding = receipt => {
     sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
   });
 };
-""".replace('PROFILE_NAME',profile_name).replace('INSTALLER_METHOD',installer_method))
+""".replace('PROFILE_NAME',profile_name).replace('INSTALLER_METHOD',installer_method)
+                 .replace('UPWARD_ARCHIVE_ARG',',true' if upward_archive else ''))
 else:
     subprocess.run(['patch','--batch','--forward','--fuzz=0','--silent',str(installer),str(plan/'installer-onboarding.patch')],check=True)
 subprocess.run(['node','--check',str(installer)],check=True)

@@ -4,7 +4,7 @@ umask 077
 
 [[ $# == 5 || ( $# == 6 && $6 == --current-320 ) ||
   ( ( $# == 6 || ( $# == 7 && $7 == --host-only ) ) &&
-    ( $6 == --text-direct-330 || $6 == --payment-remainder-331 ) ) ||
+    ( $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 ) ) ||
   ( $# == 7 && $5 == general16 && $6 == --payment-remainder-331 && $7 == --a05 ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
@@ -17,6 +17,7 @@ case ${6-} in
   --current-320) mode_args=(--current-320); stage_args=("${mode_args[@]}"); count=329 ;;
   --text-direct-330) mode_args=(--text-direct-330); stage_args=("${mode_args[@]}" "$prepared/source.json"); count=330 ;;
   --payment-remainder-331) mode_args=(--payment-remainder-331); stage_args=("${mode_args[@]}" "$prepared/source.json"); count=331 ;;
+  --upward-archive-332) mode_args=(--upward-archive-332); stage_args=("${mode_args[@]}" "$prepared/source.json"); count=332 ;;
 esac
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -27,6 +28,7 @@ profile=
 case $count in
   330) profile="$finance/text-direct-330-profile.cjs" ;;
   331) profile="$finance/payment-remainder-331-profile.cjs" ;;
+  332) profile="$finance/upward-archive-332-profile.cjs" ;;
 esac
 node - "$prepared/source.json" "$sha" "$lane" "$finance" "$count" "$profile" <<'JS'
 const [sourceFile,sha,lane,finance,count,profile]=process.argv.slice(2);
@@ -39,15 +41,15 @@ if(profile) {
 } else if(source.ledgerSha256!==terminal.final)process.exit(65);
 JS
 if [[ -n $profile ]]; then
-  [[ -z $(git -C "$root" status --porcelain --untracked-files=all -- "$plan" "$common/installer.cjs") ]] || exit 65
+  [[ -z $(git -C "$root" status --porcelain --untracked-files=all -- "$plan" "$common/installer.cjs" "$profile") ]] || exit 65
 fi
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-procurement-$lane.XXXXXXXX")
 python3 "$plan/stage-procurement295.py" "$lane" "$root" "$workspace" "$work/runtime" ${stage_args[@]+"${stage_args[@]}"}
 
 if [[ ${7-} == --host-only ]]; then
   for file in "$work/runtime/"*.cjs; do node --check "$file"; done
-  node - "$work" "$sha" "$lane" "$count" <<'JS'
-const [work,sourceSha,lane,count]=process.argv.slice(2);
+  node - "$work" "$sha" "$lane" "$count" "$prepared/source.json" <<'JS'
+const [work,sourceSha,lane,count,sourceFile]=process.argv.slice(2);
 const {readFileSync,writeFileSync,readdirSync}=require('node:fs');
 const {createHash}=require('node:crypto');
 const dir=work+'/runtime';
@@ -55,6 +57,10 @@ const hash=file=>createHash('sha256').update(readFileSync(dir+'/'+file)).digest(
 const files=readdirSync(dir,{withFileTypes:true}).filter(file=>file.isFile()).map(({name})=>name);
 const receipt={status:'PROCUREMENT_'+count+'_HOST_INPUTS_VERIFIED',sourceSha,lane,cases:lane==='general16'?16:11,
   stagedInputs:Object.fromEntries(files.sort().map(file=>[file,hash(file)])),database:'NOT_STARTED'};
+if(count==='332') {
+  const {ledgerSha256,predecessor331}=require(sourceFile);
+  Object.assign(receipt,{ledgerSha256,predecessor331});
+}
 writeFileSync(work+'/host-receipt.json',JSON.stringify(receipt,null,2)+'\n',{flag:'wx',mode:0o600});
 console.log(JSON.stringify({receipt:work+'/host-receipt.json',...receipt}));
 JS
@@ -66,7 +72,7 @@ fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
 [[ $(node "$finance/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
 memory=4g
-if [[ ${GITHUB_ACTIONS-} == true && $count == 331 && -z ${7-} ]]; then
+if [[ ${GITHUB_ACTIONS-} == true && $count -ge 331 && -z ${7-} ]]; then
   memory=6g
 fi
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL

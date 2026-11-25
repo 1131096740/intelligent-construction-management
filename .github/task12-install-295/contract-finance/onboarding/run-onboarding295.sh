@@ -11,12 +11,13 @@ for option in "${@:5}"; do
     --current-320) [[ $mode == 295 ]] || exit 64; mode=329 ;;
     --text-direct-330) [[ $mode == 295 ]] || exit 64; mode=330 ;;
     --payment-remainder-331) [[ $mode == 295 ]] || exit 64; mode=331 ;;
+    --upward-archive-332) [[ $mode == 295 ]] || exit 64; mode=332 ;;
     --host-only) [[ -z $host_only ]] || exit 64; host_only=1 ;;
     --*) exit 64 ;;
     *) [[ -z $selected_lane ]] || exit 64; selected_lane=$option ;;
   esac
 done
-[[ -z $host_only || $mode == 330 || $mode == 331 ]] || exit 64
+[[ -z $host_only || $mode -ge 330 ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -25,27 +26,32 @@ plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$plan/../common"
 scope=onboarding
 
-node - "$prepared/source.json" "$sha" "$mode" "$plan" <<'JS'
-const [file,sha,mode,plan]=process.argv.slice(2);
+profile=
+case $mode in
+  330) profile="$plan/../text-direct-330-profile.cjs" ;;
+  331) profile="$plan/../payment-remainder-331-profile.cjs" ;;
+  332) profile="$plan/../upward-archive-332-profile.cjs" ;;
+esac
+node - "$prepared/source.json" "$sha" "$mode" "$plan" "$profile" <<'JS'
+const [file,sha,mode,plan,profile]=process.argv.slice(2);
 const source=require(file);
-if(mode==='330'||mode==='331') {
-  const profile=require(plan+(mode==='331'?'/../payment-remainder-331-profile.cjs':'/../text-direct-330-profile.cjs'));
-  profile.assertSource(source,sha,require(plan+'/../common/multi-witness.cjs').final);
+if(profile) {
+  require(profile).assertSource(source,sha,require(plan+'/../common/multi-witness.cjs').final);
 } else if(source.sourceSha!==sha||source.migrationCount!==Number(mode)||(mode==='329'&&source.mode!=='current-320')) {
   process.exit(1);
 }
 JS
-if [[ $mode == 330 || $mode == 331 ]]; then
+if [[ -n $profile ]]; then
   [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
-  [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$common/installer.cjs") ]] || exit 65
+  [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$common/installer.cjs" "$profile") ]] || exit 65
 fi
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 material="$work/material"
 python3 "$plan/stage-onboarding.py" "$repo/.github/task12-install-290/onboarding" "$common" "$prepared/prepared/context/workspace" "$material" "$prepared/source.json"
 
 if [[ -n $host_only ]]; then
-  node - "$material" "$sha" "$repo/.github/task12-install-290/onboarding/pins.json" "$selected_lane" "$mode" <<'JS'
-const [root,sourceSha,pinFile,lane,mode]=process.argv.slice(2);
+  node - "$material" "$sha" "$repo/.github/task12-install-290/onboarding/pins.json" "$selected_lane" "$mode" "$prepared/source.json" <<'JS'
+const [root,sourceSha,pinFile,lane,mode,sourceFile]=process.argv.slice(2);
 const assert=require('node:assert/strict');
 const {readFileSync,writeFileSync}=require('node:fs');
 const {createHash}=require('node:crypto');
@@ -56,6 +62,10 @@ const receipt={status:'ONBOARDING_'+mode+'_HOST_INPUTS_VERIFIED',sourceSha,
   lanes:Object.fromEntries(lanes.map(name=>[name,profiles[name].caseCount])),
   workspaceInputsSha256:sha('workspace-inputs.json'),installerSha256:sha('installer.cjs'),
   laneProfilesSha256:sha('lanes.json'),database:'NOT_STARTED'};
+if(mode==='332') {
+  const {ledgerSha256,predecessor331}=require(sourceFile);
+  Object.assign(receipt,{ledgerSha256,predecessor331});
+}
 writeFileSync(root+'/../host-receipt.json',JSON.stringify(receipt,null,2)+'\n',{flag:'wx',mode:0o600});
 console.log(JSON.stringify({receipt:root+'/../host-receipt.json',...receipt}));
 JS
@@ -98,10 +108,8 @@ for file in lanes.json verify-application-source.cjs workspace-inputs.json; do
   args+=(--mount "type=bind,src=$material/$file,dst=/qualification/$file,readonly")
 done
 args+=(--mount "type=bind,src=$plan/onboarding-preflight.cjs,dst=/qualification/onboarding-preflight.cjs,readonly")
-if [[ $mode == 330 ]]; then
-  args+=(--mount "type=bind,src=$plan/../text-direct-330-profile.cjs,dst=/qualification/text-direct-330-profile.cjs,readonly")
-elif [[ $mode == 331 ]]; then
-  args+=(--mount "type=bind,src=$plan/../payment-remainder-331-profile.cjs,dst=/qualification/payment-remainder-331-profile.cjs,readonly")
+if [[ -n $profile ]]; then
+  args+=(--mount "type=bind,src=$profile,dst=/qualification/${profile##*/},readonly")
 fi
 while IFS= read -r lane; do
   case "$lane" in

@@ -7,7 +7,7 @@ import sys
 
 plan = Path(__file__).resolve().parent
 lane, repo_name, workspace_name, out_name, *opts = sys.argv[1:]
-profile_count = {'--text-direct-330': 330, '--payment-remainder-331': 331}
+profile_count = {'--text-direct-330': 330, '--payment-remainder-331': 331, '--upward-archive-332': 332}
 qualified_count = profile_count.get(opts[0]) if len(opts) == 2 else None
 if qualified_count is None and opts not in ([], ['--current-320']):
     sys.exit('PROCUREMENT_MODE')
@@ -141,8 +141,13 @@ if seen != set(delta):
 
 if qualified_count:
     source = json.loads(read(Path(opts[1])))
-    if source['migrationCount'] != count:
+    if source['migrationCount'] != count or source['mode'] != opts[0][2:]:
         raise ValueError('PROCUREMENT_SOURCE_COUNT')
+    if count == 332:
+        terminal = source['tails'][-1]
+        migration = workspace / 'services/api/prisma/migrations' / terminal['name'] / 'migration.sql'
+        if digest(read(migration)) != terminal['sha256']:
+            raise ValueError('PROCUREMENT_332_TERMINAL_SOURCE_PIN')
     installer = out / 'installer.cjs'
     before = read(common / 'installer.cjs')
     relative = (common / 'installer.cjs').relative_to(repo)
@@ -154,12 +159,12 @@ if qualified_count:
         raise ValueError(f'PROCUREMENT_{count}_INSTALLER_ENTRY_ANCHOR')
     subprocess.run(['patch', '--batch', '--fuzz=0', '--no-backup-if-mismatch', str(installer)],
                    input=role_patch+b'\n', stdout=subprocess.DEVNULL, check=True)
+    profile_name = opts[0][2:] + '-profile.cjs'
     with installer.open('a') as script:
         script.write("""
 function withProcurement(receipt,consume,lane) {
   const source=require('./contract-finance-source.json');
-  const profile=require(source.mode==='payment-remainder-331'
-    ? './payment-remainder-331-profile.cjs' : './text-direct-330-profile.cjs');
+  const profile=require('./PROFILE_NAME');
   profile.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
   const material=readForward320({
     sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
@@ -171,7 +176,7 @@ function withProcurement(receipt,consume,lane) {
 }
 module.exports.withCombined295GeneralProcurement=(receipt,consume)=>withProcurement(receipt,consume,'general16');
 module.exports.withCombined295ProjectProcurement=(receipt,consume)=>withProcurement(receipt,consume,'project11');
-""")
+""".replace('PROFILE_NAME',profile_name))
     subprocess.run(['node', '--check', str(installer)], check=True)
 else:
     patch(common / 'installer.cjs', out / 'installer.cjs', port['installer'], 'installer-procurement.patch')
@@ -246,7 +251,7 @@ if forward:
         text = text.replace(failure_anchor,failure_probe).replace(stderr_anchor,stderr_probe)
         text = text.replace('    frames,',failure_fields)
         text = text.replace('firstFailure(report)','firstFailure(report,stderrKinds,child.signalCode)')
-        if count == 331:
+        if count >= 331:
             output_start = '    child.stdout.resume();\n    const stderrKinds=new Set();'
             output_end = '    });\n    exited=once(child,"exit");'
             if text.count(output_start) != 1 or text.count(output_end) != 1:
@@ -433,6 +438,7 @@ if forward:
                 raise ValueError('PROCUREMENT_331_A05_RESULT_ANCHOR')
             text = text.replace(normal_result, 'receipt.status=process.env.JG_PROCUREMENT_A05==="1"'
                 '?"PROCUREMENT_A05_331_PASSED":"GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1_331_PASSED";')
+        if count >= 331:
             resource_anchor = '  let rawOutput="";'
             counters_anchor = '        jestReport:report?"present":"missing",'
             if text.count(resource_anchor) != 1 or text.count(counters_anchor) != 1:

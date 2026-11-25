@@ -7,10 +7,12 @@ const source=process.argv[6] ? require(process.argv[6]) : null;
 const current320=source?.mode==='current-320';
 const textDirect330=source?.mode==='text-direct-330';
 const paymentRemainder331=source?.mode==='payment-remainder-331';
-const forward=current320||textDirect330||paymentRemainder331;
-const profile=paymentRemainder331?require('../payment-remainder-331-profile.cjs'):
+const upwardArchive332=source?.mode==='upward-archive-332';
+const forward=current320||textDirect330||paymentRemainder331||upwardArchive332;
+const profile=upwardArchive332?require('../upward-archive-332-profile.cjs'):
+  paymentRemainder331?require('../payment-remainder-331-profile.cjs'):
   textDirect330?require('../text-direct-330-profile.cjs'):undefined;
-const count=paymentRemainder331?331:textDirect330?330:current320?329:295;
+const count=upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
 const scopes=require(path.join(old,'lanes.json'));
 const {lanes}=require(path.join(old,'pins.json'));
 const scope={tree:'67644d9465a0ab4ee80ede099139d9c129d66f14',expectedLedgerSha256:'b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d'};
