@@ -61,6 +61,7 @@ export async function disconnectIsolatedPaymentCommit<T>(owner: PrismaClient, re
   expect(runId).toMatch(/^[a-f0-9]{32}$/u);
   const database = `jg_task01_${runId}`;
   let response: Promise<{ value: T } | { error: unknown }> | undefined;
+  let completed = false;
   await owner.$transaction(async tx => {
     // The archived isolated runner supplies these identities. The advisory
     // lock ties the signal to this one request inside PostgreSQL COMMIT.
@@ -71,7 +72,16 @@ export async function disconnectIsolatedPaymentCommit<T>(owner: PrismaClient, re
     expect(identity?.safe).toBe(true);
     await tx.$executeRaw`SET LOCAL stats_fetch_consistency = 'none'`;
     await tx.$executeRaw`SELECT pg_catalog.pg_advisory_xact_lock(426, 16)`;
-    response = register().then(value => ({ value }), error => ({ error }));
+    response = register().then(value => ({ value }), error => ({ error })).finally(() => {
+      completed = true;
+    });
+    const [held] = await tx.$queryRaw<Array<{ found: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_locks
+        WHERE pid = pg_catalog.pg_backend_pid() AND locktype = 'advisory'
+          AND classid = 426 AND objid = 16 AND objsubid = 2 AND granted
+      ) AS found`;
+    expect(held?.found).toBe(true);
 
     const deadline = Date.now() + 8_000;
     do {
@@ -80,8 +90,7 @@ export async function disconnectIsolatedPaymentCommit<T>(owner: PrismaClient, re
         FROM pg_catalog.pg_stat_activity activity
         JOIN pg_catalog.pg_locks waiting ON waiting.pid = activity.pid
         WHERE activity.datname = current_database() AND activity.usename = 'jg_task01_runtime'
-          AND activity.application_name = 'jg398_runtime' AND activity.query ~ '^COMMIT;?$'
-          AND activity.state = 'active' AND activity.wait_event = 'advisory'
+          AND activity.application_name = 'jg398_runtime' AND activity.state = 'active'
           AND waiting.locktype = 'advisory' AND waiting.classid = 426 AND waiting.objid = 16
           AND waiting.objsubid = 2 AND NOT waiting.granted`;
       expect(extra).toBeUndefined();
@@ -92,7 +101,13 @@ export async function disconnectIsolatedPaymentCommit<T>(owner: PrismaClient, re
         return;
       }
       await delay(20);
-    } while (Date.now() < deadline);
+    } while (!completed && Date.now() < deadline);
+    if (completed) {
+      const result = await response;
+      const status = "value" in result && result.value && typeof result.value === "object" && "status" in result.value
+        ? String(result.value.status) : "连接异常";
+      throw new Error(`付款提交观察在命中隔离锁前已结束（接口状态 ${status}）`);
+    }
     throw new Error("未观察到独占测试付款停在数据库提交阶段");
   }, { timeout: 12_000 });
   const result = await response!;
