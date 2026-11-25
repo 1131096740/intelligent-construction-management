@@ -1,6 +1,6 @@
 import { ApprovalSmsService } from "../approval/approval-sms.service";
 import { ApprovalTransitionNotificationService } from "../approval/approval-transition-notification.service";
-import { issue430SmsProbe, verifyIssue430CorrectionDelivery } from "../approval/issue430-notification.test-support";
+import { isOwnedIssue430NativeDatabase, issue430SmsProbe, verifyIssue430CorrectionDelivery } from "../approval/issue430-notification.test-support";
 import { verifyApprovedPdf } from "../database/approval-pdf-acceptance.test-support";
 import "reflect-metadata";
 import type { INestApplication } from "@nestjs/common";
@@ -33,7 +33,7 @@ describe("资金办理统一录入真实 HTTP 与 PostgreSQL 16", () => {
   beforeAll(async () => {
     if (!enabled) return;
     const url = new URL(process.env.DATABASE_URL ?? "");
-    if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" || url.pathname !== "/jiangkong_pol115_entry_test") throw new Error("仅允许本票本机专用数据库");
+    if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" || (url.pathname !== "/jiangkong_pol115_entry_test" && !isOwnedIssue430NativeDatabase(url))) throw new Error("仅允许本票本机专用数据库");
     const secret = randomUUID();
     process.env.OPERATING_LEDGER_DB_WRITE_SECRET = secret;
     const builder = Test.createTestingModule({ imports: [AppModule] });

@@ -299,7 +299,8 @@ async function main(args) {
   assert.equal(process.platform, "darwin");
   assert.equal(process.arch, "arm64");
   const expenseApproval = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1) === "--approval-round-a04";
-  const paymentRemainder = expenseApproval || (args.length === 11 && args.at(-1) === "--payment-remainder-331");
+  const issue430ApprovalSms = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1) === "--issue430-approval-sms";
+  const paymentRemainder = expenseApproval || issue430ApprovalSms || (args.length === 11 && args.at(-1) === "--payment-remainder-331");
   assert.ok(args.length === 10 || paymentRemainder);
   const [mode, sha, pgManifest, pgSha, docManifest, docSha, office, officeSha, archiveAdmission, archiveSha] = args;
   assert.ok(["verify", "run"].includes(mode));
@@ -436,7 +437,42 @@ async function main(args) {
     fs.writeFileSync(packet, JSON.stringify({ ownerUrl: ownerUrl.toString(), psql: bin("psql"), applicationOid: appOid, database, candidate: sha }), { mode: 0o600, flag: "wx" });
     const files = path.join(directory, "files");
     fs.mkdirSync(files, { mode: 0o700 });
-    if (expenseApproval) {
+    if (issue430ApprovalSms) {
+      stage("APPROVAL_SMS_ISSUE430");
+      const reportFile = path.join(directory, "issue430-approval-sms.json");
+      try {
+        const outcome = run(process.execPath, [require.resolve("jest/bin/jest"), "--runInBand", "--runTestsByPath",
+          "src/approval/issue430-notification.pg.spec.ts", "src/fund-execution/fund-execution-entry.http.pg.spec.ts",
+          "--json", "--outputFile", reportFile], {
+          NODE_ENV: "test", TMPDIR: directory, RUN_POL115_ENTRY_PG16: "1", RUN_ISSUE430_SMS: "1",
+          ISSUE430_NATIVE_PG_DATABASE: database, APPROVAL_SMS_ENABLED: "false", SMS_ENABLED: "false",
+          DATABASE_URL: ownerUrl.toString(), FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: files,
+          FILE_DOWNLOAD_SECRET: secret(), JWT_ACCESS_SECRET: secret(), JWT_REFRESH_SECRET: secret()
+        }, undefined, 300_000);
+        const report = JSON.parse(fs.readFileSync(reportFile, "utf8"));
+        assert.equal(report.numPassedTests, 5);
+        assert.equal(report.numFailedTests, 0);
+        assert.equal(report.numPendingTests, 1); // Existing optional browser regression.
+        const scenarios = [...outcome.matchAll(/\{"scenario":"([a-z_]+)","mockedCorrectionSends":3,"unknownResends":0,"externalSends":0\}/gu)]
+          .map(match => match[1]).sort();
+        assert.deepEqual(scenarios, ["expense_claim", "fund_execution_case", "project_expense_request",
+          "project_financing_quota", "project_settlement_exception_quota"]);
+        receipt.proof = { candidate: source.candidate, passed: report.numPassedTests, scenarios, externalSends: 0 };
+      } catch (error) {
+        if (firstFailure && fs.existsSync(reportFile) && fs.statSync(reportFile).size <= 1024 * 1024) {
+          const { testResults } = JSON.parse(fs.readFileSync(reportFile, "utf8"));
+          firstFailure.jest = testResults.flatMap(suite => suite.assertionResults.filter(row => row.status === "failed").map(row => {
+            const message = row.failureMessages[0] ?? "";
+            return {
+              title: row.title,
+              frame: /(?:issue430-notification(?:[.]test-support)?|fund-execution-entry[.]http)[.](?:pg[.]spec[.])?ts:(\d{1,5}):(\d{1,4})/u.exec(message)?.slice(1).map(Number),
+              tags: [...new Set(message.match(/(?:P[0-9]{4}|[0-9]{2}P[0-9]{2}|[2-5][0-9]{2})/gu) ?? [])].slice(0, 8)
+            };
+          }));
+        }
+        throw error;
+      }
+    } else if (expenseApproval) {
       stage("APPROVAL_ROUND_A04");
       const reportFile = path.join(directory, "approval-round-a04.json");
       try {

@@ -10,7 +10,7 @@ import { ProjectExpenseService } from "../project-expense/project-expense.servic
 import { ProjectService } from "../project/project.service";
 import { ApprovalProgressService } from "./approval-progress.service";
 import { ApprovalTransitionNotificationService } from "./approval-transition-notification.service";
-import { issue430SmsProbe, verifyIssue430CorrectionDelivery } from "./issue430-notification.test-support";
+import { isOwnedIssue430NativeDatabase, issue430SmsProbe, verifyIssue430CorrectionDelivery } from "./issue430-notification.test-support";
 
 const enabled = process.env.RUN_POL115_ENTRY_PG16 === "1";
 const pg = enabled ? test : test.skip;
@@ -23,7 +23,7 @@ const otherReviewerPhone = "issue430-other-reviewer";
 async function databaseFixture() {
   const url = new URL(process.env.DATABASE_URL ?? "");
   expect(url.hostname).toBe("127.0.0.1");
-  expect(url.pathname).toBe("/jiangkong_pol115_entry_test");
+  expect(url.pathname === "/jiangkong_pol115_entry_test" || isOwnedIssue430NativeDatabase(url)).toBe(true);
   expect(process.env.NODE_ENV).toBe("test");
   const db = new PrismaClient({ datasources: { db: { url: url.toString() } } }) as PrismaService;
   try {

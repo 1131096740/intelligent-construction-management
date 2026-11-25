@@ -54,3 +54,13 @@ export async function verifyIssue430CorrectionDelivery(input: {
   probe.disable();
   process.stdout.write(JSON.stringify({ scenario: input.scenario, mockedCorrectionSends: 3, unknownResends: 0, externalSends: 0 }) + "\n");
 }
+
+export function isOwnedIssue430NativeDatabase(url: URL) {
+  return process.env.RUN_ISSUE430_SMS === "1" &&
+    process.env.ISSUE430_NATIVE_PG_DATABASE === url.pathname.slice(1) &&
+    /^\/jg_task01_[a-f0-9]{32}$/u.test(url.pathname) &&
+    url.username === "jg_task01_owner" &&
+    url.searchParams.get("sslmode") === "require" &&
+    url.searchParams.get("sslaccept") === "strict" &&
+    Boolean(url.searchParams.get("sslcert"));
+}
