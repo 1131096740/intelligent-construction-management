@@ -1205,6 +1205,11 @@
     "candidate": "62ded50bdaabc416d4db53435ad3032b9e1825eb62e6007349a1d704c1f15e09"
   },
   {
+    "path": "services/api/src/database/fund-movement-schema.spec.ts",
+    "expected": "124752854842aadbecb905d3365b708a0be7be861c40cfdbd30fe6be51598c77",
+    "candidate": "73ae456ecc34478f5303398e0be927d05213a12afc54ded866226f679ee9f87d"
+  },
+  {
     "path": "services/api/src/database/general-procurement-http-postgres.spec.ts",
     "expected": "3ce1fa518856776aff97bc860c542a21e74732fbead2139cdd577013f1d29b52",
     "candidate": "604b76192f84144ea28498090c09891fd36929a08da72e99a181ce5fa1e1e027"
