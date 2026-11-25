@@ -14,7 +14,7 @@
   "apps/web-admin/src/pages/contracts/contract-business-options.config.test.ts": "9194b9078117fc15a3d3056199c65b7291bb9b43c2dd52d155b37c1afefcd3eb",
   "apps/web-admin/src/pages/contracts/contract-business-options.config.ts": "ea24870a87d9508a749c80676a5e9ffdfd7a7d07f92c2b07e6cd2ecd92a0a3b3",
   "apps/web-admin/src/pages/contracts/contract-list.config.test.ts": "012c0b3d0582abe7d52a1fdd29b258107fd01cdb4a991bd3e0ee65071866644c",
-  "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue": "567885e0089419defd55fa57916a8134e6337e15fbe405ce4aca5d843493fa86",
+  "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue": "a3327454dadc8e1973828d72609d301f129f168bec02bdc4725cac6e93bcf542",
   "apps/web-admin/src/pages/payments/payment-list.config.ts": "394146948083d4aca783819de07854e1bffe2834eb677400744408841590b9e3",
   "apps/web-admin/src/pages/payments/payment-workbench.structure.test.ts": "7f884940bb00db8fff82e315103b682f072ac5ed596729b3efa4f9402b4f5908",
   "apps/web-admin/src/routes/index.test.ts": "f65dbb89d523d07ab870efaa07ad3769d439c021ae2e1d6e7c2a81b67e2ba00b",

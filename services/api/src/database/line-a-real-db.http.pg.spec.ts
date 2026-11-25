@@ -559,14 +559,18 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     expect(await owner.signedContractSettlement.count({ where: { contractId: ids.contractH, state: "confirmed" } })).toBe(1);
   });
 
-  it("reads a rounded paid balance without changing the confirmed business amount (A02)", async () => {
-    const draft = await newSignedDraft(ids.contractI, "LINEA-JS-I-ROUNDING", "100.0050");
-    const submitted = await call("staff", `${settlementPath}/${draft.id}/submission`, { revision: draft.revision });
-    expect(submitted.body.state).toBe("pending_review");
-    const reviewed = await call("director", `${settlementPath}/${draft.id}/review`, {
-      revision: submitted.body.revision, decision: "confirm"
-    });
-    expect(reviewed.body).toMatchObject({ state: "confirmed", amountYuan: "100.0050" });
+  it("rounds the confirmed cumulative once and reads a paid balance without a tail (A02)", async () => {
+    const confirmAmount = async (number: string, amountYuan: string) => {
+      const draft = await newSignedDraft(ids.contractI, number, amountYuan);
+      const submitted = await call("staff", `${settlementPath}/${draft.id}/submission`, { revision: draft.revision });
+      expect(submitted.body.state).toBe("pending_review");
+      const reviewed = await call("director", `${settlementPath}/${draft.id}/review`, {
+        revision: submitted.body.revision, decision: "confirm"
+      });
+      expect(reviewed.body).toMatchObject({ state: "confirmed", amountYuan });
+      return draft.id;
+    };
+    const firstId = await confirmAmount("LINEA-JS-I-ROUNDING", "100.0050");
 
     const basisPath = `${settlementPath}/payment-basis?contractKind=downstream&contractId=${ids.contractI}`;
     const before = await call("staff", basisPath);
@@ -577,7 +581,7 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
 
     // Restore an already recorded payment to exercise the read model over existing facts.
     const paid = await owner.paymentRequest.create({ data: {
-      projectId: ids.project, signedSettlementId: draft.id, signedSettlementConfirmationNo: 1n,
+      projectId: ids.project, signedSettlementId: firstId, signedSettlementConfirmationNo: 1n,
       signedSettlementConfirmedYuan: "100.0050", signedSettlementContractConfirmedYuan: "100.0050",
       signedSettlementOccupiedCents: 0n, signedSettlementBasisAt: new Date(),
       sourceType: "signed_settlement", contractId: ids.contractI, contractVersionId: ids.versionI,
@@ -588,13 +592,23 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     const after = await call("staff", basisPath);
     expect(after.body).toMatchObject({
       confirmedYuan: "100.0050",
-      latestConfirmed: { id: draft.id, amountYuan: "100.0050" },
+      latestConfirmed: { id: firstId, amountYuan: "100.0050" },
       downstreamCapacity: {
         recordedPaidYuan: "100.0100", unoccupiedYuan: "0.0000", wholeCentLimit: "0",
         overpayYuan: "0.0000", capacityShortfallYuan: "0.0000", suspended: false
       }
     });
     expect(await owner.paymentRequest.findUniqueOrThrow({ where: { id: paid.id } })).toEqual(paid);
+
+    await confirmAmount("LINEA-JS-I-HALF-CENT-1", "0.0050");
+    expect((await call("staff", basisPath)).body).toMatchObject({
+      confirmedYuan: "100.0100", downstreamCapacity: { wholeCentLimit: "0" }
+    });
+    await confirmAmount("LINEA-JS-I-HALF-CENT-2", "0.0050");
+    expect((await call("staff", basisPath)).body).toMatchObject({
+      confirmedYuan: "100.0150", latestConfirmed: { amountYuan: "0.0050" },
+      downstreamCapacity: { wholeCentLimit: "1" }
+    });
   });
 
   it("lets the unified registered payment workbench accept the confirmed signed settlement", async () => {

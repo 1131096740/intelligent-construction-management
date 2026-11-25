@@ -132,7 +132,10 @@
                 </template>
               </template>
             </span>
-            <p v-if="signedSettlementBasis?.paymentAgreementText" class="signed-settlement-basis__agreement">
+            <p
+              v-if="signedSettlementBasis?.paymentAgreementText"
+              class="signed-settlement-basis__agreement"
+            >
               <strong>付款约定原文</strong>
               {{ signedSettlementBasis.paymentAgreementText }}
             </p>

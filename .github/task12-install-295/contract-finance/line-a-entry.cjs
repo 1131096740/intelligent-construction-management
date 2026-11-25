@@ -44,6 +44,9 @@ const insertTables = [
 ];
 const functions = [
   'jg_read_effective_contract_change_amount_v1', 'jg_read_payment_contract_agreement_detail_v1',
+  'jg_read_payment_detail_activity_v1(text,text,text)',
+  'jg_read_payment_detail_allocations_v1(text,text,text)',
+  'jg_read_payment_detail_snapshots_v1(text,text,text,boolean)',
   ...(textDirect ? ['jg_read_text_payment_agreement_v1(text,text,text,text)'] : []),
   'jg_read_ordinary_contract_tax_fact_v1', 'jg_list_ordinary_contract_tax_facts_v1',
   'jg_write_ordinary_contract_tax_fact_v1', 'jg_list_contract_signed_changes_v1',

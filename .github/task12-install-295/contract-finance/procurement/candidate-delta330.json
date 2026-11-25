@@ -77,7 +77,7 @@
   {
     "path": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
     "expected": "5553d23fc09b235929485308fa8c674c1a091e428774a1d3b393623faf56374e",
-    "candidate": "567885e0089419defd55fa57916a8134e6337e15fbe405ce4aca5d843493fa86"
+    "candidate": "a3327454dadc8e1973828d72609d301f129f168bec02bdc4725cac6e93bcf542"
   },
   {
     "path": "apps/web-admin/src/pages/payments/payment-list.config.ts",
