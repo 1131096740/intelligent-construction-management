@@ -25,6 +25,8 @@ function command(bin, args, env = process.env, quiet = false, timeout = 180_000)
 }
 
 if (process.env.NODE_ENV === "production") throw new Error("禁止生产执行");
+const a05 = process.argv[2] === "--a05";
+if (process.argv.length !== (a05 ? 3 : 2)) throw new Error("采购验收仅支持 --a05 定向参数");
 if (process.env.DOCKER_HOST && !process.env.DOCKER_HOST.startsWith("unix://")) throw new Error("只允许本机 Docker");
 const endpoint = process.env.DOCKER_HOST || command("docker", ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"], process.env, true);
 if (!endpoint.startsWith("unix://")) throw new Error("只允许本机 Docker");
@@ -75,6 +77,13 @@ async function verify() {
   const grants = docker(["exec", containerId, "psql", "-U", "jiangkong", "-d", "general_procurement", "-Atc", `SELECT has_table_privilege('${runtime}', 'public."GeneralProcurement"', 'INSERT'), has_table_privilege('${runtime}', 'public."GeneralProcurement"', 'DELETE');`], process.env, true);
   if (grants !== "t|f") throw new Error("新表运行权限必须可写、不可删除");
   env.DATABASE_URL = `postgresql://${runtime}:${password}@127.0.0.1:${port}/general_procurement`;
+  if (a05) {
+    const sideTests = path.join(root, "services/api/test-support");
+    command("pnpm", ["--filter", "@jiangkong/api", "exec", "jest", "--runInBand", "--roots", sideTests,
+      "--runTestsByPath", path.join(sideTests, "task426-a05-general-procurement.http.pg.spec.ts")],
+    { ...env, APPROVAL_SMS_ENABLED: "false" }, false, 300_000);
+    return;
+  }
   command("pnpm", ["--filter", "@jiangkong/api", "test", "--", "--runInBand", "src/database/general-procurement-http-postgres.spec.ts", "src/database/approval-v6-migration-postgres.spec.ts"], env, false, 300_000);
 }
 
@@ -85,6 +94,7 @@ verify().finally(() => {
     console.log(`GENERAL_PROCUREMENT 已清理自身容器：${name}`);
   }
 }).then(() => {
+  if (a05) return;
   // Keep cross-project scope and approval isolation in the same mandatory CI shard.
   command(process.execPath, [path.join(__dirname, "run-project-business-scope-local.cjs")], process.env, false, 360_000);
 }).catch((error) => {
