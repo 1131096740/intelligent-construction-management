@@ -50,6 +50,15 @@ describe("signed settlement payment basis", () => {
     });
   });
 
+  it.each(["100.0050", "100.0149"])("shows no fractional tail after paying the rounded total for %s yuan (NUM-04)", confirmedYuan => {
+    expect(signedSettlementPaymentBalance({
+      confirmedYuan, recordedPaidCents: 10_001n, proxyPaidCents: 0n, historicalOutstandingCents: 0n, requests: []
+    })).toMatchObject({
+      recordedPaidYuan: "100.0100", unoccupiedYuan: "0.0000", wholeCentLimit: "0",
+      overpayYuan: "0.0000", capacityShortfallYuan: "0.0000", suspended: false
+    });
+  });
+
   it("does not suspend when new settlements restore the balance", () => {
     const result = signedSettlementPaymentBalance({
       confirmedYuan: "40.0000",

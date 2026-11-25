@@ -67,13 +67,16 @@ export function signedSettlementPaymentBalance(input: {
     proxyPaidCents: input.proxyPaidCents,
     historicalOutstandingCents: input.historicalOutstandingCents
   });
-  const exactBalanceYuan = new decimal(input.confirmedYuan).minus(
-    new decimal(capacity.occupiedCents.toString()).div(100)
-  );
+  const settledAtPaymentPrecision = capacity.netPaidCents > 0n
+    && capacity.netPaidCents === capacity.confirmedCents
+    && capacity.rawRemainingCents === 0n;
+  const unoccupiedYuan = settledAtPaymentPrecision
+    ? "0.0000"
+    : new decimal(input.confirmedYuan).minus(new decimal(capacity.occupiedCents.toString()).div(100)).toFixed(4);
   return {
     recordedPaidYuan: new decimal(capacity.netPaidCents.toString()).div(100).toFixed(4),
     outstandingYuan: new decimal((capacity.outstandingCents + input.historicalOutstandingCents).toString()).div(100).toFixed(4),
-    unoccupiedYuan: exactBalanceYuan.toFixed(4),
+    unoccupiedYuan,
     wholeCentLimit: capacity.remainingCents.toString(),
     advancePaidYuan: new decimal(capacity.advancePaidCents.toString()).div(100).toFixed(4),
     unsettledAdvanceYuan: new decimal(capacity.unsettledAdvanceCents.toString()).div(100).toFixed(4),

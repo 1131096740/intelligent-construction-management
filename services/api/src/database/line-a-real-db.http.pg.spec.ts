@@ -31,6 +31,7 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     contractF: "linea-contract-f", versionF: "linea-contract-f-v1",
     contractG: "linea-contract-g", versionG: "linea-contract-g-v1",
     contractH: "linea-contract-h", versionH: "linea-contract-h-v1",
+    contractI: "linea-contract-i", versionI: "linea-contract-i-v1",
     staff: "linea-user-staff", director: "linea-user-director",
     manager: "linea-user-manager", finance: "linea-user-finance", managerPeer: "linea-user-manager-peer"
   };
@@ -177,7 +178,8 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { id: ids.contractE, code: "LINEA-HT-E", name: "隔离付款并发合同E", contractTypeKey: "labor_subcontract", ...contractBase },
       { id: ids.contractF, code: "LINEA-HT-F", name: "隔离调减暂停合同F", contractTypeKey: "labor_subcontract", ...contractBase },
       { id: ids.contractG, code: "LINEA-HT-G", name: "隔离负结算竞争合同", contractTypeKey: "labor_subcontract", ...contractBase },
-      { id: ids.contractH, code: "LINEA-HT-H", name: "隔离历史结算承接合同", contractTypeKey: "labor_subcontract", ...contractBase }
+      { id: ids.contractH, code: "LINEA-HT-H", name: "隔离历史结算承接合同", contractTypeKey: "labor_subcontract", ...contractBase },
+      { id: ids.contractI, code: "LINEA-HT-I", name: "隔离四位结算合同", contractTypeKey: "labor_subcontract", ...contractBase }
     ] });
     const versionBase = {
       changeType: "original", status: "effective", amountCents: 1_000_000n, numericProtocolVersion: 1,
@@ -197,7 +199,8 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { id: ids.versionE, contractId: ids.contractE, versionNo: 1, ...versionBase },
       { id: ids.versionF, contractId: ids.contractF, versionNo: 1, ...versionBase },
       { id: ids.versionG, contractId: ids.contractG, versionNo: 1, ...versionBase },
-      { id: ids.versionH, contractId: ids.contractH, versionNo: 1, ...versionBase }
+      { id: ids.versionH, contractId: ids.contractH, versionNo: 1, ...versionBase },
+      { id: ids.versionI, contractId: ids.contractI, versionNo: 1, ...versionBase }
     ] });
     await owner.paymentTermsVersion.createMany({ data: [
       { id: "linea-terms-a", contractId: ids.contractA, contractVersionId: ids.versionA, versionNo: 1,
@@ -213,6 +216,8 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       { id: "linea-terms-f", contractId: ids.contractF, contractVersionId: ids.versionF, versionNo: 1,
         status: "effective", originalText: "隔离付款约定：结算后三十日支付" },
       { id: "linea-terms-h", contractId: ids.contractH, contractVersionId: ids.versionH, versionNo: 1,
+        status: "effective", originalText: "隔离付款约定：结算后三十日支付" },
+      { id: "linea-terms-i", contractId: ids.contractI, contractVersionId: ids.versionI, versionNo: 1,
         status: "effective", originalText: "隔离付款约定：结算后三十日支付" }
     ] });
     await owner.contractPartySnapshot.createMany({ data: [
@@ -222,7 +227,7 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
         businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" } },
       { contractVersionId: ids.versionC, roleKey: "party_b", displayOrder: 0,
         businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" } },
-      ...[ids.versionG, ids.versionH].map(contractVersionId => ({
+      ...[ids.versionG, ids.versionH, ids.versionI].map(contractVersionId => ({
         contractVersionId, roleKey: "party_b", displayOrder: 0,
         businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" }
       }))
@@ -552,6 +557,44 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     expect((await call("staff", overviewPath)).body.confirmedYuan).toBe("70.0000");
     expect(await owner.settlement.findUniqueOrThrow({ where: { id: legacy.id } })).toEqual(legacy);
     expect(await owner.signedContractSettlement.count({ where: { contractId: ids.contractH, state: "confirmed" } })).toBe(1);
+  });
+
+  it("reads a rounded paid balance without changing the confirmed business amount (A02)", async () => {
+    const draft = await newSignedDraft(ids.contractI, "LINEA-JS-I-ROUNDING", "100.0050");
+    const submitted = await call("staff", `${settlementPath}/${draft.id}/submission`, { revision: draft.revision });
+    expect(submitted.body.state).toBe("pending_review");
+    const reviewed = await call("director", `${settlementPath}/${draft.id}/review`, {
+      revision: submitted.body.revision, decision: "confirm"
+    });
+    expect(reviewed.body).toMatchObject({ state: "confirmed", amountYuan: "100.0050" });
+
+    const basisPath = `${settlementPath}/payment-basis?contractKind=downstream&contractId=${ids.contractI}`;
+    const before = await call("staff", basisPath);
+    expect(before.body).toMatchObject({
+      confirmedYuan: "100.0050",
+      downstreamCapacity: { unoccupiedYuan: "100.0050", wholeCentLimit: "10001" }
+    });
+
+    // Restore an already recorded payment to exercise the read model over existing facts.
+    const paid = await owner.paymentRequest.create({ data: {
+      projectId: ids.project, signedSettlementId: draft.id, signedSettlementConfirmationNo: 1n,
+      signedSettlementConfirmedYuan: "100.0050", signedSettlementContractConfirmedYuan: "100.0050",
+      signedSettlementOccupiedCents: 0n, signedSettlementBasisAt: new Date(),
+      sourceType: "signed_settlement", contractId: ids.contractI, contractVersionId: ids.versionI,
+      paymentTermsVersionId: "linea-terms-i", code: "LINEA-FK-I-ROUNDING",
+      status: "paid", requestedAmountCents: 10_001n, approvedAmountCents: 10_001n,
+      paidAmountCents: 10_001n, paymentSubjectType: "our_company"
+    } });
+    const after = await call("staff", basisPath);
+    expect(after.body).toMatchObject({
+      confirmedYuan: "100.0050",
+      latestConfirmed: { id: draft.id, amountYuan: "100.0050" },
+      downstreamCapacity: {
+        recordedPaidYuan: "100.0100", unoccupiedYuan: "0.0000", wholeCentLimit: "0",
+        overpayYuan: "0.0000", capacityShortfallYuan: "0.0000", suspended: false
+      }
+    });
+    expect(await owner.paymentRequest.findUniqueOrThrow({ where: { id: paid.id } })).toEqual(paid);
   });
 
   it("lets the unified registered payment workbench accept the confirmed signed settlement", async () => {
