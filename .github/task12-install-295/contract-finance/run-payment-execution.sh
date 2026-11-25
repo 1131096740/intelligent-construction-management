@@ -14,7 +14,7 @@ scope=payment-execution
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const count=source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
   console.log(count);
 '  "$prepared/source.json" "$sha")
@@ -27,7 +27,10 @@ fingerprint=$(cat "$build/context.sha256")
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 material="$work/material"
 portable_args=()
-if [[ $count == 330 ]]; then portable_args=(--text-direct-330); fi
+case "$count" in
+  330) portable_args=(--text-direct-330) ;;
+  331) portable_args=(--payment-remainder-331) ;;
+esac
 python3 "$plan/stage-payment-execution.py" "$repo/.github/task12-install-290/payment" "$common" "$material" ${portable_args[@]+"${portable_args[@]}"}
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
@@ -62,7 +65,9 @@ for lane in fresh valid paid other; do
     for file in payment-execution-concurrency.spec.ts task12-owned-280.test-support.ts; do
       lane_args+=(--mount "type=bind,src=$material/$file,dst=/qualification/workspace/services/api/src/database/$file,readonly")
     done
-    lane_args+=(--mount "type=bind,src=$plan/contract-finance-owned.test-support.ts,dst=/qualification/workspace/services/api/src/database/contract-finance-owned.test-support.ts,readonly")
+    ledger_support="$plan/contract-finance-owned.test-support.ts"
+    if [[ $count == 331 ]]; then ledger_support="$material/contract-finance-owned.test-support.ts"; fi
+    lane_args+=(--mount "type=bind,src=$ledger_support,dst=/qualification/workspace/services/api/src/database/contract-finance-owned.test-support.ts,readonly")
   fi
   exit_code=0
   docker run "${lane_args[@]}" --entrypoint node "$image" "/qualification/$entry" \
@@ -72,9 +77,16 @@ for lane in fresh valid paid other; do
     const row=require(process.argv[1]); const [lane,sha,expected,code,count]=process.argv.slice(2);
     console.log(JSON.stringify(row));
     const positive=lane==="fresh"||lane==="valid";
+    if(positive&&count==="331"){
+      const source=require(process.argv[7]), predecessor=row.paymentRemainderPredecessor;
+      if(predecessor?.count!==330||predecessor.ledgerSha256!==source.predecessor330?.ledgerSha256||
+         predecessor.sameIdentity!==true||predecessor.sameBaseB7!==true||
+         row.forward320?.count!==331||row.forward320?.ledgerSha256!==source.ledgerSha256||
+         row.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256)process.exit(1);
+    }
     if(code!=="0"||row.status!==expected||row.cleanup!=="POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT"||
       (positive&&(row.sourceSha!==sha||row.installOnly295?.count!==295||row.combinedAfterBusiness?.count!==Number(count)||row.combinedAfterBusiness?.exactB7!==true))||
       (!positive&&(row.retainedPaymentNegatives?.length!==(lane==="paid"?1:13)||row.installOnly295!==undefined)))process.exit(1);
-  ' "$work/$lane.json" "$lane" "$sha" "$expected" "$exit_code" "$count" ||
+  ' "$work/$lane.json" "$lane" "$sha" "$expected" "$exit_code" "$count" "$prepared/source.json" ||
     { printf 'PAYMENT_EXECUTION_%s_STOPPED %s %s\n' "$count" "$lane" "$work" >&2; exit 1; }
 done
