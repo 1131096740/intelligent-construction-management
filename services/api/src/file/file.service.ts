@@ -3448,19 +3448,17 @@ export class FileService {
     fileId: string,
     actorUserId: string
   ): Promise<boolean | null> {
-    const attachmentClient = (tx as unknown as {
-      expenseClaimAttachment?: {
-        findFirst: (args: {
-          where: { fileId: string };
-          select: { expenseClaimId: true; attachedByUserId: true; removedAt: true };
-        }) => Promise<{ expenseClaimId: string; attachedByUserId: string; removedAt: Date | null } | null>;
-      };
-    }).expenseClaimAttachment;
-    if (!attachmentClient) return null;
-    const attachment = await attachmentClient.findFirst({
-      where: { fileId },
-      select: { expenseClaimId: true, attachedByUserId: true, removedAt: true }
-    });
+    const [attachment] = await tx.$queryRaw<Array<{
+      expenseClaimId: string;
+      attachedByUserId: string;
+      removedAt: Date | null;
+    }>>(Prisma.sql`
+      /* private_file_expense_attachment_binding */
+      SELECT "expenseClaimId", "attachedByUserId", "removedAt"
+      FROM public."ExpenseClaimAttachment"
+      WHERE "fileId" = ${fileId}
+      LIMIT 1
+    `);
     if (!attachment || attachment.removedAt) return attachment ? false : null;
     const claimClient = (tx as unknown as {
       expenseClaim?: {

@@ -119,6 +119,15 @@ function legacyFileTransaction<T extends object>(transaction: T): T {
           const lookup = Reflect.get(target, "offlineRevisionBinding", target);
           return typeof lookup === "function" ? lookup(input.values[0]) : [];
         }
+        if (sql?.startsWith("/* private_file_expense_attachment_binding */")) {
+          if (args.length || !Array.isArray(input?.values) || input.values.length !== 1 ||
+            typeof input.values[0] !== "string" ||
+            sql !== '/* private_file_expense_attachment_binding */ SELECT "expenseClaimId", "attachedByUserId", "removedAt" FROM public."ExpenseClaimAttachment" WHERE "fileId" = ? LIMIT 1') {
+            throw new Error("Unsupported expense attachment binding projection");
+          }
+          const lookup = Reflect.get(target, "expenseAttachmentBinding", target);
+          return typeof lookup === "function" ? lookup(input.values[0]) : [];
+        }
         const original = Reflect.get(target, property, target);
         if (typeof original !== "function") throw new Error("Legacy file fixture has no adapter for this SQL query");
         return Reflect.apply(original,target,[query,...args]);
@@ -1630,13 +1639,11 @@ describe("FileService", () => {
     );
     const tx = {
       contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
-      expenseClaimAttachment: {
-        findFirst: jest.fn().mockResolvedValue({
-          expenseClaimId: "claim-1",
-          attachedByUserId: "handler-1",
-          removedAt: null
-        })
-      },
+      expenseAttachmentBinding: jest.fn().mockResolvedValue([{
+        expenseClaimId: "claim-1",
+        attachedByUserId: "handler-1",
+        removedAt: null
+      }]),
       expenseClaim: {
         findUnique: jest.fn().mockResolvedValue({
           projectId: "project-1",
@@ -1658,6 +1665,7 @@ describe("FileService", () => {
         }
       ).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "expense-file-1", uploadedByUserId: "uploader-1" }, "handler-1")
     ).resolves.toBeUndefined();
+    expect(tx.expenseAttachmentBinding).toHaveBeenCalledWith("expense-file-1");
   });
 
   it("fails closed for a nonparticipant requesting a new-domain expense attachment", async () => {
@@ -1668,13 +1676,11 @@ describe("FileService", () => {
     );
     const tx = {
       contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
-      expenseClaimAttachment: {
-        findFirst: jest.fn().mockResolvedValue({
-          expenseClaimId: "claim-1",
-          attachedByUserId: "handler-1",
-          removedAt: null
-        })
-      },
+      expenseAttachmentBinding: jest.fn().mockResolvedValue([{
+        expenseClaimId: "claim-1",
+        attachedByUserId: "handler-1",
+        removedAt: null
+      }]),
       expenseClaim: {
         findUnique: jest.fn().mockResolvedValue({
           projectId: "project-1",
