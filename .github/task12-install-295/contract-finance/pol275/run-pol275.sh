@@ -73,7 +73,7 @@ fi
 check "$common/installer.cjs" 32a8523675c13ffb29e9a0d7957c6ee32fd1f901df2f2075fdaa9da8d1ff56f8
 cp "$common/installer.cjs" "$work/installer.cjs"
 patch --batch --fuzz=0 --silent "$work/installer.cjs" "$plan/installer-pol275.patch"
-check "$work/installer.cjs" 856a33ead8a863841fcbc34e69fad877e3840ee22d6902fa394cd6f877e0d208
+check "$work/installer.cjs" 43ffca9e16723046412da75f38aa852ed01c08e8cc3b52bb36a8288eae40c91c
 chmod 644 "$work/installer.cjs"
 node --check "$work/installer.cjs"
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL

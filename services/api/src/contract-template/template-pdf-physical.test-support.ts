@@ -21,7 +21,7 @@ export function inspectActualTemplatePdf(sourceDocx: Buffer, pdf: Buffer, label:
   const witnessPath = join(directory, "runtime-witness.json");
   if (runtimeWitness !== undefined) writeFileSync(witnessPath, JSON.stringify(runtimeWitness));
   const result = spawnSync(python, [resolve(__dirname, "../../test-support/inspect-contract-pdf-physical.py"), sourcePath, pdfPath, join(directory, "receipt.json"), manifestPath,
-    ...(runtimeWitness === undefined ? [] : [witnessPath])], { encoding: "utf8", timeout: 20_000, maxBuffer: 2 * 1024 * 1024 });
+    ...(runtimeWitness === undefined ? [] : [witnessPath])], { env: { ...process.env }, encoding: "utf8", timeout: 20_000, maxBuffer: 2 * 1024 * 1024 });
   writeFileSync(join(directory, "inspection.log"), `${result.stdout ?? ""}\n${result.stderr ?? ""}`);
   if (result.status !== 0) throw new Error(`Actual PDF physical glyph check failed (${label}); receipt ${directory}; ${result.stdout ?? ""}${result.stderr ?? ""}`);
   const text = result.stdout.split("---SEMANTIC-TEXT---\n")[1];
