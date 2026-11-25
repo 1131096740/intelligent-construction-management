@@ -152,12 +152,14 @@ export async function verifySignedSettlementPaymentCompetition(
     await seedSignedSettlementContract(owner, password, "signed-competition", "90.0000", 9_000n);
   const { ids, phone, openingDate, paidAt } = rounding;
   const { keeper, keeperPhone, director } = roundingActors;
-  const applicantPosition = await owner.position.upsert({
-    where: { key: "contract_staff" }, update: {}, create: { key: "contract_staff", name: "合同员" }
-  });
-  await owner.projectMember.createMany({ data: [ids.actor, keeper].map(userId => ({
-    projectId: ids.project, userId, positionKey: applicantPosition.key
-  })) });
+  await owner.projectMember.createMany({ data: [
+    { projectId: ids.project, userId: ids.actor, positionKey: "contract_staff" },
+    { projectId: ids.project, userId: keeper, positionKey: "contract_staff" },
+    { projectId: ids.project, userId: keeper, positionKey: "comprehensive_director" },
+    { projectId: ids.project, userId: director, positionKey: "project_manager" },
+    { projectId: ids.project, userId: director, positionKey: "contract_director" },
+    { projectId: ids.project, userId: director, positionKey: "chairman" },
+  ] });
   for (const [userId, userPhone] of [[ids.actor, phone], [keeper, keeperPhone]]) {
     await loginActor(userId, userPhone);
   }
@@ -178,9 +180,8 @@ export async function verifySignedSettlementPaymentCompetition(
   const applications = await Promise.allSettled([ids.actor, keeper].map((actor, index) =>
     call(actor, "/payments", { ...application, code: `T16-${rounding.runId}-FK-40-${index}` })
   ));
-  expect(applications.map(result => result.status).sort()).toEqual(["fulfilled", "rejected"]);
-  expect(applications.find(result => result.status === "rejected")?.reason.message)
-    .toMatch(/Unexpected HTTP status 400.*合同已签结算累计可付金额不足/u);
+  expect(applications.map(result => result.status === "fulfilled" ? 201 : result.reason.message))
+    .toEqual(expect.arrayContaining([201, expect.stringMatching(/Unexpected HTTP status 400.*合同已签结算累计可付金额不足/u)]));
   const [payment, ...extras] = await owner.paymentRequest.findMany({ where: { contractId, id: { not: previouslyPaid.id } } });
   expect(extras).toEqual([]);
   expect(payment).toMatchObject({ status: "approval_pending", requestedAmountCents: 4_000n });
@@ -254,8 +255,8 @@ export async function verifySignedSettlementPaymentCompetition(
   const attempts = await Promise.allSettled(actors.map(({ actor, idempotencyKey }) =>
     call(actor, registrations, { ...command, idempotencyKey })
   ));
-  expect(attempts.map(result => result.status).sort()).toEqual(["fulfilled", "rejected"]);
-  expect(attempts.find(result => result.status === "rejected")?.reason.message).toMatch(/Unexpected HTTP status 409/u);
+  expect(attempts.map(result => result.status === "fulfilled" ? 201 : result.reason.message))
+    .toEqual(expect.arrayContaining([201, expect.stringMatching(/Unexpected HTTP status 409/u)]));
   const [execution] = await owner.paymentExecution.findMany({ where: { paymentRequestId: payment.id } });
   expect(execution).toMatchObject({ amountCents: 4_000n, idempotencyKey: actors[attempts.findIndex(result => result.status === "fulfilled")].idempotencyKey });
   expect(await owner.paymentExecution.count({ where: { paymentRequestId: payment.id } })).toBe(1);
@@ -269,7 +270,7 @@ export async function verifySignedSettlementPaymentCompetition(
   })).toEqual([{ executionId: execution.id, amountCents: 4_000n, sourceBatchId: opening.sources[0].id }]);
   expect(await owner.registeredPaymentFunding.count({ where: { accountId: beforeAccount.id } })).toBe(1);
   expect(await owner.registeredPaymentEvent.count({ where: { executionId: execution.id } })).toBe(1);
-  expect(await owner.operatingFact.count({ where: { sourceType: "payment_execution", sourceBusinessId: execution.id } })).toBe(1);
+  expect(await owner.operatingFact.count({ where: { projectId: ids.project, sourceType: "payment_execution" } })).toBe(1);
   expect(await owner.auditLog.count({ where: { businessId: payment.id, action: "payment.execution.record" } })).toBe(1);
   expect(await owner.auditLog.findFirstOrThrow({ where: { businessId: payment.id, action: "payment.capacity.recheck" } }))
     .toMatchObject({ metadata: { stage: "execution", confirmedCents: "9000", availableCents: "4000", amountCents: "4000" } });
