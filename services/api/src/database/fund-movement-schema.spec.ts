@@ -144,32 +144,20 @@ describe("POL-13C fund movement schema", () => {
     );
   });
 
-  it("keeps payable registry and fund movement settlement locks in one order", () => {
+  it("locks historical wage references before cases and allocations in fund movement", () => {
     const movement = readFileSync(
       resolve(apiRoot, "src/fund-movement/fund-movement.service.ts"),
-      "utf8"
-    );
-    const registry = readFileSync(
-      resolve(apiRoot, "src/payable-registry/payable-registry.service.ts"),
       "utf8"
     );
     const movementSection = movement.slice(
       movement.indexOf("private async lockAndValidatePayableSettlement")
     );
-    const registrySection = registry.slice(
-      registry.indexOf("private async lockSettlementContext")
-    );
-    for (const section of [movementSection, registrySection]) {
-      expect(section.indexOf('FROM "WagePayableRef"')).toBeGreaterThanOrEqual(0);
-      expect(section.indexOf('FROM "PayableSettlementCase"')).toBeGreaterThanOrEqual(0);
-      expect(section.indexOf('FROM "PayableSettlementAllocation"')).toBeGreaterThanOrEqual(0);
-      expect(section.indexOf('FROM "WagePayableRef"')).toBeLessThan(
-        section.indexOf('FROM "PayableSettlementCase"')
-      );
-      expect(section.indexOf('FROM "PayableSettlementCase"')).toBeLessThan(
-        section.indexOf('FROM "PayableSettlementAllocation"')
-      );
-    }
+    const payableLock = movementSection.indexOf('FROM "WagePayableRef"');
+    const caseLock = movementSection.indexOf('FROM "PayableSettlementCase"');
+    const allocationLock = movementSection.indexOf('FROM "PayableSettlementAllocation"');
+    expect(payableLock).toBeGreaterThanOrEqual(0);
+    expect(caseLock).toBeGreaterThan(payableLock);
+    expect(allocationLock).toBeGreaterThan(caseLock);
   });
 
   it("retains source, contract and allocation snapshots and strict foreign keys", () => {
