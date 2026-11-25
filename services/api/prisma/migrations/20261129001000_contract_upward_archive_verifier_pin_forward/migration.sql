@@ -88,4 +88,88 @@ BEGIN
   END IF;
 END;
 $forward$;
+
+LOCK TABLE public.jg_contract_direct_archive_intent_binding_v1,
+  public."ContractSignedChange", public."SignedContractSettlementAttachment" IN SHARE ROW EXCLUSIVE MODE;
+
+DO $outside_forward$
+DECLARE
+  anchor_oid OID:=current_user::regrole::oid;
+  binding public.jg_contract_direct_archive_intent_binding_v1%ROWTYPE;
+  role_ids OID[];
+  login_ids OID[];
+  executor_name NAME;
+  target RECORD;
+  relation_oid OID;
+  column_no SMALLINT;
+  table_acl ACLITEM[];
+  column_acl ACLITEM[];
+BEGIN
+  SELECT * INTO STRICT binding FROM public.jg_contract_direct_archive_intent_binding_v1;
+  login_ids:=ARRAY[binding."issuerSessionOid",binding."runtimeSessionOid"];
+  role_ids:=login_ids||ARRAY[binding."issuerOwnerOid",binding."executorOwnerOid"];
+  IF current_user IS DISTINCT FROM session_user OR current_setting('session_replication_role')<>'origin'
+    OR NOT EXISTS(SELECT FROM pg_database WHERE datname=current_database() AND datdba=anchor_oid AND oid=binding."databaseOid")
+    OR binding."protocolVersion"<>1 OR binding."anchorOwnerOid"<>anchor_oid
+    OR binding."namespaceOid"<>to_regnamespace('public')::oid
+    OR anchor_oid=ANY(role_ids) OR binding."ordinaryApplicationRoleOid"=ANY(role_ids)
+    OR (SELECT count(*) FROM pg_roles r WHERE r.oid=ANY(role_ids) AND r.rolcanlogin=(r.oid=ANY(login_ids))
+      AND NOT(r.rolsuper OR r.rolinherit OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls)
+      AND NOT has_schema_privilege(r.oid,binding."namespaceOid",'CREATE')
+      AND NOT EXISTS(SELECT FROM pg_auth_members m WHERE r.oid IN(m.member,m.roleid)))<>4
+    OR NOT EXISTS(SELECT FROM pg_proc p WHERE p.oid=to_regprocedure(
+      'public.jg_execute_contract_direct_archive_outside_v1(uuid,text,text,text,text,integer,text,text,jsonb)')
+      AND p.proowner=binding."executorOwnerOid" AND p.pronamespace=binding."namespaceOid" AND p.prosecdef
+      AND has_function_privilege(binding."runtimeSessionOid",p.oid,'EXECUTE')
+      AND NOT has_function_privilege(binding."ordinaryApplicationRoleOid",p.oid,'EXECUTE')) THEN
+    RAISE EXCEPTION 'OUTSIDE_ARCHIVE_FILE_BINDING_OWNER' USING ERRCODE='55000';
+  END IF;
+  SELECT rolname INTO STRICT executor_name FROM pg_roles WHERE oid=binding."executorOwnerOid";
+
+  -- These are the two reference columns registered by the signed-file binding successor.
+  -- Match the original installer's column-only ACL for the confined execution owner.
+  FOR target IN SELECT * FROM (VALUES
+    ('ContractSignedChange','appendixFormalFileId'),
+    ('SignedContractSettlementAttachment','fileId')
+  ) AS checked(relation_name,column_name) LOOP
+    SELECT c.oid,a.attnum,c.relacl,a.attacl INTO STRICT relation_oid,column_no,table_acl,column_acl
+      FROM pg_class c JOIN pg_attribute a ON a.attrelid=c.oid
+      WHERE c.relname=target.relation_name AND c.relnamespace=binding."namespaceOid" AND c.relowner=anchor_oid
+        AND c.relkind='r' AND c.relpersistence='p' AND NOT(c.relispartition OR c.relrowsecurity OR c.relforcerowsecurity)
+        AND a.attname=target.column_name AND a.attnum>0 AND NOT a.attisdropped AND a.attnotnull
+        AND a.atttypid='pg_catalog.text'::regtype AND a.attgenerated='' AND a.attidentity='';
+    IF NOT EXISTS(SELECT FROM public.jg_file_business_collision_columns() c
+        WHERE c."tableName"=target.relation_name AND c."columnName"=target.column_name)
+      OR has_column_privilege(binding."executorOwnerOid",relation_oid,column_no,'SELECT')
+      OR EXISTS(SELECT FROM unnest(login_ids) login(oid)
+        WHERE has_table_privilege(login.oid,relation_oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+          OR has_any_column_privilege(login.oid,relation_oid,'SELECT,INSERT,UPDATE,REFERENCES')) THEN
+      RAISE EXCEPTION 'OUTSIDE_ARCHIVE_FILE_BINDING_PREIMAGE' USING ERRCODE='55000';
+    END IF;
+
+    EXECUTE format('GRANT SELECT (%I) ON public.%I TO %I',target.column_name,target.relation_name,executor_name);
+
+    IF NOT has_column_privilege(binding."executorOwnerOid",relation_oid,column_no,'SELECT')
+      OR has_table_privilege(binding."executorOwnerOid",relation_oid,'SELECT')
+      OR (SELECT relacl FROM pg_class WHERE oid=relation_oid) IS DISTINCT FROM table_acl
+      OR EXISTS(SELECT FROM unnest(login_ids) login(oid)
+        WHERE has_table_privilege(login.oid,relation_oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+          OR has_any_column_privilege(login.oid,relation_oid,'SELECT,INSERT,UPDATE,REFERENCES'))
+      OR EXISTS(
+        WITH actual AS (
+          SELECT a.* FROM pg_attribute p CROSS JOIN LATERAL aclexplode(p.attacl) a
+          WHERE p.attrelid=relation_oid AND p.attnum=column_no
+        ), expected AS (
+          SELECT * FROM aclexplode(column_acl)
+          UNION ALL SELECT anchor_oid,binding."executorOwnerOid",'SELECT'::text,false
+        )
+        (SELECT * FROM actual EXCEPT ALL SELECT * FROM expected)
+        UNION ALL
+        (SELECT * FROM expected EXCEPT ALL SELECT * FROM actual)
+      ) THEN
+      RAISE EXCEPTION 'OUTSIDE_ARCHIVE_FILE_BINDING_POSTIMAGE' USING ERRCODE='55000';
+    END IF;
+  END LOOP;
+END;
+$outside_forward$;
 COMMIT;
