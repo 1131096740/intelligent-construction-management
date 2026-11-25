@@ -57,8 +57,16 @@ async function main() {
       : [['payment-execution-concurrency.spec.ts',2,0]]);
     if(mode==='core'){
       assert.equal(receipt.finance.poolCapacity,2);
-      assert.equal(receipt.finance.approvals.length,5);
-      assert.ok(receipt.finance.approvals.every(row=>row.status===201));
+      if(forward){
+        assert.deepEqual(receipt.finance.historicalContract,{
+          versionStatus:'effective',numericProtocolVersion:2,detailVersionMatches:true,
+          counterpartyVersionMatches:true,approvalInstances:0
+        });
+        assert.deepEqual(receipt.finance.approvals,[]);
+      }else{
+        assert.equal(receipt.finance.approvals.length,5);
+        assert.ok(receipt.finance.approvals.every(row=>row.status===201));
+      }
       assert.deepEqual(receipt.finance.paymentCapabilities,[{
         supportedDomain:true,allowedActor:true,workflowReady:true,canSupplementVoucher:false,
         allowedStatus:200,deniedStatus:403,matchingPayment:true,canRegisterPayment:true,noNewExecution:true
@@ -99,7 +107,7 @@ main().catch(error=>{
   receipt.failure={stage:receipt.stages.at(-1),code:/^[A-Z0-9_]+$/u.test(code)?code:'CONTRACT_FINANCE_295_FAILED',
     exit:error.exit,sqlstate:error.sqlstate,prismaCode:error.prismaCode,failedTest:error.failedTest,
     diagnostic:error.diagnostic,denied:error.denied,passed:error.passed,browserObservation:error.browserObservation,completedSuites:error.completedSuites,
-    approvals:error.approvals,paymentCapabilities:error.paymentCapabilities,
+    approvals:error.approvals,paymentCapabilities:error.paymentCapabilities,historicalContract:error.historicalContract,
     migrationCause:error.migrationCause,psqlObservation:error.psqlObservation};
   process.exitCode=1;
 }).finally(()=>process.stdout.write(JSON.stringify(receipt)+'\n'));

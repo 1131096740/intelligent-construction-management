@@ -54,6 +54,7 @@ async function verify(scope, context, ledgerCount = 295, settlementReadKey) {
       const denial = /permission denied for (table|function|schema|relation) ([A-Za-z0-9_."]{1,100})/u.exec(message);
       throw Object.assign(new Error(stage), {
         approvals: readApprovalObservations?.(), paymentCapabilities: readPaymentObservations?.(), completedSuites: [...suites], browserObservation: readBrowserObservation(),
+        historicalContract: readHistoricalContract(),
         exit: result.status, signal: result.signal, executionError: result.error?.code,
         sqlstate: /\b(?:code|SQLSTATE)\W+([0-9A-Z]{5})\b/u.exec(message)?.[1],
         prismaCode: /\bP[0-9]{4}\b/u.exec(message)?.[0],
@@ -91,6 +92,10 @@ async function verify(scope, context, ledgerCount = 295, settlementReadKey) {
     }
     return result.stdout;
   }
+  const historicalContractObservation = path.join(context.workDir, "core-historical-contract.json");
+  const readHistoricalContract = () => existsSync(historicalContractObservation)
+    ? JSON.parse(readFileSync(historicalContractObservation, "utf8"))
+    : undefined;
   let readApprovalObservations, readPaymentObservations;
   if (scope === "core") {
     const owner = new URL(context.ownerUrl);
@@ -101,6 +106,7 @@ async function verify(scope, context, ledgerCount = 295, settlementReadKey) {
     env.RUN_POL114_CORE_APPROVAL_OBSERVER = "1";
     env.POL114_CORE_APPROVAL_OBSERVATION = path.join(context.workDir, "core-approval-observations.jsonl");
     env.POL114_CORE_PAYMENT_OBSERVATION = path.join(context.workDir, "core-payment-observations.jsonl");
+    if (ledgerCount !== 295) env.POL114_CORE_HISTORICAL_CONTRACT_OBSERVATION = historicalContractObservation;
     readPaymentObservations = () => existsSync(env.POL114_CORE_PAYMENT_OBSERVATION)
       ? readFileSync(env.POL114_CORE_PAYMENT_OBSERVATION, "utf8").trim().split("\n").slice(0,8).map(line => JSON.parse(line))
       : [];
@@ -133,7 +139,7 @@ async function verify(scope, context, ledgerCount = 295, settlementReadKey) {
     suites.push({ file: spec, passed: count, skipped: jest.numPendingTests });
   }
   return {scope,suites,...(scope==="core"?{poolCapacity:2,approvals:readApprovalObservations(),
-    paymentCapabilities:readPaymentObservations(),browserObservation:readBrowserObservation()}: {})};
+    paymentCapabilities:readPaymentObservations(),historicalContract:readHistoricalContract(),browserObservation:readBrowserObservation()}: {})};
 }
 
 module.exports={verify};
