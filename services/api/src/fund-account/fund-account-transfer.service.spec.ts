@@ -16,6 +16,9 @@ const registration = {
 function transferService(role: string, firstConflict = false, activeCompany = false, originalRegistrationExists = false) {
   const receipt = jest.fn();
   const transferUpdate = jest.fn();
+  const createAction = jest.fn();
+  const checkConstraints = jest.fn();
+  const recordAudit = jest.fn();
   const tx = {
     user: { findUnique: async () => ({ isActive: !firstConflict }) },
     userPosition: { findMany: async () => [{ positionId: role }] },
@@ -29,9 +32,10 @@ function transferService(role: string, firstConflict = false, activeCompany = fa
       ? (originalRegistrationExists ? { id: registration.expectedRegistrationId } : null)
       : { id: "new-current", version: 2, balanceYuan: new Prisma.Decimal(100) } },
     $queryRaw: async () => [{ id: "cash" }, { id: "company" }],
-    registeredFundTransferAction: { findUnique: receipt },
+    $executeRaw: checkConstraints,
+    registeredFundTransferAction: { findUnique: receipt, create: createAction },
     registeredFundTransfer: {
-      findUnique: async () => ({ revision: 2, sourceAccountId: "cash", destinationAccountId: "company", createdByUserId: "origin", sourceAccount: { kind: "public_cash" }, destinationAccount: { kind: "company" } }),
+      findUnique: async () => ({ id: "transfer", revision: 2, status: "pending_receipt", sourceAccountId: "cash", destinationAccountId: "company", createdByUserId: "origin", sourceAccount: { kind: "public_cash" }, destinationAccount: { kind: "company" } }),
       updateMany: transferUpdate
     }
   };
@@ -41,7 +45,8 @@ function transferService(role: string, firstConflict = false, activeCompany = fa
     if (firstConflict && calls === 1) throw new Prisma.PrismaClientKnownRequestError("synthetic conflict", { code: "P2034", clientVersion: "test" });
     return run(tx);
   } };
-  return { service: new FundAccountTransferService(prisma as unknown as PrismaService, {} as AuditService), receipt, transferUpdate, transactionCount: () => calls };
+  const service = new FundAccountTransferService(prisma as unknown as PrismaService, { record: recordAudit } as unknown as AuditService);
+  return { service, receipt, transferUpdate, createAction, checkConstraints, recordAudit, transactionCount: () => calls };
 }
 
 it("does not expose a committed registration receipt after the original actor loses the company role", async () => {
@@ -100,6 +105,34 @@ it("does not mark a key collision with an existing receipt as a definite rejecti
   await expect(service.register("origin", registration)).rejects.toMatchObject({
     response: { statusCode: 409, error: "Conflict" }
   });
+});
+
+it("rejects the command before returning a receipt if deferred transfer consistency fails", async () => {
+  const { service, transferUpdate, checkConstraints, recordAudit } = transferService("finance_staff");
+  transferUpdate.mockResolvedValueOnce({ count: 1 });
+  const failure = new Prisma.PrismaClientKnownRequestError("synthetic consistency failure", {
+    code: "P2010", clientVersion: "test", meta: { code: "42501" }
+  });
+  checkConstraints.mockRejectedValueOnce(failure);
+
+  await expect(service.act("recipient", "transfer", {
+    idempotencyKey: registration.idempotencyKey, expectedRevision: 2, action: "reject", evidenceReference: "独立驳回"
+  })).rejects.toBe(failure);
+  expect(checkConstraints).toHaveBeenCalledTimes(1);
+  expect(recordAudit.mock.invocationCallOrder[0]).toBeLessThan(checkConstraints.mock.invocationCallOrder[0]!);
+});
+
+it("returns the recorded rejection after checking the named transfer consistency constraints", async () => {
+  const { service, transferUpdate, createAction, checkConstraints } = transferService("finance_staff");
+  transferUpdate.mockResolvedValueOnce({ count: 1 });
+
+  await expect(service.act("recipient", "transfer", {
+    idempotencyKey: registration.idempotencyKey, expectedRevision: 2, action: "reject", evidenceReference: "独立驳回"
+  })).resolves.toEqual({ id: "transfer", revision: 3, status: "rejected_held" });
+  expect(checkConstraints.mock.calls[0]?.[0].join("").replace(/\s+/gu, " ")).toBe(
+    'SET CONSTRAINTS public."RegisteredFundTransfer_consistency", public."RegisteredFundTransferAction_consistency", public."FundAccountBalanceRegistration_transfer_consistency" IMMEDIATE'
+  );
+  expect(createAction.mock.invocationCallOrder[0]).toBeLessThan(checkConstraints.mock.invocationCallOrder[0]!);
 });
 
 it("资金转款短信沿台账的公司级岗位授权，只转发已登录的原收件人坐标", async () => {

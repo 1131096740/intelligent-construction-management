@@ -262,6 +262,9 @@ export class FundAccountTransferService {
     if (transfer.status === "pending_receipt" || transfer.status === "rejected_held") {
       await this.transferNotifications?.queue(tx, transfer.id, actorId);
     }
+    await tx.$executeRaw`SET CONSTRAINTS public."RegisteredFundTransfer_consistency",
+      public."RegisteredFundTransferAction_consistency",
+      public."FundAccountBalanceRegistration_transfer_consistency" IMMEDIATE`;
     return { id: transfer.id, revision: transfer.revision, status: transfer.status };
   }
 
