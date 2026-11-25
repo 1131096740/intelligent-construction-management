@@ -2,14 +2,15 @@
 const assert=require('node:assert/strict');
 const {verifyInputs}=require('./workbench-inputs.cjs');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive}=require('./installer.cjs');
 const terminal=require('./multi-witness.cjs');
 const source=require('./contract-finance-source.json');
 const mode=process.argv[2];
-const paymentRemainder=mode==='--payment-remainder-331';
+const upwardArchive=mode==='--upward-archive-332';
+const paymentRemainder=upwardArchive||mode==='--payment-remainder-331';
 const textDirect=paymentRemainder||mode==='--text-direct-330';
 const current320=textDirect||mode==='--current-320';
-const count=paymentRemainder?331:textDirect?330:current320?329:295;
+const count=upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
 const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:'POL115_WORKBENCH_ORIGINAL_'+count,business:'NOT_ENTERED',stages:['INPUTS']};
 Promise.resolve().then(()=>{
   assert.notEqual(process.getuid(),0);
@@ -30,7 +31,7 @@ Promise.resolve().then(()=>{
     if(paymentRemainder) await require('./issue430-approval-sms-ci.cjs').runIssue430ApprovalSms(context,receipt,source);
   };
   if(current320){
-    const install=paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
+    const install=upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
     return install(receipt,consume,{
       sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
     });
@@ -59,6 +60,11 @@ Promise.resolve().then(()=>{
     assert.equal(receipt.issue430?.externalSends,0);
     assert.deepEqual(receipt.paymentRemainderPredecessor,{
       count:330,ledgerSha256:source.predecessor330.ledgerSha256,sameIdentity:true,sameBaseB7:true
+    });
+  }
+  if(upwardArchive){
+    assert.deepEqual(receipt.upwardArchivePredecessor,{
+      count:331,ledgerSha256:source.predecessor331.ledgerSha256,sameIdentity:true,sameBaseB7:true
     });
   }
   assert.equal(receipt.combinedAfterBusiness?.ledgerSha256,source.ledgerSha256);

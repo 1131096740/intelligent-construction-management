@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 ) ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -13,6 +13,7 @@ case ${5-} in
   --current-320) mode_args=(--current-320); count=329 ;;
   --text-direct-330) mode_args=(--text-direct-330); count=330 ;;
   --payment-remainder-331) mode_args=(--payment-remainder-331); count=331 ;;
+  --upward-archive-332) mode_args=(--upward-archive-332); count=332 ;;
 esac
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -23,7 +24,7 @@ scope=pol115-workbench
 node -e '
   const [file,sha,count]=process.argv.slice(1);
   const source=require(file);
-  const modes={"329":"current-320","330":"text-direct-330","331":"payment-remainder-331"};
+  const modes={"329":"current-320","330":"text-direct-330","331":"payment-remainder-331","332":"upward-archive-332"};
   if(source.sourceSha!==sha||source.migrationCount!==Number(count)||(modes[count]&&source.mode!==modes[count]))process.exit(1);
 ' "$prepared/source.json" "$sha" "$count"
 image=$(cat "$build/image.id")
@@ -74,5 +75,5 @@ node -e '
   const proof=require(process.argv[1]);
   const expected="POL115_WORKBENCH_ORIGINAL_"+process.argv[4]+"_PASSED";
   if(proof.status!==expected||proof.sourceSha!==process.argv[3])process.exit(1);
-  if(process.argv[4]==="331"&&(proof.issue430?.tests!==5||proof.issue430?.externalSends!==0))process.exit(1);
+  if(Number(process.argv[4])>=331&&(proof.issue430?.tests!==5||proof.issue430?.externalSends!==0))process.exit(1);
 ' "$work/receipt.json" "$scope" "$sha" "$count"

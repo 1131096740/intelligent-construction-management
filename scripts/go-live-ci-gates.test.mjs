@@ -10,7 +10,7 @@ import test from "node:test";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const localGate = join(root, "scripts", "ops", "run-local-release-gate.sh");
 
-test("331 workbench runs all five issue 430 scenarios with simulated SMS and preserves original workbench proof", async () => {
+test("331 and 332 workbench run all five issue 430 scenarios with simulated SMS and preserves original workbench proof", async () => {
   const lane = join(root, ".github/task12-install-295/contract-finance/workbench");
   const [entry, launcher, input, sms] = await Promise.all([
     readFile(join(lane, "workbench-entry.cjs"), "utf8"),
@@ -21,6 +21,8 @@ test("331 workbench runs all five issue 430 scenarios with simulated SMS and pre
   const { createHash } = await import("node:crypto");
   const digest = createHash("sha256").update(sms).digest("hex");
   assert.match(entry, /await runWorkbench[\s\S]*?if\(paymentRemainder\) await require\('\.\/issue430-approval-sms-ci\.cjs'\)\.runIssue430ApprovalSms\(context,receipt,source\)/u);
+  assert.match(entry, /withCombined332UpwardArchive[\s\S]*?receipt\.upwardArchivePredecessor/u);
+  assert.match(launcher, /--upward-archive-332\) mode_args=\(--upward-archive-332\); count=332/u);
   assert.match(entry, /receipt\.workbench\?\.tests,9/u);
   assert.match(launcher, /--network none[\s\S]*?issue430-approval-sms-ci\.cjs/u);
   assert.match(launcher, /proof\.issue430\?\.tests!==5\|\|proof\.issue430\?\.externalSends!==0/u);
