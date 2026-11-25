@@ -12,7 +12,7 @@
   "services/api/src/contract/contract-upward-legacy-readers.spec.ts": "e8661cf7685b150a88a2380a8b0e164bf7518ee75742f3d2f023f4bec25e5ba5",
   "services/api/src/contract/contract-upward-pending-save.ts": "7fd73c7e91985e51ec269bb31a7acf1674d3958ad04ed67612eab7c695dc4c31",
   "services/api/src/database/line-a-real-db.http.pg.spec.ts": "778ab372345d494f6bdef6881a8d3cce86d21b6d30f27ebdfefd79a54bc50683",
-  "services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts": "ce13c497e0986e9fa5396053cf47b1257299373a255630b1041e457c5ae718ee",
+  "services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts": "0c9740401caa70bb0ac0fd2499d317b97ba663a8e9dc2e5cba140f099c923800",
   "services/api/src/spot-procurement/spot-procurement-access.service.spec.ts": "2cd5d59494c94b3127f65d80c3cb6ded1dbd4fd6946629966a44c92c1ac2ff74",
   "services/api/src/spot-procurement/spot-procurement-access.service.ts": "7b04681b38f7e02c673164c66ee8e8d5454c678600fd4311d31a5676678a18f3"
 }

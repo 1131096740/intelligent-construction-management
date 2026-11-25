@@ -868,8 +868,7 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
     const incompleteProject = await prisma.project.create({
       data: {
         code: "POL109-A27",
-        name: "POL-109 经营资料缺口验收",
-        operatingLedgerEffectiveDate: new Date("2026-01-01")
+        name: "POL-109 经营资料缺口验收"
       }
     });
     const incompleteProjectId = incompleteProject.id;
@@ -898,6 +897,11 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
         changeReason: "POL-109 资料缺口验收"
       }
     });
+    await operatingProfile.updateProfile(
+      incompleteProjectId,
+      "seed-user-finance-director",
+      { operatingLedgerEffectiveDate: "2026-01-01" }
+    );
     const a27Fact = {
       ...commonFact,
       ...where,
