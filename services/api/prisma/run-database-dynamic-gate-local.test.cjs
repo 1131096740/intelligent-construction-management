@@ -193,13 +193,26 @@ test("task398 scenarios dispatch only their exact authorized modes", () => {
   }
 });
 
+test("the 330 gate dispatches application and finance through the exact isolated candidate", () => {
+  const manifest = loadManifest();
+  const sha = "e".repeat(40);
+  for (const [id, lane] of [["line_a_real_db", "line-a"], ["task398_shared_standard", "task398-standard"]]) {
+    const group = manifest.coveredGroups.find(item => item.id === id);
+    const resolved = resolveGroupCommand(group, { candidateSha: sha, migrationCount: 330 });
+    assert.equal(resolved.command, "bash");
+    assert.deepEqual(resolved.args.slice(1), [sha, lane, "--text-direct-330"]);
+    assert.match(resolved.args[0], /run-contract-adjacent-ci[.]sh$/u);
+    assert.throws(() => resolveGroupCommand(group, { migrationCount: 330 }), /完整候选 SHA/u);
+  }
+});
+
 test("public inventory distinguishes CI eligible tests from the explicitly manual operator", () => {
   const result = spawnSync(process.execPath, [runnerPath, "--validate-manifest"], { encoding: "utf8", env: { PATH: "", NODE_ENV: "test" } });
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.executed, false);
-  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 44, files: 102, tests: 620 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
-  assert.equal(report.coveredTests, 621);
+  assert.deepEqual(report.executionInventory, { ciEligible: { groups: 44, files: 103, tests: 622 }, manualOnly: { groups: 1, files: 1, tests: 1 } });
+  assert.equal(report.coveredTests, 623);
 });
 
 test("automatic-only lists the complete CI-eligible denominator and defers the manual operator", () => {
@@ -283,8 +296,8 @@ module.exports.executeAutomaticFixture = async argv => {
   assert.deepEqual(task398Shas, { task398_shared_standard: candidateSha, task398_browser: candidateSha, task398_browser_completion: candidateSha, task407_public_cash_handover: candidateSha, task409_principal_return: candidateSha, task410_company_proxy_repayment: candidateSha });
   assert.equal(receipt.executionScope, "automatic-only");
   assert.deepEqual(receipt.executionInventory.ciEligible, manifest.executionInventory.ciEligible);
-  assert.equal(receipt.coveredFiles, 102);
-  assert.equal(receipt.coveredTests, 620);
+  assert.equal(receipt.coveredFiles, 103);
+  assert.equal(receipt.coveredTests, 622);
   assert.deepEqual(receipt.deferredManualOnly, {
     groups: 1, files: 1, tests: 1, groupIds: ["enterprise_task01_entry"], executionStatus: "NOT_EXECUTED"
   });
@@ -556,19 +569,19 @@ test("manifest preserves source inventory and one separately invoked task01 oper
   const baseline = deriveMigrationBaseline(path.join(__dirname, "migrations"));
 
   assert.deepEqual(result, {
-    pendingFiles: 103,
-    fullyPendingSuites: 82,
+    pendingFiles: 104,
+    fullyPendingSuites: 83,
     partiallyPendingSuites: 21,
-    pendingTests: 621,
-    coveredFiles: 103,
-    coveredTests: 621,
+    pendingTests: 623,
+    coveredFiles: 104,
+    coveredTests: 623,
     remainingFiles: 0,
     remainingTests: 0,
     migrationCount: baseline.expectedDirectoryCount,
     terminalMigration: baseline.terminalMigration,
     terminalMigrationChecksum: baseline.terminalMigrationChecksum
   });
-  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 620);
+  assert.equal(manifest.coveredGroups.filter(group => group.id !== "enterprise_task01_entry").reduce((n, group) => n + group.pendingTests, 0), 622);
   assert.equal(manifest.coveredGroups.find(group => group.id === "enterprise_task01_entry").executionStatus, "NOT_EXECUTED");
 });
 
@@ -999,7 +1012,7 @@ test("manifest validation fails closed when inventory totals drift", () => {
 
   assert.throws(
     () => validateManifest(manifest),
-    /inventory\.coveredTests=26，派生值=621/u
+    /inventory\.coveredTests=26，派生值=623/u
   );
 });
 

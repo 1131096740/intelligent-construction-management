@@ -654,7 +654,24 @@ async function resolveLocalDocker(environment, image) {
   return { endpoint, imageId };
 }
 
+const current330Lanes = Object.freeze({
+  line_a_real_db: "line-a",
+  task398_shared_standard: "task398-standard"
+});
+
 function resolveGroupCommand(group, options = {}) {
+  if (options.migrationCount === 330 && Object.hasOwn(current330Lanes, group.id)) {
+    if (!/^[a-f0-9]{40}$/u.test(options.candidateSha ?? "")) fail("330 运行必须提供完整候选 SHA");
+    return {
+      command: "bash",
+      args: [
+        resolveRepositoryPath(".github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh", "330 PostgreSQL 隔离入口"),
+        options.candidateSha,
+        current330Lanes[group.id],
+        "--text-direct-330"
+      ]
+    };
+  }
   if (group.id === TASK01_GROUP) {
     if (!options.task01 || TASK01_FLAGS.some(flag => !options.task01[flag])) fail("任务01必须提供全部独立输入和确认串");
     return { command: process.execPath, args: [resolveRepositoryPath(TASK01_DRIVER, "task01 driver"),
@@ -786,14 +803,16 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
     childEnvironment.DATABASE_DYNAMIC_GATE_CANDIDATE_SHA = candidateSha;
     // The remaining runner owns preparation for both standalone and CI use.
     // No environment flag or persisted cache can bypass that preparation.
-    if (coveredGroups.some(group => group.id !== "remaining_dynamic_postgresql16")) {
+    const migrationCount = manifest.migrationBaseline.expectedDirectoryCount;
+    if (coveredGroups.some(group => group.id !== "remaining_dynamic_postgresql16" &&
+        !(migrationCount === 330 && Object.hasOwn(current330Lanes, group.id)))) {
       await runPreflight(childEnvironment);
     }
 
     for (const group of coveredGroups) {
       await assertRepositoryState(candidateSha, probeEnvironment);
       const groupStartedAt = Date.now();
-      const resolved = resolveGroupCommand(group);
+      const resolved = resolveGroupCommand(group, { candidateSha, migrationCount });
       const groupEnvironment = { ...childEnvironment };
       if (["task398_shared_standard", "task398_browser", "task398_browser_completion", "task407_public_cash_handover", "task409_principal_return", "task410_company_proxy_repayment"].includes(group.id)) groupEnvironment.TASK398_EXPECTED_SHA = candidateSha;
       if (group.id === POL113_POL115_GROUP) {

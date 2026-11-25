@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 103,
-    "fullyPendingSuites": 82,
+    "pendingFiles": 104,
+    "fullyPendingSuites": 83,
     "partiallyPendingSuites": 21,
-    "pendingTests": 621,
-    "coveredFiles": 103,
-    "coveredTests": 621,
+    "pendingTests": 623,
+    "coveredFiles": 104,
+    "coveredTests": 623,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -715,12 +715,17 @@
     },
     {
       "id": "task398_shared_standard",
-      "pendingTests": 1,
+      "pendingTests": 2,
       "testFiles": [
         {
           "path": "services/api/src/database/task16-shared-standard.http.pg.spec.ts",
           "pendingTests": 1,
           "suiteStatus": "partial_pending"
+        },
+        {
+          "path": "services/api/src/database/task16-text-agreement-payments.http.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
         }
       ],
       "runner": {
@@ -828,11 +833,11 @@
     },
     {
       "id": "line_a_real_db",
-      "pendingTests": 12,
+      "pendingTests": 13,
       "testFiles": [
         {
           "path": "services/api/src/database/line-a-real-db.http.pg.spec.ts",
-          "pendingTests": 12,
+          "pendingTests": 13,
           "suiteStatus": "fully_pending"
         }
       ],
@@ -1103,8 +1108,8 @@
   "executionInventory": {
     "ciEligible": {
       "groups": 44,
-      "files": 102,
-      "tests": 620
+      "files": 103,
+      "tests": 622
     },
     "manualOnly": {
       "groups": 1,
