@@ -182,12 +182,15 @@ JS
   fi
   if (( status != 0 || proof_status != 0 )) && [[ -s $out/$mode.json ]]; then
     node - "$out/$mode.json" >&2 <<'JS' || true
-const {failure, forwardFailedLedger}=require(process.argv[2]);
+const {failure, forwardFailedLedger, namedBank}=require(process.argv[2]);
 const result={};
 for (const field of ['stage','code','sqlstate','prismaCode']) {
   if (typeof failure?.[field]==='string' && /^[A-Z0-9_]{1,96}$/.test(failure[field])) {
     result[field]=failure[field];
   }
+}
+if (result.code==='BANK_295_ORIGINAL_SUITE_FAILED' && Array.isArray(namedBank?.failures?.failed)) {
+  result.bank=namedBank.failures;
 }
 if (result.stage==='INSTALL_320_CONTRACT_DETAIL_READERS' && Array.isArray(forwardFailedLedger)) {
   const migrations=forwardFailedLedger.filter(row=>row?.finished===false && row.rolledBack===false &&
