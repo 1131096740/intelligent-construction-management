@@ -409,11 +409,29 @@ if forward:
     }
     return;
   }''')
-            normal_result = 'receipt.status="GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1_331_PASSED";'
+            normal_result = "receipt.status='GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1_331_PASSED';"
             if text.count(normal_result) != 1:
                 raise ValueError('PROCUREMENT_331_A05_RESULT_ANCHOR')
             text = text.replace(normal_result, 'receipt.status=process.env.JG_PROCUREMENT_A05==="1"'
                 '?"PROCUREMENT_A05_331_PASSED":"GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1_331_PASSED";')
+            resource_anchor = '  let rawOutput="";'
+            counters_anchor = '        jestReport:report?"present":"missing",'
+            if text.count(resource_anchor) != 1 or text.count(counters_anchor) != 1:
+                raise ValueError('PROCUREMENT_331_GENERAL_RESOURCE_ANCHOR')
+            text = text.replace(resource_anchor, r'''  const resourceCounters=()=>Object.fromEntries(
+    [["memory.events",["oom","oom_kill","oom_group_kill"]],["pids.events",["max"]]].flatMap(([file,keys])=>{
+      const target="/sys/fs/cgroup/"+file;
+      if(!fs.existsSync(target))return [];
+      return fs.readFileSync(target,"utf8").split("\n").flatMap(line=>{
+        const [key,value]=line.split(" ");
+        return keys.includes(key)&&/^\d{1,12}$/u.test(value??"")?[[file+":"+key,Number(value)]]:[];
+      });
+    }));
+  const resourcesBefore=resourceCounters();
+  let rawOutput="";''')
+            text = text.replace(counters_anchor, counters_anchor + '''
+        scopeResourceChange:Object.fromEntries(Object.entries(resourceCounters()).flatMap(([key,value])=>
+          Object.hasOwn(resourcesBefore,key)?[[key,value-resourcesBefore[key]]]:[])),''')
     write(consumer,text.encode())
 for name in ['owner-observation.cjs', *(
     ['project-scope-http-report.cjs', 'project-scope-browser-report.cjs', 'project-scope-browser-pins.json']
