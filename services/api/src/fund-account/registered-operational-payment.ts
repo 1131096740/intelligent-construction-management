@@ -3,6 +3,7 @@ import { readRegisteredCompanyOwnedSources } from "./registered-company-owned-fu
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createHash, randomUUID } from "node:crypto";
+import { linkExpensePublicCashCost } from "../expense-claim/expense-public-cash-cost-link";
 import { currentPublicCashCustodian } from "./public-cash-custodian";
 import { parseMoneyCentsInput } from "../money/decimal-money";
 import { assertRegisteredPaymentActor, availableRegisteredBalance, RegisteredBalanceDecimal } from "../payment/registered-payment-funding";
@@ -11,6 +12,7 @@ export interface RegisteredOperationalFunding {
   scopeKey: string;
   expectedRegistrationId: string;
   sourceAllocations: Array<{ sourceBatchId: string; amountCents: string }>;
+  costAllocations?: Array<{ costImpactId: string; amountCents: string }>;
 }
 
 export type OperationalPaymentSource = "expense_claim_payment_execution" | "spot_procurement_payment_execution";
@@ -40,12 +42,26 @@ function validateFunding(input: OperationalPayment, funding: RegisteredOperation
       lines.reduce((sum, line) => sum + line.amountCents, 0n) !== input.amountCents) {
     throw new BadRequestException("资金来源必须逐笔明确，合计等于实际付款金额");
   }
+  const costAllocations = funding.costAllocations;
+  if (costAllocations && (funding.scopeKey !== "public_cash" || input.sourceType !== "expense_claim_payment_execution")) {
+    throw new BadRequestException("只有费用公共现金实付可记录原确认费用分摊");
+  }
+  const costLines = costAllocations?.map(line => ({
+    costImpactId: line.costImpactId,
+    amountCents: parseMoneyCentsInput(line.amountCents, "金额", "请填写有效的费用分摊金额")
+  })).sort((a, b) => a.costImpactId.localeCompare(b.costImpactId));
+  if (costLines && (!costLines.length || new Set(costLines.map(line => line.costImpactId)).size !== costLines.length ||
+      costLines.some(line => line.amountCents <= 0n) ||
+      costLines.reduce((sum, line) => sum + line.amountCents, 0n) > input.amountCents)) {
+    throw new BadRequestException("原确认费用应逐笔明确，合计不能超过公共现金实付金额");
+  }
   const payloadFingerprint = createHash("sha256").update(JSON.stringify([
     input.sourceType, input.executionId, input.actorUserId, input.projectId, input.originalDebtorCompanyId,
     input.amountCents.toString(), input.paidAt.toISOString(), funding.scopeKey, funding.expectedRegistrationId,
     lines.map(line => [line.sourceBatchId, line.amountCents.toString()]),
+    ...(costLines ? [costLines.map(line => [line.costImpactId, line.amountCents.toString()])] : []),
   ])).digest("hex");
-  return { lines, payloadFingerprint };
+  return { lines, costLines, payloadFingerprint };
 }
 
 type StoredOperationalPayer = { id: string; actualPayerCompanyId: string | null; originalDebtorCompanyId: string };
@@ -101,7 +117,7 @@ export async function appendRegisteredOperationalPayment(
 ) {
   const { projectId, originalDebtorCompanyId, funding, actorUserId, paidAt } = input;
   if (!projectId || !originalDebtorCompanyId) throw new ConflictException("项目或原债务公司尚未明确，请核对原单");
-  const { lines, payloadFingerprint } = validateFunding(input, funding);
+  const { lines, costLines, payloadFingerprint } = validateFunding(input, funding);
   const roles = await assertRegisteredPaymentActor(tx, actorUserId);
   const account = await tx.registeredFundAccount.findUnique({ where: { scopeKey: funding.scopeKey }, include: { company: true } });
   const isPublicCash = input.sourceType === "expense_claim_payment_execution" && funding.scopeKey === "public_cash";
@@ -164,6 +180,7 @@ export async function appendRegisteredOperationalPayment(
     actualPayerName: isPublicCash ? "公共现金" : company!.name, projectId, actorUserId, amountCents: input.amountCents, paidAt, payloadFingerprint,
     allocations: { create: lines },
   } });
+  if (costLines) await linkExpensePublicCashCost(tx, row.id, input.executionId, projectId, costLines);
   await tx.$executeRaw`SET CONSTRAINTS public."RegisteredOperationalPayment_conservation", public."FundAccountBalanceRegistration_operational_payment" IMMEDIATE`;
   return result(row);
 }

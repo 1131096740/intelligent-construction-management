@@ -993,6 +993,7 @@ model OperatingImpactEntry {
   executionAllocationLineId           String?
   createdAt                           DateTime                                    @default(now())
   fact                                OperatingFact                               @relation("OperatingFactImpacts", fields: [factId, projectId], references: [id, projectId], onDelete: Restrict)
+  expensePublicCashCostLinks          ExpensePublicCashCostLink[]
   clearingImpactLinks                 ClearingImpactLink[]                        @relation("ClearingImpactEntry")
   wageTakeoverImpactBridges           WageTakeoverLegacyImpactBridge[]
   necessaryExpenseReserveReplacements ProjectNecessaryExpenseReserveReplacement[]
@@ -7882,6 +7883,7 @@ model RegisteredOperationalPayment {
   actor                   User                                     @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
   allocations             RegisteredOperationalPaymentAllocation[]
   repayments              CompanyTransfer[]
+  expensePublicCashCosts  ExpensePublicCashCostLink[]
 
   @@index([projectId, originalDebtorCompanyId, actualPayerCompanyId], map: "RegisteredOperationalPayment_projectId_debtor_actualPayer_idx")
 }
@@ -7894,6 +7896,19 @@ model RegisteredOperationalPaymentAllocation {
   sourceBatch   FundAccountSourceBatch       @relation(fields: [sourceBatchId], references: [id], onDelete: Restrict)
 
   @@id([paymentId, sourceBatchId])
+}
+
+// Immutable link between one registered actual cash payment and its original expense cost line.
+model ExpensePublicCashCostLink {
+  id                   String                       @id @default(uuid())
+  operationalPaymentId String
+  costImpactId         String
+  amountCents          BigInt
+  operationalPayment   RegisteredOperationalPayment @relation(fields: [operationalPaymentId], references: [id], onDelete: Restrict)
+  costImpact           OperatingImpactEntry         @relation(fields: [costImpactId], references: [id], onDelete: Restrict)
+
+  @@unique([operationalPaymentId, costImpactId])
+  @@index([costImpactId])
 }
 
 model CompanyTransferOriginalDebtCorrection {

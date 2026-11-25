@@ -1498,6 +1498,7 @@ it.each(["reimbursement", "incidental_expense"])(
     const voucherFileId = "cash-keeper-voucher";
     const previousId = "00000000-0000-4000-8000-000000000001";
     const sourceBatchId = "00000000-0000-4000-8000-000000000002";
+    const costImpactId = "00000000-0000-4000-8000-000000000004";
     const claim = {
       id: "cash-claim", claimType, status: "approved_pending_payment", projectId: "project-1",
       companyEntityId: "claim-debtor", companyEntityNameSnapshot: "合成申请公司",
@@ -1529,7 +1530,12 @@ it.each(["reimbursement", "incidental_expense"])(
       findRecorded.mockResolvedValue(data);
       return data;
     });
+    const originalCosts = jest.fn().mockResolvedValue([{ id: costImpactId, amountCents: 800n }]);
+    const readLinks = jest.fn().mockResolvedValue([]);
+    const createLinks = jest.fn();
     Object.assign(tx, {
+      operatingImpactEntry: { findMany: originalCosts },
+      expensePublicCashCostLink: { groupBy: readLinks, createMany: createLinks },
       registeredFundAccount: { findUnique: findAccount, update: writeRevision },
       publicCashCustody: { findUnique: readCustody },
       fundAccountBalanceRegistration: {
@@ -1571,7 +1577,8 @@ it.each(["reimbursement", "incidental_expense"])(
     app.useGlobalPipes(createApiValidationPipe());
     const registeredFunding = {
       scopeKey: "public_cash", expectedRegistrationId: previousId,
-      sourceAllocations: [{ sourceBatchId, amountCents: "800" }]
+      sourceAllocations: [{ sourceBatchId, amountCents: "800" }],
+      costAllocations: [{ costImpactId, amountCents: "300" }]
     };
     try {
       await app.listen(0, "127.0.0.1");
@@ -1603,6 +1610,7 @@ it.each(["reimbursement", "incidental_expense"])(
       expect({ status: replay.status, body: await replay.json() }).toMatchObject({
         status: 201, body: { id: "cash-execution", paidAmountCents: "800", status: "paid" }
       });
+      expect((await post({ ...registeredFunding, costAllocations: [{ costImpactId, amountCents: "301" }] })).status).toBe(409);
       expect((await post({ ...registeredFunding, expectedRegistrationId: "00000000-0000-4000-8000-000000000003" })).status).toBe(409);
       expect(writeRevision).toHaveBeenCalledTimes(1);
       expect(createRegistration.mock.calls[0][0].data.balanceYuan.toFixed(4)).toBe("92.0000");
@@ -1615,6 +1623,15 @@ it.each(["reimbursement", "incidental_expense"])(
         actualPayerCompanyId: null, actualPayerName: "公共现金", originalDebtorCompanyId: claim.companyEntityId,
         allocations: { create: [{ sourceBatchId, amountCents: 800n }] }
       });
+      expect(originalCosts).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          projectId: claim.projectId, impactKind: "confirmed_cost",
+          fact: expect.objectContaining({ sourceBusinessId: claim.id, sourceType: "expense_claim_approval" })
+        })
+      }));
+      expect(createLinks).toHaveBeenCalledTimes(1);
+      expect(createLinks).toHaveBeenCalledWith({ data: [{ operationalPaymentId: createPayment.mock.calls[0][0].data.id,
+        costImpactId, amountCents: 300n }] });
       expect(appendSource).toHaveBeenCalledTimes(1);
       const payments = audit.record.mock.calls.filter(([, event]) =>
         event.action === "expense_claim.reimbursement.payment.record" || event.action === "incidental_expense.payment.record"
