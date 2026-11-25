@@ -2,13 +2,13 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && $5 == --current-320 ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 ) ) ]] || exit 64
 count=295
 mode=()
-if [[ $# == 5 ]]; then
-  count=329
-  mode=(--current-320)
-fi
+case ${5-} in
+  --current-320) mode=(--current-320); count=329 ;;
+  --text-direct-330) mode=(--text-direct-330); count=330 ;;
+esac
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -19,8 +19,10 @@ common="$repo/.github/task12-install-295/contract-finance/common"
 scope=pfq
 
 node -e '
-  const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==Number(process.argv[3])||(process.argv[3]==="329" && source.mode!=="current-320"))process.exit(1);
+  const [file,sha,count]=process.argv.slice(2);
+  const source=require(file);
+  const modes={"329":"current-320","330":"text-direct-330"};
+  if(source.sourceSha!==sha||source.migrationCount!==Number(count)||(modes[count]&&source.mode!==modes[count]))process.exit(1);
 ' "$prepared/source.json" "$sha" "$count"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")

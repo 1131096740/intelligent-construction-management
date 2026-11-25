@@ -3,7 +3,8 @@
 @@ -184,13 +184,26 @@
    return verifyPinnedInputs(historical, product, seal, stableRelease);
  }
-
+-
++
 -async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,enter,fromHistory){
 - const controls=fromHistory('./local-staged-migration-controls.cjs'),{createLocalTailQualification}=fromHistory('./local-staged-tail-qualification.cjs');
 +const pfqRecoveryModule='./task12-pfq-recovery.cjs';
@@ -92,7 +93,8 @@
 + if(recovery)await recovery.verify();
 + return {plan:migrationPlan,setup,materials,recovery};
  }
-
+-
++
 -function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic} = {}) {
 +function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic, cwd} = {}) {
    const result = spawnSync(file, args, {
@@ -102,7 +104,7 @@
    });
    if (result.status !== 0 && !allowFailure) {
      if (process.argv[2] === '--tls-probe' && typeof result.stderr === 'string') {
-@@ -260,7 +313,7 @@
+@@ -260,6 +313,6 @@
          .filter(reason => (result.stderr || '').toLowerCase().includes(reason.toLowerCase())),
      });
    }
@@ -110,12 +112,11 @@
 +  return {stdout:result.stdout, code:result.status,...(allowFailure?{stderr:result.stderr??""}:{}),
      ...(allowFailure && {scopePermissionDenied:/42501:[^\n]*permission denied for table jg_company_transfer_loan_repayment_scope_v1/u.test(result.stderr??'')})};
  }
-
 @@ -304,7 +357,11 @@
        {metadataRows:4134, verifiedFiles:318, subsetManifestSha256:subsetManifestSha} : {})}};
    const runId = randomUUID(), database = 'jg_task01_' + runId.replaceAll('-',''), started = Math.floor(Date.now()/1000);
    const root = fs.mkdtempSync('/tmp/jg394-'), data = path.join(root,'data');
-+  const pfqMode=['ORIGINAL_PFQ_EXACT_295','ORIGINAL_PFQ_EXACT_329'].includes(receipt.purpose)?'--pfq-'+receipt.lane+'-289-local':undefined;
++  const pfqMode=['ORIGINAL_PFQ_EXACT_295','ORIGINAL_PFQ_EXACT_329','ORIGINAL_PFQ_EXACT_330'].includes(receipt.purpose)?'--pfq-'+receipt.lane+'-289-local':undefined;
    const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000},
 +    ...(pfqPositiveModes.includes(pfqMode)?{pfqPositive:require(pfqPositiveFixtures)[pfqMode]}:{}),
 +    ...(Object.hasOwn(pfqConflicts,pfqMode)?{recoveryProfile:{module:pfqRecoveryModule,kind:pfqConflicts[pfqMode],prefix:114,terminal:115,
@@ -154,7 +155,8 @@
 +    const migrationLedgerMatches=(observed,expected,size=expected.length)=>equal(observed,
 +      retained ? retained.expectedLedger(expected,size) : expected.slice(0,size));
 +    const retained=installed.recovery&&require(plan.recoveryProfile.module);
-
+-
++
      const roleIdentity = receipt.databaseIdentity;
      const endpoint = new URL(`postgresql://${owner}@127.0.0.1:${port}/${database}`);
 @@ -445,7 +527,7 @@
@@ -240,19 +242,28 @@
        }
      }
      let cleanupLegacy;
-@@ -830,9 +912,9 @@
-         throw error;
+@@ -835,16 +917,16 @@
+           throw error;
+         }
+         current=await jsonSql(control.inspectSql());
+-        need(equal(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
++        need(migrationLedgerMatches(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
+           .every(key=>current[key]===roleIdentity[key]),'FORWARD_320_LEDGER_IDENTITY');
+-        if (forward320.textDirect && current.ledger.length===329) {
+-          const digest=hash(JSON.stringify(current.ledger));
++        if (forward320.textDirect && qualifiedLedger.length===329) {
++          const digest=hash(JSON.stringify(qualifiedLedger));
+           need(digest==='3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2' &&
+             equal(await jsonSql(finalSql),final),'TEXT_DIRECT_329_PREDECESSOR_CONTINUITY');
+           receipt.textDirectPredecessor={count:329,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true};
+         }
        }
-       const current=await jsonSql(control.inspectSql());
--      need(equal(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
-+      need(migrationLedgerMatches(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
-         .every(key=>current[key]===roleIdentity[key]),'FORWARD_320_LEDGER_IDENTITY');
 -      receipt.forward320={count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
 +      receipt.forward320={count:qualifiedLedger.length,ledgerSha256:hash(JSON.stringify(qualifiedLedger)),observedLedgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
        receipt.forward320.fileGuards=await jsonSql(`SELECT coalesce(jsonb_agg(jsonb_build_object(
          'name',t.tgname,'enabled',t.tgenabled='O','function',p.proname,'definer',p.prosecdef,'sha256',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')
        ) ORDER BY t.tgname),'[]'::jsonb) FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid
-@@ -842,6 +924,15 @@
+@@ -854,6 +936,15 @@
        receipt.forward320.sameBaseB7=true;
      }
      if (forward320 && !restore) await installForward320();
@@ -268,7 +279,7 @@
      if (consume) {
        let active = true;
        const onlyWhileOwned = () => {
-@@ -927,7 +1018,7 @@
+@@ -939,7 +1030,7 @@
          active = false;
        }
        const afterConsumer = await jsonSql(control.inspectSql());
@@ -277,7 +288,7 @@
        need(equal(await jsonSql(finalSql), final), 'CONSUMER_PROTECTED_CATALOG_CONTINUITY');
        if(cleanupLegacy){
          const legacy=await jsonSql(control.inspectSql(),{database:cleanupLegacy.database});
-@@ -972,9 +1063,10 @@
+@@ -984,9 +1075,10 @@
            need(equal(await jsonSql(multi.catalogSql),receipt.installOnly295.after),'MULTI_WITNESS_295_CATALOG_AFTER_CONSUMER');
            receipt.multiWitnessCatalogAfterBusiness=true;
          }
@@ -290,10 +301,11 @@
        receipt.business = 'CALLBACK_COMPLETED';
      }
    } finally {
-@@ -988,19 +1080,26 @@
+@@ -1000,19 +1092,26 @@
    }
  }
-
+-
++
 -async function installHistory(plan,root,port,credentials,sql,jsonSql,command,enter,fromHistory,stageTree,receipt){
 +async function installHistory(plan,root,port,credentials,sql,jsonSql,command,enter,fromHistory,stageTree,receipt,observePfqFailure){
  const {runId}=plan;
@@ -321,16 +333,17 @@
   const source={candidateSha:stageSha,sourceSealSha256:plan.source.witness.profile.sealSha256,profile:plan.source.witness.profile,tree:stageTree};
   const archive=fromHistory('./task16-current259-archive-install.cjs').beginNativeTask12ArchiveProtocol(JSON.stringify({source,completion:provisioned,serverPort:port}));
   const seven=archive.acceptBefore(await run('ARCHIVE_BEFORE',archive.beforeSql));
-@@ -1388,3 +1487,49 @@
-   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'cleanup');
- module.exports.withCombined320MultiWitnessForProfile=(receipt,consume,material)=>
-   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material),'profile');
+@@ -1423,3 +1522,51 @@
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,true),'cleanup');
+ module.exports.withCombined330MultiWitnessForProfile=(receipt,consume,material)=>
+   withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,true),'profile');
 +
 +
 +
 +async function withPfq(receipt,mode,material) {
 +  const current320=material!==undefined;
-+  const count=current320?329:295;
++  const textDirect=material?.mode==='text-direct-330';
++  const count=textDirect?330:current320?329:295;
 +  need(receipt.purpose==='ORIGINAL_PFQ_EXACT_'+count && mode==='--pfq-'+receipt.lane+'-289-local','PFQ_295_SCOPE');
 +  const pfqPositiveMode=pfqPositiveModes.includes(mode)?mode:undefined;
 +  const pfqConflict=Object.hasOwn(pfqConflicts,mode)?pfqConflicts[mode]:undefined;
@@ -365,8 +378,9 @@
 +    assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,current320))).stdout.trim()));
 +    receipt.pfqPostconsume={count,exactB7:true};
 +  };
++  const install=textDirect?module.exports.withCombined330TextAgreement:module.exports.withCombined320ContractPayment;
 +  return current320
-+    ? module.exports.withCombined320ContractPayment(receipt,consume,material)
++    ? install(receipt,consume,material)
 +    : module.exports.withCombined295MultiWitness(receipt,consume);
 +}
 +module.exports.withPfq295=(receipt,mode)=>withPfq(receipt,mode);
