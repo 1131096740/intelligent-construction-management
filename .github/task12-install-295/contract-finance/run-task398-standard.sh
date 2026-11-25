@@ -38,7 +38,7 @@ if [[ $count == 330 ]]; then
   runner_sha() { node -e 'const fs=require("node:fs"),{createHash}=require("node:crypto"); console.log(createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"))' "$runner"; }
   [[ $(runner_sha) == 08bacc09e2870c23bc4e73ff5d6473ae1a64c005d3ed92790713609406369b96 ]] || exit 65
   patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-text-direct-330.patch"
-  [[ $(runner_sha) == 41f9b7dbed6fdae32dde82f71075e3b8df5a6e5013b74a1157d34476773cd1dd ]] || exit 65
+  [[ $(runner_sha) == fd504339c13f2feb1e42be5d3074b064ad5f99d82a6eef6d03b12f78e5db61ea ]] || exit 65
 fi
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
