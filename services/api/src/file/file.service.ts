@@ -2820,34 +2820,32 @@ export class FileService {
       }
       throw new ForbiddenException("无权查看互转申请依据");
     }
-    const bankVerificationEvidence=await tx.contractBankVerificationRequest?.findFirst({where:{OR:[{evidenceFileId:file.id},{holderEvidenceFileId:file.id}]},select:{projectId:true}});
-    if(bankVerificationEvidence){if(!bankVerificationEvidence.projectId){if((await companyTransferRoles(tx,actorUserId)).some(r=>["finance_staff","finance_director"].includes(r)))return;throw new ForbiddenException("无权访问公司自有资金核验依据");}if(await this.hasProjectRole(tx,actorUserId,bankVerificationEvidence.projectId,["finance_staff","finance_director"]))return;throw new ForbiddenException("当前账号无权访问银行核验依据");}
-    const classificationEvidence=await tx.contractProxyExecution?.findFirst({where:{evidenceFileId:file.id},select:{projectId:true}})
-      ??await tx.upwardContractAmountRevision?.findFirst({where:{evidenceFileId:file.id},select:{projectId:true}});
-    if(classificationEvidence){
-      if(await this.hasProjectRole(tx,actorUserId,classificationEvidence.projectId,["finance_staff","finance_director","contract_director"]))return;
+    // Binding lookups must not select the primary key implicitly under the archive reader's column grants.
+    const readBinding = async <Row>(query: Prisma.Sql): Promise<Row | undefined> =>
+      (await tx.$queryRaw<Row[]>(Prisma.sql`/* private_file_project_binding */ ${query}`))[0];
+    const bankVerificationEvidence = await readBinding<{ projectId: string | null }>(Prisma.sql`
+      SELECT "projectId" FROM public."ContractBankVerificationRequest"
+      WHERE "evidenceFileId" = ${file.id} OR "holderEvidenceFileId" = ${file.id} LIMIT 1
+    `);
+    const financeRoles = ["finance_staff", "finance_director"] as const;
+    if (bankVerificationEvidence) {
+      if (!bankVerificationEvidence.projectId) {
+        if ((await companyTransferRoles(tx, actorUserId)).some(role => role === "finance_staff" || role === "finance_director")) return;
+        throw new ForbiddenException("无权访问公司自有资金核验依据");
+      }
+      if (await this.hasProjectRole(tx, actorUserId, bankVerificationEvidence.projectId, financeRoles)) return;
+      throw new ForbiddenException("当前账号无权访问银行核验依据");
+    }
+    const classificationEvidence = await readBinding<{ projectId: string }>(Prisma.sql`
+      SELECT "projectId" FROM public."ContractProxyExecution" WHERE "evidenceFileId" = ${file.id} LIMIT 1
+    `) ?? await readBinding<{ projectId: string }>(Prisma.sql`
+      SELECT "projectId" FROM public."UpwardContractAmountRevision" WHERE "evidenceFileId" = ${file.id} LIMIT 1
+    `);
+    if (classificationEvidence) {
+      if (await this.hasProjectRole(tx, actorUserId, classificationEvidence.projectId, [...financeRoles, "contract_director"])) return;
       throw new ForbiddenException("当前账号无权访问本项目核验依据");
     }
 
-    const affiliateBusinessClients = tx as unknown as {
-      projectAffiliateContractFact?: {
-        findFirst(args: unknown): Promise<{ projectId: string } | null>;
-      };
-      projectAffiliateSettlementFact?: {
-        findFirst(args: unknown): Promise<{ projectId: string } | null>;
-      };
-      projectAffiliatePaymentFact?: {
-        findFirst(args: unknown): Promise<{ projectId: string } | null>;
-      };
-      projectAffiliateBusinessEvidence?: {
-        findFirst(
-          args: unknown
-        ): Promise<{ projectId: string; businessType: string } | null>;
-      };
-      projectAffiliateCompanyContract?: {
-        findFirst(args: unknown): Promise<{ projectId: string } | null>;
-      };
-    };
     const [
       affiliateContractFact,
       affiliateSettlementFact,
@@ -2855,43 +2853,26 @@ export class FileService {
       affiliateSupplementalEvidence,
       affiliateCompanyContract
     ] = await Promise.all([
-      affiliateBusinessClients.projectAffiliateContractFact?.findFirst({
-        where: {
-          OR: [
-            { evidenceFileId: file.id },
-            { confirmationSignatureFileId: file.id }
-          ]
-        },
-        select: { projectId: true }
-      }) ?? null,
-      affiliateBusinessClients.projectAffiliateSettlementFact?.findFirst({
-        where: {
-          OR: [
-            { evidenceFileId: file.id },
-            { confirmationSignatureFileId: file.id }
-          ]
-        },
-        select: { projectId: true }
-      }) ?? null,
-      affiliateBusinessClients.projectAffiliatePaymentFact?.findFirst({
-        where: {
-          OR: [
-            { evidenceFileId: file.id },
-            { confirmationSignatureFileId: file.id }
-          ]
-        },
-        select: { projectId: true }
-      }) ?? null,
-      affiliateBusinessClients.projectAffiliateBusinessEvidence?.findFirst({
-        where: { fileId: file.id },
-        select: { projectId: true, businessType: true }
-      }) ?? null,
-      affiliateBusinessClients.projectAffiliateCompanyContract?.findFirst({
-        where: {
-          OR: [{ fileId: file.id }, { confirmationSignatureFileId: file.id }]
-        },
-        select: { projectId: true }
-      }) ?? null
+      readBinding<{ projectId: string }>(Prisma.sql`
+        SELECT "projectId" FROM public."ProjectAffiliateContractFact"
+        WHERE "evidenceFileId" = ${file.id} OR "confirmationSignatureFileId" = ${file.id} LIMIT 1
+      `),
+      readBinding<{ projectId: string }>(Prisma.sql`
+        SELECT "projectId" FROM public."ProjectAffiliateSettlementFact"
+        WHERE "evidenceFileId" = ${file.id} OR "confirmationSignatureFileId" = ${file.id} LIMIT 1
+      `),
+      readBinding<{ projectId: string }>(Prisma.sql`
+        SELECT "projectId" FROM public."ProjectAffiliatePaymentFact"
+        WHERE "evidenceFileId" = ${file.id} OR "confirmationSignatureFileId" = ${file.id} LIMIT 1
+      `),
+      readBinding<{ projectId: string; businessType: string }>(Prisma.sql`
+        SELECT "projectId", "businessType" FROM public."ProjectAffiliateBusinessEvidence"
+        WHERE "fileId" = ${file.id} LIMIT 1
+      `),
+      readBinding<{ projectId: string }>(Prisma.sql`
+        SELECT "projectId" FROM public."ProjectAffiliateCompanyContract"
+        WHERE "fileId" = ${file.id} OR "confirmationSignatureFileId" = ${file.id} LIMIT 1
+      `)
     ]);
     const affiliateFileAccess = affiliateCompanyContract
       ? {

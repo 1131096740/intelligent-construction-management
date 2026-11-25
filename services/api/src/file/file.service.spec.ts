@@ -128,6 +128,17 @@ function legacyFileTransaction<T extends object>(transaction: T): T {
           const lookup = Reflect.get(target, "expenseAttachmentBinding", target);
           return typeof lookup === "function" ? lookup(input.values[0]) : [];
         }
+        if (sql?.startsWith("/* private_file_project_binding */")) {
+          const shape = /SELECT "projectId"(, "businessType")? FROM public\."([A-Za-z]+)" WHERE "([A-Za-z]+)" = \?(?: OR "([A-Za-z]+)" = \?)? LIMIT 1$/u.exec(sql);
+          const values = input?.values;
+          if (args.length || !shape || !Array.isArray(values) ||
+            values.length !== (shape[4] ? 2 : 1) ||
+            typeof values[0] !== "string" || values.some(value => value !== values[0])) {
+            throw new Error("Unsupported project binding projection");
+          }
+          const lookup = Reflect.get(target, "projectFileBinding", target);
+          return typeof lookup === "function" ? lookup(shape[2], values[0]) : [];
+        }
         const original = Reflect.get(target, property, target);
         if (typeof original !== "function") throw new Error("Legacy file fixture has no adapter for this SQL query");
         return Reflect.apply(original,target,[query,...args]);
@@ -1705,6 +1716,29 @@ describe("FileService", () => {
         }
       ).assertCanDownloadFileObject(legacyFileTransaction(tx), { id: "expense-file-1", uploadedByUserId: "uploader-1" }, "stranger-1")
     ).rejects.toThrow("当前账号无权下载该费用附件");
+  });
+
+  it("requires a project finance role even when the requester uploaded the bank verification evidence", async () => {
+    const service = new FileService(
+      {} as PrismaService,
+      audit as unknown as AuditService,
+      storage as unknown as PrivateFileStorage
+    );
+    const projectFileBinding = jest.fn().mockResolvedValue([{ projectId: "project-1" }]);
+    const tx = legacyFileTransaction({
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      projectFileBinding,
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) },
+      position: { findMany: jest.fn().mockResolvedValue([]) }
+    });
+
+    await expect(service["assertCanDownloadFileObject"](
+      tx as never,
+      { id: "bank-evidence-1", uploadedByUserId: "uploader-1" } as never,
+      "uploader-1"
+    )).rejects.toThrow("当前账号无权访问银行核验依据");
+    expect(projectFileBinding.mock.calls).toEqual([["ContractBankVerificationRequest", "bank-evidence-1"]]);
   });
 
   it("allows a receipt-only file after checking that no other business binding exists", async () => {
