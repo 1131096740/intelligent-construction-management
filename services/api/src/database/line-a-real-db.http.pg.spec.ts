@@ -311,7 +311,8 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
       originalName: "零阶段合同已签补充协议.pdf", mimeType: "application/pdf", sizeBytes: bytes.length,
       uploadedByUserId: ids.staff, contentSha256: sha(bytes), storageStatus: "active" } });
     const pending = await call("staff", "/contracts/" + capped.version.id + "/signed-changes", {
-      fileId: appendix.id, summary: "核对零阶段服务合同付款约定", paymentAgreementText: supplement
+      fileId: appendix.id, summary: "核对零阶段服务合同付款约定",
+      amountDeltaYuan: "0.0000", paymentAgreementText: supplement
     });
     expect(pending.status).toBe(201);
     expect((await call("director", "/contracts/" + capped.version.id + "/signed-changes/" + pending.body.id + "/review", {
