@@ -132,8 +132,13 @@ describePg("A05 综合采购同案身份与委托公开 HTTP / PostgreSQL 16", (
 
     expect(await duties(outgoing.token)).toMatchObject({ status: 200, body: { reviewDuties: [{ nodeIndex: 0 }] } });
     const removal = { operation: "remove", scope: "global", roleKey: "comprehensive_director", userId: outgoing.id };
-    const preview = await request<{ canApply: boolean; snapshotHash: string }>(chairman.token, "/organization/role-changes/preview", "POST", removal);
-    expect(preview).toMatchObject({ status: 201, body: { canApply: true } });
+    const preview = await request<{ canApply: boolean; snapshotHash: string; summary?: { blockingInstances: number };
+      blockingIssues?: Array<{ code: string }> }>(chairman.token, "/organization/role-changes/preview", "POST", removal);
+    if (preview.status !== 201 || !preview.body.canApply) {
+      const issues = preview.body.blockingIssues?.map(issue => issue.code).filter(code => /^[a-z_]{1,50}$/u.test(code));
+      const count = preview.body.summary?.blockingInstances;
+      throw new Error(`A05_ROLE_REMOVAL_PREVIEW ${preview.status} ${Number.isSafeInteger(count) ? count : "-"} ${issues?.join(",") || "-"}`);
+    }
     expect((await request(chairman.token, "/organization/role-changes/apply", "POST", {
       ...removal, snapshotHash: preview.body.snapshotHash, confirmationPassword: password
     })).status).toBe(201);

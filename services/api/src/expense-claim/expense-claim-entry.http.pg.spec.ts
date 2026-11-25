@@ -648,7 +648,9 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
         const signatureImages = pdf.getPages().flatMap(page =>
           page.node.Resources()?.lookupMaybe(PDFName.of("XObject"), PDFDict)?.keys() ?? []
         );
-        expect(signatureImages).toHaveLength(count);
+        if (signatureImages.length !== count) {
+          throw new Error(`A04_PDF_SIGNATURE_IMAGES ${claimType} ${count} ${signatureImages.length}`);
+        }
       }
       const submitted = await request(`${path}/submission`, {});
       expect(submitted.status).toBe(201);

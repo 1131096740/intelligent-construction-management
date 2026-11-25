@@ -458,6 +458,7 @@ async function main(args) {
             frame: /expense-claim-entry[.]http[.]pg[.]spec[.]ts:(\d{1,5}):(\d{1,4})/u.exec(message)?.slice(1).map(Number),
             status: /Received:[\s\S]{0,300}?"status":\s*([1-5][0-9]{2})/u.exec(message)?.[1],
             prisma: /\bP[0-9]{4}\b/u.exec(message)?.[0],
+            signatureImages: /A04_PDF_SIGNATURE_IMAGES (reimbursement|incidental_expense) ([0-9]{1,2}) ([0-9]{1,2})/u.exec(message)?.slice(1),
             kind: Object.entries({
               compile: /\bTS[0-9]{4}\b/u,
               module: /Cannot find module/u,

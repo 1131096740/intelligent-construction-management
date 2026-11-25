@@ -399,7 +399,8 @@ if forward:
       const report=fs.existsSync(reportFile)?JSON.parse(fs.readFileSync(reportFile,"utf8")):null;
       const assertion=report?.testResults?.[0]?.assertionResults?.[0]?.failureMessages?.join(" ")??"";
       receipt.approvalA05={exit:result.status,signal:result.signal,passed:report?.numPassedTests,failed:report?.numFailedTests,
-        frame:/task426-a05-general-procurement[.]http[.]pg[.]spec[.]ts:(\d{1,5}):(\d{1,4})/u.exec(assertion)?.slice(1)};
+        frame:/task426-a05-general-procurement[.]http[.]pg[.]spec[.]ts:(\d{1,5}):(\d{1,4})/u.exec(assertion)?.slice(1),
+        roleRemovalPreview:/A05_ROLE_REMOVAL_PREVIEW ([1-5][0-9]{2}) (\d{1,4}|-) ([a-z_,]{1,250}|-)/u.exec(assertion)?.slice(1)};
       condition(result.status===0&&report?.numTotalTests===1&&report?.numPassedTests===1,"PROCUREMENT_331_A05_JEST");
     }''')
     write(consumer,text.encode())
