@@ -82,7 +82,9 @@ if(Array.isArray(receipt.jestDiagnostic?.failed)){
     frames:Array.isArray(row?.frames)?row.frames.filter(frame=>Array.isArray(frame)&&
       frame.length===2&&frame.every(count)).slice(0,4):[],
     statuses:Array.isArray(row?.statuses)?row.statuses.filter(value=>Number.isInteger(value)&&
-      value>=100&&value<=599).slice(0,4):[]
+      value>=100&&value<=599).slice(0,4):[],
+    signedSettlementFailure:Array.isArray(row?.signedSettlementFailure)?row.signedSettlementFailure
+      .filter(value=>typeof value==='string'&&/^POL114_SIGNED_SETTLEMENT_[A-Z0-9_]{1,80}$/u.test(value)).slice(0,3):undefined
   }));
 }
 const lanes=mode==='pol114'?['layout','settlement']:['project'];

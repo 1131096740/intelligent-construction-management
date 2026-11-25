@@ -38,6 +38,7 @@ function createSignedSettlementQualification(databaseUrl, { existingReadWitness 
       public."PaymentExecutionRefund", public."FileObject", public."AuditLog", public."OperatingFact", public."OperatingImpactEntry", public."ProjectCloseAggregate",
       public."ContractArchiveFile", public."ContractArchiveEvidenceFile", public."SettlementArchiveFile" TO ${role}`,
     `GRANT SELECT ("id", "settlementId", "fileId", "purpose", "status", "generationStatus", "confirmedAt") ON public."SettlementSignedDocument" TO ${role}`,
+    `GRANT SELECT ("id", "contractId", "contractVersionId", "status", "versionNo", "originalText") ON public."PaymentTermsVersion" TO ${role}`,
     // FileObject INSERT invokes both retained-file checks as this restricted session.
     `GRANT SELECT ("fileId", "objectKey") ON public."ContractEconomicReviewFileReference" TO ${role}`,
     `GRANT SELECT ("attachmentFileId", "correctionType") ON public."ContractTakeoverCorrection" TO ${role}`,
