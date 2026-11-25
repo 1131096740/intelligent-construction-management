@@ -1341,6 +1341,54 @@ describe("OPS-12 施工企业已付与项目对外支付成对口径", () => {
     })
   ];
 
+  it("业主结算与到账100、施工企业转入我方80、确认成本60，各自按原口径累计", () => {
+    const result = reduceOperatingProjection({
+      ...context,
+      facts: [
+        facts[0],
+        fact({
+          id: "owner-receipt-100",
+          sourceType: "project_upstream_fund_fact",
+          factKind: "fund_movement",
+          amountCents: 10000n,
+          impacts: [
+            { id: "owner-receivable-paid", impactKind: "receivable_decrease", amountCents: 10000n, direction: "decrease" },
+            { id: "owner-receipt-funds", impactKind: "construction_enterprise_funds_increase", amountCents: 10000n, direction: "increase" }
+          ]
+        }),
+        fact({
+          id: "affiliate-remit-80",
+          sourceType: "project_upstream_fund_fact",
+          factKind: "fund_movement",
+          amountCents: 8000n,
+          impacts: [
+            { id: "affiliate-transfer-out", impactKind: "construction_enterprise_funds_decrease", amountCents: 8000n, direction: "decrease" },
+            { id: "affiliate-transfer-in", impactKind: "company_project_funds_increase", amountCents: 8000n, direction: "increase" }
+          ]
+        }),
+        fact({
+          id: "downstream-cost-60",
+          sourceType: "signed_contract_settlement",
+          factKind: "downstream_settlement",
+          amountCents: 6000n,
+          impacts: [
+            { id: "confirmed-cost", impactKind: "confirmed_cost", amountCents: 6000n, direction: "increase" }
+          ]
+        })
+      ]
+    });
+
+    expect(result.operating).toMatchObject({ confirmedIncomeCents: "10000", confirmedCostCents: "6000", receivableCents: "0" });
+    expect(result.profitAndLoss.currentOperatingProfitCents).toBe("4000");
+    expect(result.actualFunds).toMatchObject({
+      constructionEnterpriseFundsCents: "2000",
+      companyProjectFundsCents: "8000",
+      netProjectCashPositionCents: "10000",
+      constructionEnterprisePaidCents: "8000",
+      projectExternalPaidCents: "0"
+    });
+  });
+
   it("施工企业已付80、项目对外支付70，内部转款50不重复计入对外支付", () => {
     const result = reduceOperatingProjection({ ...context, facts });
     expect(result.operating.confirmedIncomeCents).toBe("10000");

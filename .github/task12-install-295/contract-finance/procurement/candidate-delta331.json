@@ -75,6 +75,11 @@
     "candidate": "1f31e938cc1e120cab49cb6c2758360266defc6969c959691453f23764c02781"
   },
   {
+    "path": "services/api/src/operating-projection/operating-projection.reducer.spec.ts",
+    "expected": "06a294fec93f7e014734a80e973c804b35379e0f785b7b557723d7713f8610df",
+    "candidate": "5b1a8497d2dda10c5006847d94dd4bff2d89bd34bacde681be3166348989600f"
+  },
+  {
     "path": "services/api/src/organization/permission-impact.service.spec.ts",
     "expected": "96de27b5bbceb11fbf93b358193455268d3d7ea6b581c0bf121293fac689878b",
     "candidate": "4f02a58903a661173cd02d680b2099c76a1f19bfeb26b18c5330dfa377397814"
