@@ -68,6 +68,7 @@ async function verify(scope, context, ledgerCount = 295, settlementReadKey) {
           const knownGroups = /\/(affiliate-contract-facts|affiliate-company-contracts|affiliate-settlement-facts|contract-proxy-executions|fund-executions|contract-bank-verifications|upward-receipt-matches|contract-relationship-ledger)(?:[/?]|$)/u;
           const exactStatus = /(?:状态码\s+|POST \/contracts\/[^/\s]+\/approval: |\b(?:upload|[a-z_]+ \/[^\s]+:) )([1-5][0-9]{2})/u.exec(clean)?.[1];
           const signedResponse = /\bPOL114_SIGNED_SETTLEMENT_HTTP_([1-5][0-9]{2})_(UNCLASSIFIED|OPERATIONAL_WRITE_FREEZE_ACTIVE|OPERATIONAL_WRITE_FREEZE_ROUTE_UNCLASSIFIED|OLD_WRITE_ENTRY_RETIRED)\b/u.exec(clean);
+          const reviewOutcomes = /POL114_SIGNED_SETTLEMENT_REVIEW_OUTCOMES ([A-Z0-9_ ]{1,165}) \| ([A-Z0-9_ ]{1,165})/u.exec(clean);
           const signedQuery = /\bPOL114_SIGNED_SETTLEMENT_QUERY_([0-9A-Z]{5}|EADDRINUSE|EACCES|ECONNREFUSED|UNCLASSIFIED)\b/u.exec(clean)?.[1];
           const expected = /Expected:\s+([1-5][0-9]{2})/u.exec(clean)?.[1];
           const received = /Received:\s+([1-5][0-9]{2})/u.exec(clean)?.[1];
@@ -79,6 +80,7 @@ async function verify(scope, context, ledgerCount = 295, settlementReadKey) {
             requestGroup: failedRequest ? knownGroups.exec(failedRequest[2])?.[1] : undefined,
             responseFingerprint: failedRequest ? createHash("sha256").update(failedRequest[4]).digest("hex") : undefined,
             status: exactStatus ? Number(exactStatus) : undefined,
+            reviewOutcomes: reviewOutcomes?.slice(1).map(outcome => outcome.trim()),
             signedSettlement: signedResponse ? { status: Number(signedResponse[1]), code: signedResponse[2], query: signedQuery } : undefined,
             expected: expected ? Number(expected) : undefined,
             received: received ? Number(received) : undefined,
