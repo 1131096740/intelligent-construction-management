@@ -30,16 +30,30 @@ fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
 [[ $(node "$finance/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-adjacent-$lane.XXXXXXXX")
-node - "$plan/finance-adjacent-profiles.json" "$prior" "$workspace" "$lane" > "$work/mounts.tsv" <<'JS'
-const [pins,prior,workspace,lane]=process.argv.slice(2),profile=require(pins)[lane];
+node - "$plan/finance-adjacent-profiles.json" "$prior" "$workspace" "$lane" "$root" "$sha" "$work" ${mode_args[@]+"${mode_args[@]}"} > "$work/mounts.tsv" <<'JS'
+const [pins,prior,workspace,lane,repo,sha,work,mode]=process.argv.slice(2),profile=require(pins)[lane];
 const fs=require('node:fs'),{createHash}=require('node:crypto'),assert=require('node:assert/strict');
-const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const {execFileSync}=require('node:child_process');
+const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+const hash=file=>digest(fs.readFileSync(file));
 const runner=prior+'/'+profile.runner;
 assert.equal(hash(runner),profile.runnerSha256);
 console.log(runner+'\t'+'/qualification/'+profile.runner);
 const suite=profile.fixture?prior+'/fixtures/invoice-ledger.postgres.spec.ts':workspace+'/services/api/'+profile.suite;
 assert.equal(hash(suite),profile.suiteSha256);
 if(profile.fixture)console.log(suite+'\t'+'/qualification/workspace/services/api/'+profile.suite);
+if (mode==='--current-320' && profile.legacySeed) {
+  const {revision,files}=profile.legacySeed;
+  const dir='services/api/src/fund-execution/';
+  execFileSync('git',['-C',repo,'merge-base','--is-ancestor',revision,sha]);
+  for(const [source,{fixture,sha256}] of Object.entries(files)) {
+    const bytes=execFileSync('git',['-C',repo,'show',revision+':'+dir+source]);
+    assert.equal(digest(bytes),sha256,'V7_PRE_CUTOVER_SOURCE');
+    const local=work+'/'+fixture;
+    fs.writeFileSync(local,bytes,{flag:'wx',mode:0o644});
+    console.log(local+'\t'+'/qualification/workspace/'+dir+fixture);
+  }
+}
 JS
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL

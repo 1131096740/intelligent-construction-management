@@ -54,6 +54,7 @@ const optionLoading = ref(false);
 const errorMessage = ref("");
 const cases = ref<FundExecutionCaseListItem[]>([]);
 const observationOptions = ref<FundExecutionObservationOption[]>([]);
+const reversalObservations = ref<FundExecutionObservationOption[]>([]);
 const reversalOptions = ref<FundExecutionReversalOption[]>([]);
 const selectedCase = ref<FundExecutionCaseListItem | null>(null);
 const selectedEntrySnapshots = ref<FundExecutionEntrySnapshot[]>([]);
@@ -97,8 +98,9 @@ const createModeOptions = [
   { label: "初始待分类", value: "quarantine" },
   { label: "反向执行", value: "reversal" }
 ];
+const currentObservations = computed(() => createForm.mode === "reversal" ? reversalObservations.value : observationOptions.value);
 const observationSelectOptions = computed(() =>
-  observationOptions.value.map((option) => ({
+  currentObservations.value.map((option) => ({
     value: option.selectionRef,
     label: option.summary,
     disabled: selectionIsExpired(option.expiresAt)
@@ -182,13 +184,15 @@ async function loadWorkbench() {
   loading.value = true;
   errorMessage.value = "";
   try {
-    const [caseRows, observations, reversals] = await Promise.all([
+    const [caseRows, observations, reversalBankOptions, reversals] = await Promise.all([
       fetchFundExecutionCases(),
       fetchFundExecutionObservationOptions("fund_execution_case"),
+      fetchFundExecutionObservationOptions("fund_execution_reversal"),
       fetchFundExecutionReversalOptions()
     ]);
     cases.value = caseRows;
     observationOptions.value = observations;
+    reversalObservations.value = reversalBankOptions;
     reversalOptions.value = reversals;
     refreshSelectedCase(caseRows);
   } catch (error) {
@@ -218,7 +222,7 @@ function changeCreateMode() {
 
 async function submitCreate() {
   if (submitting.value) return;
-  const observation = observationOptions.value.find(
+  const observation = currentObservations.value.find(
     ({ selectionRef }) => selectionRef === createForm.observationSelectionRef
   );
   if (

@@ -2,11 +2,11 @@ import {FundExecutionService} from "./fund-execution.service";
 import {AuthService} from "../auth/auth.service";
 import {hash} from "bcryptjs";
 
-async function fixture(creator = "finance", submitter = "finance") {
+async function fixture(creator = "finance", submitter = "finance", direction = "inflow") {
   const db = {
     $queryRaw: async (query: {strings: readonly string[]}) => {
       const sql=query.strings.join("");
-      if(sql.includes('FROM "FundExecutionCase"'))return [{id:"revision-1",caseKey:"case-1",status:"submitted",approvalInstanceId:"approval-1",createdByUserId:creator,submittedByUserId:submitter}];
+      if(sql.includes('FROM "FundExecutionCase"'))return [{id:"revision-1",caseKey:"case-1",status:"submitted",executionKind:"bank_transaction",direction,approvalInstanceId:"approval-1",createdByUserId:creator,submittedByUserId:submitter}];
       if(sql.includes('FROM "ApprovalInstance"'))return [{id:"approval-1",status:"in_progress",currentNodeIndex:0,flowType:"fund_execution_case.approve",businessType:"fund_execution_case",businessId:"case-1",applicantUserId:submitter,frozenNodes:[{name:"财务主管",mode:"any",roleKeys:["finance_director"]}]}];
       if(sql.includes('FROM "UserPosition"'))return [{key:"finance_director"}];
       return [];
@@ -37,4 +37,12 @@ it("资金创建人使用本人密码确认后只冻结自审原因，绝不留�
 it("非创建人及提交人的有效审批人保持普通确认路径", async () => {
   const {service} = await fixture("creator", "submitter");
   await expect(service.reviewApproval("finance", {caseId:"case-1",action:"return_to_applicant",comment:"退回修改"})).resolves.toMatchObject({status:"returned_to_applicant"});
+});
+
+it("历史工资出款审批仅保留退回，不再允许通过",async()=>{
+  const {service,db}=await fixture("creator","submitter","outflow");
+  await expect(service.reviewApproval("finance",{caseId:"case-1",action:"approve"})).rejects.toMatchObject({status:410});
+  expect(db.approvalActionLog.create).not.toHaveBeenCalled();
+  expect(db.approvalInstance.update).not.toHaveBeenCalled();
+  await expect(service.reviewApproval("finance",{caseId:"case-1",action:"return_to_applicant",comment:"停止办理后保留原记录"})).resolves.toMatchObject({status:"returned_to_applicant"});
 });

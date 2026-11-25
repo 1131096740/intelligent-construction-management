@@ -7,7 +7,20 @@
     "suite": "src/fund-execution/fund-execution-service.pg.spec.ts",
     "runnerSha256": "9341877301d1bd6268cb3a4871884666e3c835b0c748f0c485dd8f4eca546917",
     "fixture": false,
-    "suiteSha256": "7615340a94daea29a4053645ce705e9340529aed398ce0efcf4e309c52d6138b"
+    "suiteSha256": "b6e5c620eaf67a6f7617af1f8b3ea9f86f9dc9fd7127efe6e8a910698202ac79",
+    "legacySeed": {
+      "revision": "704ab8220c9f66e9726d2b7a119a714a6e34e366",
+      "files": {
+        "fund-execution.service.ts": {
+          "fixture": "fund-execution.pre-cutover.fixture.ts",
+          "sha256": "92767e3c0ac3bec38e57b929ee5c06deb13586b1af573038686dac78d448039a"
+        },
+        "fund-execution-selection-options.service.ts": {
+          "fixture": "fund-execution-selection-options.pre-cutover.fixture.ts",
+          "sha256": "e1ca2ed20747aad94e3002819aee0103f9d9a33b210778efccf1c043995d91dd"
+        }
+      }
+    }
   },
   "invoice": {
     "runner": "fresh-owner289.cjs",

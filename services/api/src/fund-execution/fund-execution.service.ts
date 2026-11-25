@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  GoneException,
   Injectable,
   NotFoundException,
   Optional
@@ -30,6 +31,8 @@ import {
 } from "./fund-execution-command-receipt";
 import { FundExecutionSelectionOptionsService } from "./fund-execution-selection-options.service";
 import { fundExecutionSelectionRefFingerprint } from "./fund-execution-selection-ref.service";
+
+import { isRetiredWageOutflow, WAGE_OUTFLOW_RETIRED } from "./fund-execution-wage-retirement";
 
 type Transaction = Prisma.TransactionClient;
 
@@ -215,19 +218,22 @@ export class FundExecutionService {
     });
     return this.runSerializable(async (tx) => {
       await this.authorizeContext(tx, actorUserId, idempotencyKey, "create_case");
+      await this.assertRole(tx, actorUserId, FINANCE_WRITER_ROLES);
       return this.receiptFirst(tx, {
         actorUserId,
         action: "create_case",
         idempotencyKey,
         payloadFingerprint,
         execute: async () => {
-          await this.assertRole(tx, actorUserId, FINANCE_WRITER_ROLES);
           const matched = await this.options.matchObservationInTransaction(
             tx,
             actorUserId,
             input.observationSelectionRef
           );
           const observation = matched.observation;
+          if (isRetiredWageOutflow({ executionKind: "bank_transaction", direction: observation.direction })) {
+            throw new GoneException(WAGE_OUTFLOW_RETIRED);
+          }
           const fundExecutionId = randomUUID();
           const caseKey = randomUUID();
           const fundExecutionCaseId = randomUUID();
@@ -477,6 +483,7 @@ export class FundExecutionService {
             actions: fundExecutionCaseActions({
               status: row.status,
               isReversal,
+              retiredOutflow: isRetiredWageOutflow(row),
               hasCompleteClassification: row.classificationLineCount > 0,
               canReview: Boolean(reviewIdentity),
               canAppendReturnedDraft:
@@ -595,6 +602,7 @@ export class FundExecutionService {
         actions: fundExecutionCaseActions({
           status: row.status,
           isReversal,
+          retiredOutflow: isRetiredWageOutflow(row),
           hasCompleteClassification: row.classificationLineCount > 0,
           canReview: Boolean(reviewIdentity),
           canAppendReturnedDraft:
@@ -830,27 +838,26 @@ export class FundExecutionService {
     });
     return this.runSerializable(async (tx) => {
       await this.authorizeContext(tx, actorUserId, idempotencyKey, "update_case");
+      await this.assertRole(tx, actorUserId, FINANCE_WRITER_ROLES);
       return this.receiptFirst(tx, {
         actorUserId,
         action: "update_case",
         idempotencyKey,
         payloadFingerprint,
         execute: async () => {
-          await this.assertRole(tx, actorUserId, FINANCE_WRITER_ROLES);
           const predecessor = await this.lockLatestCase(
             tx,
             caseId,
             input.expectedRevision,
             "draft"
           );
-          const execution = await tx.fundExecution.findUnique({
-            where: { id: predecessor.fundExecutionId },
-            select: { executionKind: true }
-          });
-          if (!execution || execution.executionKind === "reversal") {
+          if (predecessor.executionKind === "reversal") {
             throw new BadRequestException(
               "反向执行不接受分类选择，只能通过反向草稿入口修改原因"
             );
+          }
+          if (isRetiredWageOutflow(predecessor)) {
+            throw new GoneException(WAGE_OUTFLOW_RETIRED);
           }
           const selections = await this.options.resolveCasePlanInTransaction(tx, {
             caseKey: caseId,
@@ -1055,6 +1062,9 @@ export class FundExecutionService {
       if (!identity) {
         throw new ForbiddenException("当前用户不能处理该资金执行审批节点");
       }
+      if (input.action === "approve" && isRetiredWageOutflow(submitted)) {
+        throw new GoneException(WAGE_OUTFLOW_RETIRED);
+      }
       const selfReview = await confirmApprovalSelfReview({
         applicantUserId: instance.applicantUserId, originatorUserIds: [submitted.createdByUserId, submitted.submittedByUserId].filter((id): id is string => Boolean(id)),
         actorUserId, actorRoleKeys: [...actorRoles, identity.approvedRoleKey], approvedRoleKey: identity.approvedRoleKey,
@@ -1140,27 +1150,22 @@ export class FundExecutionService {
     });
     return this.runSerializable(async (tx) => {
       await this.authorizeContext(tx, actorUserId, idempotencyKey, action);
+      await this.assertRole(tx, actorUserId, action === "submit_case" ? FINANCE_WRITER_ROLES : ["finance_director"]);
       return this.receiptFirst(tx, {
         actorUserId,
         action,
         idempotencyKey,
         payloadFingerprint,
         execute: async () => {
-          if (action === "submit_case") {
-            await this.assertRole(tx, actorUserId, FINANCE_WRITER_ROLES);
-          } else if (action === "confirm_case") {
-            await this.assertRole(tx, actorUserId, ["finance_director"]);
-          } else if (action === "return_case") {
-            await this.assertRole(tx, actorUserId, ["finance_director"]);
-          } else {
-            await this.assertActiveUser(tx, actorUserId);
-          }
           const predecessor = await this.lockLatestCase(
             tx,
             caseId,
             input.expectedRevision,
             action === "submit_case" ? "draft" : "submitted"
           );
+          if (action !== "return_case" && isRetiredWageOutflow(predecessor)) {
+            throw new GoneException(WAGE_OUTFLOW_RETIRED);
+          }
           const predecessorSelections =
             await tx.fundExecutionCaseAxisSelection.findMany({
               where: { fundExecutionCaseId: predecessor.id },
@@ -1898,6 +1903,8 @@ export class FundExecutionService {
         id: string;
         caseKey: string;
         fundExecutionId: string;
+        executionKind: string;
+        direction: string;
         revision: number;
         status: string;
         reason: string;
@@ -1913,12 +1920,14 @@ export class FundExecutionService {
              case_row."revision", case_row."status", case_row."reason",
              case_row."approvalInstanceId", case_row."createdByUserId",
              case_row."submittedByUserId", case_row."submittedAt",
-             case_row."auditAction", case_row."payloadFingerprint"
+             case_row."auditAction", case_row."payloadFingerprint",
+             execution."executionKind", execution."direction"
       FROM "FundExecutionCase" case_row
+      INNER JOIN "FundExecution" execution ON execution."id" = case_row."fundExecutionId"
       WHERE case_row."caseKey" = ${caseKey}
       ORDER BY case_row."revision" DESC
       LIMIT 1
-      FOR UPDATE
+      FOR UPDATE OF case_row
     `);
     if (!row) throw new NotFoundException("资金执行案件不存在");
     if (
@@ -2303,6 +2312,7 @@ function approvalStatusLabel(status: string | null) {
 function fundExecutionCaseActions(input: {
   status: string;
   isReversal: boolean;
+  retiredOutflow: boolean;
   hasCompleteClassification: boolean;
   canReview: boolean;
   canAppendReturnedDraft: boolean;
@@ -2319,18 +2329,19 @@ function fundExecutionCaseActions(input: {
     enabled,
     disabledReason: enabled ? null : disabledReason
   });
+  const outflowDisabled = (otherwise: string) => input.retiredOutflow ? WAGE_OUTFLOW_RETIRED : otherwise;
   return [
     action(
       "update_case",
       input.isReversal ? "修改反向原因" : "修改分类",
-      input.status === "draft",
-      "只有草稿可以修改"
+      !input.retiredOutflow && input.status === "draft",
+      outflowDisabled("只有草稿可以修改")
     ),
     action(
       "submit_case",
       "提交审批",
-      input.status === "draft" && input.hasCompleteClassification,
-      "必须先冻结完整四轴分类"
+      !input.retiredOutflow && input.status === "draft" && input.hasCompleteClassification,
+      outflowDisabled("必须先冻结完整四轴分类")
     ),
     action(
       "return_case",
@@ -2341,14 +2352,14 @@ function fundExecutionCaseActions(input: {
     action(
       "confirm_case",
       "确认进入正式账",
-      input.status === "submitted" && input.canConfirm,
-      "最终审批通过后由不同的全局财务负责人确认"
+      !input.retiredOutflow && input.status === "submitted" && input.canConfirm,
+      outflowDisabled("最终审批通过后由不同的全局财务负责人确认")
     ),
     action(
       "approve",
       "审批通过",
-      input.status === "submitted" && input.canReview,
-      "当前用户不是冻结审批节点的处理人"
+      !input.retiredOutflow && input.status === "submitted" && input.canReview,
+      outflowDisabled("当前用户不是冻结审批节点的处理人")
     ),
     action(
       "return_approval",

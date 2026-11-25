@@ -343,7 +343,7 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
       for(const userId of [chairman,cashConfirmer]){const fileId=await newFile(userId);await prisma.handwrittenSignatureVersion.create({data:{userId,fileId,contentSha256:"e".repeat(64),source:"canvas"}});}
       const incoming=await bankObservation("20000","inflow","2026-08-05");
       const refs=new FundExecutionSelectionRefService({bankObservationSecret:randomUUID(),axisBusinessSecret:randomUUID()});
-      const funding=new ProjectFundingAvailabilityService(),options=new FundExecutionSelectionOptionsService(prisma as never,refs,funding);
+      const funding=new ProjectFundingAvailabilityService(),options=new FundExecutionSelectionOptionsService(prisma as never,refs);
       const fundService=new FundExecutionService(prisma as never,audit,options,new FundExecutionCanonicalAdapterService(funding,ledger));
       const candidates=await options.listObservationCandidates(f.recorderId);
       const candidate=candidates.find(c=>c.summary.includes("200.00")&&c.summary.includes("我方建设有限公司"));expect(candidate).toBeDefined();
@@ -416,7 +416,7 @@ describeDatabase("project affiliate-company contract PostgreSQL constraints", ()
       const releaseMatch=await matching.prepare(f.recorderId,{...matchInput,originalId:rematch.id,occurredAt:"2026-08-26",idempotencyKey:randomUUID()});await matching.decide(f.directorId,releaseMatch.id,{decision:"confirm",confirmationPassword:"test-password"});
       await bankObservation("20000","outflow","2026-08-27");
       const target=(await options.listReversalTargets(f.recorderId))[0];
-      const reverseObservation=(await options.listObservationCandidates(f.recorderId)).find(c=>c.summary.includes("200.00"));expect(reverseObservation).toBeDefined();
+      const reverseObservation=(await options.listObservationCandidates(f.recorderId,new Date(),"fund_execution_reversal")).find(c=>c.summary.includes("200.00"));expect(reverseObservation).toBeDefined();
       const reverse=await fundService.createReversalCase(f.recorderId,{targetSelectionRef:target.targetSelectionRef,observationSelectionRef:reverseObservation!.selectionRef,reason:"原待匹配款真实退回",idempotencyKey:randomUUID()});
       const reverseSubmitted=await fundService.submitCase(f.recorderId,{caseId:reverse.caseId,expectedRevision:reverse.revision,idempotencyKey:randomUUID()});
       await fundService.reviewApproval(f.directorId,{caseId:reverse.caseId,action:"approve",comment:"已核对退款流水"});await fundService.reviewApproval(chairman,{caseId:reverse.caseId,action:"approve",comment:"同意退回"});

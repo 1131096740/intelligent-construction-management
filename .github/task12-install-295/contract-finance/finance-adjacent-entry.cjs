@@ -38,6 +38,13 @@ async function main(){
   const hash=file=>createHash('sha256').update(readFileSync(file)).digest('hex');
   assert.equal(hash(root+'/'+profile.runner),profile.runnerSha256);
   assert.equal(hash(root+'/workspace/services/api/'+profile.suite),profile.suiteSha256);
+  if(current320 && profile.legacySeed) {
+    const {revision,files}=profile.legacySeed;
+    for(const {fixture,sha256} of Object.values(files)) {
+      assert.equal(hash(root+'/workspace/services/api/src/fund-execution/'+fixture),sha256,'V7_PRE_CUTOVER_SOURCE');
+    }
+    receipt.preCutoverSetup={sourceSha:revision,files:Object.keys(files).length};
+  }
   const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
   assert.equal(baseline.expectedDirectoryCount,count);
   assert.equal(baseline.terminalMigrationChecksum,receipt.migrationSha256);
