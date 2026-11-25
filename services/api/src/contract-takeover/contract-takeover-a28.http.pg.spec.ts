@@ -222,6 +222,15 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
       request(role, `${entry}/finance-side/confirmation`, "POST", {
         idempotencyKey: randomUUID(), expectedRevision, currentPassword: password, ...financeBasis
       });
+    async function pendingItem(role: Role) {
+      const result = await request<{ queues: { pending: Array<{ id: string; currentNode: string }> } }>(role, "/me/work-items");
+      expect(result.status).toBe(200);
+      return result.body.queues.pending.find((item) => item.id === `takeover:${draft.body.id}`);
+    }
+    if (relationship === "outside") {
+      expect(await pendingItem("finance_staff")).toMatchObject({ currentNode: "核对历史收付" });
+      expect(await pendingItem("finance_director")).toMatchObject({ currentNode: "核对历史收付" });
+    }
     const confirmDirector = () => request("contract_director", `${entry}/contract-side/confirmation`, "POST", {
       idempotencyKey: randomUUID(), expectedRevision: 1, currentPassword: password
     });
@@ -229,6 +238,9 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     expect(await confirmFinance(1)).toMatchObject({ status: 201, body: { confirmed: true, activated: false } });
     if (relationship === "outside") {
       expect(await confirmFinance(1, "finance_director")).toMatchObject({ status: 400 });
+      expect(await pendingItem("finance_staff")).toBeUndefined();
+      expect(await pendingItem("finance_director")).toBeUndefined();
+      expect(await pendingItem("contract_director")).toMatchObject({ currentNode: "复核历史合同接管" });
     }
     await assertUnposted("pending_review");
 
