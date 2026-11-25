@@ -298,7 +298,8 @@ function grantApplication(sql, database, app, appPassword) {
 async function main(args) {
   assert.equal(process.platform, "darwin");
   assert.equal(process.arch, "arm64");
-  const paymentRemainder = args.length === 11 && args.at(-1) === "--payment-remainder-331";
+  const expenseApproval = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1) === "--approval-round-a04";
+  const paymentRemainder = expenseApproval || (args.length === 11 && args.at(-1) === "--payment-remainder-331");
   assert.ok(args.length === 10 || paymentRemainder);
   const [mode, sha, pgManifest, pgSha, docManifest, docSha, office, officeSha, archiveAdmission, archiveSha] = args;
   assert.ok(["verify", "run"].includes(mode));
@@ -435,16 +436,32 @@ async function main(args) {
     fs.writeFileSync(packet, JSON.stringify({ ownerUrl: ownerUrl.toString(), psql: bin("psql"), applicationOid: appOid, database, candidate: sha }), { mode: 0o600, flag: "wx" });
     const files = path.join(directory, "files");
     fs.mkdirSync(files, { mode: 0o700 });
-    stage("PUBLIC_LIFECYCLE");
-    const outcome = run(process.execPath, [require.resolve("jest/bin/jest"), "--runInBand", "--testRegex", "seal-retirement-329[.]native[.]test-support[.]ts$", "--runTestsByPath", "src/database/seal-retirement-329.native.test-support.ts"], {
-      NODE_ENV: "test", TMPDIR: directory, SEAL_329_NATIVE_PACKET: packet, DATABASE_URL: appUrl.toString(),
-      FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: files, FILE_DOWNLOAD_SECRET: secret(), JWT_ACCESS_SECRET: secret(), JWT_REFRESH_SECRET: secret(),
-      CONTRACT_DOCX4J_RUNTIME_MANIFEST: runtime.document, DOC_CONVERTER_COMMAND: office
-    }, undefined, 450_000);
-    const proof = outcome.match(/SEAL_329_NATIVE_PROOF (\{[^\n]+\})/u);
-    assert.ok(proof);
-    receipt.proof = JSON.parse(proof[1]);
-    assert.equal(receipt.proof.candidate, source.candidate);
+    if (expenseApproval) {
+      stage("APPROVAL_ROUND_A04");
+      const reportFile = path.join(directory, "approval-round-a04.json");
+      run(process.execPath, [require.resolve("jest/bin/jest"), "--runInBand", "--runTestsByPath",
+        "src/expense-claim/expense-claim-entry.http.pg.spec.ts", "--testNamePattern", "部分签批后被退回",
+        "--json", "--outputFile", reportFile], {
+        NODE_ENV: "test", TMPDIR: directory, RUN_POL115_ENTRY_PG16: "1", JG_NATIVE_331_A04_DATABASE: database,
+        DATABASE_URL: ownerUrl.toString(), FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: files,
+        FILE_DOWNLOAD_SECRET: secret(), JWT_ACCESS_SECRET: secret(), JWT_REFRESH_SECRET: secret()
+      }, undefined, 300_000);
+      const report = JSON.parse(fs.readFileSync(reportFile, "utf8"));
+      assert.equal(report.numPassedTests, 2);
+      assert.equal(report.numFailedTests, 0);
+      receipt.proof = { candidate: source.candidate, passed: report.numPassedTests };
+    } else {
+      stage("PUBLIC_LIFECYCLE");
+      const outcome = run(process.execPath, [require.resolve("jest/bin/jest"), "--runInBand", "--testRegex", "seal-retirement-329[.]native[.]test-support[.]ts$", "--runTestsByPath", "src/database/seal-retirement-329.native.test-support.ts"], {
+        NODE_ENV: "test", TMPDIR: directory, SEAL_329_NATIVE_PACKET: packet, DATABASE_URL: appUrl.toString(),
+        FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: files, FILE_DOWNLOAD_SECRET: secret(), JWT_ACCESS_SECRET: secret(), JWT_REFRESH_SECRET: secret(),
+        CONTRACT_DOCX4J_RUNTIME_MANIFEST: runtime.document, DOC_CONVERTER_COMMAND: office
+      }, undefined, 450_000);
+      const proof = outcome.match(/SEAL_329_NATIVE_PROOF (\{[^\n]+\})/u);
+      assert.ok(proof);
+      receipt.proof = JSON.parse(proof[1]);
+      assert.equal(receipt.proof.candidate, source.candidate);
+    }
     if (paymentRemainder) {
       stage("READBACK_331_AFTER_BUSINESS");
       receipt.ledgerAfterBusiness = verifyAfterBusiness();

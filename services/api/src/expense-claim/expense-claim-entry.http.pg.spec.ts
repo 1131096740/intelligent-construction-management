@@ -45,7 +45,14 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
   beforeAll(async () => {
     if (!enabled) return;
     const url = new URL(process.env.DATABASE_URL ?? "");
-    if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" || url.pathname !== "/jiangkong_pol115_entry_test") {
+    const nativeA04 = process.env.JG_NATIVE_331_A04_DATABASE === url.pathname.slice(1)
+      && /^\/jg_task01_[a-f0-9]{32}$/u.test(url.pathname)
+      && url.username === "jg_task01_owner"
+      && url.searchParams.get("sslmode") === "require"
+      && url.searchParams.get("sslaccept") === "strict"
+      && Boolean(url.searchParams.get("sslcert"));
+    if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1"
+        || (url.pathname !== "/jiangkong_pol115_entry_test" && !nativeA04)) {
       throw new Error("费用入口测试只允许本机专用 PostgreSQL 数据库");
     }
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
