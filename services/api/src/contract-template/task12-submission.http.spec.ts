@@ -709,7 +709,10 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       const document = await server.store.prisma.contractGeneratedDocument.create({ data: { contractVersionId: draft.version.id, layoutTemplateVersionId: layout.id, purpose: "draft", status: "success", sourceRevision: version.draftRevision, inputSnapshot: { documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint, templateFileId: (await server.store.prisma.contractLayoutTemplateVersion.findUnique({ where: { id: layout.id } }))!.docxFileId, layoutSourceMapping: { sourceSha256: layout.sha256 } }, idempotencyKey: randomUUID(), docxFileId: docx.id, pdfFileId: pdf.id, engineVersion: "synthetic-task10-output", createdByUserId: "staff" } });
       const input = { expectedRevision: version.draftRevision, idempotencyKey: randomUUID(), submissionProtocolVersion: 2, documentContentRevision: version.documentContentRevision, documentContentFingerprint: version.documentContentFingerprint, generatedDocumentId: document.id, sourceSha256: layout.sha256, blanksReviewed: true };
       const rawSubmit = (body: unknown, headers = draft.headers) => fetch(`${draft.base}/submission`, { method: "POST", headers: { ...headers, "x-contract-draft-lease": draft.leaseToken }, body: JSON.stringify(body) });
-      expect((await rawSubmit({ expectedRevision: input.expectedRevision, idempotencyKey: randomUUID() })).status).toBe(409);
+      const obsoleteSubmission = await rawSubmit({ expectedRevision: input.expectedRevision, idempotencyKey: randomUUID() });
+      expect({ status: obsoleteSubmission.status, body: await obsoleteSubmission.json() }).toMatchObject({
+        status: 410, body: { code: "OLD_WRITE_ENTRY_RETIRED" }
+      });
       expect((await fetch(`${await server.app.getUrl()}/contracts/${draft.version.id}/approval-submission`, { method: "POST", headers: draft.headers, body: "{}" })).status).toBe(410);
       for (const changed of [{ blanksReviewed: false }, { expectedRevision: input.expectedRevision - 1 }, { documentContentRevision: input.documentContentRevision + 1 }, { documentContentFingerprint: "f".repeat(64) }, { sourceSha256: "f".repeat(64) }, { generatedDocumentId: randomUUID() }]) {
         expect((await rawSubmit({ ...input, ...changed })).status).toBe(409);
@@ -1213,7 +1216,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
       expect(await server.store.prisma.auditLog.count({ where: { businessId: draft.version.id, action: "contract.seal.complete" } })).toBe(0);
       for (const [path, body] of [["seal-approval", {}], ["seal/approve", { confirmationPassword: server.password }], ["seal/complete", { firstPartySignedOrStamped: true, companySealCompleted: true, crossPageSealCompleted: true, signingDateCompleted: true }]] as const) {
         const legacy = await fetch(`${await server.app.getUrl()}/contracts/${draft.version.id}/${path}`, { method: "POST", headers: { ...draft.headers, authorization: `Bearer ${director}` }, body: JSON.stringify(body) });
-        expect({ status: legacy.status, body: await legacy.json() }).toMatchObject({ status: 409, body: { message: "新版合同请使用当前轮次的盖章确认入口" } });
+        expect({ status: legacy.status, body: await legacy.json() }).toMatchObject({ status: 410, body: { code: "OLD_WRITE_ENTRY_RETIRED" } });
       }
       const lifecycleBeforeSealResponse = await fetch(`${await server.app.getUrl()}/contracts/${draft.contract.id}?versionId=${draft.version.id}`, { headers: { ...draft.headers, authorization: `Bearer ${director}` } });
       const lifecycleBeforeSeal = await lifecycleBeforeSealResponse.json();
@@ -1295,7 +1298,7 @@ describe("任务12 当前正文正式提交（真实HTTP，合成持久层及私
         await server.store.prisma.paymentTermsVersion.create({ data: { contractId: legacyContract.id, contractVersionId: legacyVersion.id, versionNo: 1, status: "active" } });
         const legacyDetail = await fetch(`${awaitUrl}/contracts/${legacyContract.id}?versionId=${legacyVersion.id}`, { headers: { ...draft.headers, authorization: `Bearer ${director}` } });
         const legacyBody = await legacyDetail.json();
-        expect({ status: legacyDetail.status, actions: legacyBody.availableActionKeys }).toMatchObject({ status: 200, actions: expect.arrayContaining(["approve_seal"]) });
+        expect({ status: legacyDetail.status, actions: legacyBody.availableActionKeys }).toEqual({ status: 200, actions: [] });
         expect(legacyBody).not.toHaveProperty("v2Lifecycle");
 
       }

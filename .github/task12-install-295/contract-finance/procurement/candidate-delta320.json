@@ -1097,7 +1097,7 @@
   {
     "path": "services/api/src/contract-template/task12-submission.http.spec.ts",
     "expected": "d5305df3a00428dfb5a6a843051040891fab21cb3d69ddf0ef4fab9f4e5cce15",
-    "candidate": "06170f6f4244f6786beb687d2232eb49a76d120d8c70149c3f3672b9db69dfc4"
+    "candidate": "e4289a634c2ca80ac5ae27edbc03acd3a28ad9a56abef2da0d246148d4eb0072"
   },
   {
     "path": "services/api/src/contract-template/template-management.test-support.ts",
@@ -1218,6 +1218,11 @@
     "path": "services/api/src/contract/contract.module.ts",
     "expected": "e6f59d9423765445ecfa1d884475366846f3f79c69308e3a5e958536086f435e",
     "candidate": "28d335f79d767fad7ff711cd04e6b2d04d6a8693f6925ac285938d9782e5b58b"
+  },
+  {
+    "path": "services/api/src/contract/contract.service.spec.ts",
+    "expected": "506dae6bbd67e579d1e81f4c50358322977c886099a990b19f2b09d097279828",
+    "candidate": "eb051eca48cb8d64e2d2980a483c41e515ef00f98bf25e571f4e2cea201c1c6e"
   },
   {
     "path": "services/api/src/contract/contract.service.ts",

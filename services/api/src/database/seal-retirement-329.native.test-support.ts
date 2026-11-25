@@ -2,6 +2,7 @@ import "reflect-metadata";
 import { type INestApplication } from "@nestjs/common";
 import { HttpAdapterHost, NestFactory } from "@nestjs/core";
 import { Prisma, PrismaClient } from "@prisma/client";
+import * as assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
@@ -59,17 +60,17 @@ const form = (bytes: Uint8Array, type: string, name: string) => {
 
 function privatePacket(): Packet {
   const path = process.env.SEAL_329_NATIVE_PACKET;
-  if (!path || !/^\/private\/tmp\/jg425-seal-329-[a-zA-Z0-9]+\/input[.]json$/u.test(path)) throw new Error("NATIVE_329_PACKET");
+  assert.ok(path && /^\/private\/tmp\/jg425-seal-329-[a-zA-Z0-9]+\/input[.]json$/u.test(path), "NATIVE_329_PACKET");
   const entry = lstatSync(path);
-  if (!entry.isFile() || realpathSync(path) !== path || entry.uid !== process.getuid?.() || (entry.mode & 0o777) !== 0o600) throw new Error("NATIVE_329_PACKET");
+  assert.ok(entry.isFile() && realpathSync(path) === path && entry.uid === process.getuid?.() && (entry.mode & 0o777) === 0o600,
+    "NATIVE_329_PACKET");
   const packet = JSON.parse(readFileSync(path, "utf8")) as Packet;
   const url = new URL(packet.ownerUrl);
-  if (!/^jg_task01_[a-f0-9]{32}$/u.test(packet.database) || url.protocol !== "postgresql:" || url.hostname !== "127.0.0.1" ||
-    url.pathname !== "/" + packet.database || url.username !== "jg_task01_owner" || !url.port ||
-    url.searchParams.get("sslmode") !== "require" || url.searchParams.get("sslaccept") !== "strict" ||
-    url.searchParams.get("sslcert") !== resolve(path, "../ca.crt") || realpathSync(packet.psql) !== packet.psql) {
-    throw new Error("NATIVE_329_PACKET");
-  }
+  assert.ok(/^jg_task01_[a-f0-9]{32}$/u.test(packet.database) && url.protocol === "postgresql:" && url.hostname === "127.0.0.1" &&
+    url.pathname === "/" + packet.database && url.username === "jg_task01_owner" && url.port &&
+    url.searchParams.get("sslmode") === "require" && url.searchParams.get("sslaccept") === "strict" &&
+    url.searchParams.get("sslcert") === resolve(path, "../ca.crt") && realpathSync(packet.psql) === packet.psql,
+    "NATIVE_329_PACKET");
   return packet;
 }
 
@@ -189,7 +190,7 @@ it("generates a V2 document on native docx4j, approves it, confirms the automati
       const allowContract = request.method === "POST" ? qualifiedWrites.has(pathname) : request.method === "GET" && qualifiedReads.has(url);
       if (!allowContract && !(file && qualifiedFiles.has(file))) return next();
       const token = issueTask12NativeReviewReadiness(readinessIdentity, ticketOwnerProof, () => {
-        if (!server.listening || request.socket.remoteAddress !== "127.0.0.1") throw new Error("NATIVE_329_DOWNLOAD_SCOPE");
+        assert.ok(server.listening && request.socket.remoteAddress === "127.0.0.1", "NATIVE_329_DOWNLOAD_SCOPE");
       });
       // Only the armed fixture's public routes inherit the verified native
       // scope. The normal role guards and controllers still own the requests.

@@ -506,7 +506,7 @@ describe("ContractService", () => {
     });
   });
 
-  it.each([{}, { expectedRevision: 4, idempotencyKey: "da868e1b-302c-4397-8731-cc298dcfcd01" }])("rejects four-place draft submission over public HTTP before approval or business writes (%j)", async (body) => {
+  it.each([{}, { expectedRevision: 4, idempotencyKey: "da868e1b-302c-4397-8731-cc298dcfcd01" }])("retires submission without the current protocol before any business writes (%j)", async (body) => {
     const version = { id: "version-1", contractId: "contract-1", status: "draft", changeType: "original", numericProtocolVersion: 2 };
     const tx = {
       $queryRaw: submitQueryLocks(version),
@@ -526,8 +526,8 @@ describe("ContractService", () => {
     try {
       await app.listen(0, "127.0.0.1");
       const response = await fetch(`${await app.getUrl()}/contract-drafts/version-1/submission`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      expect(response.status).toBe(409);
-      expect(await response.text()).toContain("四位金额草稿尚不能提交审批");
+      expect(response.status).toBe(410);
+      expect(await response.json()).toMatchObject({ code: "OLD_WRITE_ENTRY_RETIRED" });
       for (const write of [tx.contract.update, tx.contractVersion.update, tx.approvalInstance.create, tx.contractDraftSubmissionRequest.create, tx.paymentRequest.create, audit.record]) expect(write).not.toHaveBeenCalled();
     } finally { await app.close(); }
   });
