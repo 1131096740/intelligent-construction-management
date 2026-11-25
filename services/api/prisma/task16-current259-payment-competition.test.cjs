@@ -116,7 +116,9 @@ function model(options={}){
   assert.equal(label,'current259-competition-overlap');
   const service=fs.readFileSync(path.join(__dirname,'../src/payment/payment-request.service.ts'),'utf8');
   const lock=service.split('private async lockPaymentRequestForUpdate(')[1].split('Prisma.sql`')[1].split('`);')[0];
-  const observed=Buffer.from(lock).subarray(0,1023).toString().trim().replace(/\s+/gu,' ');
+  // The sealed 259 monitor predates the 331 remainder projection but observes the same lock.
+  const historicalProjection=lock.replace(/^\s*payment\."remainingWithdrawnCents",\r?\n/mu,'');
+  const observed=Buffer.from(historicalProjection).subarray(0,1023).toString().trim().replace(/\s+/gu,' ');
   assert.ok(!observed.includes('FOR UPDATE OF payment, version'));
   const prefix=/\[\[:space:\]\]\+', ' ', 'g'\)\), '([^']+)'\)/u.exec(sql)?.[1];
   assert.ok(prefix&&observed.startsWith(prefix));

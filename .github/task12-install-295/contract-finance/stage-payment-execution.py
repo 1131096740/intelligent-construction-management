@@ -21,10 +21,10 @@ for name, checksum in pins.items():
 
 installer = stage / 'installer.cjs'
 shutil.copyfile(common / 'installer.cjs', installer)
-for name, delta in [('installer.cjs','payment-execution-installer.patch'),
-                    *[(name, name + '.patch') for name in
-                      ('fresh.cjs','valid.cjs','payment-execution-concurrency.spec.ts')]]:
-    subprocess.run(['patch','--silent','--batch','--fuzz=0',str(stage/name),str(plan/delta)],check=True)
+subprocess.run(['git', 'apply', '--unidiff-zero', '-p0',
+                str((plan / 'payment-execution-installer.patch').resolve())], cwd=stage, check=True)
+for name in ('fresh.cjs','valid.cjs','payment-execution-concurrency.spec.ts'):
+    subprocess.run(['patch','--silent','--batch','--fuzz=0',str(stage/name),str(plan/(name+'.patch'))],check=True)
 subprocess.run(['patch','--silent','--batch','--fuzz=0',str(stage/'payment-execution-concurrency.spec.ts'),
                 str(plan/('payment-concurrency-330.patch' if options else 'payment-concurrency-320.patch'))],check=True)
 if options == ['--payment-remainder-331']:
