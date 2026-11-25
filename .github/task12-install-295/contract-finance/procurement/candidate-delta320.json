@@ -45,6 +45,11 @@
     "candidate": "5cf4753fbcdb881d70d1cb1fe104d8827537140d4e1ff923c2164c6a464c85ee"
   },
   {
+    "path": "apps/web-admin/e2e/fund-execution-workbench.e2e.ts",
+    "expected": "f86ed82631c7e337120fb1d087bf5e69ed47172835e0330aa1bf23f3eb52fcb8",
+    "candidate": "c4b7d68e2792c9983ec1030c7b41aa0e414d94ebd12179e175232f6119d12370"
+  },
+  {
     "path": "apps/web-admin/e2e/helpers/approval-progress-mocks.ts",
     "expected": "25aaafe0f1445a86370c2d8c54caa4d5b133230af0cc22b8daa56257fbfa7d85",
     "candidate": "19ec360d66a4206b4286f3a6c112e94cfc1f65f7da8cbf3c00eb417c331446e7"
@@ -178,6 +183,11 @@
     "path": "apps/web-admin/src/api/expense-claim.api.ts",
     "expected": "7ab9fecf6a4955e32de1d973b9c7879a2162a245302a944e4177faf6556bfc3d",
     "candidate": "f27332a6cbeaf843087cdf5e1429153a732ef2390503e0045f8ca64e16bd40dc"
+  },
+  {
+    "path": "apps/web-admin/src/api/fund-execution.api.ts",
+    "expected": "f55292cbcbeb28659019b25466c002f50ebbfe8a9b568c4a1da11dd79c63458c",
+    "candidate": "9e8c8463783d8aab88be76d952d9b017ac9025933467dfb6682e2539cdfd0905"
   },
   {
     "path": "apps/web-admin/src/api/general-procurement.api.ts",
@@ -408,6 +418,11 @@
     "path": "apps/web-admin/src/pages/expense-claims/expense-claim-stage-d-capability-gates.structure.test.ts",
     "expected": "1221fe4f668dca2ab45ebc5cccbfcc9a5f90b902623a26bf9946325b75bc591d",
     "candidate": "76ec0bd8033aca06934b6de04510c0e3e790b65f39c7125abf89f119e2b82e28"
+  },
+  {
+    "path": "apps/web-admin/src/pages/fund-executions/FundExecutionWorkbenchPage.vue",
+    "expected": "37e92470121e100e2d86c04ffdbe4575e5f25e399ae15c48a5831d4c0dc3a2a5",
+    "candidate": "a3f665c92bdd3cbff2ad3896e6ea35fb1f98774c3f5725c090efc02d0b61ee19"
   },
   {
     "path": "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue",
@@ -822,12 +837,12 @@
   {
     "path": "services/api/src/approval/approval-form.service.spec.ts",
     "expected": "5f42c450c0515fb809ea0fcfbf259c27281edc30da0c2e645a8e5c825e650c6a",
-    "candidate": "a8fa5d45781c5b5e77e2c357ac6f5c1a64d9271a261ee8f3078b4abcbc96ecce"
+    "candidate": "721e08f1c11b385c30092dc4a1b24cc669b82291d73118610d964f0e32dea7c4"
   },
   {
     "path": "services/api/src/approval/approval-form.service.ts",
     "expected": "031b17311e634ad97b838f71dd155734def4b2a2f3c307bf347e644427a6dedd",
-    "candidate": "12c0bd1f26bbbcb4e706d97bfd254589b762c4c8ff20f445ddded7ffe4997127"
+    "candidate": "6a78074dfaabe3682e1f5c1c6e2bbaa8d868ff7bad610355ca392e8dd4c65c33"
   },
   {
     "path": "services/api/src/approval/approval-progress.controller.ts",
@@ -837,12 +852,12 @@
   {
     "path": "services/api/src/approval/approval-progress.service.spec.ts",
     "expected": "f7a810593df5fa3cae91c8233d34840cc757bbac405586353394f3aaa19b32fe",
-    "candidate": "ed3fd05a1b8744468c766a6164c63b52c657104a5f17a6fb975c3f11ca0e93a5"
+    "candidate": "89c4003c065b539c2b4f6b3ccbdd62807c5d9baeca3f3f776414d05c6c2f67f5"
   },
   {
     "path": "services/api/src/approval/approval-progress.service.ts",
     "expected": "7db2f18e02d05e265173db1a012e2055d82f5db1a8a8543b45d7a95e2a5e6ff0",
-    "candidate": "09f892c0b8c512cbb4bce9cc58a3f91cda783e91333316560f3e37189e1462c3"
+    "candidate": "792b5386c6c5a84d4638abf5e8c15af377ca123572e6d6216782fef566047ab5"
   },
   {
     "path": "services/api/src/approval/approval-reminder-business-intent.ts",
@@ -1220,6 +1235,11 @@
     "candidate": "189ced1c5be9d482ff2b4558da5a342bb790b4245bc907f98639f6e6f9e35393"
   },
   {
+    "path": "services/api/src/database/project-affiliate-company-contract-db.spec.ts",
+    "expected": "16461e7680018c3370fb9000caa096f191c2cbca5762651c40ff91d2feeb8cf8",
+    "candidate": "7b077c20dc18f85e96698f8f16d28c6e0377b2288fde8348c53772b03dd94bcf"
+  },
+  {
     "path": "services/api/src/database/project-business-scope-http-postgres.spec.ts",
     "expected": {
       "general16": "58901077599d29a5db83e55e0619048ec044317abf7519c3292639b0ab4add36",
@@ -1438,9 +1458,39 @@
     "candidate": "868f114158419828c6ff27a5ad4eab5c23d76c8d4063116ca43a642057e3aa15"
   },
   {
+    "path": "services/api/src/fund-execution/fund-execution-existing-company-options.spec.ts",
+    "expected": "d999d30f866081cfdbc9413a91b41580c3557ef435fc320aed975dd699f5472f",
+    "candidate": "f1989a105da69304b989577efd466742415ca3cd0ea1ff025049ff8408a09c4d"
+  },
+  {
+    "path": "services/api/src/fund-execution/fund-execution-selection-options.service.ts",
+    "expected": "e1ca2ed20747aad94e3002819aee0103f9d9a33b210778efccf1c043995d91dd",
+    "candidate": "1d327a0e2317839061925606c53b7e54796be98563da146994275746a936ee31"
+  },
+  {
+    "path": "services/api/src/fund-execution/fund-execution-self-review.service.spec.ts",
+    "expected": "16adb36889cf82c6870d4aa2d5bbebcab302829f875a82acbf39e647f0bebbf0",
+    "candidate": "2355f62f547b4b03fe5ccc1e5d24af521ee0224f3dd087e5d4cea5ba17f711db"
+  },
+  {
+    "path": "services/api/src/fund-execution/fund-execution-service.pg.spec.ts",
+    "expected": "7615340a94daea29a4053645ce705e9340529aed398ce0efcf4e309c52d6138b",
+    "candidate": "536bf5d7ffa627e3720e4398539e0db24ec8d91d86e301d5cfe5d5157b103b8f"
+  },
+  {
+    "path": "services/api/src/fund-execution/fund-execution.controller.spec.ts",
+    "expected": "4d98f6878f82f38604d1c75e65474235a39d7a623192878b3146342df626c4f7",
+    "candidate": "3d7f565953ee59ea7a3b8ecdab7273b0fcc8da9377764a246c7dfa77671f6dd6"
+  },
+  {
     "path": "services/api/src/fund-execution/fund-execution.controller.ts",
     "expected": "ba049d4663c3d74fbc8d9a024bcb6d763add5b490c26d2ec714c7550cd87f9f6",
-    "candidate": "acd17a106149530a845419fec55fda4f983514935ac122ab486ae7f433c1c74b"
+    "candidate": "6eacc4166b35de06ee9da0711b3ded88542adbd93afdd476a54afe204a303137"
+  },
+  {
+    "path": "services/api/src/fund-execution/fund-execution.service.ts",
+    "expected": "92767e3c0ac3bec38e57b929ee5c06deb13586b1af573038686dac78d448039a",
+    "candidate": "dc7ae774d6f1ea27c295fcd9a372cb0d0236358f5c475b687cddf24b6fe25fe0"
   },
   {
     "path": "services/api/src/general-procurement/general-procurement-payment.ts",
