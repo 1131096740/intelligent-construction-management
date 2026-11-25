@@ -439,13 +439,37 @@ async function main(args) {
     if (expenseApproval) {
       stage("APPROVAL_ROUND_A04");
       const reportFile = path.join(directory, "approval-round-a04.json");
-      run(process.execPath, [require.resolve("jest/bin/jest"), "--runInBand", "--runTestsByPath",
-        "src/expense-claim/expense-claim-entry.http.pg.spec.ts", "--testNamePattern", "部分签批后被退回",
-        "--json", "--outputFile", reportFile], {
-        NODE_ENV: "test", TMPDIR: directory, RUN_POL115_ENTRY_PG16: "1", JG_NATIVE_331_A04_DATABASE: database,
-        DATABASE_URL: ownerUrl.toString(), FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: files,
-        FILE_DOWNLOAD_SECRET: secret(), JWT_ACCESS_SECRET: secret(), JWT_REFRESH_SECRET: secret()
-      }, undefined, 300_000);
+      try {
+        run(process.execPath, [require.resolve("jest/bin/jest"), "--runInBand", "--runTestsByPath",
+          "src/expense-claim/expense-claim-entry.http.pg.spec.ts", "--testNamePattern", "部分签批后被退回",
+          "--json", "--outputFile", reportFile], {
+          NODE_ENV: "test", TMPDIR: directory, RUN_POL115_ENTRY_PG16: "1", JG_NATIVE_331_A04_DATABASE: database,
+          DATABASE_URL: ownerUrl.toString(), FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: files,
+          FILE_DOWNLOAD_SECRET: secret(), JWT_ACCESS_SECRET: secret(), JWT_REFRESH_SECRET: secret()
+        }, undefined, 300_000);
+      } catch (error) {
+        if (firstFailure && fs.existsSync(reportFile) && fs.statSync(reportFile).size <= 1024 * 1024) {
+          const { testResults } = JSON.parse(fs.readFileSync(reportFile, "utf8"));
+          const suite = testResults[0];
+          const assertion = suite?.assertionResults?.find(row => row.status === "failed");
+          const message = assertion?.failureMessages?.[0] ?? suite?.message ?? "";
+          firstFailure.jest = {
+            failedTests: suite?.numFailingTests,
+            frame: /expense-claim-entry[.]http[.]pg[.]spec[.]ts:(\d{1,5}):(\d{1,4})/u.exec(message)?.slice(1).map(Number),
+            status: /Received:[\s\S]{0,300}?"status":\s*([1-5][0-9]{2})/u.exec(message)?.[1],
+            prisma: /\bP[0-9]{4}\b/u.exec(message)?.[0],
+            kind: Object.entries({
+              compile: /\bTS[0-9]{4}\b/u,
+              module: /Cannot find module/u,
+              timeout: /Exceeded timeout/u,
+              parse: /Unexpected token|invalid JSON/iu,
+              config: /must be configured|is not configured/iu,
+              font: /font|glyph/iu
+            }).flatMap(([key, pattern]) => pattern.test(message) ? [key] : [])
+          };
+        }
+        throw error;
+      }
       const report = JSON.parse(fs.readFileSync(reportFile, "utf8"));
       assert.equal(report.numPassedTests, 2);
       assert.equal(report.numFailedTests, 0);
