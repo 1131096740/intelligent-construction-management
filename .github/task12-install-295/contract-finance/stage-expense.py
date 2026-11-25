@@ -26,6 +26,12 @@ deltas = [(installer, 'expense-installer.patch'),
 deltas += [(stage / mode / 'entry.cjs', mode + '.entry.cjs.patch') for mode in pins]
 for target, delta in deltas:
     subprocess.run(['patch','--silent','--batch','--forward','--fuzz=0',str(target),str(plan/delta)],check=True)
+app = stage / 'app'
+profiles = json.loads((app / 'profiles.json').read_text())
+for lane, profile in profiles.items():
+    spec = app / lane / profile['spec']
+    if hashlib.sha256(spec.read_bytes()).hexdigest() != profile['sha256']:
+        raise SystemExit(f'EXPENSE_295_TEST_SOURCE {lane}')
 for file in stage.rglob('*'):
     if file.is_file():
         file.chmod(0o644)
