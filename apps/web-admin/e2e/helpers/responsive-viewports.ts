@@ -1,5 +1,6 @@
 export const responsiveViewports = [
   { width: 320, height: 568 },
+  { width: 360, height: 800 },
   { width: 390, height: 844 },
   { width: 768, height: 1024 },
   { width: 844, height: 390 },
