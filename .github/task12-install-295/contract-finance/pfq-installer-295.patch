@@ -1,6 +1,6 @@
 --- installer.cjs
 +++ installer.cjs
-@@ -187,2 +187,14 @@
+@@ -193,2 +193,14 @@
 -async function migrateNativeTask16(plan,root,port,password,sql,jsonSql,command,enter,fromHistory){
 - const controls=fromHistory('./local-staged-migration-controls.cjs'),{createLocalTailQualification}=fromHistory('./local-staged-tail-qualification.cjs');
 +const pfqRecoveryModule='./task12-pfq-recovery.cjs';
@@ -17,12 +17,12 @@
 + const retained=plan.recoveryProfile?require(plan.recoveryProfile.module):undefined;
 + const {createLocalTailQualification}=retained?retained.tailModule(plan.historical):fromHistory('./local-staged-tail-qualification.cjs');
 +
-@@ -193,0 +206 @@
+@@ -199,0 +212 @@
 +   ...(plan.recoveryProfile?[114,115]:[]),...(plan.pfqPositive?[plan.pfqPositive.prefix]:[]),
-@@ -207 +220 @@
+@@ -213 +226 @@
 - const deploy=async(size,url=baseUrl)=>{enter('MIGRATE_'+size);await command(process.execPath,[cli,'migrate','deploy','--schema',path.join(roots.get(size),'schema.prisma')],{timeoutMs:plan.limits.migrationMs,extra:{DATABASE_URL:url.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});};
 + const deploy=async(size,url=baseUrl,allowFailure=false)=>{enter('MIGRATE_'+size);return command(process.execPath,[cli,'migrate','deploy','--schema',path.join(roots.get(size),'schema.prisma')],{allowFailure,timeoutMs:plan.limits.migrationMs,extra:{DATABASE_URL:url.toString(),PRISMA_SCHEMA_ENGINE_BINARY:engine,PRISMA_HIDE_UPDATE_MESSAGE:'1',CHECKPOINT_DISABLE:'1'}});};
-@@ -209 +222,39 @@
+@@ -215 +228,39 @@
 - const checkLedger=(row,size)=>{need(equal(row.ledger,ledger.slice(0,size)),'NATIVE_DIRECT_MIGRATION_LEDGER');};
 + const checkLedger=(row,size)=>{
 +  if(retained) retained.assertLedger(row.ledger,ledger,size);
@@ -63,28 +63,28 @@
 +  need(equal(identity(after),retainedIdentity),'PFQ_POSITIVE_IDENTITY');
 +  checkLedger(after,prefix);
 + }
-@@ -213,0 +265 @@
+@@ -219,0 +271 @@
 + if(retainedIdentity)need(equal(bound,retainedIdentity),'PFQ_HISTORY_IDENTITY');
-@@ -228 +280,2 @@
+@@ -234 +286,2 @@
 - return {plan:migrationPlan,setup,materials};
 + if(recovery)await recovery.verify();
 + return {plan:migrationPlan,setup,materials,recovery};
-@@ -231 +284 @@
+@@ -237 +290 @@
 -function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic} = {}) {
 +function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic, cwd} = {}) {
-@@ -234 +287 @@
+@@ -240 +293 @@
 -    cwd:process.env.JG_RUN_ROOT || '/tmp', env:{ ...baseEnv, HOME:'/tmp', ...extra },
 +    cwd:cwd ?? (process.env.JG_RUN_ROOT || '/tmp'), env:{ ...baseEnv, HOME:'/tmp', ...extra },
-@@ -263 +316 @@
+@@ -269 +322 @@
 -  return {stdout:result.stdout, code:result.status,
 +  return {stdout:result.stdout, code:result.status,...(allowFailure?{stderr:result.stderr??""}:{}),
-@@ -306,0 +360 @@
-+  const pfqMode=['ORIGINAL_PFQ_EXACT_295','ORIGINAL_PFQ_EXACT_329','ORIGINAL_PFQ_EXACT_330','ORIGINAL_PFQ_EXACT_331'].includes(receipt.purpose)?'--pfq-'+receipt.lane+'-289-local':undefined;
-@@ -307,0 +362,3 @@
+@@ -312,0 +366 @@
++  const pfqMode=['ORIGINAL_PFQ_EXACT_295','ORIGINAL_PFQ_EXACT_329','ORIGINAL_PFQ_EXACT_330','ORIGINAL_PFQ_EXACT_331','ORIGINAL_PFQ_EXACT_332'].includes(receipt.purpose)?'--pfq-'+receipt.lane+'-289-local':undefined;
+@@ -313,0 +368,3 @@
 +    ...(pfqPositiveModes.includes(pfqMode)?{pfqPositive:require(pfqPositiveFixtures)[pfqMode]}:{}),
 +    ...(Object.hasOwn(pfqConflicts,pfqMode)?{recoveryProfile:{module:pfqRecoveryModule,kind:pfqConflicts[pfqMode],prefix:114,terminal:115,
 +      marker:pfqConflicts[pfqMode]==='duplicate'?'project_financing_quota_duplicate_attachment':'project_financing_quota_cross_business_attachment'}}:{}),
-@@ -433 +490,26 @@
+@@ -439 +496,26 @@
 -    receipt.migrationMaterials = (await installHistory(plan, root, port, credentials, sql, jsonSql, command, enter, fromHistory, stageTree, receipt)).materials;
 +    const observePfqFailure = plan.recoveryProfile ? async(operation)=>{
 +      const isOriginal = ()=>need(lifetime.running()&&equal(readPostmaster(),postmaster),'PFQ_RECOVERY_LOG_POSTMASTER');
@@ -112,58 +112,63 @@
 +    const migrationLedgerMatches=(observed,expected,size=expected.length)=>equal(observed,
 +      retained ? retained.expectedLedger(expected,size) : expected.slice(0,size));
 +    const retained=installed.recovery&&require(plan.recoveryProfile.module);
-@@ -448 +530 @@
+@@ -454 +536 @@
 -      need(equal(observed.ledger,ledger.slice(0,size)) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => observed[key] === roleIdentity[key]), 'STAGED_TAIL_CONTINUITY');
 +      need(migrationLedgerMatches(observed.ledger,ledger,size) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => observed[key] === roleIdentity[key]), 'STAGED_TAIL_CONTINUITY');
-@@ -681 +763 @@
+@@ -687 +769 @@
 -      need(equal(installed.ledger,expected)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
 +      need(migrationLedgerMatches(installed.ledger,expected)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
-@@ -690 +772 @@
+@@ -696 +778 @@
 -      receipt.installOnly292={count:installed.ledger.length,ledgerSha256:hash(JSON.stringify(installed.ledger)),
 +      receipt.installOnly292={count:expected.length,ledgerSha256:hash(JSON.stringify(expected)),
-@@ -692 +774 @@
+@@ -698 +780 @@
 -      receipt.orderedTails.push({size:installed.ledger.length,ledgerSha256:receipt.installOnly292.ledgerSha256});
 +      receipt.orderedTails.push({size:expected.length,ledgerSha256:receipt.installOnly292.ledgerSha256});
-@@ -697 +779 @@
+@@ -703 +785 @@
 -      const noticeLedger=notice.expected(installed.ledger);
 +      const noticeLedger=notice.expected(expected);
-@@ -704 +786 @@
+@@ -710 +792 @@
 -      need(equal(noticeInstalled.ledger,noticeLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
 +      need(migrationLedgerMatches(noticeInstalled.ledger,noticeLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
-@@ -718 +800 @@
+@@ -724 +806 @@
 -      need(equal(payout.ledger,payoutLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
 +      need(migrationLedgerMatches(payout.ledger,payoutLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
-@@ -724,2 +806,2 @@
+@@ -730,2 +812,2 @@
 -      receipt.installOnly294={count:payout.ledger.length,ledgerSha256:terminal.ledgerHash(payout.ledger),catalog:payoutCatalog};
 -      receipt.orderedTails.push({size:payout.ledger.length,ledgerSha256:receipt.installOnly294.ledgerSha256});
 +      receipt.installOnly294={count:payoutLedger.length,ledgerSha256:terminal.ledgerHash(payoutLedger),catalog:payoutCatalog};
 +      receipt.orderedTails.push({size:payoutLedger.length,ledgerSha256:receipt.installOnly294.ledgerSha256});
-@@ -752 +834 @@
+@@ -758 +840 @@
 -        need(equal(installed.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
 +        need(migrationLedgerMatches(installed.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
-@@ -768 +850 @@
+@@ -774 +856 @@
 -        receipt.installOnly295={count:installed.ledger.length,ledgerSha256:multi.ledgerHash(installed.ledger),
 +        receipt.installOnly295={count:qualifiedLedger.length,ledgerSha256:multi.ledgerHash(qualifiedLedger),
-@@ -770 +852 @@
+@@ -776 +858 @@
 -        receipt.orderedTails.push({size:installed.ledger.length,ledgerSha256:receipt.installOnly295.ledgerSha256});
 +        receipt.orderedTails.push({size:qualifiedLedger.length,ledgerSha256:receipt.installOnly295.ledgerSha256});
-@@ -838 +920 @@
+@@ -845 +927 @@
 -        need(equal(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
 +        need(migrationLedgerMatches(current.ledger,qualifiedLedger)&&['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']
-@@ -840,2 +922,2 @@
+@@ -847,2 +929,2 @@
 -        if (forward320.textDirect && current.ledger.length===329) {
 -          const digest=hash(JSON.stringify(current.ledger));
 +        if (forward320.textDirect && qualifiedLedger.length===329) {
 +          const digest=hash(JSON.stringify(qualifiedLedger));
-@@ -846,2 +928,2 @@
+@@ -853,2 +935,2 @@
 -        if (forward320.paymentRemainder && current.ledger.length===330) {
 -          const digest=hash(JSON.stringify(current.ledger));
 +        if (forward320.paymentRemainder && qualifiedLedger.length===330) {
 +          const digest=hash(JSON.stringify(qualifiedLedger));
-@@ -853 +935 @@
+@@ -859,2 +941,2 @@
+-        if (forward320.upwardArchive && current.ledger.length===331) {
+-          const digest=hash(JSON.stringify(current.ledger));
++        if (forward320.upwardArchive && qualifiedLedger.length===331) {
++          const digest=hash(JSON.stringify(qualifiedLedger));
+@@ -866 +948 @@
 -      receipt.forward320={count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
 +      receipt.forward320={count:qualifiedLedger.length,ledgerSha256:hash(JSON.stringify(qualifiedLedger)),observedLedgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
-@@ -862,0 +945,9 @@
+@@ -875,0 +958,9 @@
 +    if(pfqMode==='--pfq-app-289-local'){
 +      for(const [operation,marker] of [['deploy',/No pending migrations to apply\.?/u],['status',/Database schema is up to date/u]]){
 +        enter('PFQ_APP_MIGRATION_'+operation.toUpperCase());
@@ -173,40 +178,40 @@
 +      }
 +      receipt.pfqAppMigrationStatus=true;
 +    }
-@@ -948 +1039 @@
+@@ -961 +1052 @@
 -      need(equal(afterConsumer.ledger,combined ? qualifiedLedger : ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
 +      need(migrationLedgerMatches(afterConsumer.ledger,combined ? qualifiedLedger : ledger) && ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor'].every(key => afterConsumer[key] === roleIdentity[key]), 'CONSUMER_DATABASE_CONTINUITY');
-@@ -993,2 +1084,2 @@
+@@ -1006,2 +1097,2 @@
 -        receipt.combinedAfterBusiness={count:afterConsumer.ledger.length,payoutCatalog,noticeCatalog,
 -          ledgerSha256:hash(JSON.stringify(afterConsumer.ledger)),sameIdentity:true,exactB7:true,ordinary:true,balance};
 +        receipt.combinedAfterBusiness={count:(combined?qualifiedLedger:ledger).length,payoutCatalog,noticeCatalog,
 +          ledgerSha256:hash(JSON.stringify(combined?qualifiedLedger:ledger)),sameIdentity:true,exactB7:true,ordinary:true,balance};
-@@ -995,0 +1087 @@
+@@ -1008,0 +1100 @@
 +      if(installed.recovery) await installed.recovery.verify();
-@@ -1009 +1101 @@
+@@ -1022 +1114 @@
 -async function installHistory(plan,root,port,credentials,sql,jsonSql,command,enter,fromHistory,stageTree,receipt){
 +async function installHistory(plan,root,port,credentials,sql,jsonSql,command,enter,fromHistory,stageTree,receipt,observePfqFailure){
-@@ -1011 +1103 @@
+@@ -1024 +1116 @@
 -const migration=await migrateNativeTask16(plan,root,port,credentials.owner,sql,jsonSql,command,enter,fromHistory);
 +const migration=await migrateNativeTask16(plan,root,port,credentials.owner,sql,jsonSql,command,enter,fromHistory,receipt,observePfqFailure);
-@@ -1015 +1107,4 @@
+@@ -1028 +1120,4 @@
 -  const roleScope=JSON.stringify({identity:roleIdentity,app:{name:migration.plan.appName,oid:migration.setup.appOid,nonce:migration.plan.nonce},ledger:plan.source.witness.profile.ledger,competition:false});
 +  const retained=migration.recovery&&require(plan.recoveryProfile.module);
 +  const ledger=plan.source.witness.profile.ledger;
 +  const roleScope=JSON.stringify({identity:roleIdentity,app:{name:migration.plan.appName,oid:migration.setup.appOid,nonce:migration.plan.nonce},
 +    ledger:retained?retained.expectedLedger(ledger,ledger.length):ledger,competition:false});
-@@ -1021 +1116,5 @@
+@@ -1034 +1129,5 @@
 - const run=async(label,statement)=>{enter(label);return (await sql(statement)).stdout;};
 + const run=async(label,statement)=>{
 +  enter(label);
 +  if(migration.recovery)await migration.recovery.verify();
 +  return (await sql(retained?retained.bindArchiveLedger(statement,ledger):statement)).stdout;
 + };
-@@ -1453,0 +1553,47 @@
+@@ -1487,0 +1587,48 @@
 +
 +async function withPfq(receipt,mode,material) {
 +  const current320=material!==undefined;
-+  const count={'current-320':329,'text-direct-330':330,'payment-remainder-331':331}[material?.mode]??295;
++  const count={'current-320':329,'text-direct-330':330,'payment-remainder-331':331,'upward-archive-332':332}[material?.mode]??295;
 +  need(!current320||count>295,'PFQ_FORWARD_MODE');
 +  need(receipt.purpose==='ORIGINAL_PFQ_EXACT_'+count && mode==='--pfq-'+receipt.lane+'-289-local','PFQ_295_SCOPE');
 +  const pfqPositiveMode=pfqPositiveModes.includes(mode)?mode:undefined;
@@ -239,10 +244,11 @@
 +      receipt.pfqPositive={mode:pfqPositiveMode,prefix:fixture.prefix,exactOriginalValues:true,
 +        ...(fixture.immutable&&{immutable:true})};
 +    }
-+    assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,current320))).stdout.trim()));
++    assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,current320,count===332))).stdout.trim()));
 +    receipt.pfqPostconsume={count,exactB7:true};
 +  };
-+  const install=count===331?module.exports.withCombined331PaymentRemainder:
++  const install=count===332?module.exports.withCombined332UpwardArchive:
++    count===331?module.exports.withCombined331PaymentRemainder:
 +    count===330?module.exports.withCombined330TextAgreement:module.exports.withCombined320ContractPayment;
 +  return current320
 +    ? install(receipt,consume,material)

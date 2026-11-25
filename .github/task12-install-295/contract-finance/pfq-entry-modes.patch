@@ -1,18 +1,19 @@
 --- entry.cjs
 +++ entry.cjs
-@@ -1,6 +1,10 @@
+@@ -1,6 +1,11 @@
  'use strict';
  const assert=require('node:assert/strict');
 -const {withPfq295}=require('/qualification/installer.cjs');
-+const {withPfq295,withPfq320}=require('/qualification/installer.cjs');
++const {withPfq295,withPfq320}=require('./installer.cjs');
 +const source=require('./contract-finance-source.json');
 +const requestedMode=process.argv[3];
-+const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331}[requestedMode]??295;
++const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331,'--upward-archive-332':332}[requestedMode]??295;
 +const current320=count>295;
++const archiveProfile=count===332?require('./upward-archive-332-profile.cjs'):undefined;
  const lane=process.argv[2];
  const expected={
    'pre115-clean':{prefix:114},
-@@ -13,12 +17,38 @@
+@@ -13,12 +18,40 @@
  };
  assert.ok(Object.hasOwn(expected,lane));
  const mode='--pfq-'+lane+'-289-local';
@@ -25,6 +26,7 @@
 +  if(current320) {
 +    assert.equal(source.mode,requestedMode.slice(2));
 +    assert.equal(source.predecessor.migrationCount,295);
++    if(archiveProfile) archiveProfile.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
 +    return withPfq320(receipt,mode,{
 +      mode:source.mode,sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
 +    });
@@ -45,6 +47,7 @@
 +    assert.equal(receipt.combinedAfterBusiness.count,count);
 +    assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
 +    assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
++    if(archiveProfile) archiveProfile.assertInstallation(receipt,source);
 +    if(count===331){
 +      assert.deepEqual(receipt.paymentRemainderPredecessor,{
 +        count:330,ledgerSha256:source.predecessor330.ledgerSha256,sameIdentity:true,sameBaseB7:true
@@ -54,7 +57,7 @@
    assert.equal(receipt.business,'CALLBACK_COMPLETED');
    assert.equal(receipt.orderedTails.at(-1).size,295);
    const shape=expected[lane];
-@@ -46,7 +76,7 @@
+@@ -46,7 +79,7 @@
      assert.equal(receipt.pfqApp.sessionAttestationRounds,2);
    }
    assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');

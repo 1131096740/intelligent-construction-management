@@ -2,29 +2,36 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 ) ) ]] || exit 64
 count=295
 mode=()
 case ${5-} in
   --current-320) mode=(--current-320); count=329 ;;
   --text-direct-330) mode=(--text-direct-330); count=330 ;;
   --payment-remainder-331) mode=(--payment-remainder-331); count=331 ;;
+  --upward-archive-332) mode=(--upward-archive-332); count=332 ;;
 esac
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
 build=$(cd "$4" && pwd -P)
-[[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
+[[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$repo/.github/task12-install-295/contract-finance/common"
+archive_profile="$plan/upward-archive-332-profile.cjs"
+source_tree=$(git -C "$repo" rev-parse "$sha^{tree}")
 scope=pfq
 
 node -e '
-  const [file,sha,count]=process.argv.slice(1);
+  const [file,sha,count,tree,archiveProfile,terminal]=process.argv.slice(1);
   const source=require(file);
   const modes={"329":"current-320","330":"text-direct-330","331":"payment-remainder-331"};
   if(source.sourceSha!==sha||source.migrationCount!==Number(count)||(modes[count]&&source.mode!==modes[count]))process.exit(1);
-' "$prepared/source.json" "$sha" "$count"
+  if(count==="332") {
+    require("node:assert/strict").equal(source.sourceTree,tree);
+    require(archiveProfile).assertSource(source,sha,require(terminal).final);
+  }
+' "$prepared/source.json" "$sha" "$count" "$source_tree" "$archive_profile" "$common/multi-witness.cjs"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -46,6 +53,9 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
   --mount "type=bind,src=$material/installer.cjs,dst=/qualification/installer.cjs,readonly")
+if (( count == 332 )); then
+  args+=(--mount "type=bind,src=$archive_profile,dst=/qualification/upward-archive-332-profile.cjs,readonly")
+fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
