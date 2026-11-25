@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 [[ $# == 2 || ( $# == 3 && ( $3 == --current-320 || $3 == --text-direct-330 ) && $2 != pol275 ) ||
-  ( $# == 3 && ( $2 == line-a || $2 == task398-ledger-loss || $2 == company-proxy ) && $3 == --payment-remainder-331 ) ||
+  ( $# == 3 && ( $2 == line-a || $2 == task398-ledger-loss || $2 == task398-standard || $2 == company-proxy ) && $3 == --payment-remainder-331 ) ||
   ( $# == 4 && $2 == pol275 && ( $3 == --current-320 || $3 == --text-direct-330 ) && $4 =~ ^[a-f0-9]{40}$ ) ]] || exit 64
 sha=$1
 lane=$2
@@ -44,6 +44,8 @@ case "$lane" in
   task398-standard)
     if [[ ${3:-} == --text-direct-330 ]]; then
       bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work/browser" standard-330
+    elif [[ ${3:-} == --payment-remainder-331 ]]; then
+      bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work/browser" standard-331
     fi
     bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work/browser"
     ;;

@@ -40,7 +40,8 @@ run("records a two-part text agreement payment with original replay, real refund
         WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) AS count,
         current_setting('jg.task398_run_id', true) AS run
     `;
-    expect(identity).toEqual({ count: 330, run: runId });
+    const expectedCount = process.env.TASK425_TEXT_FINANCE_331 === "1" ? 331 : 330;
+    expect(identity).toEqual({ count: expectedCount, run: runId });
     const plan = buildRegisteredPgFixturePlan(runId.slice(0, 12), dateBefore(1), dateBefore(2));
     const password = randomBytes(24).toString("hex");
     const passwordHash = await hash(password, 4);

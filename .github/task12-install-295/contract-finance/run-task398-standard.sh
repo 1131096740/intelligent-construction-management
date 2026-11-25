@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == standard-330 || $5 == ledger-loss-330 || $5 == ledger-loss-331 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == standard-330 || $5 == standard-331 || $5 == ledger-loss-330 || $5 == ledger-loss-331 ) ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -20,17 +20,15 @@ count=$(node -e '
 ' "$prepared/source.json" "$sha")
 variant_args=()
 purpose=TASK398_STANDARD_EXACT_$count
-if [[ ${5-} == standard-330 ]]; then
-  [[ $count == 330 ]] || exit 64
-  variant_args=(standard-330)
+if [[ ${5-} == standard-330 || ${5-} == standard-331 ]]; then
+  [[ $5 == "standard-$count" ]] || exit 64
+  variant_args=("$5")
 elif [[ ${5-} == ledger-loss-330 || ${5-} == ledger-loss-331 ]]; then
   [[ $5 == "ledger-loss-$count" ]] || exit 64
   variant_args=("$5")
   purpose=TASK398_LEDGER_LOSS_EXACT_$count
-elif [[ $count == 331 ]]; then
-  exit 64
-elif [[ $count == 330 ]]; then
-  purpose=TASK425_TEXT_DIRECT_FINANCE_330
+elif [[ $count == 330 || $count == 331 ]]; then
+  purpose=TASK425_TEXT_DIRECT_FINANCE_$count
 fi
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
@@ -64,6 +62,9 @@ if [[ $count == 330 || $count == 331 ]]; then
       patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-331.patch"
       [[ $(runner_sha) == af42b4c2fb8489cd6560b8dfb2775f4880ed806730e9e00d36073ebd1bb89b29 ]] || exit 65
     fi
+  elif [[ $count == 331 ]]; then
+    patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-standard-331.patch"
+    [[ $(runner_sha) == a53edcb4f8dd60c88ee74f784d9eb1e5d04296e2c024a74680f1f38f84e92f33 ]] || exit 65
   fi
 fi
 
