@@ -4862,8 +4862,8 @@ export class PaymentRequestService {
       throw new ConflictException("幂等键已用于不同工资债权关联载荷");
     }
 
-    if (persistedBindings.length > 0 && !input.observationSelectionRef) {
-      const bankReceiptReference = optionalTrimmedText(input.bankReceiptReference);
+    if (input.bankReceiptReference || (persistedBindings.length > 0 && !input.observationSelectionRef)) {
+      const bankReceiptReference = input.bankReceiptReference || null;
       const contractClaim = await tx.contractBankEventClaim.findUnique({
         where: { sourceType_sourceId: { sourceType: "payment_execution", sourceId: existing.id } }
       });

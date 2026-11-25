@@ -1005,23 +1005,28 @@ name: "签批人甲",
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it("replays ordinary payments with a bank reference through the existing receipt path", async () => {
+  it("replays an ordinary payment with its original bank reference and rejects a changed reference", async () => {
     const { tx, createdExecution, prisma } = hardenedPaymentExecutionFixture();
     tx.paymentExecution.findUnique.mockResolvedValue(createdExecution);
-    const contractClaim = { findUnique: jest.fn().mockResolvedValue(null) };
-    Object.assign(tx, { contractBankEventClaim: contractClaim });
+    Object.assign(tx, {
+      contractBankEventClaim: { findUnique: jest.fn().mockResolvedValue({ observationId: "bank-observation-1" }) },
+      verifiedBankTransactionObservation: { findUnique: jest.fn().mockResolvedValue({ reference: "ordinary-bank-reference" }) }
+    });
     const service = paymentExecutionService(
       new PaymentAmountService(), prisma as never, audit as never, fileAccess as never, auth as never,
       undefined, undefined, projectFunding as never
     );
 
-    await expect(service.recordExecution("FK-2026-012", "cashier-1", {
+    const input = {
       ...paymentExecutionCoordinates, amountCents: "30000", paidAt: "2026-06-22T00:00:00.000Z",
       voucherFileId: "file-1", confirmationPassword: "current-password", bankReceiptReference: "ordinary-bank-reference"
-    })).resolves.toMatchObject({
+    };
+    await expect(service.recordExecution("FK-2026-012", "cashier-1", input)).resolves.toMatchObject({
       id: createdExecution.id, amountCents: "30000", paidAt: createdExecution.paidAt, paymentSubjectType: "our_company"
     });
-    expect(contractClaim.findUnique).not.toHaveBeenCalled();
+    await expect(service.recordExecution("FK-2026-012", "cashier-1", {
+      ...input, bankReceiptReference: "changed-bank-reference"
+    })).rejects.toMatchObject({ status: 409 });
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
   });
 
