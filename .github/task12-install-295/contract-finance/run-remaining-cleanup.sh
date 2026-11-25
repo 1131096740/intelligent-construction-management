@@ -54,6 +54,20 @@ const overlays=current?{
   [lifecycle]:{before:oldLifecycle,after:newLifecycle,
     old:'...readMoney, takeoverStatus: "pending_review", submittedAt: expect.any(Date)',
     next:'...readMoney, takeoverStatus: "pending_finance", submittedAt: expect.any(Date)'},
+  'remaining-retained.cjs':{before:'7b6ae487f0a3d6d020ca77227c18b3b774762519952f4415edb91eec49e9a76e',
+    after:'ae442e062e0e4ca27cc769cae0c5d6aaf114e1e2eb46cc63cdf02a595f0c02e1',
+    old:'      failedOrMissing:results.flatMap(x=>x.passed?[]:[x.ordinal])};',
+    next:String.raw`      failedOrMissing:results.flatMap(x=>x.passed?[]:[x.ordinal]),
+      failureDetails:results.filter(x=>!x.passed).flatMap(({ordinal})=>{
+        const title=spec.registered[ordinal-1].title;
+        const error=assertions.find(test=>test.title===title)?.failureMessages?.join("\n")??"";
+        const frames=[...error.matchAll(/\b(?:contract-draft-aggregate-concurrency|contract-lifecycle-route)\.spec\.ts:(\d+):(\d+)/gu)]
+          .slice(0,2).map(frame=>[Number(frame[1]),Number(frame[2])]);
+        const pair=/Expected:\s*([1-5][0-9]{2})[\s\S]{0,95}Received:\s*([1-5][0-9]{2})/u.exec(error);
+        const prisma=/\bP[0-9]{4}\b/u.exec(error)?.[0];
+        const sqlstate=/(?:SQLSTATE\s+|SqlState\(E)([0-9A-Z]{5})\b/u.exec(error)?.[1];
+        return frames.length||pair||prisma||sqlstate?[{ordinal,frames,statuses:pair?.slice(1).map(Number),prisma,sqlstate}]:[];
+      })};`},
   'fixtures.json':{before:'6af14063a3fd2511d757d1dd527b9dea97f06b8f504696e0e76be10aff2fb9d6',
     after:'5419e2ecaf3eb13c2fe311e80e9a42eee405fd206c25e4e28e8895c3edcc58e0',old:oldLifecycle,next:newLifecycle},
 }:{};
