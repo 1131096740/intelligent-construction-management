@@ -7,6 +7,7 @@ import type { BusinessPartyService } from "../business-party/business-party.serv
 import type { FileService } from "../file/file.service";
 import type { SaveContractDraftAggregateDto } from "../contract-workbench/dto/contract-workbench.dto";
 import { readUpwardDirectPending } from "./contract-upward-pending-read";
+import { insertDirectPendingOriginals } from "./contract-direct-pending-originals";
 import { assertUpwardPendingSaveContinuity, qualifyUpwardPendingSave } from "./contract-upward-pending-save-profile";
 
 export const UPWARD_PENDING_SAVE_ACTIONS = [
@@ -169,9 +170,7 @@ export async function saveUpwardPendingAggregate(
 
   await parties.replaceContractPartiesInTransaction(tx, version.id, input.parties);
   await tx.contractDraftAttachment.deleteMany({ where: { contractVersionId: version.id, slotKey: "direct_signed_originals_v1" } });
-  await tx.contractDraftAttachment.createMany({ data: input.attachments.map(file => ({
-    ...file, contractVersionId: version.id, createdByUserId: actor
-  })) });
+  await insertDirectPendingOriginals(tx, version.id, actor, input.attachments);
   await tx.contract.update({ where: { id: contract.id }, data: { name, companyEntityId: company.id, companyEntityName: companyVersion.name } });
   const draft = { contractName: name, contractBasics: basics, fieldValues: {}, partyValues: {},
     directSigningInput: { ...desired, signedOn, companyParty, enterpriseParty, companyParticipationId: participation[0].id,

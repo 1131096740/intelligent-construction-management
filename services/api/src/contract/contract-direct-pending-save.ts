@@ -1,7 +1,6 @@
 import { sumContractBillBusinessAmounts } from "../contract-bill/contract-bill-totals";
 import { BadRequestException, ConflictException, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma, type Contract, type ContractVersion } from "@prisma/client";
-import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { normalizeBusinessAmount, normalizeTaxRatePercent } from "@jiangkong/shared-domain";
 import type { SaveContractDraftAggregateDto } from "../contract-workbench/dto/contract-workbench.dto";
@@ -9,6 +8,7 @@ import { BusinessPartyService } from "../business-party/business-party.service";
 import { FileService } from "../file/file.service";
 import { AuditService } from "../audit/audit.service";
 import { assertDirectPendingSourceQualification, assertDirectPendingSourceContinuity, type OutsideOriginalPairSourceScope } from "./contract-direct-pending-source";
+import { insertDirectPendingOriginals } from "./contract-direct-pending-originals";
 
 function record(value: unknown): Record<string, unknown> | null { return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null; }
 const roles = new Set(["party_a", "party_b", "party_c", "guarantor", "consortium_member", "other"]);
@@ -105,15 +105,7 @@ export async function saveDirectPendingAggregate(tx: Prisma.TransactionClient, c
   if (attachmentChanged) {
     await tx.contractDraftAttachment.deleteMany({ where: { contractVersionId: version.id, slotKey: "direct_signed_originals_v1" } });
     if (input.attachments.length) {
-      // Let PostgreSQL supply createdAt. Prisma createMany writes it explicitly,
-      // but the ordinary direct-save role can only insert the business columns.
-      const values = input.attachments.map(file => Prisma.sql`(
-        ${randomUUID()}, ${version.id}, ${file.slotKey}, ${file.fileId}, ${file.displayOrder}, ${actorUserId}
-      )`);
-      await tx.$executeRaw(Prisma.sql`
-        INSERT INTO "public"."ContractDraftAttachment" ("id","contractVersionId","slotKey","fileId","displayOrder","createdByUserId")
-        VALUES ${Prisma.join(values)}
-      `);
+      await insertDirectPendingOriginals(tx, version.id, actorUserId, input.attachments);
     }
   }
   if (input.paymentTerms && (typeof input.paymentTerms.originalText !== "string" || input.paymentTerms.stages.length)) throw new BadRequestException("已签合同只保存实际付款原文");
