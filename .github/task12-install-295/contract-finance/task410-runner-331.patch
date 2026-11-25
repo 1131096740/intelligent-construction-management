@@ -1,0 +1,24 @@
+--- fixture
++++ fixture
+@@ -315 +315 @@
+- if(companyProxyScenario){env.RUN_COMPANY_PROXY_REPAYMENT_HTTP="1";env.RUN_EXPENSE_REGISTERED_PAYMENT_PG16="1";env.TASK410_ISOLATED_RUN_ID=short;if(standard290)env.TASK410_OWNED_290="1";if([329,330].includes(ownedMigrationBaseline?.expectedDirectoryCount))env.TASK410_OWNED_320="1";if(ownedMigrationBaseline?.expectedDirectoryCount===330)env.TASK410_OWNED_TEXT_DIRECT_330="1";}
++ if(companyProxyScenario){env.RUN_COMPANY_PROXY_REPAYMENT_HTTP="1";env.RUN_EXPENSE_REGISTERED_PAYMENT_PG16="1";env.TASK410_ISOLATED_RUN_ID=short;if(standard290)env.TASK410_OWNED_290="1";if([329,330,331].includes(ownedMigrationBaseline?.expectedDirectoryCount))env.TASK410_OWNED_320="1";if(ownedMigrationBaseline?.expectedDirectoryCount===330)env.TASK410_OWNED_TEXT_DIRECT_330="1";if(ownedMigrationBaseline?.expectedDirectoryCount===331)env.TASK410_OWNED_PAYMENT_REMAINDER_331="1";}
+@@ -324 +324 @@
+- if(companyProxyScenario&&[329,330].includes(ownedMigrationBaseline?.expectedDirectoryCount)){
++ if(companyProxyScenario&&[329,330,331].includes(ownedMigrationBaseline?.expectedDirectoryCount)){
+@@ -550 +550 @@
+- const modes=new Map([["company-proxy-repayment-330",["--company-proxy-repayment-real"]],["company-proxy-repayment-329",["--company-proxy-repayment-real"]],["company-proxy-repayment-295",["--company-proxy-repayment-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["company-proxy-repayment-290",["--company-proxy-repayment-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["company-proxy-repayment-331",["--company-proxy-repayment-real"]],["company-proxy-repayment-330",["--company-proxy-repayment-real"]],["company-proxy-repayment-329",["--company-proxy-repayment-real"]],["company-proxy-repayment-295",["--company-proxy-repayment-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["company-proxy-repayment-290",["--company-proxy-repayment-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+@@ -552,0 +553 @@
++ const exact331=mode==="company-proxy-repayment-331";
+@@ -554,2 +555,2 @@
+- const exact320=exact330||mode==="company-proxy-repayment-329";
+- const count=exact330?330:329;
++ const exact320=exact331||exact330||mode==="company-proxy-repayment-329";
++ const count=exact331?331:exact330?330:329;
+@@ -559 +560 @@
+-  ||(exact330&&(receipt.textDirectPredecessor?.count!==329||receipt.textDirectPredecessor.sameBaseB7!==true))))
++  ||((exact330||exact331)&&(receipt.textDirectPredecessor?.count!==329||receipt.textDirectPredecessor.sameBaseB7!==true))))
+@@ -560,0 +562,2 @@
++ if(exact331&&(receipt.paymentRemainderPredecessor?.count!==330||!receipt.paymentRemainderPredecessor.sameIdentity||!receipt.paymentRemainderPredecessor.sameBaseB7))
++  throw Error("TASK410_COMPANY_PROXY_331_PREDECESSOR");
