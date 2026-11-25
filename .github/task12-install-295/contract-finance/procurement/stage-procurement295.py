@@ -145,25 +145,28 @@ if text_direct:
     if before != subprocess.check_output(['git', '-C', str(repo), 'show', source['sourceSha'] + ':' + str(relative)]):
         raise ValueError('PROCUREMENT_330_INSTALLER_SOURCE_PIN')
     write(installer, before)
-    subprocess.run(['patch', '--batch', '--fuzz=0', '--no-backup-if-mismatch', str(installer)],
-                   input=read(plan / 'installer-procurement.patch'), stdout=subprocess.DEVNULL, check=True)
-    text = installer.read_text()
-    old = "const material=source.mode==='current-320' ? readForward320({"
-    end = "}) : undefined;\n  return withCombinedOrdinaryLoan"
-    if text.count(old) != 1 or text.count(end) != 1:
+    role_patch, marker, old_entry = read(plan / 'installer-procurement.patch').rpartition(b'\n@@ -1388,3 ')
+    if not marker or old_entry.count(b'function withProcurement') != 1:
         raise ValueError('PROCUREMENT_330_INSTALLER_ENTRY_ANCHOR')
-    text = text.replace(old, """const profile=require('./text-direct-330-profile.cjs');
+    subprocess.run(['patch', '--batch', '--fuzz=0', '--no-backup-if-mismatch', str(installer)],
+                   input=role_patch+b'\n', stdout=subprocess.DEVNULL, check=True)
+    with installer.open('a') as script:
+        script.write("""
+function withProcurement(receipt,consume,lane) {
+  const source=require('./contract-finance-source.json');
+  const profile=require('./text-direct-330-profile.cjs');
   profile.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
-  const material=readForward320({""")
-    text = text.replace(end, "},true);\n  return withCombinedOrdinaryLoan")
-    consume = "return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,material,undefined,lane);"
-    if text.count(consume) != 1:
-        raise ValueError('PROCUREMENT_330_INSTALLER_CONSUME_ANCHOR')
-    text = text.replace(consume, """return withCombinedOrdinaryLoan(receipt,async context=>{
+  const material=readForward320({
+    sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
+  },true);
+  return withCombinedOrdinaryLoan(receipt,async context=>{
     profile.assertInstallation(receipt,source);
     await consume(context);
-  },exactMultiWitness295,false,material,undefined,lane);""")
-    write(installer, text.encode())
+  },exactMultiWitness295,false,material,undefined,lane);
+}
+module.exports.withCombined295GeneralProcurement=(receipt,consume)=>withProcurement(receipt,consume,'general16');
+module.exports.withCombined295ProjectProcurement=(receipt,consume)=>withProcurement(receipt,consume,'project11');
+""")
     subprocess.run(['node', '--check', str(installer)], check=True)
 else:
     patch(common / 'installer.cjs', out / 'installer.cjs', port['installer'], 'installer-procurement.patch')

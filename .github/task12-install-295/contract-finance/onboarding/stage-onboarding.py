@@ -135,27 +135,34 @@ else:
     (out/'lanes.json').write_bytes((archive/'lanes.json').read_bytes())
 installer=out/'installer.cjs'
 installer.write_bytes((common/'installer.cjs').read_bytes())
-subprocess.run(['patch','--batch','--forward','--fuzz=0','--silent',str(installer),str(plan/'installer-onboarding.patch')],check=True)
 if text_direct:
-    text=installer.read_text()
-    start='module.exports.withInstalled295Onboarding = receipt => {'
-    if text.count(start)!=1:
-        raise SystemExit('ONBOARDING_330_INSTALLER_ANCHOR')
-    before, entry=text.split(start,1)
-    replacements={
-        "const current320=source.mode==='current-320';": (
-            "const current320=source.mode==='text-direct-330';\n"
-            "  const profile=require('./text-direct-330-profile.cjs');\n"
-            "  profile.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);"),
-        'const consume=async context=>{': 'const consume=async context=>{\n    profile.assertInstallation(receipt,source);',
-        'module.exports.withCombined320ContractPayment': 'module.exports.withCombined330TextAgreement',
-        'return module.exports.withCombined295MultiWitness(receipt,consume);': "throw new Error('ONBOARDING_330_MODE');",
-    }
-    for old, new in replacements.items():
-        if entry.count(old)!=1:
-            raise SystemExit('ONBOARDING_330_INSTALLER_ENTRY_ANCHOR')
-        entry=entry.replace(old,new)
-    installer.write_text(before+start+entry)
+    role_patch, marker, old_entry = (plan/'installer-onboarding.patch').read_bytes().rpartition(b'\n@@ -1388,3 ')
+    if not marker or old_entry.count(b'module.exports.withInstalled295Onboarding')!=1:
+        raise SystemExit('ONBOARDING_330_INSTALLER_ENTRY_ANCHOR')
+    subprocess.run(['patch','--batch','--forward','--fuzz=0','--silent',str(installer)],
+                    input=role_patch+b'\n',check=True)
+    with installer.open('a') as script:
+        script.write("""
+module.exports.withInstalled295Onboarding = receipt => {
+  const source=require('./contract-finance-source.json');
+  const profile=require('./text-direct-330-profile.cjs');
+  profile.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
+  const consume=async context=>{
+    profile.assertInstallation(receipt,source);
+    const verify=async ()=>
+      assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,true))).stdout.trim()));
+    await verify();
+    await require('./onboarding-full.cjs').run(context,receipt);
+    await verify();
+    receipt.sameInstancePostConsume=true;
+  };
+  return module.exports.withCombined330TextAgreement(receipt,consume,{
+    sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
+  });
+};
+""")
+else:
+    subprocess.run(['patch','--batch','--forward','--fuzz=0','--silent',str(installer),str(plan/'installer-onboarding.patch')],check=True)
 subprocess.run(['node','--check',str(installer)],check=True)
 for file in [out/'workspace-inputs.json',out/'verify-application-source.cjs',out/'lanes.json',installer]:
     file.chmod(0o644)
