@@ -20,7 +20,7 @@ common="$base/common"
 scope=pol115-workbench
 
 node -e '
-  const [file,sha,count]=process.argv.slice(2);
+  const [file,sha,count]=process.argv.slice(1);
   const source=require(file);
   const modes={"329":"current-320","330":"text-direct-330"};
   if(source.sourceSha!==sha||source.migrationCount!==Number(count)||(modes[count]&&source.mode!==modes[count]))process.exit(1);
