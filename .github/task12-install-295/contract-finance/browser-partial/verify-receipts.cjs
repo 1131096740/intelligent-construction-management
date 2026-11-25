@@ -6,17 +6,22 @@ const read=file=>JSON.parse(readFileSync(file,'utf8'));
 const outer=read(process.argv[2]);
 const evidence=read(join(process.argv[3],'receipt.json'));
 const count=Number(process.argv[4]??295);
-assert.ok(count===295||count===329);
+assert.ok([295,329,330].includes(count));
 assert.equal(outer.status,'TASK398_BROWSER_PARTIAL_EXACT_'+count+'_PASSED');
-if(count===329){
-  assert.equal(outer.forward320?.count,329);
+if(count!==295){
+  assert.equal(outer.forward320?.count,count);
   assert.equal(outer.forward320?.sameIdentity,true);
   assert.equal(outer.forward320?.sameBaseB7,true);
   assert.match(outer.forward320?.sourceTree??'',/^[a-f0-9]{40}$/u);
   assert.match(outer.forward320?.ledgerSha256??'',/^[a-f0-9]{64}$/u);
-  assert.equal(outer.combinedAfterBusiness?.count,329);
+  assert.equal(outer.combinedAfterBusiness?.count,count);
   assert.equal(outer.combinedAfterBusiness?.ledgerSha256,outer.forward320.ledgerSha256);
   assert.equal(outer.combinedAfterBusiness?.exactB7,true);
+  if(count===330){
+    assert.equal(outer.textDirectPredecessor?.count,329);
+    assert.equal(outer.textDirectPredecessor?.sameIdentity,true);
+    assert.equal(outer.textDirectPredecessor?.sameBaseB7,true);
+  }
 }
 assert.equal(evidence.status,'BROWSER_PARTIAL_CASE_RETURNED_NOT_FULL_ACCEPTANCE');
 assert.equal(evidence.candidate,outer.sourceSha);
