@@ -4964,7 +4964,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5679,
+            "sourceLine": 5687,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
@@ -8719,6 +8719,7 @@
             "productionConsumers": [
               "apps/web-admin/src/components/ContractRelationshipLedger.vue",
               "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+              "apps/web-admin/src/pages/contracts/ContractListPage.vue",
               "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
               "apps/web-admin/src/pages/expense-claims/ExpenseClaimWorkbenchPage.vue",
               "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue",

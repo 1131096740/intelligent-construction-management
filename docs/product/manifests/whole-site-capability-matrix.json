@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "1a47ffc967f1aef78f2b6d5211f634fa38c9372cddc50c81232f31c7743485b5",
+      "sha256": "4ef59d9d6239e4fc51aef83ad03a74b8df73f77cbae15a52cc176074810da5f4",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "a68a39a298b6588584378404eb2f66a8448367fd3ee9470d410e95c34218ee27",
+      "sha256": "ec507b3b09cbffb217a11fcb9090124ea9741e0fe65f0ab2a62105ee6b5559f9",
       "status": "ready",
       "summary": {
         "registeredActionCount": 434,
@@ -53,7 +53,7 @@
         "totalVueFileCount": 256,
         "parsedVueFileCount": 256,
         "reachableProductionModuleCount": 406,
-        "templateEventDirectiveCount": 1535,
+        "templateEventDirectiveCount": 1539,
         "propCallbackDirectiveCount": 8,
         "coveredProductionMutationConsumerCount": 425,
         "candidateProductionMutationConsumerCount": 425,
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "b99ab169a3dba60fac998314256879d806e98272b6962eaa48e7d7644f1d0ebf",
+      "sha256": "384df66dd37fb66af5c048972ae920add5e018eeaa773aa283f96a5c60115b4f",
       "status": "ready",
       "summary": {
         "routeCount": 879,
@@ -13049,6 +13049,7 @@
           "productionConsumers": [
             "apps/web-admin/src/components/ContractRelationshipLedger.vue",
             "apps/web-admin/src/pages/clearing/ClearingWorkbenchPage.vue",
+            "apps/web-admin/src/pages/contracts/ContractListPage.vue",
             "apps/web-admin/src/pages/contracts/ContractTakeoverPage.vue",
             "apps/web-admin/src/pages/expense-claims/ExpenseClaimWorkbenchPage.vue",
             "apps/web-admin/src/pages/fund-flow/FundFlowPage.vue",

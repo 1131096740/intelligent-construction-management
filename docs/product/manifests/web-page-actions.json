@@ -17,7 +17,7 @@
     "totalVueFileCount": 256,
     "parsedVueFileCount": 256,
     "reachableProductionModuleCount": 406,
-    "templateEventDirectiveCount": 1535,
+    "templateEventDirectiveCount": 1539,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 425,
     "candidateProductionMutationConsumerCount": 425,
@@ -2333,7 +2333,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5679,
+              "sourceLine": 5687,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2379,7 +2379,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5679,
+              "sourceLine": 5687,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3529,7 +3529,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5679,
+              "sourceLine": 5687,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3573,7 +3573,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5679,
+              "sourceLine": 5687,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5138,7 +5138,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5679,
+              "sourceLine": 5687,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5182,7 +5182,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5679,
+              "sourceLine": 5687,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6249,7 +6249,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5679,
+              "sourceLine": 5687,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6295,7 +6295,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5679,
+              "sourceLine": 5687,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7345,7 +7345,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5679,
+              "sourceLine": 5687,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7389,7 +7389,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5679,
+              "sourceLine": 5687,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -15537,7 +15537,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5679,
+              "sourceLine": 5687,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -15581,7 +15581,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5679,
+              "sourceLine": 5687,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17178,7 +17178,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5679,
+              "sourceLine": 5687,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17222,7 +17222,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5679,
+              "sourceLine": 5687,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20021,7 +20021,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5679,
+              "sourceLine": 5687,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20065,7 +20065,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5679,
+              "sourceLine": 5687,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"

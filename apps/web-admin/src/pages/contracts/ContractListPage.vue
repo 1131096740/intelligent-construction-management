@@ -86,7 +86,7 @@
         </label>
         <label class="filter-field">
           <span>状态</span>
-          <t-input v-model="formalFilters.status" placeholder="例如：履约中" clearable @enter="applyFormalFilters" />
+          <t-input v-model="formalFilters.status" placeholder="输入合同状态" clearable @enter="applyFormalFilters" />
         </label>
         <label class="filter-field">
           <span>排序</span>

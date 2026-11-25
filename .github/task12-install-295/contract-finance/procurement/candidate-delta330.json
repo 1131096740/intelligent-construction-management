@@ -5,6 +5,11 @@
     "candidate": "145a2a01176eb0ef365c4c2d8aaf0ebc680d7379424206f7eb22fad42dea598d"
   },
   {
+    "path": "apps/web-admin/e2e/helpers/contract-grid-synthetic-server.cjs",
+    "expected": "e607d332a42c6bc36e9cd5096d3e585eda6b5ee0cdc4b0eba0cf10158fb8fbfd",
+    "candidate": "3709e228e8071a52eadcfb0d135098873d470c8b00e6f48e1e7db161ea66dc9b"
+  },
+  {
     "path": "apps/web-admin/e2e/helpers/responsive-viewports.ts",
     "expected": "93f0e4dd3475d85444bc10168075351e93c75fabbfd1358ab4dd76f2af589016",
     "candidate": "bb9a1ee5422c29812901be76175b8f39fe5889c4f34ab6785388301bcf315f23"
@@ -12,7 +17,7 @@
   {
     "path": "apps/web-admin/e2e/ledger-responsive.e2e.ts",
     "expected": "be644574039198ed42581962f42f73a4f7966d8ab717a5138c5137fd8c0f8c54",
-    "candidate": "a0cf64921b0f0a3ef921f41d02fbcc7bdf84c9dedd19340c268cbf7676498709"
+    "candidate": "3f88256435bca5871cb74c655af7790e4eea952db30ce71e2da5226848127783"
   },
   {
     "path": "apps/web-admin/e2e/responsive-layout-foundation.e2e.ts",
@@ -22,7 +27,7 @@
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.ts",
     "expected": "c83128b15dbd395bae3875c5994c11e54b13ec426b6959b3e677371bb49a303f",
-    "candidate": "ed0d7bd6c0d4be531fffbf3c3b6782271f231de2660d5901776a9f802202418e"
+    "candidate": "64088cb039bb773fc9561978f0bad1440717c16654241ddb62ff4285ebb5dd9e"
   },
   {
     "path": "apps/web-admin/src/app/AdminLayout.vue",
@@ -32,7 +37,7 @@
   {
     "path": "apps/web-admin/src/pages/contracts/ContractListPage.vue",
     "expected": "0c569f260e772c566dcc2660f1af32614806fb09d0ba0c3d3fd195f8f60759ad",
-    "candidate": "0c3181d687a902e1adbe5584aec36a39c0867c302f331041894dc01fedcadc66"
+    "candidate": "2a18e5b41f1a58057ba3851c7a4407015f21f615886ed8ce1f37c8feda20b2f6"
   },
   {
     "path": "apps/web-admin/src/pages/contracts/contract-business-options.config.test.ts",
@@ -43,6 +48,11 @@
     "path": "apps/web-admin/src/pages/contracts/contract-business-options.config.ts",
     "expected": "af5576c69ba7b3e0383465d3a0067df31ddd0f22cd899106ae4c4b6c43c0bdb9",
     "candidate": "ea24870a87d9508a749c80676a5e9ffdfd7a7d07f92c2b07e6cd2ecd92a0a3b3"
+  },
+  {
+    "path": "apps/web-admin/src/pages/contracts/contract-list.config.test.ts",
+    "expected": "f3dbf9e6bf7893472a6ebdb96454b3bd7ae86ebe8b0bb12eb42bdf3a5915c486",
+    "candidate": "012c0b3d0582abe7d52a1fdd29b258107fd01cdb4a991bd3e0ee65071866644c"
   },
   {
     "path": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
@@ -112,7 +122,12 @@
   {
     "path": "services/api/src/contract/contract-read.service.ts",
     "expected": "40ebfc93d098ef6d715843cff509d50ae26cccbb11a5e903f8415fb18570d6bb",
-    "candidate": "70b52722b3dfa7ec4aacc70d02b19e5fa11bdbaa728b66dccf0dc9716f11ee77"
+    "candidate": "196054b0d777d2ff9e06c5f15fb305647a9758130fa2895f0b42ff0b8d1c5239"
+  },
+  {
+    "path": "services/api/src/contract/contract.controller.ts",
+    "expected": "ec5a7333fc1016d6e49a02d3c23e6d852f018e27f878a03e9e4f7d727b490d0c",
+    "candidate": "22ad5d74f1d9566e03bfda5935e87ee3aa70b1e622e64b84bb845ece3e49cddf"
   },
   {
     "path": "services/api/src/database/direct-payment-capacity-concurrency.spec.ts",
