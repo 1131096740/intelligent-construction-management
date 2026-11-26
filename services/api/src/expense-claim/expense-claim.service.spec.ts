@@ -1665,6 +1665,7 @@ it.each(["reimbursement", "incidental_expense"])(
     const originalCosts = jest.fn().mockResolvedValue([{ id: costImpactId, amountCents: 800n }]);
     const readLinks = jest.fn().mockResolvedValue([]);
     const createLinks = jest.fn();
+    const executeRaw = jest.fn();
     Object.assign(tx, {
       operatingImpactEntry: { findMany: originalCosts },
       expensePublicCashCostLink: { groupBy: readLinks, createMany: createLinks },
@@ -1678,7 +1679,7 @@ it.each(["reimbursement", "incidental_expense"])(
       registeredFundTransferLine: { findMany: jest.fn().mockResolvedValue([]) },
       fundAccountSourceBatch: { findMany: jest.fn().mockResolvedValue([source]), createMany: createSources },
       registeredOperationalPayment: { create: createPayment, findUnique: findRecorded },
-      $executeRaw: jest.fn()
+      $executeRaw: executeRaw
     });
     tx.fileObject.findUnique.mockResolvedValue({ id: voucherFileId, uploadedByUserId: keeper.id });
     const controlledVoucher = jest.fn(async (query: Prisma.Sql) => {
@@ -1771,7 +1772,7 @@ it.each(["reimbursement", "incidental_expense"])(
         { previousSourceBatchId: sourceBatchId, sourceStatus: "pending", sourceName: null }
       ]);
       expect(createSources.mock.calls[0][0].data[0].amountYuan.toFixed(4)).toBe("92.0000");
-      expect(tx.$executeRaw.mock.calls.filter(([query]) =>
+      expect(executeRaw.mock.calls.filter(([query]) =>
         String(query).includes('FundAccountBalanceRegistration_transfer_capacity')
       )).toHaveLength(1);
       expect(createPayment).toHaveBeenCalledTimes(1);
