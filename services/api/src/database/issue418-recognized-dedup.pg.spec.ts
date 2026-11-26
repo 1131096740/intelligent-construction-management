@@ -306,7 +306,7 @@ run("issue #418 identifiable settlement dedup on the ordered operating ledger", 
     ] as const) {
       expect(ambiguousDetail.filter(item => item.sourceBusinessCode === code)
         .map(item => item.signedImpactCents).sort()).toEqual(amountsCents);
-      expect(ambiguousCsvRows.map(row => row.split('\",\"'))
+      expect(ambiguousCsvRows.map(row => row.split('","'))
         .filter(cells => cells[codeColumn] === code)
         .map(cells => cells[amountColumn]).sort()).toEqual(amountsYuan);
     }

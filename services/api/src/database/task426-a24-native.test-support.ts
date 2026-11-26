@@ -17,6 +17,8 @@ import { projectA24ApprovalFailure, projectA24CashFailure, projectA24SignatureFa
   projectA24SubmissionFailure, projectA24CashSnapshot, projectA24FixtureAssertion } from "./task426-a24-signature-diagnostic.test-support";
 import { createApiValidationPipe } from "../validation/api-validation";
 
+// The native Jest fixture shares this CommonJS entry point with the node:test suite.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { proveA24CashAttribution } = require("../../test-support/task426-a24-native-business.cjs") as {
   proveA24CashAttribution(input: Record<string, unknown>): Promise<Record<string, unknown>>;
 };
@@ -296,7 +298,7 @@ it("records and confirms only an exact A24 public cash slice with separate datab
     stage = "PUBLIC_HTTP_INITIAL_CUSTODY_RECEIPT";
     assert.equal(custody.body.custodianId, keeperId);
     stage = "PUBLIC_APPROVAL";
-    async function approveExpense(projectId: string) {
+    const approveExpense = async (projectId: string) => {
       stage = "PUBLIC_APPROVAL_CREATE";
       const created = await send("applicant", { path: "/expense-claims", method: "POST", json: {
         claimType: "incidental_expense", incidentalExpenseCategory: "temporary_service",
@@ -364,7 +366,7 @@ it("records and confirms only an exact A24 public cash slice with separate datab
         debtorId: debtor.company.id, bearingCompanyId: bearing.company.id, bearingCompanyVersionId: bearing.version.id,
         registrationId: current.id, sourceId: current.sources[0].id, insufficientSourceId: current.sources[1].id,
         balanceBefore: current.balanceYuan?.toFixed(4), balanceAfter: "22.0000", paidAt: "2026-11-20" };
-    }
+    };
 
     const primary = await approveExpense(projects[0]);
     stage = "A24_CASH_AND_G4";
