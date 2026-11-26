@@ -58,10 +58,12 @@ test("requires the exact 341 successor and refuses cross-profile admission", () 
 
 test("qualifies the 342 fact successor only after the exact 341 prefix", () => {
   const qualify = (ledger, terminal) => combined.qualifyA24Source("a".repeat(40), "b".repeat(40), ledger, terminal);
-  const source = qualify(rows, 342);
+  const combined342 = rows.slice(0, 342);
+  const source = qualify(combined342, 342);
   assert.equal(source.a24Prefixes.at(-1), 342);
-  assert.equal(combined.verifyA24Prefix(342, rows).ledgerSha256, source.ledgerDigest);
-  assert.throws(() => qualify(rows, 341), /NATIVE_A24_341_COUNT/u);
+  assert.equal(combined.verifyA24Prefix(342, combined342).ledgerSha256, source.ledgerDigest);
+  assert.throws(() => qualify(combined342, 341), /NATIVE_A24_341_COUNT/u);
+  assert.throws(() => qualify([...combined342, rows[342]], 342), /NATIVE_A24_342_COUNT/u);
   assert.throws(() => qualify(rows.slice(0, 341), 342), /NATIVE_A24_342_COUNT/u);
   assert.throws(() => qualify([...rows.slice(0, 340), rows[341], rows[340]], 342), /NATIVE_A24_340_PINNED_LEDGER/u);
 });
