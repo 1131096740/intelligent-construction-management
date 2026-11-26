@@ -145,6 +145,7 @@ type ProjectionReadContext = {
   projectById: Map<string, { id: string; code: string; name: string }>;
   costAttributionByFactId?: Map<string, { companyEntityVersionId: string; companyName: string }>;
   expenseCashByImpactId: Map<string, ExpenseCashProjectionRow[]>;
+  suppressedSettlementFactIds: ReadonlySet<string>;
   constructionEnterpriseSubjectIds?: string[];
   companyEntityVersionIds?: string[];
   affiliateAssignments: Array<{
@@ -1149,6 +1150,7 @@ export class OperatingProjectionService {
         scope,
         cutoffAt: cutoffAt.toISOString(),
         collectSourceReferenceTotals: input.collectSourceReferenceTotals,
+        collectSuppressedSettlementFactIds: input.requireDetailPermission,
         constructionEnterpriseSubjectIds,
         companyEntityVersionIds: companyEntityVersionIds
           ? Array.from(companyEntityVersionIds)
@@ -1416,6 +1418,7 @@ export class OperatingProjectionService {
             projectById,
             costAttributionByFactId,
             expenseCashByImpactId,
+            suppressedSettlementFactIds: streamed.suppressedSettlementFactIds,
             constructionEnterpriseSubjectIds,
             companyEntityVersionIds: companyEntityVersionIds
               ? Array.from(companyEntityVersionIds)
@@ -2079,6 +2082,7 @@ async function readFactDetailPageInTransaction(
         occurredAt: fact.occurredAt,
         impactId: storedImpact.id
       };
+      if (context.suppressedSettlementFactIds.has(fact.id)) continue;
       const impact = projectExpenseCashCostImpact(storedImpact, context.expenseCashByImpactId.get(storedImpact.id),
         context.scope.filters?.companyEntityId, companyVersionIds);
       if (!impact || !projectionFactMatchesFilters(

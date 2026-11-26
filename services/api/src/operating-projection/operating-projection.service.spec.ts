@@ -301,6 +301,69 @@ describe("OperatingProjectionService", () => {
     expect(detailQuery?.select).not.toHaveProperty("description");
   });
 
+  it("pages and exports only the settlement sources selected by the aggregate", async () => {
+    const tx = emptyProjectionTx(new Date("2026-09-11T01:02:03Z"), [project]);
+    const settlement = {
+      id: "fact-a", projectId: project.id, sourceType: "settlement",
+      sourceBusinessId: "settlement-a", sourceBusinessCode: "SETTLEMENT-A", sourceVersion: 1,
+      occurredAt: new Date("2026-09-01"), confirmedAt: new Date("2026-09-01"),
+      factKind: "downstream_settlement", operatingLevel: "project", evidenceLevel: "A",
+      amountCents: 100n, numericProtocolVersion: 1, direction: "neutral", entryKind: "original",
+      sourceSnapshot: { contractVersionId: "contract-v1", periodLabel: "第1期" }, subjectSnapshot: {}
+    };
+    const otherPeriod = {
+      ...settlement,
+      id: "fact-b", sourceBusinessId: "settlement-b", sourceBusinessCode: "SETTLEMENT-B",
+      occurredAt: new Date("2026-09-03"), confirmedAt: new Date("2026-09-03"),
+      sourceSnapshot: { contractVersionId: "contract-v1", periodLabel: "第2期" }
+    };
+    const duplicate = {
+      ...settlement,
+      id: "fact-c", sourceType: "signed_contract_settlement",
+      sourceBusinessId: "signed-settlement-c", sourceBusinessCode: "SIGNED-DUPLICATE",
+      occurredAt: new Date("2026-09-05"), confirmedAt: new Date("2026-09-05"),
+      sourceSnapshot: { contractVersionId: "contract-v1", contractKind: "downstream", settlementNumber: "第１期" }
+    };
+    const facts = [settlement, otherPeriod, duplicate];
+    const impacts = facts.map((fact) => ({
+      id: `impact-${fact.id}`, factId: fact.id, fact, impactKind: "confirmed_cost",
+      amountCents: fact.amountCents, numericProtocolVersion: 1, direction: "increase",
+      subjectKind: null, subjectId: null, costCategoryCode: "material", fundPurpose: null
+    }));
+    tx.operatingFact.findMany.mockResolvedValue(facts);
+    tx.operatingImpactEntry.findMany.mockImplementation(async (query) => {
+      if (!query.select?.fact) return impacts;
+      const detailOrder = [...impacts].reverse();
+      const cursorImpactId = query.where.OR?.[1].id.gt;
+      return detailOrder.slice(detailOrder.findIndex(({ id }) => id === cursorImpactId) + 1);
+    });
+    const visibility = overviewVisibility([project.id]);
+    visibility.effectiveRoleKeysByProjectInTransaction.mockResolvedValue(new Map([[project.id, ["finance_staff"]]]));
+    const audit = { record: jest.fn() };
+    const service = new OperatingProjectionService(
+      { $transaction: jest.fn((work) => work(tx)) } as never, visibility as never,
+      zeroRiskReader() as never, audit as never, { confirmPassword: jest.fn() } as never
+    );
+
+    const request = { projectId: project.id, pageSize: 1 };
+    const first = await service.getProjectDetailPage("finance", request);
+    expect(first.projection.asOf.crossSourceDedupedFactCount).toBe(1);
+    expect(first.items.map((item) => item.sourceBusinessCode)).toEqual(["SETTLEMENT-B"]);
+    expect(first.page.nextCursor).toEqual(expect.any(String));
+    const second = await service.getProjectDetailPage("finance", { ...request, cursor: first.page.nextCursor! });
+    expect(second.items.map((item) => item.sourceBusinessCode)).toEqual(["SETTLEMENT-A"]);
+
+    const exported = await service.exportView("finance", { scopeKind: "project", projectId: project.id },
+      "current-password", "project_operating_ledger_detail");
+    const csv = await readUtf8Stream(exported.stream);
+    expect(csv).toContain('"SETTLEMENT-A"');
+    expect(csv).toContain('"SETTLEMENT-B"');
+    expect(csv).not.toContain('"SIGNED-DUPLICATE"');
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      action: "operating_projection.export", metadata: expect.objectContaining({ rowCount: 2 })
+    }));
+  });
+
   it("fails a subject-filtered detail page on snapshot bytes before ORM materialization", async () => {
     const readAt = new Date("2026-09-11T01:02:03.000Z");
     const tx = emptyProjectionTx(readAt, [project]);
