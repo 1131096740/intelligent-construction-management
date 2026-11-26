@@ -83,6 +83,71 @@ describe("ContractTakeoverActivationService POL-09 operating projection", () => 
     expect(tx.paymentExecution.create).not.toHaveBeenCalled();
   });
 
+  it.each(["missing", "matching", "conflicting"] as const)(
+    "keeps the verified original inside counterparty snapshot when it is %s",
+    async (existing) => {
+      const audit = { record: jest.fn() } as unknown as AuditService;
+      const operating = { appendConfirmedSourceIfEnabledInTransaction: jest.fn() } as unknown as OperatingSourceReplayService;
+      const service = new ContractTakeoverActivationService(audit, operating);
+      const tx = {
+        ...activationTx(),
+        contractPartySnapshot: {
+          findMany: jest.fn().mockResolvedValue(existing === "missing" ? []
+            : [{ businessPartyVersionId: existing === "matching" ? "original-version" : "other-version" }]),
+          create: jest.fn()
+        },
+        businessPartyVersion: {
+          findUnique: jest.fn().mockResolvedValue({ businessPartyId: "original", snapshot: { name: "原签约相对方" } }),
+          findUniqueOrThrow: jest.fn().mockResolvedValue({ snapshot: { name: "原签约相对方", originalCode: "retained" } })
+        },
+        projectAffiliateAssignment: { findFirst: jest.fn().mockResolvedValue({
+          id: "affiliate", businessPartyVersionId: "builder-version", affiliateNameSnapshot: "原施工企业"
+        }) },
+        projectParticipatingCompany: { findMany: jest.fn().mockResolvedValue([
+          { companyEntityVersionId: "our-version", companyNameSnapshot: "原我方公司" }
+        ]) }
+      };
+      tx.contractTakeoverConfirmationEvent.findFirst.mockResolvedValue({
+        responseSnapshot: { revision: 1, assignments: { contract: "staff", finance: "finance", supervisor: "director" } }
+      });
+      const execution = service.executePreparedActivation(tx as never, {
+        takeover: {
+          id: "takeover-1", projectId: "project-1", contractId: "contract-1",
+          contractVersionId: "original-contract-version", paymentTermsVersionId: "terms-1", takeoverLevel: "NONE"
+        },
+        contractFacts: {
+          signedAt: new Date("2026-09-01"), historicalSettledCents: 6_000n, zeroSettlementDeclared: false,
+          contractFactsSnapshot: { counterparty: "原签约相对方", counterpartyVersionId: "original-version" }
+        },
+        financeFacts: { zeroPaymentDeclared: false, excessTreatment: null },
+        payments: [{ id: "payment", status: "draft", amountCents: 6_000n }],
+        vouchers: [{ historicalPaymentId: "payment" }],
+        contract: {
+          counterparty: "原签约相对方", contractTypeKey: "material_purchase", companyEntityId: "our-company",
+          companyEntityIsActive: true, companyEntityDataStatus: "complete",
+          companyEntityVersionId: "our-version", companyEntityVersionName: "原我方公司",
+          companyEntityCreditCode: "known-code", companyEntityRegisteredAddress: null
+        },
+        contractVersion: { draftData: { historicalTakeover: true, relationship: "inside" }, amountCents: 10_000n, amountLimitType: "capped" }
+      }, "director", "activate");
+      if (existing === "conflicting") {
+        await expect(execution).rejects.toThrow("原合同相对方版本与已保存的签约快照不一致");
+        expect(tx.settlement.create).not.toHaveBeenCalled();
+      } else {
+        await expect(execution).resolves.toMatchObject({ activated: true });
+      }
+      if (existing === "missing") {
+        expect(tx.contractPartySnapshot.create).toHaveBeenCalledWith({ data: {
+          contractVersionId: "original-contract-version", roleKey: "party_b", displayOrder: 0,
+          businessPartyVersionId: "original-version", snapshot: { name: "原签约相对方", originalCode: "retained" }
+        } });
+      } else {
+        expect(tx.contractPartySnapshot.create).not.toHaveBeenCalled();
+      }
+      expect(tx.paymentExecution.create).not.toHaveBeenCalled();
+    }
+  );
+
   it("requires a handover before a no-grade or C-level takeover is activated", async () => {
     const audit = { record: jest.fn() } as unknown as AuditService;
     const operatingSources = {
