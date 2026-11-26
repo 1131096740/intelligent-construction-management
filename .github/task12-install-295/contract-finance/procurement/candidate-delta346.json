@@ -32,7 +32,7 @@
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.ts",
     "expected": "c83128b15dbd395bae3875c5994c11e54b13ec426b6959b3e677371bb49a303f",
-    "candidate": "b6230f3610734806109ad47c18e1195dfb39577117274acab416384deeafa52f"
+    "candidate": "563bd82dfba34320ccaa96e65a44197bcd511e2d829d120398c5e42874694052"
   },
   {
     "path": "apps/web-admin/src/api/expense-claim.api.test.ts",
@@ -43,6 +43,11 @@
     "path": "apps/web-admin/src/api/expense-claim.api.ts",
     "expected": "7ab9fecf6a4955e32de1d973b9c7879a2162a245302a944e4177faf6556bfc3d",
     "candidate": "24467bd33539043ba4a7dc2c729ea578548bcb258aa7c929003393b04be1a2b7"
+  },
+  {
+    "path": "apps/web-admin/src/components/ContractFinancialBalances.vue",
+    "expected": "dd2091b6ed35034821cdbfc2143253679a02399fd16ddac5e79ab63d7b8b436d",
+    "candidate": "2b51640d9f56d4a28f4fd5a02604f5e5b1936e54ef6ed7fd38dbd643f654f1da"
   },
   {
     "path": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
@@ -57,12 +62,12 @@
   {
     "path": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
     "expected": "d407ee01a3f21c2a94805c9b6a0c1be27187170a73965b521c57267a4c81cde6",
-    "candidate": "c020f6b8cfc48be4c07c65b6e410fa1589c88a0d7169d32cb30f81cb47cab481"
+    "candidate": "5a7e89e3ebfb671e27869b77ee212567c6e5fa2f8c13cb2cace1953eb4d705af"
   },
   {
     "path": "apps/web-admin/src/pages/projects/project-operating-overview.structure.test.ts",
     "expected": "20f3a4986501b193e47f9138a15c228bd23e4b2dd441c46122e13b7586f963c3",
-    "candidate": "fff5d8017b5aa5883369a6f3219648606964211262b263c6ea9fd60c2edc028f"
+    "candidate": "00d28eaf931d93bd03c22a14abf65be18e7ac315ef019406200576514768498b"
   },
   {
     "path": "packages/shared-domain/src/permissions.ts",
@@ -192,22 +197,22 @@
   {
     "path": "services/api/src/operating-projection/operating-projection.reducer.spec.ts",
     "expected": "06a294fec93f7e014734a80e973c804b35379e0f785b7b557723d7713f8610df",
-    "candidate": "ba839b01c01b7f93f791b39370647b4e9eb7ff4d3b334c47c99f6c1e4aa044e4"
+    "candidate": "426e393d335a7b6a7fe74178a4b087913278b75fa02ebe2b33ba775cf22f3b62"
   },
   {
     "path": "services/api/src/operating-projection/operating-projection.reducer.ts",
     "expected": "f0a1f1fb47106a66dfbf21ce4bb0dcb9433e874cb26110c85faf57eaf5d6693c",
-    "candidate": "0733a31a485a08994ca29dfeb0794d64decdd6372a41ff72ff2f9057290f33e5"
+    "candidate": "a9e3602a4e3099427fc7fdf2f991375c30be0b1cbf70be1ca5f0ce7f3907295d"
   },
   {
     "path": "services/api/src/operating-projection/operating-projection.service.spec.ts",
     "expected": "61935cb7aa74bc9d6a7d5b9678df3cbd6dc5d1ff640ab14f76ba376d61d36739",
-    "candidate": "76a9c7f63401cfa8221da9aec3bf81d12898db9592034220a17273d624c2ebf2"
+    "candidate": "4ebde74c525f5323234a54db0de72d182ba89dc9530a49b5edd9ccc520b0a2ee"
   },
   {
     "path": "services/api/src/operating-projection/operating-projection.service.ts",
     "expected": "584d3bdc230749b81dd07064640ced8d79835dacb2a76b581c847ee0034dcf0e",
-    "candidate": "8414bcc970461a0ba92b5a6e2f885ef282c80189bf073b3201b6714c67f70508"
+    "candidate": "c0609036dc27460a24cce924e3c946eb7e84faa5cd982979d3fad2a8db122f2c"
   },
   {
     "path": "services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts",
