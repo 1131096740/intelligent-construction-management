@@ -567,7 +567,7 @@ async function main(args) {
         stage("A24_CASH_VOUCHER_ACL");
         checkCashVoucherAcl = () => {
           const observed = JSON.parse(sql(cashVoucher.readAcl(app, observationRole)));
-          assert.deepEqual(observed, { writerRestricted: true, private: true, accountWriteWitnessReadable: true,
+          assert.deepEqual(observed, { writerRestricted: true, private: true, cashWriteWitnessReadsExact: true,
             historicalWriteDenied: true }, "A24_CASH_VOUCHER_ACL");
           return observed;
         };

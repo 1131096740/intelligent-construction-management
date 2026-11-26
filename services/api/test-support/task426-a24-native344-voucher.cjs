@@ -7,6 +7,7 @@ const command = "public.jg_record_expense_public_cash_voucher(text,text,bigint,t
 const finish = "public.jg_finish_expense_public_cash_voucher()";
 const rawOwnerVoucher = "public.jg_project_owner_settlement_voucher_bound(text)";
 const witness = "public.jg_expense_public_cash_voucher_witness";
+const cashWitnessRelations = ["RegisteredFundAccount", "RegisteredOperationalPayment", "ExpenseClaimPaymentExecution"];
 const routines = [
   ["jg_issue417_check_partial_activation", "756f8871172efc4c8a9c50179f291b833fa0910c7a37775530fd0bcc093abc65", false],
   ["jg_issue417_preserve_partial_activation_scene", "7fa4b88fdb60996032cf86daf0c9e14e87902e4c76233a8a8b4e3ad25e157be3", false],
@@ -105,13 +106,15 @@ function verifyCatalog(size, result, predecessor) {
 function addCashVoucherAcl(plan) {
   return {
     ...plan,
-    read: { ...plan.read, RegisteredFundAccount: [...plan.read.RegisteredFundAccount, "xmin"] },
+    read: { ...plan.read, ...Object.fromEntries(cashWitnessRelations.map(relation =>
+      [relation, [...plan.read[relation], "xmin"]])) },
     functions: [...plan.functions, command]
   };
 }
 
 function readAcl(app, observer) {
   for (const role of [app, observer]) assert.match(role, /^jg_[a-z0-9_]+$/u);
+  const relations = cashWitnessRelations.map(name => `('public."${name}"'::regclass)`).join(", ");
   return `SELECT jsonb_build_object(
     'writerRestricted', has_function_privilege('${app}','${command}','EXECUTE')
       AND NOT has_function_privilege('${app}','${command}','EXECUTE WITH GRANT OPTION')
@@ -125,9 +128,16 @@ function readAcl(app, observer) {
         OR has_table_privilege(role.name,'${witness}','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
         OR has_any_column_privilege(role.name,'${witness}','SELECT,INSERT,UPDATE,REFERENCES')
     ),
-    'accountWriteWitnessReadable', has_column_privilege('${app}','public."RegisteredFundAccount"','xmin','SELECT')
-      AND NOT has_column_privilege('${app}','public."RegisteredFundAccount"','xmin','SELECT WITH GRANT OPTION')
-      AND NOT has_column_privilege('${observer}','public."RegisteredFundAccount"','xmin','SELECT'),
+    'cashWriteWitnessReadsExact', NOT EXISTS (
+      SELECT FROM (VALUES ${relations}) target(relation)
+      WHERE NOT has_column_privilege('${app}',target.relation,'xmin','SELECT')
+        OR has_column_privilege('${app}',target.relation,'xmin','SELECT WITH GRANT OPTION,INSERT,UPDATE,REFERENCES')
+        OR EXISTS (
+          SELECT FROM pg_catalog.pg_attribute a WHERE a.attrelid=target.relation AND a.attnum<0 AND NOT a.attisdropped
+            AND (has_column_privilege('${observer}',target.relation,a.attnum,'SELECT,INSERT,UPDATE,REFERENCES')
+              OR (a.attname<>'xmin' AND has_column_privilege('${app}',target.relation,a.attnum,'SELECT,INSERT,UPDATE,REFERENCES')))
+        )
+    ),
     'historicalWriteDenied', NOT has_column_privilege('${app}','public."OperatingTakeoverBatch"','revision','UPDATE')
       AND NOT has_any_column_privilege('${observer}','public."OperatingTakeoverActivation"','INSERT,UPDATE,REFERENCES')
   );`;
