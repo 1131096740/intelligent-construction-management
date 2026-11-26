@@ -40,7 +40,7 @@ async function consume(context) {
   history.assertCatalog(historicalCatalog, true);
 
   receipt.stages.push('ISSUE417_EXACT_' + profile.count + '_REPEATABLE_READ_SCENE_FENCE');
-  receipt.sceneRace = await require(raceScript).verifyHistoryExpenseInvariant(context);
+  receipt.sceneRace = await require(raceScript).verifyHistoryExpenseInvariant(context, profile.count);
   receipt.stages.push('ISSUE417_EXACT_' + profile.count + '_ORIGINAL_BUSINESS');
   const directory = fs.mkdtempSync(path.join(workDir, 'issue417-'));
   const reportPath = path.join(directory, 'jest.json');
@@ -131,7 +131,7 @@ async function main() {
 }
 
 main().catch(error => {
-  const code = error.code ?? error.message;
+  const code = /^ISSUE417_RACE_[A-Z0-9_]+$/u.test(error.message ?? '') ? error.message : error.code ?? error.message;
   const sqlstate = error.psqlObservation?.sqlstate ?? error.sqlstate;
   receipt.failure = { stage: receipt.stages.at(-1),
     code: typeof code === 'string' && /^[A-Z0-9_]+$/u.test(code) ? code : 'ISSUE417_' + profile.count + '_FAILED',

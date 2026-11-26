@@ -69,7 +69,8 @@ function openStaleTransaction(owner, cert, batch) {
   };
 }
 
-async function verifyHistoryExpenseInvariant({ ownerUrl, workDir, database, runId, sql }) {
+async function verifyHistoryExpenseInvariant({ ownerUrl, workDir, database, runId, sql }, migrationCount) {
+  assert.ok(migrationCount === 335 || migrationCount === 346, 'ISSUE417_RACE_MIGRATION_COUNT');
   const owner = new URL(ownerUrl);
   const run = runId.replaceAll('-', '');
   const cert = path.join(workDir, 'ca.crt');
@@ -98,12 +99,12 @@ async function verifyHistoryExpenseInvariant({ ownerUrl, workDir, database, runI
     WHERE migration_name = '20261129012000_issue417_historical_expense_states'
       AND checksum = '924effc588fe48f9f4e63bd5187c2eb6a1a48b35d1749d699fccc4135ddaaecd'
       AND finished_at IS NOT NULL AND rolled_back_at IS NULL
-      AND (SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL)=335
+      AND (SELECT count(*) FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL)=${migrationCount}
       AND current_user=session_user AND current_user='jg_task01_owner'
       AND (SELECT datdba=current_user::regrole::oid FROM pg_database WHERE datname=current_database())
       AND (SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid());
   `);
-  assert.equal(transition.stdout.trim(), '20261129012000_issue417_historical_expense_states');
+  assert.equal(transition.stdout.trim(), '20261129012000_issue417_historical_expense_states', 'ISSUE417_RACE_EXACT_HISTORY_LEDGER');
   const activation = (batch, status) => `
     INSERT INTO public."OperatingTakeoverActivation" (
       "idempotencyKey", "batchId", revision, status, "generatedFactIds", "gapRowIds", "activatedByUserId"
