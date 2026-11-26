@@ -6,7 +6,7 @@ plan=$(cd "$(dirname "$0")" && pwd -P)
 ordered_issue=false
 if [[ ${2:-} == issue* ]]; then
   [[ $# == 3 && $3 == --historical-settlement-334 ]] || exit 64
-  node -e 'require(process.argv[1]).profileFor(process.argv[2])' "$plan/issue-ordered/profiles.cjs" "$2" >/dev/null 2>&1 || exit 64
+  node -e 'const p=require(process.argv[1]).profileFor(process.argv[2]); if(p.requiredMigrationCount) process.exit(65)' "$plan/issue-ordered/profiles.cjs" "$2" >/dev/null 2>&1 || exit 64
   ordered_issue=true
 fi
 
