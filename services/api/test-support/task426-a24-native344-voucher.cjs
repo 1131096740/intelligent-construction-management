@@ -102,6 +102,14 @@ function verifyCatalog(size, result, predecessor) {
   return result;
 }
 
+function addCashVoucherAcl(plan) {
+  return {
+    ...plan,
+    read: { ...plan.read, RegisteredFundAccount: [...plan.read.RegisteredFundAccount, "xmin"] },
+    functions: [...plan.functions, command]
+  };
+}
+
 function readAcl(app, observer) {
   for (const role of [app, observer]) assert.match(role, /^jg_[a-z0-9_]+$/u);
   return `SELECT jsonb_build_object(
@@ -117,6 +125,9 @@ function readAcl(app, observer) {
         OR has_table_privilege(role.name,'${witness}','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
         OR has_any_column_privilege(role.name,'${witness}','SELECT,INSERT,UPDATE,REFERENCES')
     ),
+    'accountWriteWitnessReadable', has_column_privilege('${app}','public."RegisteredFundAccount"','xmin','SELECT')
+      AND NOT has_column_privilege('${app}','public."RegisteredFundAccount"','xmin','SELECT WITH GRANT OPTION')
+      AND NOT has_column_privilege('${observer}','public."RegisteredFundAccount"','xmin','SELECT'),
     'historicalWriteDenied', NOT has_column_privilege('${app}','public."OperatingTakeoverBatch"','revision','UPDATE')
       AND NOT has_any_column_privilege('${observer}','public."OperatingTakeoverActivation"','INSERT,UPDATE,REFERENCES')
   );`;
@@ -129,4 +140,4 @@ function projectMigrationError(text) {
   return scope ? { ...result, guard: "VOUCHER_INSTALL_SCOPE" } : result;
 }
 
-module.exports = { command, readCatalog, verifyCatalog, readAcl, projectMigrationError };
+module.exports = { command, readCatalog, verifyCatalog, addCashVoucherAcl, readAcl, projectMigrationError };

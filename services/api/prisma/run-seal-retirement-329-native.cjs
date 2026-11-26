@@ -375,8 +375,8 @@ async function main(args) {
   const a24Assignment = expenseAssignment341 && require("../test-support/task426-a24-native341-assignment.cjs");
   const pendingExpense = expensePending342 && require("../test-support/task426-a24-native342-fact.cjs");
   const cashVoucher = expenseCashVoucher344 && require("../test-support/task426-a24-native344-voucher.cjs");
-  const a24Plan = a24Acl && a24Acl.a24ColumnPlan(require("@prisma/client").Prisma.dmmf.datamodel.models, expensePending342);
-  if (cashVoucher) a24Plan.functions.push(cashVoucher.command);
+  const baseA24Plan = a24Acl && a24Acl.a24ColumnPlan(require("@prisma/client").Prisma.dmmf.datamodel.models, expensePending342);
+  const a24Plan = cashVoucher ? cashVoucher.addCashVoucherAcl(baseA24Plan) : baseA24Plan;
   if (a24Plan) receipt.a24AclSha256 = hash(JSON.stringify(a24Plan));
   if (expenseCashA24) receipt.a24ExpectedPrefixes = source.a24Prefixes.map(size => {
     const { ledgerSha256 } = a24Profile.verifyA24Prefix(size, source.ledger.slice(0, size));
@@ -567,7 +567,8 @@ async function main(args) {
         stage("A24_CASH_VOUCHER_ACL");
         checkCashVoucherAcl = () => {
           const observed = JSON.parse(sql(cashVoucher.readAcl(app, observationRole)));
-          assert.deepEqual(observed, { writerRestricted: true, private: true, historicalWriteDenied: true }, "A24_CASH_VOUCHER_ACL");
+          assert.deepEqual(observed, { writerRestricted: true, private: true, accountWriteWitnessReadable: true,
+            historicalWriteDenied: true }, "A24_CASH_VOUCHER_ACL");
           return observed;
         };
         receipt.a24CashVoucherAcl = checkCashVoucherAcl();
