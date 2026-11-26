@@ -491,7 +491,8 @@ const availablePaymentSourceOptions = computed(() => {
       ? ["contract_due"] : ["contract_due", "contract_advance"])
     : new Set<PaymentCreateSourceType>(["settlement", "signed_settlement", "contract_advance"]);
   return paymentCreateSourceOptions
-    .filter((option) => allowed.has(option.value))
+    .filter((option) => allowed.has(option.value) &&
+      (option.value !== "contract_advance" || selectedContract.value?.paymentSubjectType !== "affiliate"))
     .map((option) => option.value === "contract_due"
       ? { ...option, label: "按冻结付款条款直接付款" }
       : option);
@@ -508,7 +509,9 @@ const contractPaymentRouteDescription = computed(() =>
     ? "依据生效的合同付款约定办理。提交时会核对约定和可用额度。"
     : contractPaymentRoute.value === "unsupported"
       ? "当前合同类型尚未明确，不能判断合法付款来源。请先由合同部核对合同类型。"
-      : "需要结算的合同从已生效结算发起付款；合同预付款仍按已生效条款办理。"
+      : selectedContract.value?.paymentSubjectType === "affiliate"
+        ? "施工企业付款从已生效结算发起。"
+        : "需要结算的合同从已生效结算发起付款；合同预付款仍按已生效条款办理。"
 );
 const paymentSourceHint = computed(() => {
   if (!selectedContract.value) return "请先选择合同，系统将按合同类型限定付款来源。";

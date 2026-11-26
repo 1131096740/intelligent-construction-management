@@ -1566,6 +1566,9 @@ export class PaymentRequestService {
       input.paymentSubjectType,
       contractVersion.signingSubjectType
     );
+    if (paymentSubjectType === "affiliate" && !revision) {
+      throw new BadRequestException("施工企业合同预付款已停止新增申请");
+    }
     await this.assertHistoricalTakeoverPaymentReady(tx, {
       contractId: contractVersion.contractId,
       contractVersionId: contractVersion.id,

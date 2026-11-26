@@ -850,9 +850,14 @@ export class ProjectConstructionPaymentCorrectionService {
           : original.paymentKind === "advance"
             ? "contract_advance"
             : "contract_due";
+      const keepsPaidAdvanceRequest =
+        request?.status === "paid" &&
+        original.paymentKind === "advance" &&
+        paymentRequestId === original.paymentRequestId &&
+        contractLedgerId === original.contractLedgerId;
       if (
         !request ||
-        !["approved_pending_payment", "partially_paid"].includes(request.status) ||
+        (!["approved_pending_payment", "partially_paid"].includes(request.status) && !keepsPaidAdvanceRequest) ||
         request.paymentSubjectType !== "affiliate" ||
         request.sourceType !== expectedSourceType
       ) {

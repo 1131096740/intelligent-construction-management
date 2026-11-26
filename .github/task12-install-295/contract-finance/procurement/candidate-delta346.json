@@ -65,6 +65,11 @@
     "candidate": "9b1d544735fde51d45798f2785e451e899cd99ed6cb04fe8eeb899c2880f5c88"
   },
   {
+    "path": "apps/web-admin/src/pages/payments/PaymentWorkbenchPage.vue",
+    "expected": "5553d23fc09b235929485308fa8c674c1a091e428774a1d3b393623faf56374e",
+    "candidate": "1153c97fd50062a8099111b63304d87576008bb12fadff4a7446a3defd11ca24"
+  },
+  {
     "path": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
     "expected": "d407ee01a3f21c2a94805c9b6a0c1be27187170a73965b521c57267a4c81cde6",
     "candidate": "5a7e89e3ebfb671e27869b77ee212567c6e5fa2f8c13cb2cace1953eb4d705af"
@@ -248,6 +253,16 @@
     "path": "services/api/src/operating-projection/operating-projection.service.ts",
     "expected": "584d3bdc230749b81dd07064640ced8d79835dacb2a76b581c847ee0034dcf0e",
     "candidate": "c0609036dc27460a24cce924e3c946eb7e84faa5cd982979d3fad2a8db122f2c"
+  },
+  {
+    "path": "services/api/src/payment/payment-request.service.spec.ts",
+    "expected": "174e0354c964991e970bcb232a2a2e160eab3e93e7c5f167b0d2488b49e13393",
+    "candidate": "28e5e747682135bd6a41d6e64c541ed08e5eff656e862c91db4921822a59c5db"
+  },
+  {
+    "path": "services/api/src/payment/payment-request.service.ts",
+    "expected": "0a283f62d03fc5f22fe776d1a9da00b9becf80a2cdff44808fa1d944f96fd74f",
+    "candidate": "7007e2ace154032a1bb5e1d9e96b05cd3266afdce5e65192df1464d5178496b5"
   },
   {
     "path": "services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts",

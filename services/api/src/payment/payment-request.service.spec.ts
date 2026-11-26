@@ -2198,7 +2198,7 @@ name: "签批人甲",
     expect(tx.paymentRequest.create).not.toHaveBeenCalled();
   });
 
-  it("creates a payment request when an effective historical contract change baseline is missing", async () => {
+  it.each(["our_company", "affiliate"] as const)("enforces the advance application rule for %s contracts", async (paymentSubjectType) => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date("2026-07-20T00:00:00.000Z"));
 
@@ -2217,6 +2217,7 @@ name: "签批人甲",
             changeType: "historical_takeover",
             originalBaseAmountCents: null,
             amountCents: BigInt(1_000_000),
+            signingSubjectType: paymentSubjectType,
             effectiveAt: new Date("2026-06-01T00:00:00.000Z")
           })
         },
@@ -2291,12 +2292,18 @@ name: "签批人甲",
       };
       const paymentService = new PaymentRequestService(new PaymentAmountService(), prisma as never);
 
-      const created = await paymentService.create({
+      const creation = paymentService.create({
         sourceType: "contract_advance",
         contractVersionId: "contract-version-1",
         code: "FK-YF-2026-001",
         requestedAmountCents: "100000"
       } as never);
+      if (paymentSubjectType === "affiliate") {
+        await expect(creation).rejects.toThrow("施工企业合同预付款已停止新增申请");
+        expect(tx.paymentRequest.create).not.toHaveBeenCalled();
+        return;
+      }
+      const created = await creation;
 
       expect(created.code).toBe("FK-YF-2026-001");
       expect(tx.settlement.findUnique).not.toHaveBeenCalled();
