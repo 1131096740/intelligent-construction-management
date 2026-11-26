@@ -104,7 +104,7 @@ const profiles = {
   issue421: {
     file: 'src/database/issue421-signed-settlement-ledger.http.pg.spec.ts',
     sourceDigest: '2580650f2a96dac37a6f9b9e2720aec8985f9cac8144bf4f08e0cce7859d8e9e',
-    fixtureDigest: 'e2362782b0762891701e100c0804f73b923a97c9bb80b77eb4f1951245866c7a',
+    fixtureDigest: '97ecc2cedbd8ebbb9597602280e4ab4500f389b16dc4c5cefdfdb6d83768c283',
     orderedDatabaseKey: 'JG_ISSUE421_ORDERED_DATABASE',
     enableKey: 'ISSUE421_LEDGER_RUN',
     stage: 'ORIGINAL_SIGNED_LEDGER_JEST',
@@ -120,7 +120,7 @@ const profiles = {
   issue421b: {
     file: 'src/database/issue421b-four-ledger.http.pg.spec.ts',
     sourceDigest: '8ab0d51bf2a9b0b99cc14b690539f081fa753beaef5b1a4508f72a52d0aafab4',
-    fixtureDigest: 'caf4fac4c79e762f26ba72416e1be5d5f64ffd93bdaa29200cdad0b70c634965',
+    fixtureDigest: '925acf589db22eb185b8c94fd036b63266eb4bfa9a005b4674bf9b1dd973887d',
     orderedDatabaseKey: 'JG_ISSUE421B_ORDERED_DATABASE',
     enableKey: 'ISSUE421B_LEDGER_RUN',
     stage: 'ORIGINAL_FOUR_LEDGER_JEST',

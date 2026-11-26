@@ -10,11 +10,17 @@
 @@ -92 +98 @@
 -      !target.pathname.endsWith("_issue421_ledger")
 +      (!target.pathname.endsWith("_issue421_ledger") && !ordered)
-@@ -150,0 +157,16 @@
+@@ -150,0 +157,22 @@
++    let signingVersionId: string | undefined;
 +    if (ordered) {
-+      await owner.companyEntity.create({ data: {
-+        id: "i421-company", name: "四川建工智管建筑工程有限公司"
++      const signingCompany = await owner.companyEntity.create({ data: {
++        id: "i421-company", name: "四川建工智管建筑工程有限公司", isActive: true, currentVersionNo: 1
 +      } });
++      const signingVersion = await owner.companyEntityVersion.create({ data: {
++        companyEntityId: signingCompany.id, versionNo: 1, name: signingCompany.name,
++        isActive: signingCompany.isActive, action: "create", actorUserId: ids.director
++      } });
++      signingVersionId = signingVersion.id;
 +      const enterprise = await owner.businessParty.create({ data: {
 +        name: "隔离台账施工企业", normalizedName: "issue421-enterprise", createdByUserId: ids.director
 +      } });
@@ -27,3 +33,29 @@
 +        changeReason: "隔离验收施工企业", assignedByUserId: ids.director
 +      })) });
 +    }
+@@ -158,0 +187 @@
++        companyEntityId: ordered ? "i421-company" : undefined,
+@@ -167 +196 @@
+-        changeType: "initial",
++        changeType: ordered ? "original" : "initial",
+@@ -168,0 +198,2 @@
++        effectiveAt: ordered ? new Date("2026-01-01") : undefined,
++        numericProtocolVersion: 1,
+@@ -171,0 +203 @@
++        companyEntityVersionId: signingVersionId,
+@@ -175 +207 @@
+-        clauseSnapshot: {}
++        clauseSnapshot: ordered ? [] : {}
+@@ -185,0 +218 @@
++        companyEntityId: ordered ? "i421-company" : undefined,
+@@ -194 +227 @@
+-        changeType: "initial",
++        changeType: ordered ? "original" : "initial",
+@@ -195,0 +229,2 @@
++        effectiveAt: ordered ? new Date("2026-01-01") : undefined,
++        numericProtocolVersion: 1,
+@@ -200,0 +236 @@
++        companyEntityVersionId: signingVersionId,
+@@ -204 +240 @@
+-        clauseSnapshot: {}
++        clauseSnapshot: ordered ? [] : {}
