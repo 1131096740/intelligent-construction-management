@@ -1,11 +1,22 @@
 --- a/fixture.ts
 +++ b/fixture.ts
+@@ -3 +3 @@
+-import { PrismaClient } from "@prisma/client";
++import { PrismaClient, type Prisma } from "@prisma/client";
 @@ -251 +251 @@
 -  });
 +  }, 45_000);
 @@ -256 +256 @@
 -    const fixture = await seedFixture(prisma);
 +    const fixture = await seedFixture(prisma, true);
+@@ -469 +469 @@
+-  });
++  }, 45_000);
+@@ -567,2 +567,2 @@
+-    assertFileHasNoBusinessBinding: async (_tx: unknown, fileId: string) => {
+-      const file = await prisma.fileObject.findUniqueOrThrow({ where: { id: fileId }, select: { uploadedByUserId: true } });
++    assertFileHasNoBusinessBinding: async (tx: Prisma.TransactionClient, fileId: string) => {
++      const file = await tx.fileObject.findUniqueOrThrow({ where: { id: fileId }, select: { uploadedByUserId: true } });
 @@ -638,0 +639,18 @@
 +  const orderedDatabase = process.env.JG_ISSUE404_ORDERED_344_DATABASE;
 +  if (orderedDatabase) {
