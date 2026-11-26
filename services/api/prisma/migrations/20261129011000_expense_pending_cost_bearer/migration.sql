@@ -55,7 +55,7 @@ BEGIN
     RAISE EXCEPTION 'EXPENSE_PENDING_COST_BEARER_SCOPE' USING ERRCODE = '55000';
   END IF;
 
-  SELECT p.oid, p.prosrc, to_jsonb(p) - 'prosrc' AS metadata, to_jsonb(t) AS wiring
+  SELECT p.oid, p.prosrc, p.proconfig, to_jsonb(p) - 'prosrc' AS metadata, to_jsonb(t) AS wiring
   INTO STRICT prior
   FROM pg_proc p JOIN pg_language l ON l.oid = p.prolang AND l.lanname = 'plpgsql'
   JOIN pg_trigger t ON t.tgfoid = p.oid AND t.tgrelid = 'public."OperatingFact"'::regclass
@@ -67,16 +67,22 @@ BEGIN
     AND p.proowner = owner_oid AND p.pronamespace = to_regnamespace('public')
     AND p.prokind = 'f' AND p.provolatile = 'v' AND p.proparallel = 'u'
     AND NOT (p.prosecdef OR p.proisstrict OR p.proretset)
-    AND p.prorettype = 'pg_catalog.trigger'::regtype AND p.proconfig IS NULL;
+    AND p.prorettype = 'pg_catalog.trigger'::regtype;
 
-  SELECT postimage INTO STRICT expected_after FROM (VALUES
-    ('26a0fe0d77faa0cb21df9098d339f6350e45e9468504d1cc9d66afee4171a975', 'bcc05db15d2a1e2679e9887475a110ffc7cc5b08e423e0b737195ee74f63c4a6'),
-    ('a9f2052a70675effdd906929c1b3490c4f4f81867b65b29ea13c9e3a935f7434', '61ea7834175ed793857205130b5cd33b163a4fad7d762d93ef46d45bbedbcaeb'),
-    ('a59d505c02c2e0ff453ed0ccf29b25909449aa9cf1149f4a414844abc0541e1b', 'f38dd0f9c476f613c16a73a7d4c52733effe50585bcf5f15b0e4c96a9437a987')
-  ) AS bodies(preimage, postimage)
-  WHERE preimage = encode(sha256(convert_to(prior.prosrc, 'UTF8')), 'hex');
+  -- The Task16 registered adapter fixes the search path of its own validator.
+  SELECT postimage INTO expected_after FROM (VALUES
+    ('26a0fe0d77faa0cb21df9098d339f6350e45e9468504d1cc9d66afee4171a975',
+      'bcc05db15d2a1e2679e9887475a110ffc7cc5b08e423e0b737195ee74f63c4a6', NULL::text[]),
+    ('a9f2052a70675effdd906929c1b3490c4f4f81867b65b29ea13c9e3a935f7434',
+      '61ea7834175ed793857205130b5cd33b163a4fad7d762d93ef46d45bbedbcaeb', NULL::text[]),
+    ('a59d505c02c2e0ff453ed0ccf29b25909449aa9cf1149f4a414844abc0541e1b',
+      'f38dd0f9c476f613c16a73a7d4c52733effe50585bcf5f15b0e4c96a9437a987',
+      ARRAY['search_path=pg_catalog, public, pg_temp'])
+  ) AS bodies(preimage, postimage, proconfig)
+  WHERE preimage = encode(sha256(convert_to(prior.prosrc, 'UTF8')), 'hex')
+    AND bodies.proconfig IS NOT DISTINCT FROM prior.proconfig;
   definition := pg_get_functiondef(prior.oid);
-  IF cardinality(string_to_array(prior.prosrc, anchor)) <> 2
+  IF expected_after IS NULL OR cardinality(string_to_array(prior.prosrc, anchor)) <> 2
     OR cardinality(string_to_array(definition, prior.prosrc)) <> 2
   THEN
     RAISE EXCEPTION 'EXPENSE_PENDING_COST_BEARER_PREIMAGE' USING ERRCODE = '55000';
