@@ -90,8 +90,8 @@
 +  assert.equal(target.username, "jg_task01_owner");
 +  assert.ok(Number(target.port) > 1024);
 +  assert.equal(target.pathname, "/" + ordered);
-+  assert.deepEqual(target.searchParams.getAll("sslmode"), ["require"]);
-+  assert.deepEqual(target.searchParams.getAll("sslaccept"), ["strict"]);
++  assert.equal(target.searchParams.getAll("sslmode").join(","), "require");
++  assert.equal(target.searchParams.getAll("sslaccept").join(","), "strict");
 +  assert.match(target.searchParams.get("sslcert") ?? "", /^\/tmp\/jg394-[A-Za-z0-9]+\/ca\.crt$/u);
 @@ -218,2 +242,0 @@
 -  const financeStaffPositionId = randomUUID();
