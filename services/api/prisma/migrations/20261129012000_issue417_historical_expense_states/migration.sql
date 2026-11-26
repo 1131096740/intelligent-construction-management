@@ -20,15 +20,15 @@ ALTER TABLE public."OperatingTakeoverActivation"
     "status" IN ('activated', 'partially_activated')
   );
 
--- An activation has no scene column. Lock and check the owning batch.
+-- Write the owning tuple without changing its business revision. A stale
+-- snapshot cannot then rewrite the batch scene after a concurrent partial activation.
 CREATE FUNCTION public.jg_issue417_check_partial_activation()
 RETURNS trigger LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM public."OperatingTakeoverBatch"
-    WHERE "id" = NEW."batchId" AND "sceneKeys" = '["historical_expense"]'::jsonb
-    FOR SHARE
-  ) THEN
+  UPDATE public."OperatingTakeoverBatch"
+    SET "revision" = "revision"
+    WHERE "id" = NEW."batchId" AND "sceneKeys" = '["historical_expense"]'::jsonb;
+  IF NOT FOUND THEN
     RAISE EXCEPTION '仅历史费用批次允许部分入账'
       USING ERRCODE = '23514', CONSTRAINT = 'OperatingTakeoverActivation_partial_history_expense_check';
   END IF;
