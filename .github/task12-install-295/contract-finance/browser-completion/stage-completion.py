@@ -6,7 +6,7 @@ import sys
 
 repo, workspace, output = map(Path, sys.argv[1:4])
 options = sys.argv[4:]
-if options not in ([], ['--payment-remainder-331'], ['--upward-archive-332'], ['--historical-settlement-334']):
+if options not in ([], ['--payment-remainder-331'], ['--upward-archive-332'], ['--historical-settlement-334'], ['--expense-witness-346']):
     raise SystemExit('TASK398_BROWSER_COMPLETION_STAGING_MODE')
 original = repo / '.github/task12-install-290'
 partial = original / 'browser-partial'
@@ -68,15 +68,20 @@ for name in sorted(partial_pins.keys() | completion_pins.keys()):
             subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                             str(target), str(payment_remainder)], check=True)
             check(target.read_bytes(), '81781b68d0791237751515f46cf0d8de0f72ff8e433220649ce206b5e60dd2a8', target.name)
-        if options in (['--upward-archive-332'], ['--historical-settlement-334']):
+        if options in (['--upward-archive-332'], ['--historical-settlement-334'], ['--expense-witness-346']):
             upward_archive = Path(__file__).with_name('completion332.patch')
             subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                             str(target), str(upward_archive)], check=True)
             check(target.read_bytes(), '72e21f6d1b94de329b1ef3c8c1e70c2e3ec830fc45895749df22a852067b9d3f', target.name)
-        if options == ['--historical-settlement-334']:
+        if options in (['--historical-settlement-334'], ['--expense-witness-346']):
             historical_settlement = Path(__file__).with_name('completion334.patch')
             subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                             str(target), str(historical_settlement)], check=True)
             check(target.read_bytes(), '6f491555ea8051b3f7e9a932f08b6554839aca37d2854ec691d2cebb6e0faa7e', target.name)
+        if options == ['--expense-witness-346']:
+            expense_witness = Path(__file__).with_name('completion346.patch')
+            subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
+                            str(target), str(expense_witness)], check=True)
+            check(target.read_bytes(), '6f03abf510a9adbde35dbcfa2a911af319e2ab50ead519e0e439bd1d9b963fd8', target.name)
     target.chmod(0o644)
     print(name)

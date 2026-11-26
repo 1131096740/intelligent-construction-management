@@ -9,16 +9,16 @@ const read=name=>JSON.parse(readFileSync(path.join(dir,name),'utf8'));
 const terminal=read('receipt-complete.json');
 const markers=['receipt.json','receipt-stage2.json'].map(read);
 const count=Number(process.argv[4]??295);
-assert.ok([295,329,330,331,332,334].includes(count));
+assert.ok([295,329,330,331,332,334,346].includes(count));
 assert.equal(outer.status,'TASK398_BROWSER_COMPLETION_EXACT_'+count+'_PASSED');
 if(count!==295){
-  assert.equal(outer.forward320?.count,count);
+  assert.equal(outer.forward320?.count,count===346?334:count);
   assert.equal(outer.forward320?.sameIdentity,true);
   assert.equal(outer.forward320?.sameBaseB7,true);
   assert.match(outer.forward320?.sourceTree??'',/^[a-f0-9]{40}$/u);
   assert.match(outer.forward320?.ledgerSha256??'',/^[a-f0-9]{64}$/u);
   assert.equal(outer.combinedAfterBusiness?.count,count);
-  assert.equal(outer.combinedAfterBusiness?.ledgerSha256,outer.forward320.ledgerSha256);
+  assert.equal(outer.combinedAfterBusiness?.ledgerSha256,count===346?outer.expenseWitnessForward?.ledgerSha256:outer.forward320.ledgerSha256);
   assert.equal(outer.combinedAfterBusiness?.exactB7,true);
   if(count>=330){
     assert.equal(outer.textDirectPredecessor?.count,329);
@@ -39,7 +39,7 @@ if(count!==295){
     });
     if(count===332) assert.equal(outer.forward320.ledgerSha256,'b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4');
   }
-  if(count===334){
+  if(count>=334){
     const {count:preimageCount,ledgerSha256,sameIdentity,sameBaseB7}=outer.historicalTakeoverPredecessor;
     assert.deepEqual({count:preimageCount,ledgerSha256,sameIdentity,sameBaseB7},{
       count:332,ledgerSha256:'b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4',
@@ -51,6 +51,18 @@ if(count!==295){
     assert.equal(outer.combinedAfterBusiness.sameIdentity,true);
     assert.equal(outer.historicalTakeoverCatalogAfterBusiness,true);
     assert.equal(outer.historicalSettlementCatalogAfterBusiness,true);
+  }
+  if(count===346){
+    assert.equal(outer.expenseWitnessForward.count,346);
+    assert.equal(outer.expenseWitnessForward.sameIdentity,true);
+    assert.equal(outer.expenseWitnessForward.sourceTree,outer.forward320.sourceTree);
+    assert.equal(outer.expenseWitnessForward.ledgerSha256,'bdddd170728d7c28c1b5a4f4a4b2b8981aa1ba2d041590475d695427502d8225');
+    assert.equal(outer.expenseWitnessForward.tails.length,12);
+    assert.deepEqual(outer.expenseWitnessForward.tails.at(-1),{
+      name:'20261129015000_expense_public_cash_operating_source',
+      sha256:'d2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+    });
+    assert.equal(outer.expenseWitnessCatalogAfterBusiness,true);
   }
 }
 assert.equal(outer.installOnly295.count,295);
