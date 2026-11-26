@@ -2,6 +2,7 @@
 
 const assert = require('node:assert/strict');
 const previous = require('./expense-witness-345-profile.cjs');
+const historical = require('./historical-settlement-334-profile.cjs');
 
 const mode = 'expense-witness-346';
 const count = 346;
@@ -23,6 +24,21 @@ function assertSource(source, predecessor295) {
     ...source, mode: previous.mode, migrationCount: previous.count,
     ledgerSha256: previous.ledgerSha256, tails: source.tails.slice(0, -1)
   }, predecessor295);
+}
+
+function assertRuntimeBaseline({ loadManifest, deriveMigrationBaseline, DEFAULT_MANIFEST_PATH }) {
+  const admitted = loadManifest(DEFAULT_MANIFEST_PATH).migrationBaseline;
+  const installed = deriveMigrationBaseline();
+  assert.deepEqual(
+    [admitted.expectedDirectoryCount, admitted.terminalMigration, admitted.terminalMigrationChecksum],
+    [334, historical.terminal.name, historical.terminal.sha256],
+    'CASH_OPERATING_346_RELEASE_SCOPE'
+  );
+  assert.deepEqual(
+    [installed.expectedDirectoryCount, installed.terminalMigration, installed.terminalMigrationChecksum],
+    [count, terminal.name, terminal.sha256],
+    'CASH_OPERATING_346_RUNTIME_SCOPE'
+  );
 }
 
 function assertPrefix(size, digest) {
@@ -93,5 +109,5 @@ function assertCatalog(size, snapshot, before) {
   }
 }
 
-module.exports = { mode, count, installerSha256, terminal, ledgerSha256, assertSource, assertPrefix, catalogSql, assertCatalog,
+module.exports = { mode, count, installerSha256, terminal, ledgerSha256, assertSource, assertPrefix, assertRuntimeBaseline, catalogSql, assertCatalog,
   cashSql: previous.cashSql, assertCash: previous.assertCash };

@@ -151,11 +151,14 @@ async function main() {
   }
   assert.deepEqual(inputs.recipe, { registered: 63,
     namesSha256: 'cc7765488bc5249555c907ac306de05f1cefc71122b9316d734c274ca9b5e7fd' });
-  const baseline = require(path.join(api, 'prisma/migration-baseline.cjs')).loadCanonicalMigrationBaseline();
-  const admitted = profile.count === 346 ? historical : profile;
-  assert.equal(baseline.expectedDirectoryCount, profile.count === 346 ? 334 : profile.count);
-  assert.equal(baseline.terminalMigration, admitted.terminal.name);
-  assert.equal(baseline.terminalMigrationChecksum, admitted.terminal.sha256);
+  const baseline = require(path.join(api, 'prisma/migration-baseline.cjs'));
+  if (profile.count === 346) profile.assertRuntimeBaseline(baseline);
+  else {
+    const admitted = baseline.loadCanonicalMigrationBaseline();
+    assert.equal(admitted.expectedDirectoryCount, profile.count);
+    assert.equal(admitted.terminalMigration, profile.terminal.name);
+    assert.equal(admitted.terminalMigrationChecksum, profile.terminal.sha256);
+  }
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
   await withCombinedExpenseWitness(receipt, consume, {
     sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails
@@ -172,7 +175,7 @@ async function main() {
 }
 
 main().catch(error => {
-  const code = typeof error.message === 'string' && /^[A-Z0-9_]+$/u.test(error.message) ? error.message : 'EXPENSE_WITNESS_345_FAILED';
+  const code = typeof error.message === 'string' && /^[A-Z0-9_]+$/u.test(error.message) ? error.message : 'EXPENSE_WITNESS_' + profile.count + '_FAILED';
   receipt.failure = { stage: receipt.stages.at(-1), code,
     ...(typeof error.sqlstate === 'string' && /^[A-Z0-9]{5}$/u.test(error.sqlstate) && { sqlstate: error.sqlstate }) };
   process.exitCode = 1;
