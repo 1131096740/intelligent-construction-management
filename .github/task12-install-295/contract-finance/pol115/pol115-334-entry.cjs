@@ -24,16 +24,47 @@ const receipt = { schemaVersion: 1, purpose: 'ORIGINAL_POL115_SPOT_334', sourceS
   stages: ['INPUTS'], status: 'STOPPED' };
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
+const browserFailurePatterns = {
+  BROWSER_BINARY_MISSING: /Executable doesn't exist at|command to download new browsers/iu,
+  BROWSER_HOST_DEPS: /Host system is missing dependencies|error while loading shared libraries/iu,
+  BROWSER_LAUNCH_FAILED: /browserType\.launch:|Failed to launch (?:the )?browser process/iu,
+  BROWSER_SANDBOX: /No usable sandbox|SUID sandbox|Failed to move to new namespace/iu,
+  VITE_WEBSERVER_STARTUP: /Process from config\.webServer (?:was not able to start|exited)|waiting for config\.webServer/iu,
+  VITE_BIND: /port 4215 is already in use|listen EADDRINUSE/iu,
+  VITE_IMPORT: /failed to load config from|Failed to resolve import|failed to resolve entry for package/iu,
+  BROWSER_TOOL_LOOKUP: /Command "playwright" not found|corepack.*(?:not found|network|download)/iu,
+  BROWSER_TEST_TIMEOUT: /Test timeout of \d+ms exceeded|Timeout \d+ms exceeded/iu
+};
+
+function browserProcessFailure(messages) {
+  const marker = messages.match(/POL115_BROWSER_FAILURE (\{[^\r\n]{1,240}\})/u)?.[1];
+  if (!marker) return undefined;
+  try {
+    const { phase, exitCode, signal, spawnCode } = JSON.parse(marker);
+    if (!['spawn', 'exit'].includes(phase)) return undefined;
+    return {
+      phase,
+      exitCode: Number.isInteger(exitCode) && exitCode >= 0 && exitCode <= 255 ? exitCode : null,
+      signal: ['SIGTERM', 'SIGKILL', 'SIGABRT', 'SIGSEGV', 'SIGINT', 'OTHER'].includes(signal) ? signal : null,
+      spawnCode: ['ENOENT', 'EACCES', 'EPERM', 'EAGAIN', 'ENOMEM', 'OTHER'].includes(spawnCode) ? spawnCode : null
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 function summarizeFailedAssertion(file, test) {
   const messages = stripVTControlCharacters((test.failureMessages ?? []).join('\n'));
   const statusPair = messages.match(/Expected:\s*([1-5]\d{2})\s+Received:\s*([1-5]\d{2})\b/u);
   const location = messages.split('\n').find(line => line.includes(file + ':') && line.trimStart().startsWith('at '));
   const line = location?.split(file + ':')[1]?.match(/^\d{1,5}(?=:)/u)?.[0];
+  const browser = browserProcessFailure(messages);
   return {
     file, titleSha256: sha256(test.fullName),
     codes: [...new Set(messages.match(/\bP[0-9]{4}\b/gu) ?? [])].slice(0, 4),
     ...(statusPair && { expectedStatus: Number(statusPair[1]), receivedStatus: Number(statusPair[2]) }),
-    ...(line && { line: Number(line) })
+    ...(line && { line: Number(line) }),
+    ...(browser && { browser })
   };
 }
 
@@ -118,6 +149,11 @@ async function runOriginal(context) {
       skipped: report?.numPendingTests, failed: (report?.testResults ?? []).flatMap(suite =>
         suite.assertionResults.filter(test => test.status === 'failed')
           .map(test => summarizeFailedAssertion(path.relative(api, suite.name), test))).slice(0, 8) };
+    if (receipt.jest.failed.some(test => test.browser)) {
+      const childOutput = stripVTControlCharacters((result.stdout ?? '') + '\n' + (result.stderr ?? ''));
+      receipt.jest.browserFailureLabels = Object.entries(browserFailurePatterns)
+        .filter(([, pattern]) => pattern.test(childOutput)).map(([label]) => label);
+    }
     return;
   }
   try {
