@@ -481,9 +481,9 @@ async function main(args) {
     fs.appendFileSync(path.join(data, "postgresql.conf"), [
       "", "listen_addresses='127.0.0.1'", "port=" + port, "unix_socket_directories='" + socket + "'", "ssl=on",
       "ssl_cert_file='" + certificate + "'", "ssl_key_file='" + key + "'", "password_encryption='scram-sha-256'",
-      "shared_buffers='32MB'", "min_wal_size='32MB'", "max_wal_size='64MB'",
+      "shared_buffers='32MB'", "min_wal_size='32MB'", "max_wal_size='64MB'", "log_min_error_statement='panic'",
       "log_parameter_max_length_on_error=0", "log_error_verbosity='terse'",
-      ...(expenseCashA24 ? ["log_line_prefix='%e '", "log_min_error_statement='error'"] : ["log_min_error_statement='panic'"]), ""
+      ...(expenseCashA24 ? ["log_line_prefix='%e '"] : []), ""
     ].join("\n"));
     stage("PG_START");
     startAttempted = true;
@@ -552,6 +552,7 @@ async function main(args) {
       const db = identifier(database);
       sql(`BEGIN;
         ALTER ROLE ${appRole} LOGIN PASSWORD '${appPassword}' CONNECTION LIMIT 12;
+        ALTER ROLE ${appRole} IN DATABASE ${db} SET log_min_error_statement = 'error';
         CREATE ROLE ${observerRole} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS PASSWORD '${observerPassword}' CONNECTION LIMIT 2;
         ALTER ROLE ${observerRole} SET default_transaction_read_only = on;
         GRANT CONNECT ON DATABASE ${db} TO ${appRole}, ${observerRole};
