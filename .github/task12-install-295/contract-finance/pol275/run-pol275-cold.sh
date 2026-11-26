@@ -2,7 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 ) ) ||
+  ( $# == 6 && $5 == --expense-witness-346 && $6 == --host-only ) ]] || exit 64
 count=295
 mode=()
 case ${5-} in
@@ -11,12 +12,12 @@ case ${5-} in
   --payment-remainder-331) count=331; mode=(--payment-remainder-331) ;;
   --upward-archive-332) count=332; mode=(--upward-archive-332) ;;
   --historical-settlement-334) count=334; mode=(--historical-settlement-334) ;;
+  --expense-witness-346) count=346; mode=(--expense-witness-346) ;;
 esac
 purpose="ORIGINAL_POL275_COLD_EXACT_$count"
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
-build=$(cd "$4" && pwd -P)
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 base="$repo/.github/task12-install-295/contract-finance"
@@ -35,17 +36,30 @@ node -e '
     require(base+"/"+source.mode+"-profile.cjs").assertSource(source,process.argv[2],require(base+"/common/multi-witness.cjs").final);
   }
 ' "$prepared/source.json" "$sha" "$count" "$base"
-image=$(cat "$build/image.id")
-fingerprint=$(cat "$build/context.sha256")
-[[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
-[[ $(node "$base/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
-[[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
+if [[ $count == 346 ]]; then
+  bash "$plan/verify-host-346.sh" "$repo" "$prepared" "$sha"
+fi
+if [[ ${6-} != --host-only ]]; then
+  build=$(cd "$4" && pwd -P)
+  image=$(cat "$build/image.id")
+  fingerprint=$(cat "$build/context.sha256")
+  [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
+  [[ $(node "$base/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
+  [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
+fi
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 evidence="$repo/.github/task12-install-289/pol275/cold-evidence.cjs"
 [[ $(shasum -a 256 "$evidence" | cut -d ' ' -f1) == a338dcd1817f5dc6dacdea62cb36b3357d7933bc58587e61b4b71dec7a91d2db ]] || exit 65
 installer="$common/installer.cjs"
-if [[ $count == 334 ]]; then
+if [[ $count == 346 ]]; then
+  bash "$plan/stage-346.sh" "$work" cold
+  installer="$work/installer.cjs"
+  if [[ ${6-} == --host-only ]]; then
+    printf '%s\nPOL275_COLD_346_HOST_READY sha=%s\n' "$work" "$sha"
+    exit 0
+  fi
+elif [[ $count == 334 ]]; then
   node "$base/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
   installer="$work/installer.cjs"
 fi
@@ -70,10 +84,18 @@ if [[ $count == 331 ]]; then
 elif [[ $count == 332 ]]; then
   args+=(--mount "type=bind,src=$base/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 fi
-if [[ $count == 334 ]]; then
+if [[ $count == 334 || $count == 346 ]]; then
   for file in upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
     args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
   done
+fi
+if [[ $count == 346 ]]; then
+  for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
+    args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
+  done
+  args+=(--env "JG_POL275_SOURCE_SHA=$sha"
+    --mount "type=bind,src=$base/bank/migration-inputs-346.cjs,dst=/qualification/migration-inputs-346.cjs,readonly"
+    --mount "type=bind,src=$plan/exact-346.cjs,dst=/qualification/exact-346.cjs,readonly")
 fi
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi

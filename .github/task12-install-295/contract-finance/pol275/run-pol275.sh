@@ -2,7 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && $5 == warm && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 ) ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && $5 == warm && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 || $6 == --expense-witness-346 ) ) ||
+  ( $# == 7 && $5 == warm && $6 == --expense-witness-346 && $7 == --host-only ) ]] || exit 64
 count=295
 mode=()
 case ${6-} in
@@ -11,11 +12,12 @@ case ${6-} in
   --payment-remainder-331) count=331; mode=(--payment-remainder-331) ;;
   --upward-archive-332) count=332; mode=(--upward-archive-332) ;;
   --historical-settlement-334) count=334; mode=(--historical-settlement-334) ;;
+  --expense-witness-346) count=346; mode=(--expense-witness-346) ;;
 esac
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
-build=$(cd "$4" && pwd -P)
+if [[ ${7-} != --host-only ]]; then build=$(cd "$4" && pwd -P); else build=$4; fi
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 base=$(cd "$plan/.." && pwd -P)
@@ -46,11 +48,16 @@ node -e '
   if(count===334) require(base+"/historical-settlement-334-profile.cjs").assertSource(source,sealed295);
   if(count===331||count===332)require(base+"/"+source.mode+"-profile.cjs").assertSource(source,process.argv[2],sealed295);
 ' "$prepared/source.json" "$sha" "$count" "$base"
-image=$(cat "$build/image.id")
-fingerprint=$(cat "$build/context.sha256")
-[[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
-[[ $(node "$base/context-sha.cjs" "$context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
-[[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
+if [[ $count == 346 ]]; then
+  bash "$plan/verify-host-346.sh" "$repo" "$prepared" "$sha"
+fi
+if [[ ${7-} != --host-only ]]; then
+  image=$(cat "$build/image.id")
+  fingerprint=$(cat "$build/context.sha256")
+  [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
+  [[ $(node "$base/context-sha.cjs" "$context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
+  [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
+fi
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 pol="$repo/.github/task12-install-289/pol275"
@@ -78,22 +85,30 @@ if [[ $lane == warm ]]; then
 else
   install -m 0644 "$pol/collision-observation.cjs" "$work/collision-observation.cjs"
 fi
-if [[ $count == 334 ]]; then
-  node "$base/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
+if [[ $count == 346 ]]; then
+  bash "$plan/stage-346.sh" "$work" warm
 else
-  check "$common/installer.cjs" 5f6e2959275504ff409928e6cab08e9cffabacc8dd22e484399db3b3671056d0
-  cp "$common/installer.cjs" "$work/installer.cjs"
-fi
-patch -f -F 0 -s "$work/installer.cjs" "$plan/installer-pol275.patch"
-if [[ $count == 334 ]]; then
-  check "$work/installer.cjs" be8700dcb03db40657cf57e76ac0b4a668d137ff83fb5df673e74e619f9bb4c4
-  patch -f -F 0 -s "$work/installer.cjs" "$plan/installer-pol275-334.patch"
-  check "$work/installer.cjs" 9d0a8c9001965928f21cb8649a2b3410e8322be770eabd5253700f070c4775d1
-else
-  check "$work/installer.cjs" 6ce74c9b75ecff637abf6f3b2ceccfd1dd2c19fdd6dfe1f12815be28a2425e46
+  if [[ $count == 334 ]]; then
+    node "$base/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
+  else
+    check "$common/installer.cjs" 5f6e2959275504ff409928e6cab08e9cffabacc8dd22e484399db3b3671056d0
+    cp "$common/installer.cjs" "$work/installer.cjs"
+  fi
+  patch -f -F 0 -s "$work/installer.cjs" "$plan/installer-pol275.patch"
+  if [[ $count == 334 ]]; then
+    check "$work/installer.cjs" be8700dcb03db40657cf57e76ac0b4a668d137ff83fb5df673e74e619f9bb4c4
+    patch -f -F 0 -s "$work/installer.cjs" "$plan/installer-pol275-334.patch"
+    check "$work/installer.cjs" 9d0a8c9001965928f21cb8649a2b3410e8322be770eabd5253700f070c4775d1
+  else
+    check "$work/installer.cjs" 6ce74c9b75ecff637abf6f3b2ceccfd1dd2c19fdd6dfe1f12815be28a2425e46
+  fi
 fi
 chmod 644 "$work/installer.cjs"
 node --check "$work/installer.cjs"
+if [[ ${7-} == --host-only ]]; then
+  printf '%s\nPOL275_WARM_346_HOST_READY sha=%s\n' "$work" "$sha"
+  exit 0
+fi
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
   --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory 4g
   --tmpfs /tmp:rw,noexec,nosuid,nodev,size=1024m --env HOME=/tmp --env PLAYWRIGHT_BROWSERS_PATH=/opt/jg-playwright
@@ -121,10 +136,18 @@ if [[ $lane == warm ]]; then
 else
   args+=(--mount "type=bind,src=$work/collision-observation.cjs,dst=/qualification/collision-observation.cjs,readonly")
 fi
-if [[ $count == 334 ]]; then
+if [[ $count == 334 || $count == 346 ]]; then
   for file in upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
     args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
   done
+fi
+if [[ $count == 346 ]]; then
+  for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
+    args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
+  done
+  args+=(--env "JG_POL275_SOURCE_SHA=$sha"
+    --mount "type=bind,src=$base/bank/migration-inputs-346.cjs,dst=/qualification/migration-inputs-346.cjs,readonly"
+    --mount "type=bind,src=$plan/exact-346.cjs,dst=/qualification/exact-346.cjs,readonly")
 fi
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
