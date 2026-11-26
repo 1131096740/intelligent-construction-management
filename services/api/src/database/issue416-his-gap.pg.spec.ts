@@ -463,7 +463,7 @@ describe("issue 416 history takeover HIS gaps on PostgreSQL", () => {
                 companyEntityCreditCode: null,
                 companyEntityRegisteredAddress: null
               },
-              contractVersion: { amountCents: 0n, amountLimitType: "uncapped" }
+              contractVersion: { amountCents: 0n, amountLimitType: "unlimited" }
             } as never,
             ids.supervisor,
             randomUUID()
@@ -790,20 +790,39 @@ async function seedFixture(
       updatedByUserId: ids.finance
     }
   });
-  const payment = await prisma.contractTakeoverHistoricalPayment.create({
-    data: {
-      takeoverId: ids.takeover,
-      rowKey: "row-1",
-      sequenceNo: 1,
-      amountCents: 70_000n,
-      paidAt: new Date("2026-09-01T00:00:00.000Z"),
-      payerName: "我方公司",
-      payeeName: "历史供应商",
-      bankReference: "BANK-HIS-001",
-      paymentMethod: "bank_transfer",
-      note: "接管前已付 70，累计结算 60",
-      status: "draft"
-    }
+  const payment = await prisma.$transaction(async (tx) => {
+    const draft = await tx.contractTakeoverHistoricalPayment.create({
+      data: {
+        takeoverId: ids.takeover,
+        rowKey: "row-1",
+        sequenceNo: 1,
+        amountCents: 70_000n,
+        paidAt: new Date("2026-09-01T00:00:00.000Z"),
+        payerName: "我方公司",
+        payeeName: "历史供应商",
+        bankReference: "BANK-HIS-001",
+        paymentMethod: "bank_transfer",
+        note: "接管前已付 70，累计结算 60",
+        status: "draft"
+      }
+    });
+    await tx.contractTakeoverHistoricalPaymentAllocation.createMany({
+      data: [
+        {
+          historicalPaymentId: draft.id,
+          allocationType: "settlement",
+          amountCents: 60_000n,
+          allocationOrder: 0
+        },
+        {
+          historicalPaymentId: draft.id,
+          allocationType: "historical_advance",
+          amountCents: 10_000n,
+          allocationOrder: 1
+        }
+      ]
+    });
+    return draft;
   });
   const evidenceOwners = [
     ["issue416-his-voucher-file", ids.finance],
@@ -963,8 +982,10 @@ async function seedZeroTakeover(
       changeType: "historical_takeover",
       status: "draft",
       amountCents: 0n,
-      amountLimitType: "uncapped",
-      draftData: { historicalTakeover: true, relationship: "outside" },
+      pricingNature: "framework",
+      amountLimitType: "unlimited",
+      amountSource: "bill_sum",
+      draftData: { historicalTakeover: true, relationship: "outside", frameworkNoTotal: true },
       templateSnapshot: { historicalTakeover: true },
       clauseSnapshot: []
     }

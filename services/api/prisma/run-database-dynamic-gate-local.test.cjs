@@ -235,11 +235,15 @@ test("334 routes Line A, A28, finance and Remaining and rejects other groups bef
   assert.match(resolvedRemaining.args[0], /contract-finance\/run-remaining[.]sh$/u);
   assert.deepEqual(resolvedRemaining.args.slice(1), [sha, "--historical-settlement-334"]);
   for (const [id, lane, count] of [["employee_onboarding", "onboarding", 59], ["general_procurement", "procurement", 27],
+    ["issue421_signed_settlement_ledger", "issue421", 6],
+    ["issue421b_four_ledger", "issue421b", 5],
     ["issue422_archives", "issue422", 4], ["issue420_approval_center", "issue420", 3],
     ["issue400_financial_correction_refund", "issue400", 1], ["issue405_other_project_payment", "issue405", 1],
     ["issue411_third_company_repayment", "issue411", 2],
+    ["issue413_construction_paid", "issue413", 1],
     ["issue414_construction_deduction", "issue414", 1],
-    ["issue416_takeover_handover", "issue416_handover", 1]]) {
+    ["issue416_takeover_handover", "issue416_handover", 1],
+    ["issue416_his_gap", "issue416_his", 3]]) {
     const group = manifest.coveredGroups.find(item => item.id === id);
     assert.equal(group.pendingTests, count);
     assert.deepEqual(resolveGroupCommand(group, { candidateSha: sha, migrationCount: 334 }).args.slice(1),
