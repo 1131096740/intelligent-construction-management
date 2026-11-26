@@ -10842,7 +10842,16 @@ test("review regression recognizes selected awaited target JSON as data without 
 });
 
 for (const [label, change] of [
-  ["custom response", source => source.replace('const response = await apiFetch(path, {\n    method: "POST",\n    headers: { "Content-Type": "application/json" },\n    body: JSON.stringify(body ?? {})\n  });', 'const response = await fakeResponse();')],
+  ["custom response", source => {
+    const transport = `const response = await apiFetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+    ...options
+  });`;
+    assert.equal(source.split(transport).length, 2, "expected one selected JSON transport call");
+    return source.replace(transport, "const response = await fakeResponse();");
+  }],
   ["overwritten json method", source => source.replace('await ensureOk(response, "提交失败");', 'await ensureOk(response, "提交失败"); response.json = () => ({ get generationId() { unknownWrite(); return "x"; } });')],
   ["multiple returns", source => source.replace('await ensureOk(response, "提交失败");', 'await ensureOk(response, "提交失败"); if (body) return body;')],
   ["response reassignment", source => source.replace('await ensureOk(response, "提交失败");', 'await ensureOk(response, "提交失败"); response = body;')],
