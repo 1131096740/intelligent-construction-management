@@ -2,10 +2,10 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || $# == 5 || ( $# == 6 && $5 == ledger-loss-346 && $6 == --host-only ) ]] || exit 64
+[[ $# == 4 || $# == 5 || ( $# == 6 && ( $5 == ledger-loss-346 || $5 == competition-346 ) && $6 == --host-only ) ]] || exit 64
 variant=${5-}
 case "$variant" in
-  ''|standard-330|standard-331|standard-332|standard-334|ledger-loss-330|ledger-loss-331|ledger-loss-332|ledger-loss-346|competition-331|competition-332) ;;
+  ''|standard-330|standard-331|standard-332|standard-334|ledger-loss-330|ledger-loss-331|ledger-loss-332|ledger-loss-346|competition-331|competition-332|competition-346) ;;
   *) exit 64 ;;
 esac
 [[ $# == 4 || -n $variant ]] || exit 64
@@ -27,7 +27,7 @@ count=$(node -e '
   if(count===346) require(process.argv[6]).assertSource(source,require(process.argv[4]).final);
   console.log(count);
 ' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan/expense-witness-346-profile.cjs")
-if [[ $count == 346 && $variant != ledger-loss-346 ]]; then exit 64; fi
+if [[ $count == 346 && $variant != ledger-loss-346 && $variant != competition-346 ]]; then exit 64; fi
 if [[ $count == 334 && -n $variant && $variant != standard-334 ]]; then exit 64; fi
 variant_args=()
 purpose=TASK398_STANDARD_EXACT_$count
@@ -92,9 +92,13 @@ if (( count >= 330 )); then
       patch --batch --forward --fuzz=0 --silent "$spec" < "$plan/task398-competition-spec-331.patch"
       [[ $(runner_sha) == e5bc00fab58ecac6786b9bc6a8228f6af3906c8a093bedea2a052bcd9a02973b ]] || exit 65
       [[ $(sha256sum "$spec" | cut -d' ' -f1) == 05bfdec5b4e12815b6ca7c3ea9345d44b4c27ab77a52223f62ccbda18187ad1c ]] || exit 65
-      if [[ $count == 332 ]]; then
+      if [[ $count == 332 || $count == 346 ]]; then
         patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-competition-runner-332.patch"
         [[ $(runner_sha) == 75de360063ce1d7a60abacaf015e2718aab99fc871995bea9e127fe6adeba924 ]] || exit 65
+      fi
+      if [[ $count == 346 ]]; then
+        patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-competition-runner-346.patch"
+        [[ $(runner_sha) == 4838c88e40550af557caadd31cb1d4a6c6b3ab83fa306bc551dec5a7687c2193 ]] || exit 65
       fi
     elif (( count == 332 || count == 334 )); then
       patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-standard-332.patch"
