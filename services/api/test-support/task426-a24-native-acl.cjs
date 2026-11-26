@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { createHash } = require("node:crypto");
 const nativeOrdinary = require("../prisma/task16-current259-ordinary-archive-acl.requirements.json");
 
 const identifier = word => '"' + word + '"';
@@ -21,10 +22,11 @@ const signatureUploadReads = {
   ContractArchiveEvidenceFile: ["fileId", "archiveFileId", "contractVersionId"],
   // HandwrittenSignatureVersion and User bind non-exclusive references. The
   // invoker guard reads each exclusive registry coordinate even for a fresh file.
-  // Two voucher migrations promote existing references; task16 appends its
+  // Three migrations promote existing references; task16 appends its
   // separate registered voucher during the exact native archive install.
   PaymentExecution: ["voucherFileId"],
   ProjectExpenseExecution: ["voucherFileId"],
+  ProjectFinancingQuota: ["attachmentFileId"],
   RegisteredPaymentVoucher: ["fileId"],
   SettlementRecoveryEntry: ["evidenceFileId"],
   SpotProcurementPaymentExecution: ["voucherFileId"],
@@ -133,4 +135,23 @@ function renderA24FixtureAcl(plan, app, observer) {
   ].join("\n");
 }
 
-module.exports = { a24ColumnPlan, renderA24FixtureAcl };
+function readSignatureExclusiveClosure(app) {
+  assert.match(app, /^jg_[a-zA-Z0-9_]+$/u);
+  return `SELECT jsonb_agg(jsonb_build_array(binding."tableName",binding."columnName",
+    pg_catalog.has_column_privilege('${app}',pg_catalog.to_regclass(
+      pg_catalog.format('%I.%I','public',binding."tableName")),binding."columnName",'SELECT'))
+    ORDER BY binding."tableName" COLLATE "C",binding."columnName" COLLATE "C")
+    FROM public.jg_file_business_collision_columns() binding WHERE binding."exclusive";`;
+}
+
+function verifySignatureExclusiveClosure(rows) {
+  assert.ok(Array.isArray(rows) && rows.length === 33, "NATIVE_A24_SIGNATURE_REGISTRY_COUNT");
+  const coordinates = rows.map(([table, column]) => [table, column]);
+  const sha256 = createHash("sha256").update(JSON.stringify(coordinates)).digest("hex");
+  assert.equal(sha256, "3305b51a2313daaff09fa8c7065dddd1d2622c30d61144a5456ed8b29906ea5a",
+    "NATIVE_A24_SIGNATURE_REGISTRY_DRIFT");
+  assert.ok(rows.every(row => row[2] === true), "NATIVE_A24_SIGNATURE_REGISTRY_SELECT_DENIED");
+  return { count: rows.length, sha256, allSelectGranted: true };
+}
+
+module.exports = { a24ColumnPlan, renderA24FixtureAcl, readSignatureExclusiveClosure, verifySignatureExclusiveClosure };

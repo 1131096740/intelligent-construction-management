@@ -504,6 +504,12 @@ async function main(args) {
         FROM pg_catalog.pg_roles observer WHERE observer.rolname = '${observationRole}';
       `));
       assert.equal(scope.safe, true, "A24_SCOPED_ROLES");
+      if (historicalCatalog) {
+        stage("A24_SIGNATURE_EXCLUSIVE_ACL");
+        const closure = JSON.parse(sql("BEGIN READ ONLY; SET LOCAL search_path=pg_catalog,public,pg_temp;"
+          + a24Acl.readSignatureExclusiveClosure(app) + "ROLLBACK;"));
+        receipt.a24SignatureExclusiveAcl = a24Acl.verifySignatureExclusiveClosure(closure);
+      }
       const observerUrl = new URL(ownerUrl);
       observerUrl.username = observationRole;
       observerUrl.password = observerPassword;
