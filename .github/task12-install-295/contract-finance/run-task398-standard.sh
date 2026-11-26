@@ -2,10 +2,10 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || $# == 5 ]] || exit 64
+[[ $# == 4 || $# == 5 || ( $# == 6 && $5 == ledger-loss-346 && $6 == --host-only ) ]] || exit 64
 variant=${5-}
 case "$variant" in
-  ''|standard-330|standard-331|standard-332|standard-334|ledger-loss-330|ledger-loss-331|ledger-loss-332|competition-331|competition-332) ;;
+  ''|standard-330|standard-331|standard-332|standard-334|ledger-loss-330|ledger-loss-331|ledger-loss-332|ledger-loss-346|competition-331|competition-332) ;;
   *) exit 64 ;;
 esac
 [[ $# == 4 || -n $variant ]] || exit 64
@@ -20,12 +20,14 @@ scope=task398-standard
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const count=source.mode==="expense-witness-346"?346:source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
   if(count===332)require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
   if(count===334) require(process.argv[5]).assertSource(source,require(process.argv[4]).final);
+  if(count===346) require(process.argv[6]).assertSource(source,require(process.argv[4]).final);
   console.log(count);
-' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs")
+' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan/expense-witness-346-profile.cjs")
+if [[ $count == 346 && $variant != ledger-loss-346 ]]; then exit 64; fi
 if [[ $count == 334 && -n $variant && $variant != standard-334 ]]; then exit 64; fi
 variant_args=()
 purpose=TASK398_STANDARD_EXACT_$count
@@ -38,11 +40,13 @@ case "$variant" in
   competition-*) purpose=TASK398_COMPETITION_EXACT_$count ;;
   '') if (( count >= 330 )); then purpose=TASK425_TEXT_DIRECT_FINANCE_$count; fi ;;
 esac
-image=$(cat "$build/image.id")
-fingerprint=$(cat "$build/context.sha256")
-[[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
-[[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
-[[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
+if [[ ${6:-} != --host-only ]]; then
+  image=$(cat "$build/image.id")
+  fingerprint=$(cat "$build/context.sha256")
+  [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
+  [[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
+  [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
+fi
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 python3 "$plan/stage-task398-standard.py" \
@@ -70,9 +74,13 @@ if (( count >= 330 )); then
       patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-331.patch"
       [[ $(runner_sha) == af42b4c2fb8489cd6560b8dfb2775f4880ed806730e9e00d36073ebd1bb89b29 ]] || exit 65
     fi
-    if [[ $count == 332 ]]; then
+    if [[ $count == 332 || $count == 346 ]]; then
       patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-332.patch"
       [[ $(runner_sha) == f999f4eeeecee567a8391c5aa9d46e9102648bb285d6e849af720491c38878db ]] || exit 65
+    fi
+    if [[ $count == 346 ]]; then
+      patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-346.patch"
+      [[ $(runner_sha) == 2987bc05d395030c264c4a55def4e6b0e771e851dac47c13935fded0648d9ce2 ]] || exit 65
     fi
   elif (( count >= 331 )); then
     patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-standard-331.patch"
@@ -126,9 +134,23 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$plan/task398-standard-entry.cjs,dst=/qualification/task398-standard-entry.cjs,readonly"
   --mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 installer="$common/installer.cjs"
-if [[ $count == 334 ]]; then
+if [[ $count == 334 || $count == 346 ]]; then
   node "$plan/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
   installer="$work/installer.cjs"
+  if [[ $count == 346 ]]; then
+    git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer.patch"
+    chmod 0644 "$installer"
+    expected_installer=$(node -p 'require(process.argv[1]).installerSha256' "$plan/expense-witness-346-profile.cjs")
+    [[ $(sha256sum "$installer" | cut -d' ' -f1) == "$expected_installer" ]] || exit 65
+    if [[ ${6:-} == --host-only ]]; then
+      printf '%s\n' "$work"
+      exit 0
+    fi
+    printf '%s\n' "$work"
+    for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
+      args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
+    done
+  fi
   for file in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
