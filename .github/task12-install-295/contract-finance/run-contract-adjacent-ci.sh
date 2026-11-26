@@ -7,7 +7,8 @@ umask 077
   ( $# == 3 && $3 == --historical-settlement-334 && ( $2 == settlement || $2 == template || $2 == draft ||
     $2 == task398-standard || $2 == cash-handover || $2 == principal-return ||
     $2 == expense-execution || $2 == expense-finance || $2 == expense-receipt || $2 == payment-execution ||
-    $2 == v7 || $2 == invoice || $2 == pol279 || $2 == pol280 ) ) ||
+    $2 == v7 || $2 == invoice || $2 == pol279 || $2 == pol280 ||
+    $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts ) ) ||
   ( $# == 3 && $3 == --upward-archive-332 && ( $2 == line-a || $2 == pol115-workbench || $2 == onboarding || $2 == procurement || $2 == cash-handover || $2 == principal-return ||
     $2 == settlement || $2 == template || $2 == draft || $2 == v7 || $2 == invoice || $2 == pol279 || $2 == pol280 || $2 == company-proxy || $2 == expense-execution || $2 == expense-finance || $2 == expense-receipt || $2 == payment-execution ||
     $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts || $2 == pol109 || $2 == task398-standard || $2 == task398-ledger-loss || $2 == browser-partial || $2 == browser-completion || $2 == pfq || $2 == cash-transfer || $2 == project-advance ) ) ||

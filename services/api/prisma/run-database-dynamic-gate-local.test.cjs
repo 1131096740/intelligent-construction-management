@@ -272,6 +272,23 @@ test("334 routes standalone payment execution without substituting Core Payment"
   assert.deepEqual(resolved.args.slice(1), [sha, "payment-execution", "--historical-settlement-334"]);
 });
 
+test("334 routes the three original POL108 shards with their original case counts", () => {
+  const manifest = loadManifest();
+  const sha = "e".repeat(40);
+  for (const [id, lane, count] of [
+    ["operating_projection_pol108", "pol108-core", 12],
+    ["operating_projection_pol108_facts", "pol108-facts", 1],
+    ["operating_projection_pol108_impacts", "pol108-impacts", 1]
+  ]) {
+    const group = manifest.coveredGroups.find(item => item.id === id);
+    assert.equal(group.pendingTests, count);
+    const resolved = resolveGroupCommand(group, { candidateSha: sha, migrationCount: 334 });
+    assert.equal(resolved.command, "bash");
+    assert.match(resolved.args[0], /run-contract-adjacent-ci[.]sh$/u);
+    assert.deepEqual(resolved.args.slice(1), [sha, lane, "--historical-settlement-334"]);
+  }
+});
+
 test("334 routes the four original finance adjacent groups with their original case counts", () => {
   const manifest = loadManifest();
   const sha = "e".repeat(40);
