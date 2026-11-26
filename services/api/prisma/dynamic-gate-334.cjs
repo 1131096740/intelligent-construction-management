@@ -34,6 +34,7 @@ const lanes = Object.freeze({
   project_expense_receipt: "expense-receipt",
   employee_onboarding: "onboarding",
   general_procurement: "procurement",
+  issue422_archives: "issue422",
   pol113_pol115_business_entries: "named",
   contract_finance_acceptance: "contract-finance",
   remaining_dynamic_postgresql16: "remaining",
