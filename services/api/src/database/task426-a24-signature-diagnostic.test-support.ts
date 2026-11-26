@@ -28,6 +28,29 @@ const submissionOperations = {
   "AuditLog.create": "SUBMISSION_AUDIT",
   "AuditLog.createMany": "SUBMISSION_DUTY_INTENTS"
 } as const;
+const approvalOperations = {
+  "undefined.queryRaw": "APPROVAL_TRANSACTION_QUERY",
+  "undefined.executeRaw": "APPROVAL_TRANSACTION_LOCK",
+  "ExpenseClaim.findUnique": "APPROVAL_CLAIM_READ",
+  "ExpenseClaim.update": "APPROVAL_CLAIM_UPDATE",
+  "ExpenseClaimLine.findMany": "APPROVAL_SOURCE_LINES",
+  "ApprovalInstance.findFirst": "APPROVAL_SOURCE_ROUND",
+  "ApprovalInstance.findUnique": "APPROVAL_ROUND_READ",
+  "ApprovalInstance.update": "APPROVAL_ROUND_UPDATE",
+  "ApprovalActionLog.findFirst": "APPROVAL_SOURCE_CONFIRMATION",
+  "ApprovalActionLog.create": "APPROVAL_REVIEW_AUDIT",
+  "ProjectAffiliateAssignment.findFirst": "APPROVAL_SOURCE_AFFILIATE",
+  "OperatingFact.findUnique": "APPROVAL_FACT_READ",
+  "OperatingImpactEntry.findUnique": "APPROVAL_IMPACT_READ",
+  "ProjectCloseAggregate.upsert": "APPROVAL_CLOSE_AGGREGATE",
+  "ProjectCloseImpact.findUnique": "APPROVAL_CLOSE_IMPACT_READ",
+  "ProjectCloseStageVersion.findMany": "APPROVAL_CLOSE_STAGE_READ",
+  "AuditLog.create": "APPROVAL_AUDIT",
+  "AuditLog.createMany": "APPROVAL_FUNDING_INTENTS",
+  "PdfDocument.findFirst": "APPROVAL_FORM_READ",
+  "ApprovalFormGenerationClaim.findUnique": "APPROVAL_FORM_CLAIM_READ",
+  "ApprovalFormGenerationClaim.create": "APPROVAL_FORM_CLAIM_CREATE"
+} as const;
 type Operation = Pick<Prisma.MiddlewareParams, "model" | "action">;
 const sqlStates = new Set(["42501", "23502", "23503", "23505", "23514", "42P01", "42703", "42883", "55000",
   "25006", "25P02", "40001", "40P01", "55P03", "57014"]);
@@ -42,7 +65,9 @@ const routines = new Set([
   "jg_file_business_binding_columns_before_signed_settlement",
   "jg_file_business_binding_columns_before_owner_settlement",
   "jg_guard_generated_upward_seal_completion_v1",
-  "jg_validate_fund_balance_correction_round"
+  "jg_validate_fund_balance_correction_round",
+  "appendOperatingFactThroughService",
+  "appendOperatingImpactThroughService"
 ]);
 
 function projectFailure(error: unknown, nodes: Readonly<Record<string, string>>, operation?: Operation) {
@@ -68,3 +93,4 @@ function projectFailure(error: unknown, nodes: Readonly<Record<string, string>>,
 /** Project onto fixed labels without returning any engine text or request values. */
 export const projectA24SignatureFailure = (error: unknown, operation?: Operation) => projectFailure(error, operations, operation);
 export const projectA24SubmissionFailure = (error: unknown, operation?: Operation) => projectFailure(error, submissionOperations, operation);
+export const projectA24ApprovalFailure = (error: unknown, operation?: Operation) => projectFailure(error, approvalOperations, operation);

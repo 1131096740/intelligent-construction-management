@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { projectA24SignatureFailure, projectA24SubmissionFailure } from "./task426-a24-signature-diagnostic.test-support";
+import { projectA24ApprovalFailure, projectA24SignatureFailure, projectA24SubmissionFailure } from "./task426-a24-signature-diagnostic.test-support";
 
 const clientVersion = "test";
 
@@ -45,4 +45,17 @@ it("isolates a submission permission failure to the attachment freeze node", () 
     relation: "ExpenseClaimAttachment"
   });
   expect(projectA24SignatureFailure(failure, operation)).not.toHaveProperty("node");
+});
+
+it("isolates a final approval failure to the proved project-close operation", () => {
+  const failure = new Prisma.PrismaClientUnknownRequestError(
+    'PostgresError { code: "42501", message: "permission denied for relation ProjectCloseAggregate" }',
+    { clientVersion }
+  );
+  const operation = { model: "ProjectCloseAggregate", action: "upsert" } as const;
+  expect(projectA24ApprovalFailure(failure, operation)).toEqual({
+    serverErrorKind: "UNKNOWN_REQUEST_ERROR", serverSqlState: "42501", node: "APPROVAL_CLOSE_AGGREGATE",
+    relation: "ProjectCloseAggregate"
+  });
+  expect(projectA24SubmissionFailure(failure, operation)).not.toHaveProperty("node");
 });

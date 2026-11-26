@@ -3,6 +3,7 @@
 const assert = require("node:assert/strict");
 const { createHash } = require("node:crypto");
 const nativeOrdinary = require("../prisma/task16-current259-ordinary-archive-acl.requirements.json");
+const { CASH_RUNTIME_READS } = require("../prisma/task16-current261-cash-profile.cjs");
 
 const identifier = word => '"' + word + '"';
 const relation = table => "public." + identifier(table);
@@ -69,6 +70,9 @@ function a24ColumnPlan(models) {
     User: nativeOrdinary.tables.User[0],
     // The login audit uses Prisma create() with its default RETURNING projection.
     AuditLog: nativeOrdinary.tables.AuditLog[0],
+    ProjectCloseAggregate: CASH_RUNTIME_READS.ProjectCloseAggregate,
+    ProjectCloseImpact: CASH_RUNTIME_READS.ProjectCloseImpact,
+    ProjectCloseStageVersion: CASH_RUNTIME_READS.ProjectCloseStageVersion,
     ...Object.fromEntries([
       "Position", "UserPosition", "Project", "ProjectMember", "ProjectRosterMember", "CompanyEntity",
       "CompanyEntityVersion", "ProjectParticipatingCompany", "BusinessParty", "BusinessPartyVersion", "ProjectAffiliateAssignment",
@@ -91,7 +95,9 @@ function a24ColumnPlan(models) {
       "FundAccountBalanceRegistration", "FundAccountSourceBatch", "PublicCashCustody", "RegisteredOperationalPayment",
       "RegisteredOperationalPaymentAllocation", "PaymentExecutionRefund", "ExpensePublicCashCostLink"
     ].map(table => [table, full(table)])),
-    OperatingCostAttributionConfirmation: attributionInsert
+    OperatingCostAttributionConfirmation: attributionInsert,
+    // The existing empty-update upsert emits these four INSERT columns.
+    ProjectCloseAggregate: CASH_RUNTIME_READS.ProjectCloseAggregate
   };
   const update = {
     User: [...nativeOrdinary.tables.User[2], "signatureFileId"],
@@ -102,6 +108,11 @@ function a24ColumnPlan(models) {
     ExpenseClaim: claimUpdate,
     ExpenseClaimAttachment: ["stage", "frozenAt"],
     RegisteredFundAccount: ["writeRevision"],
+    ProjectCloseAggregate: ["updatedAt"],
+    // The funding-duty query locks these reference rows with FOR SHARE.
+    ProjectMember: ["createdAt"],
+    UserPosition: ["createdAt"],
+    Position: ["updatedAt"],
     OperatingCostAttributionConfirmation: attributionUpdate
   };
   // SELECT ... FOR UPDATE in existing approved-file/project authority requires

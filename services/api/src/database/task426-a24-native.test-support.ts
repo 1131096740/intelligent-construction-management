@@ -12,7 +12,7 @@ import { AppModule } from "../app.module";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { PrismaService } from "./prisma.service";
 import { projectTask16RegistrationError } from "./task16-registration-error-diagnostic";
-import { projectA24SignatureFailure, projectA24SubmissionFailure } from "./task426-a24-signature-diagnostic.test-support";
+import { projectA24ApprovalFailure, projectA24SignatureFailure, projectA24SubmissionFailure } from "./task426-a24-signature-diagnostic.test-support";
 import { createApiValidationPipe } from "../validation/api-validation";
 
 const { proveA24CashAttribution } = require("../../test-support/task426-a24-native-business.cjs") as {
@@ -81,12 +81,15 @@ it("records and confirms only an exact A24 public cash slice with separate datab
   let httpError: ReturnType<typeof projectTask16RegistrationError> | undefined;
   let signatureFailure: ReturnType<typeof projectA24SignatureFailure> | undefined;
   let submissionFailure: ReturnType<typeof projectA24SubmissionFailure> | undefined;
+  let approvalFailure: ReturnType<typeof projectA24ApprovalFailure> | undefined;
   const captureDatabaseFailure = (error: unknown, operation?: Parameters<typeof projectA24SubmissionFailure>[1]) => {
     if (activeRequest?.method !== "POST") return;
     if (activeRequest.path === signaturePath) {
       signatureFailure ??= projectA24SignatureFailure(error, operation);
     } else if (stage === "PUBLIC_APPROVAL_SUBMIT" && /^\/expense-claims\/[0-9a-f-]{36}\/submission$/u.test(activeRequest.path)) {
       submissionFailure ??= projectA24SubmissionFailure(error, operation);
+    } else if (stage.startsWith("PUBLIC_APPROVAL_REVIEW_") && /^\/expense-claims\/[0-9a-f-]{36}\/approval$/u.test(activeRequest.path)) {
+      approvalFailure ??= projectA24ApprovalFailure(error, operation);
     }
   };
   try {
@@ -213,6 +216,7 @@ it("records and confirms only an exact A24 public cash slice with separate datab
       httpError = undefined;
       signatureFailure = undefined;
       submissionFailure = undefined;
+      approvalFailure = undefined;
       const method = command.method ?? "GET";
       activeRequest = { method, path: command.path };
       try {
@@ -340,7 +344,8 @@ it("records and confirms only an exact A24 public cash slice with separate datab
       ...projectTask16RegistrationError(error),
       ...(httpError ? { httpError } : {}),
       ...(signatureFailure ? { signatureFailure } : {}),
-      ...(submissionFailure ? { submissionFailure } : {})
+      ...(submissionFailure ? { submissionFailure } : {}),
+      ...(approvalFailure ? { approvalFailure } : {})
     }) + "\n");
     throw new Error(stage + " " + message);
   } finally {

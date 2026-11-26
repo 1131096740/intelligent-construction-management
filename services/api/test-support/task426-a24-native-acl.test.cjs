@@ -5,6 +5,7 @@ const { readFileSync, readdirSync } = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
 const { Prisma } = require("@prisma/client");
+const { CASH_RUNTIME_READS } = require("../prisma/task16-current261-cash-profile.cjs");
 const { a24ColumnPlan, renderA24FixtureAcl, readSignatureExclusiveClosure, verifySignatureExclusiveClosure } = require("./task426-a24-native-acl.cjs");
 
 test("uses column privileges on the exact shape without granting financial ledger writes or observer writes", () => {
@@ -44,6 +45,22 @@ test("allows only the two attachment freeze UPDATE columns and retains its WHERE
   }
   assert.equal(plan.insert.ExpenseClaimAttachment, undefined);
   assert.equal(plan.observer.ExpenseClaimAttachment, undefined);
+});
+
+test("uses the proven project-close projection and narrow reference locks at final approval", () => {
+  const plan = a24ColumnPlan(Prisma.dmmf.datamodel.models);
+  for (const table of ["ProjectCloseAggregate", "ProjectCloseImpact", "ProjectCloseStageVersion"]) {
+    assert.deepEqual(plan.read[table], CASH_RUNTIME_READS[table]);
+    assert.equal(plan.observer[table], undefined);
+  }
+  assert.deepEqual(plan.insert.ProjectCloseAggregate, CASH_RUNTIME_READS.ProjectCloseAggregate);
+  assert.deepEqual(plan.update.ProjectCloseAggregate, ["updatedAt"]);
+  assert.equal(plan.insert.ProjectCloseImpact, undefined);
+  assert.equal(plan.update.ProjectCloseStageVersion, undefined);
+  assert.deepEqual(plan.update.ProjectMember, ["createdAt"]);
+  assert.deepEqual(plan.update.UserPosition, ["createdAt"]);
+  assert.deepEqual(plan.update.Position, ["updatedAt"]);
+  for (const table of ["ProjectMember", "UserPosition", "Position"]) assert.equal(plan.insert[table], undefined);
 });
 
 test("signature creation can read its guarded coordinates without broadening fixture writes", () => {
