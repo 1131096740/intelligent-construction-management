@@ -39,6 +39,7 @@ const lanes = Object.freeze({
   issue400_financial_correction_refund: "issue400",
   issue405_other_project_payment: "issue405",
   issue411_third_company_repayment: "issue411",
+  issue413_construction_paid: "issue413",
   issue414_construction_deduction: "issue414",
   issue416_takeover_handover: "issue416_handover",
   pol113_pol115_business_entries: "named",
