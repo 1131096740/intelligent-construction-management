@@ -86,4 +86,4 @@ function assertCash(cash) {
   assert.deepEqual(cash.deferredGuard, { type: 5, enabled: 'O', deferred: true });
 }
 
-module.exports = { mode, terminal, ledgerSha256, assertSource, assertPrefix, catalogSql, assertCatalog, cashSql, assertCash };
+module.exports = { mode, count: 345, terminal, ledgerSha256, assertSource, assertPrefix, catalogSql, assertCatalog, cashSql, assertCash };

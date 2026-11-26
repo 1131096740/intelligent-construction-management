@@ -5,11 +5,12 @@ const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { admitSource } = require('./install-only292.cjs');
-const { withCombined345ExpenseWitness } = require('./installer.cjs');
+const { withCombinedExpenseWitness } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
-const profile = require('./expense-witness-345-profile.cjs');
 const historical = require('./historical-settlement-334-profile.cjs');
 const source = require('./contract-finance-source.json');
+const profile = source.mode === 'expense-witness-346'
+  ? require('./expense-witness-346-profile.cjs') : require('./expense-witness-345-profile.cjs');
 const inputs = require('./expense-witness-inputs.json');
 
 const root = '/qualification';
@@ -21,7 +22,7 @@ const titles = [
   '填写选项提供与提交快照相同的统一字段定义，非项目报销不借用个人资料授权'
 ];
 const suiteTitle = '费用统一录入真实 HTTP 与 PostgreSQL 16';
-const receipt = { schemaVersion: 1, purpose: 'POL115_NON_PROJECT_EXPENSE_WITNESS_345',
+const receipt = { schemaVersion: 1, purpose: 'POL115_NON_PROJECT_EXPENSE_WITNESS_' + profile.count,
   sourceSha: source.sourceSha, stages: ['INPUTS'], status: 'STOPPED', fullShardEligible: false };
 const hash = value => createHash('sha256').update(value).digest('hex');
 
@@ -102,7 +103,7 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
     '--json', '--outputFile', reportFile], {
     cwd: api, encoding: 'utf8', timeout: 240_000, maxBuffer: 8 * 1024 * 1024,
     env: { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: workDir, TMPDIR: workDir, NODE_ENV: 'test', CI: 'true',
-      DATABASE_URL: url.href, RUN_POL115_ENTRY_PG16: '1', JG_POL115_334_SCOPE: 'pol115',
+      DATABASE_URL: url.href, RUN_POL115_ENTRY_PG16: '1', JG_POL115_334_SCOPE: 'pol115-main',
       JG_POL115_334_RUN_ID: runId.replaceAll('-', ''), APPROVAL_SMS_ENABLED: 'false', SMS_ENABLED: 'false',
       FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: files, FILE_DOWNLOAD_SECRET: randomUUID(),
       JWT_ACCESS_SECRET: randomUUID(), JWT_REFRESH_SECRET: randomUUID() }
@@ -143,7 +144,7 @@ async function main() {
   assert.equal(inputs.ledgerSha256, source.ledgerSha256);
   profile.assertSource(source, final);
   assert.equal(hash(fs.readFileSync(path.join(root, 'installer.cjs'))), inputs.installerSha256);
-  assert.equal(inputs.installerSha256, '1c82f256be95909a40f71e557a9d66500cf56968a3bb6b829de08c6bf4f64f50');
+  assert.equal(inputs.installerSha256, '50208a12c5ac61b396655807e87f8c86ea92db83aa2a3297c38f253735ce155d');
   assert.deepEqual(Object.keys(inputs.fixtures), [file, helper]);
   for (const [name, digest] of Object.entries(inputs.fixtures)) {
     assert.equal(hash(fs.readFileSync(path.join(api, name))), digest);
@@ -151,14 +152,15 @@ async function main() {
   assert.deepEqual(inputs.recipe, { registered: 63,
     namesSha256: 'cc7765488bc5249555c907ac306de05f1cefc71122b9316d734c274ca9b5e7fd' });
   const baseline = require(path.join(api, 'prisma/migration-baseline.cjs')).loadCanonicalMigrationBaseline();
-  assert.equal(baseline.expectedDirectoryCount, 345);
-  assert.equal(baseline.terminalMigration, profile.terminal.name);
-  assert.equal(baseline.terminalMigrationChecksum, profile.terminal.sha256);
+  const admitted = profile.count === 346 ? historical : profile;
+  assert.equal(baseline.expectedDirectoryCount, profile.count === 346 ? 334 : profile.count);
+  assert.equal(baseline.terminalMigration, admitted.terminal.name);
+  assert.equal(baseline.terminalMigrationChecksum, admitted.terminal.sha256);
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
-  await withCombined345ExpenseWitness(receipt, consume, {
+  await withCombinedExpenseWitness(receipt, consume, {
     sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails
-  });
-  assert.equal(receipt.combinedAfterBusiness.count, 345);
+  }, profile.count);
+  assert.equal(receipt.combinedAfterBusiness.count, profile.count);
   assert.equal(receipt.combinedAfterBusiness.ledgerSha256, profile.ledgerSha256);
   assert.equal(receipt.combinedAfterBusiness.sameIdentity, true);
   assert.equal(receipt.combinedAfterBusiness.exactB7, true);
@@ -166,7 +168,7 @@ async function main() {
   assert.equal(receipt.expenseWitnessCatalogAfterBusiness, true);
   assert.equal(receipt.cleanup, 'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
   assert.ok(receipt.jest?.passed === 2 && receipt.controls?.deniedByWitnessConstraint === 5, 'EXPENSE_WITNESS_345_INCOMPLETE');
-  receipt.status = 'EXPENSE_WITNESS_345_PASSED';
+  receipt.status = 'EXPENSE_WITNESS_' + profile.count + '_PASSED';
 }
 
 main().catch(error => {
