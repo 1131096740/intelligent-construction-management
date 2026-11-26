@@ -1,0 +1,123 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -4,6 +3,0 @@
+-import { AuditService } from "../audit/audit.service";
+-import { AuthService } from "../auth/auth.service";
+-import { CompanyRoleResolverService } from "../auth/company-role-resolver.service";
+-import { JwtTokenService } from "../auth/jwt-token.service";
+-import { ProjectVisibilityService } from "../auth/project-visibility.service";
+-import { ClearingReconciliationReaderService } from "../clearing/clearing-reconciliation-reader.service";
+@@ -13 +6,0 @@
+-import { OperatingProjectionService } from "../operating-projection/operating-projection.service";
+@@ -16 +9 @@
+-const run = process.env.ISSUE418_SIGNED_OPERATING_RUN === "1" ? describe : describe.skip;
++const run = process.env.ISSUE418_SOURCE_UNIQUE_RUN === "1" ? describe : describe.skip;
+@@ -18 +11 @@
+-run("issue #418 confirmed signed settlements on the ordered operating ledger", () => {
++run("issue #418 database natural uniqueness on the ordered operating ledger", () => {
+@@ -22,2 +15,2 @@
+-    const raw = process.env.ISSUE418_SIGNED_OPERATING_DATABASE_URL;
+-    if (!raw) throw new Error("ISSUE418_SIGNED_OPERATING_DATABASE_REQUIRED");
++    const raw = process.env.ISSUE418_SOURCE_UNIQUE_DATABASE_URL;
++    if (!raw) throw new Error("ISSUE418_SOURCE_UNIQUE_DATABASE_REQUIRED");
+@@ -31 +24 @@
+-  it("对上五十元只形成内部应收，表外三十元进入成本与应付，明细可追溯", async () => {
++  it("同来源服务重放保留原分录，受控写入重复来源触发唯一键", async () => {
+@@ -44 +36,0 @@
+-    const reader = await prisma.user.create({ data: { name: "合成财务主管", isActive: true } });
+@@ -48,8 +39,0 @@
+-    const finance = await prisma.position.upsert({
+-      where: { key: "finance_director" }, update: {},
+-      create: { key: "finance_director", name: "财务主管" }
+-    });
+-    await prisma.userPosition.create({
+-      data: { userId: reader.id, positionId: finance.id, projectId: project.id }
+-    });
+-    await prisma.projectRosterMember.create({ data: { projectId: project.id, userId: reader.id } });
+@@ -134 +118 @@
+-        include: { impacts: true }
++        include: { impacts: { orderBy: { id: "asc" } } }
+@@ -138,5 +122,38 @@
+-    const upward = await appendConfirmed("upward", "对上-418-01", "50.0000");
+-    const outside = await appendConfirmed("outside_fact", "表外-418-01", "30.0000");
+-    expect(upward).toMatchObject({
+-      operatingLevel: "participating_company", amountCents: 5000n,
+-      impacts: [{ impactKind: "receivable_increase", amountCents: 5000n, direction: "increase" }]
++    const original = await appendConfirmed("outside_fact", "表外-418-UNIQUE", "30.0000");
++    expect(original.numericProtocolVersion).toBe(1);
++    expect(original.impacts).toHaveLength(2);
++    const sourceKey = {
++      sourceType: original.sourceType,
++      sourceBusinessId: original.sourceBusinessId
++    };
++    const repeated = await prisma.$transaction(tx => replay.appendConfirmedSourceIfEnabledInTransaction(
++      tx, { projectId: project.id, ...sourceKey }, reviewer.id
++    ));
++    expect(repeated).toMatchObject({ id: original.id, created: false, ...sourceKey });
++    expect(repeated?.impactIds.slice().sort()).toEqual(original.impacts.map(impact => impact.id));
++
++    const duplicateId = randomUUID();
++    const duplicateIdempotencyKey = `issue418-source-unique:${randomUUID()}`;
++    // Pass the same cents payload through the installed writer with only fresh artificial identities.
++    await expect(prisma.$transaction(tx => tx.$queryRaw`
++      SELECT attempt.id
++      FROM public."OperatingFact" fact
++      CROSS JOIN LATERAL public."appendOperatingFactThroughService"(
++        pg_catalog.jsonb_populate_record(
++          NULL::public."OperatingLedgerFactWritePayload",
++          pg_catalog.to_jsonb(fact) || pg_catalog.jsonb_build_object(
++            'id', ${duplicateId}::text, 'idempotencyKey', ${duplicateIdempotencyKey}::text,
++            'occurredAt', fact."occurredAt" AT TIME ZONE 'UTC',
++            'confirmedAt', fact."confirmedAt" AT TIME ZONE 'UTC'
++          )
++        ),
++        ${reviewer.id}::text,
++        ${secret}::text
++      ) attempt
++      WHERE fact.id = ${original.id} AND fact."projectId" = ${project.id}
++    `)).rejects.toMatchObject({
++      code: "P2010",
++      meta: {
++        code: "23505",
++        message: expect.stringContaining('"OperatingFact_sourceType_sourceBusinessId_key"')
++      }
+@@ -144,6 +160,0 @@
+-    expect(outside).toMatchObject({ operatingLevel: "project", amountCents: 3000n });
+-    expect(outside.impacts).toHaveLength(2);
+-    expect(outside.impacts).toEqual(expect.arrayContaining([
+-      expect.objectContaining({ impactKind: "confirmed_cost", amountCents: 3000n, direction: "increase" }),
+-      expect.objectContaining({ impactKind: "payable_increase", amountCents: 3000n, direction: "increase" })
+-    ]));
+@@ -151,23 +162,9 @@
+-    const audit = new AuditService();
+-    const projection = new OperatingProjectionService(
+-      prisma, new ProjectVisibilityService(prisma),
+-      new ClearingReconciliationReaderService(prisma, new CompanyRoleResolverService(prisma)),
+-      audit, new AuthService(prisma, new JwtTokenService(), audit)
+-    );
+-    const view = await projection.getProjectView(reader.id, { projectId: project.id });
+-    expect(view.operating).toMatchObject({ confirmedIncomeCents: "0", confirmedCostCents: "3000", payableCents: "3000" });
+-    expect(view.relationshipTotals).toEqual(expect.arrayContaining([
+-      expect.objectContaining({ relationship: "upward", confirmedCostCents: "0", receivableCents: "5000" }),
+-      expect.objectContaining({ relationship: "outside", confirmedCostCents: "3000", payableCents: "3000" })
+-    ]));
+-    const detail = await projection.getProjectDetailPage(reader.id, { projectId: project.id });
+-    expect(detail.items).toHaveLength(3);
+-    expect(detail.items).toEqual(expect.arrayContaining([
+-      expect.objectContaining({ sourceTypeLabel: "已签结算", sourceBusinessCode: upward.sourceBusinessCode, signedImpactCents: "5000" }),
+-      expect.objectContaining({ sourceTypeLabel: "已签结算", sourceBusinessCode: outside.sourceBusinessCode, signedImpactCents: "3000" })
+-    ]));
+-    for (const fact of [upward, outside]) {
+-      expect(await prisma.operatingImpactEntry.count({
+-        where: { factId: fact.id, sourceType: SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE, sourceBusinessId: fact.sourceBusinessId }
+-      })).toBe(fact.impacts.length);
+-    }
++    await prisma.$transaction(async tx => {
++      const persisted = await tx.operatingFact.findMany({
++        where: sourceKey, include: { impacts: { orderBy: { id: "asc" } } }
++      });
++      expect(persisted).toEqual([original]);
++      expect(await tx.operatingFact.count({
++        where: { OR: [{ id: duplicateId }, { idempotencyKey: duplicateIdempotencyKey }] }
++      })).toBe(0);
++    });

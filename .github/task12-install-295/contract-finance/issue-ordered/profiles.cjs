@@ -197,6 +197,20 @@ const profiles = {
     requiresOperatingLedgerWriteSecret: true,
     titles: ['审批中与已批待付分列，合同超付不抵扣另一合同未付']
   },
+  issue418_source_unique: {
+    file: 'src/database/issue418-signed-operating.pg.spec.ts',
+    sourceDigest: '86491dd5c87593b600dffa75760b65ae12b741f27a68ef191c17fe03a69d9582',
+    fixtureDigest: '94a5279fd198e973aa59c6afbd84ad166933b56d2ec7942149143a0e2353e726',
+    orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
+    databaseUrlKey: 'ISSUE418_SOURCE_UNIQUE_DATABASE_URL',
+    enableKey: 'ISSUE418_SOURCE_UNIQUE_RUN',
+    stage: 'ORDERED_OPERATING_SOURCE_UNIQUE_JEST',
+    requiredMigrationCount: 346,
+    requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+    requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: ['同来源服务重放保留原分录，受控写入重复来源触发唯一键']
+  },
   issue420: {
     file: 'src/database/issue420-approval-center.http.pg.spec.ts',
     sourceDigest: 'd4effcfb32e745737be3278c0556f903c2ae6c55c631016a59a3c0c79588d5a3',
