@@ -14,6 +14,7 @@ const enabled = process.env.RUN_CONTRACT_TAKEOVER_A28_PG16 === "1";
 const roles = ["contract_staff", "finance_staff", "finance_director", "contract_director"] as const;
 const paymentReviewRoles = ["comprehensive_director", "project_manager", "chairman", "general_manager"] as const;
 const openingProof = process.env.JG_HISTORICAL_ACCEPTANCE_SCENARIO === "a29-opening";
+const unknownExcessProof = process.env.JG_HISTORICAL_ACCEPTANCE_SCENARIO === "a28-unknown-overpay";
 type OpeningCheckpoint = "ACTORS_READY" | "OPENING_REGISTERED" | "FINANCE_CONFIRMED" | "TAKEOVER_ACTIVATED" |
   "HISTORY_AND_OPENING_RECONCILED" | "SIGNED_APPLICATION_READY" | "SIGNED_SETTLEMENT_CONFIRMED" | "PAYMENT_BASIS_CONFIRMED" |
   "PAYMENT_REQUESTED" | "PAYMENT_APPROVED" | "PAYMENT_OPTIONS_CONFIRMED" | "PAYMENT_REGISTERED" | "PAYMENT_RECONCILED";
@@ -326,7 +327,9 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
   ];
   const selectedCases: HistoricalCase[] = openingProof
     ? [{ relationship: "inside", settledCents: "6000", finance: "finance_director", excessTreatment: undefined }]
-    : cases;
+    : unknownExcessProof
+      ? [{ relationship: "outside", settledCents: "6000", finance: "finance_staff", excessTreatment: "abnormal_overpay" }]
+      : cases;
   test.each(selectedCases)("由实际岗位接管并继续办理 $relationship 历史合同", async ({ relationship, settledCents, finance, excessTreatment }) => {
     if (relationship === "upward" || openingProof) await enableOperatingLedger();
     const scopeKey = `company:${companyEntityId}`;
@@ -437,7 +440,7 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
       : {
           zeroPaymentDeclared: false,
           ...(excessTreatment ? { excessTreatment,
-            excessReason: relationship === "upward" ? "超额款项性质尚待核对" : "原合同明确约定预付",
+            excessReason: relationship === "upward" || unknownExcessProof ? "超额款项性质尚待核对" : "原合同明确约定预付",
             excessEvidenceFileIds: [await uploadPdf(finance, "独立超额核对依据")]
           } : {}),
           payments: [{
@@ -476,7 +479,7 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     await assertUnposted("pending_review");
 
     if (relationship === "outside") {
-      expect(await request("contract_director", `${entry}/supplement-return`, "POST", { reason: "请制单人复核约定预付款" }))
+      expect(await request("contract_director", `${entry}/supplement-return`, "POST", { reason: unknownExcessProof ? "请制单人复核超付款项依据" : "请制单人复核约定预付款" }))
         .toMatchObject({ status: 201, body: { takeoverStatus: "needs_supplement", responsibleUserId: actors.contract_staff.id } });
       await assertUnposted("needs_supplement");
       expect(await submit()).toMatchObject({ status: 201, body: { takeoverStatus: "pending_finance", financeSide: { confirmedRevision: null } } });
@@ -504,7 +507,8 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
         : openingProof
           ? { historicalPaidTotalCents: "6000", historicalOverpaidCents: "0" }
           : { historicalPaidTotalCents: "7000", historicalOverpaidCents: "1000",
-              historicalOverpaymentLabel: "未结算预付款", historicalOverpaymentKind: "unsettled_advance" };
+              historicalOverpaymentLabel: unknownExcessProof ? "超付，性质待核对" : "未结算预付款",
+              historicalOverpaymentKind: unknownExcessProof ? "pending_verification" : "unsettled_advance" };
     expect(await request("contract_staff", entry)).toMatchObject({
       status: 200, body: { takeoverStatus: "confirmed", historicalFactStatus: "confirmed", ...moneySummary }
     });
@@ -549,6 +553,12 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     } else {
       expect(afterMoney).toEqual(beforeMoney);
     }
+    if (unknownExcessProof) {
+      expect(await prisma.contractTakeoverBalanceAccount.findMany({ where: { takeoverId: draft.body.id } }))
+        .toMatchObject([{ balanceType: "abnormal_overpay", openingCents: 1_000n, balanceCents: 1_000n }]);
+      return;
+    }
+
     const retired = await request("contract_staff", `/projects/${projectId}/settlement-drafts`, "POST", {});
     expect(retired).toMatchObject({ status: 410, body: { code: "OLD_WRITE_ENTRY_RETIRED" } });
 
