@@ -19,10 +19,10 @@ const profile = historicalSettlement
   ? require('./historical-settlement-334-profile.cjs') : require('./historical-takeover-333-profile.cjs');
 const scenario = process.env.JG_HISTORICAL_ACCEPTANCE_SCENARIO ?? '';
 const opening = scenario === 'a29-opening';
-const purpose = 'HISTORICAL_TAKEOVER_' + (opening ? 'A29_OPENING' : 'A28') + '_' + count;
+const purpose = 'HISTORICAL_TAKEOVER_' + (opening ? 'A29_OPENING' : scenario ? 'A28_UNKNOWN_OVERPAY' : 'A28') + '_' + count;
 const expectedCases = scenario ? 1 : 3;
 const businessStage = opening ? 'A29_HISTORICAL_OPENING_AND_NEW_PAYMENT_HTTP'
-  : 'A28_HISTORICAL_CONTRACT_TAKEOVER_HTTP';
+  : scenario ? 'A28_DOWNSTREAM_HISTORICAL_OVERPAY_PENDING_HTTP' : 'A28_HISTORICAL_CONTRACT_TAKEOVER_HTTP';
 const receipt = { schemaVersion: 1, purpose, sourceSha: source.sourceSha, stages: ['INPUTS'], status: 'STOPPED' };
 const openingCheckpoints = [
   'ACTORS_READY', 'OPENING_REGISTERED', 'FINANCE_CONFIRMED', 'TAKEOVER_ACTIVATED',
@@ -67,7 +67,7 @@ async function consume({ ownerUrl, database, workDir, candidateTree }) {
   receipt.a28 = {
     databaseRole: 'isolated_fixture_owner',
     httpAuthorization: 'application_business_roles',
-    enabledOperatingLedgerRelationships: opening ? ['inside'] : ['upward'],
+    enabledOperatingLedgerRelationships: opening ? ['inside'] : scenario ? [] : ['upward'],
     passed: report?.numPassedTests ?? 0,
     skipped: report?.numPendingTests ?? 0,
     registered: report?.numTotalTests ?? 0,
@@ -104,7 +104,7 @@ async function consume({ ownerUrl, database, workDir, candidateTree }) {
 
 async function main() {
   assert.equal(process.argv.length, 2);
-  assert.ok(!scenario || (historicalSettlement && opening));
+  assert.ok(!scenario || (historicalSettlement && ['a29-opening', 'a28-unknown-overpay'].includes(scenario)));
   assert.notEqual(process.getuid(), 0);
   assert.equal(process.env.DATABASE_URL, undefined);
   profile.assertSource(source, final);

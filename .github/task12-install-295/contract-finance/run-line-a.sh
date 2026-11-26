@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 3 || ( $# == 4 && ( $4 == original || $4 == --a29-opening ) ) ]] || exit 64
+[[ $# == 3 || ( $# == 4 && ( $4 == original || $4 == --a29-opening || $4 == --a28-unknown-overpay ) ) ]] || exit 64
 prepared=$(cd "$1" && pwd -P)
 sha=$2
 build=$(cd "$3" && pwd -P)
@@ -57,7 +57,9 @@ if [[ "$mode" == historical-takeover-333 || "$mode" == historical-settlement-334
   fi
 fi
 
-if [[ ${4:-} == --a29-opening ]]; then args+=(--env JG_HISTORICAL_ACCEPTANCE_SCENARIO=a29-opening); fi
+case ${4:-} in
+  --a29-opening|--a28-unknown-overpay) args+=(--env "JG_HISTORICAL_ACCEPTANCE_SCENARIO=${4#--}");;
+esac
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 exit_code=0
@@ -71,6 +73,7 @@ node -e '
     "payment-remainder-331":"LINE_A_PAYMENT_REMAINDER_331_PASSED",
     "upward-archive-332":"LINE_A_UPWARD_ARCHIVE_332_PASSED","historical-takeover-333":"HISTORICAL_TAKEOVER_A28_333_PASSED","historical-settlement-334":"HISTORICAL_TAKEOVER_A28_334_PASSED"})[source.mode];
   const required=({"original":"LINE_A_HISTORICAL_SETTLEMENT_334_PASSED",
-    "--a29-opening":"HISTORICAL_TAKEOVER_A29_OPENING_334_PASSED"})[process.argv[4]]??expected;
+    "--a29-opening":"HISTORICAL_TAKEOVER_A29_OPENING_334_PASSED",
+    "--a28-unknown-overpay":"HISTORICAL_TAKEOVER_A28_UNKNOWN_OVERPAY_334_PASSED"})[process.argv[4]]??expected;
   if(proof.status!==required||proof.sourceSha!==process.argv[2])process.exit(65);
 ' "$work/receipt.json" "$sha" "$source" "${4:-}"
