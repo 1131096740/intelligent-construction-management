@@ -171,6 +171,19 @@ const profiles = {
     requiresOperatingLedgerWriteSecret: true,
     titles: ['对上五十元只形成内部应收，表外三十元进入成本与应付，明细可追溯']
   },
+  issue418_paired_funds: {
+    file: 'src/database/issue418-paired-funds.pg.spec.ts',
+    sourceDigest: 'ca9269b07cb4db34a60f79f15263ad3a05793dd8805de9baee5176130093d1cf',
+    orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
+    databaseUrlKey: 'ISSUE418_PAIRED_FUNDS_DATABASE_URL',
+    enableKey: 'ISSUE418_PAIRED_FUNDS_RUN',
+    stage: 'ORDERED_PAIRED_PAYMENT_METRICS_JEST',
+    requiredMigrationCount: 346,
+    requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+    requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: ['施工企业已付八十元、项目对外支付七十元，资金流水使用同一分录']
+  },
   issue420: {
     file: 'src/database/issue420-approval-center.http.pg.spec.ts',
     sourceDigest: 'd4effcfb32e745737be3278c0556f903c2ae6c55c631016a59a3c0c79588d5a3',
