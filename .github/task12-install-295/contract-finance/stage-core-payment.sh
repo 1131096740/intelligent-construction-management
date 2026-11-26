@@ -5,6 +5,11 @@ set -euo pipefail
 workspace=$1
 work=$2
 mode=$3
+exact346=false
+if [[ $mode == expense-witness-346 ]]; then
+  exact346=true
+  mode=historical-settlement-334
+fi
 plan=$(cd "$(dirname "$0")" && pwd -P)
 tests=(
   services/api/src/database/contract-business-entry-http.spec.ts
@@ -105,5 +110,17 @@ const {materials,fixtures}=require(path.join(plan,'core-payment-334-fixtures.jso
 const checksum=(root,relative)=>createHash('sha256').update(readFileSync(path.join(root,relative))).digest('hex');
 for (const [relative,expected] of Object.entries(materials)) assert.equal(checksum(plan,relative),expected,'CORE_PAYMENT_334_MATERIAL');
 for (const [relative,expected] of Object.entries(fixtures)) assert.equal(checksum(overlays,relative),expected,'CORE_PAYMENT_334_POSTIMAGE');
+JS
+fi
+
+if [[ $exact346 == true ]]; then
+  # Reuse the reviewed 346 ledger guard while preserving the original Core suites.
+  (cd "$fixtures" && git apply -p0 --include=contract-finance-owned.test-support.ts "$plan/payment-execution-346-fixtures.patch")
+  node - "$fixtures/contract-finance-owned.test-support.ts" <<'JS'
+const {readFileSync}=require('node:fs');
+const {createHash}=require('node:crypto');
+const assert=require('node:assert/strict');
+assert.equal(createHash('sha256').update(readFileSync(process.argv[2])).digest('hex'),
+  'e2afc9fe3da2262eee0c2cb3d13c113eff125c24fda9f959eb09949639ffa8ff','CORE_346_LEDGER_FIXTURE');
 JS
 fi
