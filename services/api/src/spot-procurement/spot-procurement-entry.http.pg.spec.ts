@@ -3,6 +3,8 @@ import {runPreparedSpotRequestV2HttpCases} from "./spot-request-v2.http.pg.prepa
 import { ApprovalSmsService } from "../approval/approval-sms.service";
 import { SpotProcurementApprovalNotificationService } from "./spot-procurement-approval-notification.service";
 import { SpotProcurementPilotService } from "./spot-procurement-pilot.service";
+import { SpotProcurementReceiptService } from "./spot-procurement-receipt.service";
+import { SpotProcurementSettlementService } from "./spot-procurement-settlement.service";
 import { runPreparedParallelPgHttpCases, runPreparedParallelNotificationClaimPgCase, type PreparedParallelPgHttp } from "../database/spot-procurement-parallel.http.pg.prepared";
 import { verifyApprovedPdf } from "../database/approval-pdf-acceptance.test-support";
 import { BUSINESS_ENTRY_DEFINITION_REGISTRY } from "../business-entry-definition/business-entry-definition.scene-registry";
@@ -382,6 +384,42 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     return { id, approved, paymentId, channelId, voucherId: voucher.id };
   }
 
+  async function prepareHistoricalDiscrepancy(projectId: string, approved: Detail, label: string) {
+    const prisma = app.get(PrismaService);
+    const procurementId = approved.procurement.id;
+    const handlerId = (applicant.user as { id: string }).id;
+    const reviewerId = (director.user as { id: string }).id;
+    const coordinates = {
+      procurementId, procurementVersionId: approved.currentVersion.id,
+      handlerUserId: handlerId, createdByUserId: handlerId
+    };
+    // Reconstruct historical input in the disposable database. The authorized
+    // domain review generates the signature and approval rather than seeding them.
+    await prisma.$transaction(async (tx) => {
+      const receipt = await tx.spotProcurementReceipt.create({ data: { projectId, ...coordinates } });
+      await tx.spotProcurementReceiptRevision.create({ data: { receiptId: receipt.id, revisionNo: 1, ...coordinates } });
+    });
+    const image = await sharp({ create: { width: 320, height: 240, channels: 3, background: "#4f8a5b" } }).png().toBuffer();
+    const photo = await uploadGenericFile(applicant, `${label}历史收货.png`, image);
+    expect(photo).toMatchObject({ status: 201, id: expect.any(String) });
+    const receipts = app.get(SpotProcurementReceiptService);
+    await receipts.attachPhoto(procurementId, handlerId, {
+      originalFileId: photo.id, source: "camera", category: "material_scene", note: "合成少货"
+    });
+    await receipts.updateDraft(procurementId, handlerId, {
+      note: "少货两袋", lines: [{
+        procurementLineId: approved.lines[0]!.id, qualifiedQuantity: "8", unqualifiedQuantity: "0",
+        freeGiftQuantity: "0", replenishmentPending: false, discrepancyNote: "少货2袋"
+      }]
+    });
+    await receipts.submit(procurementId, handlerId);
+    const review = await receipts.review(procurementId, reviewerId, { decision: "approved", comment: "确认少货" });
+    const choice = { resolutionType: "full_refund", note: "商户退还少货差额" } as const;
+    await app.get(SpotProcurementSettlementService).createOrConfirmDiscrepancy(procurementId, handlerId, { operation: "initiate", ...choice });
+    expectHttpStatus(`${label}历史差异物资确认`, await json(`/spot-procurements/${procurementId}/discrepancy`, director, "POST", { operation: "confirm", ...choice }), 201);
+    return review.reviewId;
+  }
+
   async function prepareAwaitingRefund(projectId: string, label: string) {
     const { id, approved, paymentId, channelId, voucherId } = await prepareApprovedPayment(projectId, label);
     const executor = sessions.get("finance_staff")!;
@@ -392,14 +430,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
       expectHttpStatus(`${label}垫资审批`, await json(`/projects/${projectId}/financing-quotas/${quota.quotaId}/approval`, sessions.get(role)!, "POST", { actionId: randomUUID(), expectedLifecycleToken: capability.lifecycleToken, decision: "approve", confirmationPassword: accountPassword }), 201);
     }
     expectHttpStatus(`${label}实付`, await json(`/spot-procurement-payments/${paymentId}/executions`, executor, "POST", { amountCents: "100000", paidAt: "2026-09-17", paymentMethod: "bank_transfer", voucherFileId: voucherId, paymentChannelId: channelId, idempotencyKey: randomUUID(), confirmationPassword: accountPassword }), 201);
-    const image = await sharp({ create: { width: 320, height: 240, channels: 3, background: "#4f8a5b" } }).png().toBuffer();
-    const photo = await uploadFile(`/spot-procurements/${id}/receipt-photo-file-uploads`, applicant, `${label}收货.png`, randomUUID(), image);
-    expectHttpStatus(`${label}照片绑定`, await json(`/spot-procurements/${id}/receipt/photos`, applicant, "POST", { originalFileId: photo.id, source: "camera", category: "material_scene" }), 201);
-    expectHttpStatus(`${label}收货草稿`, await json(`/spot-procurements/${id}/receipt/draft`, applicant, "PATCH", { lines: [{ procurementLineId: approved.lines[0]!.id, qualifiedQuantity: "8", unqualifiedQuantity: "0", freeGiftQuantity: "0", replenishmentPending: false, discrepancyNote: "少货2袋" }] }), 200);
-    expectHttpStatus(`${label}收货提交`, await json(`/spot-procurements/${id}/receipt/submission`, applicant, "POST", {}), 201);
-    expectHttpStatus(`${label}收货审核`, await json(`/spot-procurements/${id}/receipt/review`, director, "POST", { decision: "approved", comment: "确认少货" }), 201);
-    expectHttpStatus(`${label}差异发起`, await json(`/spot-procurements/${id}/discrepancy`, applicant, "POST", { operation: "initiate", resolutionType: "full_refund", note: "商户退还少货差额" }), 201);
-    expectHttpStatus(`${label}差异确认`, await json(`/spot-procurements/${id}/discrepancy`, director, "POST", { operation: "confirm", resolutionType: "full_refund", note: "商户退还少货差额" }), 201);
+    await prepareHistoricalDiscrepancy(projectId, approved, label);
     return { procurementId: id, paymentId };
   }
 
@@ -727,7 +758,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     ]);
   }, 60_000);
 
-  (enabled ? it : it.skip)("公开链从实付与少货收货到财务登记退款", async () => {
+  (enabled ? it : it.skip)("公开链登记实付和历史少货退款，拒绝新收货写入", async () => {
     const id = await seedHistoricalDraft(projectIds.api, "refund");
     expectHttpStatus("采购提交", await json(`/spot-procurements/${id}/submission`, applicant, "POST", {}), 201);
     expectHttpStatus("物资审批", await reviewCurrent(id, director, "approve", "物资确认"), 201);
@@ -795,21 +826,20 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
       paymentChannelId, idempotencyKey: randomUUID(), confirmationPassword: accountPassword
     }), 201);
 
-    const receiptImage = await sharp({ create: { width: 320, height: 240, channels: 3, background: "#4f8a5b" } }).png().toBuffer();
-    const receiptPhoto = await uploadFile(`/spot-procurements/${id}/receipt-photo-file-uploads`, applicant, "收货现场.png", randomUUID(), receiptImage);
-    if (receiptPhoto.status !== 201) throw new Error(`收货照片上传失败: ${safeResponseBody(receiptPhoto)}`);
-    expectHttpStatus("收货照片绑定", await json(`/spot-procurements/${id}/receipt/photos`, applicant, "POST", { originalFileId: receiptPhoto.id, source: "camera", category: "material_scene", note: "合成少货" }), 201);
-    expectHttpStatus("少货草稿", await json(`/spot-procurements/${id}/receipt/draft`, applicant, "PATCH", {
-      note: "少货两袋", lines: [{ procurementLineId: approved.lines[0]!.id, qualifiedQuantity: "8", unqualifiedQuantity: "0", freeGiftQuantity: "0", replenishmentPending: false, discrepancyNote: "少货2袋" }]
-    }), 200);
-    expectHttpStatus("收货提交", await json(`/spot-procurements/${id}/receipt/submission`, applicant, "POST", {}), 201);
-    expectHttpStatus("少货审核", await json(`/spot-procurements/${id}/receipt/review`, director, "POST", { decision: "approved", comment: "确认少货" }), 201);
-    const receipt = await prisma.spotProcurementReceipt.findUniqueOrThrow({ where: { procurementId: id } });
-    const receiptReview = await prisma.spotProcurementReceiptReview.findFirstOrThrow({ where: { receiptId: receipt.id, decision: "approved" }, orderBy: { createdAt: "desc" } });
+    const retired = { status: 410, code: "OLD_WRITE_ENTRY_RETIRED" };
+    expect(await uploadFile(`/spot-procurements/${id}/receipt-photo-file-uploads`, applicant, "退役收货现场.png")).toMatchObject(retired);
+    expect(await json(`/spot-procurements/${id}/receipt/submission`, applicant, "POST", {})).toMatchObject({
+      status: retired.status, body: { code: retired.code }
+    });
+    expect(await json(`/spot-procurements/${id}/discrepancy`, applicant, "POST", {
+      operation: "initiate", resolutionType: "full_refund", note: "退役差异发起"
+    })).toMatchObject({ status: retired.status, body: { code: retired.code } });
+    expect(await prisma.spotProcurementReceipt.count({ where: { procurementId: id } })).toBe(0);
+    expect(await prisma.spotProcurementDiscrepancy.count({ where: { procurementId: id } })).toBe(0);
+
+    const historicalReviewId = await prepareHistoricalDiscrepancy(projectIds.api, approved, "公开链");
     await verifyApprovedPdf({ db: prisma, baseUrl, token: director.tokens.accessToken, password: accountPassword,
-      businessType: "spot_procurement_receipt", businessId: receiptReview.id, roles: ["material_director"], label: "零星材料到货审核" });
-    expectHttpStatus("差异发起", await json(`/spot-procurements/${id}/discrepancy`, applicant, "POST", { operation: "initiate", resolutionType: "full_refund", note: "商户退还少货差额" }), 201);
-    expectHttpStatus("差异物资确认", await json(`/spot-procurements/${id}/discrepancy`, director, "POST", { operation: "confirm", resolutionType: "full_refund", note: "商户退还少货差额" }), 201);
+      businessType: "spot_procurement_receipt", businessId: historicalReviewId, roles: ["material_director"], label: "零星材料到货审核" });
     expect((await json(`/spot-procurements/${id}/receipt`, refundFinance)).status).toBe(403);
     const refundVoucher = await uploadFile(`/spot-procurements/${id}/refund-voucher-file-uploads`, refundFinance, "退款凭证.png");
     if (refundVoucher.status !== 201) throw new Error(`退款凭证上传失败: ${safeResponseBody(refundVoucher)}`);
@@ -848,9 +878,9 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     return { status: response.status, ...(text ? JSON.parse(text) as { id: string } : { id: "" }) };
   }
 
-  async function uploadGenericFile(session: Session, fileName: string) {
+  async function uploadGenericFile(session: Session, fileName: string, buffer = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")) {
     const form = new FormData();
-    form.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), fileName);
+    form.append("file", new Blob([buffer], { type: "image/png" }), fileName);
     const response = await fetch(`${baseUrl}/files`, { method: "POST", headers: { authorization: `Bearer ${session.tokens.accessToken}` }, body: form });
     const text = await response.text();
     return { status: response.status, ...(text ? JSON.parse(text) as { id: string } : { id: "" }) };

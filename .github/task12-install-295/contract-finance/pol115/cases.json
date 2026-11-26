@@ -65,8 +65,8 @@
       "skipped": [
         "#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16 登记账户零采异公司实付并按原键只扣一次"
       ],
-      "candidateSha256": "54d046c73881007126a7e6330c03dfe38751fd3f2d814c8c15909a774adbcd2c",
-      "namesSha256": "dc9041cf7b7fa8c8cd4d478160bc8e5e6e85e13fad8787dcbed2fd754ddd7a13"
+      "candidateSha256": "b3567f0aa91497304fa59de8256031a04c16adb46d43fb19729e1bfed732ab2c",
+      "namesSha256": "d173d5c2e6784ecf46c6741998db82eb7f075a407952e602ff5778f4985fa014"
     }
   ]
 }
