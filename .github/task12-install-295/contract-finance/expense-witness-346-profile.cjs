@@ -65,7 +65,18 @@ const catalogSql = previous.catalogSql.replace(/\);$/u, `,
       AND t.tgenabled='O' AND NOT t.tgisinternal AND t.tgconstraint=0 AND t.tgnargs=0
     JOIN pg_proc p ON p.oid=t.tgfoid AND p.oid=to_regprocedure('public.'||q.routine||'()')),
   'preparedAdapterAbsent', to_regprocedure('public.jg_registered_payment_fact_guard()') IS NULL
-    AND to_regprocedure('public.jg_registered_payment_cash_impact_guard()') IS NULL
+    AND to_regprocedure('public.jg_registered_payment_cash_impact_guard()') IS NULL,
+  'registeredPaymentGuards', (SELECT jsonb_object_agg(q.table_name,jsonb_build_object(
+    'body',encode(sha256(convert_to(p.prosrc,'UTF8')),'hex'),
+    'procedure',to_jsonb(p)-'prosrc','wiring',to_jsonb(t)))
+    FROM (VALUES ('OperatingFact','OperatingFact_registered_payment','jg_registered_payment_fact_guard'),
+      ('OperatingImpactEntry','OperatingImpactEntry_registered_cash','jg_registered_payment_cash_impact_guard'))
+      q(table_name,hook,routine)
+    JOIN pg_trigger t ON t.tgrelid=to_regclass(format('public.%I',q.table_name))
+      AND t.tgname=q.hook AND t.tgtype=7 AND t.tgenabled='O' AND NOT t.tgisinternal
+      AND t.tgconstraint=0 AND t.tgnargs=0 AND t.tgqual IS NULL
+    JOIN pg_proc p ON p.oid=t.tgfoid AND p.oid=to_regprocedure('public.'||q.routine||'()')
+      AND p.proowner=current_user::regrole::oid AND NOT p.prosecdef)
 );`);
 
 const ordinaryImages = new Map([
@@ -85,20 +96,38 @@ function assertCatalog(size, snapshot, before) {
   if (size < count) {
     previous.assertCatalog(size, snapshot, before);
     if (size === previous.count) {
-      assert.equal(snapshot.preparedAdapterAbsent, true, 'CASH_OPERATING_346_ORDINARY_BASE');
       assert.equal(snapshot.expenseCashGuards, null, 'CASH_OPERATING_346_UNINSTALLED_GUARDS');
     }
     return;
   }
   assert.equal(size, count);
-  assert.equal(snapshot.preparedAdapterAbsent, true, 'CASH_OPERATING_346_ORDINARY_BASE');
+  assert.equal(snapshot.preparedAdapterAbsent, before.preparedAdapterAbsent, 'CASH_OPERATING_346_ADAPTER_CONTINUITY');
   for (const key of ['witness', 'foreignKey', 'witnessIndex', 'voucherBinding']) {
     assert.deepEqual(snapshot[key], before[key], 'CASH_OPERATING_346_PRIOR_GUARD_DRIFT');
   }
-  const images = ordinaryImages.get(before.costValidator.body);
-  assert.ok(images && before.impactValidator?.body === images.impact, 'CASH_OPERATING_346_ORDINARY_PREIMAGE');
-  assert.deepEqual(snapshot.costValidator, { ...before.costValidator, body: images.nextFact });
-  assert.deepEqual(snapshot.impactValidator, { ...before.impactValidator, body: images.nextImpact });
+  if (before.preparedAdapterAbsent) {
+    assert.equal(before.registeredPaymentGuards, null);
+    assert.equal(snapshot.registeredPaymentGuards, null);
+    const images = ordinaryImages.get(before.costValidator.body);
+    assert.ok(images && before.impactValidator?.body === images.impact, 'CASH_OPERATING_346_ORDINARY_PREIMAGE');
+    assert.deepEqual(snapshot.costValidator, { ...before.costValidator, body: images.nextFact });
+    assert.deepEqual(snapshot.impactValidator, { ...before.impactValidator, body: images.nextImpact });
+  } else {
+    assert.equal(before.costValidator.body, 'f38dd0f9c476f613c16a73a7d4c52733effe50585bcf5f15b0e4c96a9437a987');
+    assert.equal(before.impactValidator?.body, '78d1efbfb923ee5417b580e51e87dee29d33277fe510136c7f562e61007ae1da');
+    assert.deepEqual(snapshot.costValidator, before.costValidator);
+    assert.deepEqual(snapshot.impactValidator, before.impactValidator);
+    for (const [table, original, successor] of [
+      ['OperatingFact', '54abb9bca45f8cbf2ed3dd27abb0d86725e9bba7b863282e266dfa60377a837c',
+        '9e7cf612da3cabbbe979b8a52813d766488b01aaa289da68272f612511167cd4'],
+      ['OperatingImpactEntry', 'e8f260b939348210d529402bf7d0f30ff3d71f369a7cc7b4ae1169d8664e6751',
+        'e59887d92a12c53d6af6e7116edc61be6ced6ac9ced8624512c3c337af30c5b4']
+    ]) {
+      const guard = before.registeredPaymentGuards?.[table];
+      assert.equal(guard?.body, original, 'CASH_OPERATING_346_PREPARED_PREIMAGE');
+      assert.deepEqual(snapshot.registeredPaymentGuards?.[table], { ...guard, body: successor });
+    }
+  }
   for (const [table, body] of [
     ['OperatingFact', '0cd263a827c1b4ddeb4f8aa61cb9e65c10f91002fc6ec1218253c914e43ecfa2'],
     ['OperatingImpactEntry', '4df155debf8024c2030f3e279e14bb8a63cf6f737bb5228a7269675c80c467d5']
