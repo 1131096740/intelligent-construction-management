@@ -27,6 +27,8 @@
   "services/api/src/me/me.service.ts": "cf2572a6db6c31241f9610d6b68b23dc5ec1c1fdfb55bd30964d1ec7dacc81bd",
   "services/api/src/payment/contract-takeover-balance.ts": "91a765cbd7ee193fe8798a26f3a762f876567071a5014d49bfa10a37c770cd08",
   "services/api/src/payment/signed-settlement-payment-capacity.ts": "9588d8ffa9f176a34ff868a929757273c034b52eb786478afbd03878b19504d4",
+  "services/api/src/project/project-affiliate-business.service.spec.ts": "bd7f7f84a027dcf6d35a7aba1664e7a9e0e46ffa887644ad7aeed936892f79b1",
+  "services/api/src/project/project-affiliate-business.service.ts": "cb3f26dcefe8ac2975ead25608415255cf055bdef481c75a14b56d4307913a11",
   "services/api/src/settlement/settlement-operating-source.adapter.ts": "2cb5d11dbc22a3682dad0bc4f16965a157006fb638627d5dbd8ac639e6a703b6",
   "services/api/src/spot-procurement/spot-procurement-read.service.spec.ts": "87bd4c8ea772955db9d0553ba5ce66df5d537b36cb63b67747ca81cbe9c86c41"
 }

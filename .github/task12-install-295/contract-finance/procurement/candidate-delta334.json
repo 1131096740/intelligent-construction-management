@@ -130,6 +130,16 @@
     "candidate": "91a765cbd7ee193fe8798a26f3a762f876567071a5014d49bfa10a37c770cd08"
   },
   {
+    "path": "services/api/src/project/project-affiliate-business.service.spec.ts",
+    "expected": "1094d1c646ead00b8d6117800e03fc580dd00f11527b62bbbc877c3785c6c686",
+    "candidate": "bd7f7f84a027dcf6d35a7aba1664e7a9e0e46ffa887644ad7aeed936892f79b1"
+  },
+  {
+    "path": "services/api/src/project/project-affiliate-business.service.ts",
+    "expected": "0ef68b3dc7bd38f1c7011d5b403141ea339fc341bc2f40c99905dfe110af5d31",
+    "candidate": "cb3f26dcefe8ac2975ead25608415255cf055bdef481c75a14b56d4307913a11"
+  },
+  {
     "path": "services/api/src/settlement/settlement-operating-source.adapter.ts",
     "expected": "6e1134b08b50c90f557439bc2387a4de6e079e0ed8b2bce95554155bcfd6ed72",
     "candidate": "2cb5d11dbc22a3682dad0bc4f16965a157006fb638627d5dbd8ac639e6a703b6"
