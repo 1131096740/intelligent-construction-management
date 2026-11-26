@@ -1,0 +1,60 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -73 +73,8 @@
+-    if (process.env.NODE_ENV !== "test" || target.hostname !== "127.0.0.1" || !target.pathname.endsWith("_issue422_archives")) {
++    const orderedDatabase = process.env.JG_ISSUE422_ORDERED_DATABASE;
++    const expected = orderedDatabase
++      ? /^jg_task01_[a-f0-9]{32}$/u.test(orderedDatabase) && target.pathname === "/" + orderedDatabase &&
++        target.protocol === "postgresql:" && target.username === "jg_task01_owner" && Number(target.port) > 1024 &&
++        target.searchParams.get("sslmode") === "require" && target.searchParams.get("sslaccept") === "strict" &&
++        /^\/tmp\/jg394-[A-Za-z0-9]+\/ca\.crt$/u.test(target.searchParams.get("sslcert") ?? "")
++      : target.pathname.endsWith("_issue422_archives");
++    if (process.env.NODE_ENV !== "test" || target.hostname !== "127.0.0.1" || !expected) {
+@@ -109,0 +117,14 @@
++    const company = await owner.companyEntity.create({ data: {
++      name: "隔离档案我方公司"
++    } });
++    const enterprise = await owner.businessParty.create({ data: {
++      name: "隔离档案施工企业", normalizedName: "issue422-enterprise", createdByUserId: ids.finance
++    } });
++    const enterpriseVersion = await owner.businessPartyVersion.create({ data: {
++      businessPartyId: enterprise.id, versionNo: 1, snapshot: { name: enterprise.name }, createdByUserId: ids.finance
++    } });
++    await owner.projectAffiliateAssignment.createMany({ data: [ids.projectA, ids.projectB].map(projectId => ({
++      projectId, businessPartyId: enterprise.id, businessPartyVersionId: enterpriseVersion.id,
++      affiliateNameSnapshot: enterprise.name, effectiveFrom: new Date("2020-01-01"),
++      changeReason: "隔离验收施工企业", assignedByUserId: ids.finance
++    })) });
+@@ -111,3 +132,10 @@
+-      { id: ids.contractA, projectId: ids.projectA, code: "HT-422-A", name: "隔离钢材采购合同", counterparty: "四川钢材供应商" },
+-      { id: ids.contractB, projectId: ids.projectB, code: "HT-422-B", name: "隔离幕墙分包合同", counterparty: "幕墙分包单位" }
+-    ] });
++      { id: ids.contractA, projectId: ids.projectA, code: "HT-422-A", name: "隔离钢材采购合同", counterparty: "四川钢材供应商",
++        contractTypeKey: "material_purchase", companyEntityName: company.name },
++      { id: ids.contractB, projectId: ids.projectB, code: "HT-422-B", name: "隔离幕墙分包合同", counterparty: "幕墙分包单位",
++        contractTypeKey: "labor_subcontract", companyEntityName: company.name }
++    ] });
++    const signing = {
++      signingSubjectType: "our_company",
++      companyEntityIdSnapshot: company.id,
++      companyEntityNameSnapshot: company.name
++    };
+@@ -115,7 +143,2 @@
+-      { id: ids.versionA, contractId: ids.contractA, versionNo: 1, changeType: "initial", status: "effective", amountCents: 1_000_000n, draftData: {}, templateSnapshot: {}, clauseSnapshot: {} },
+-      { id: ids.versionB, contractId: ids.contractB, versionNo: 1, changeType: "initial", status: "effective", amountCents: 2_000_000n, draftData: {}, templateSnapshot: {}, clauseSnapshot: {} }
+-    ] });
+-
+-    await owner.signedContractSettlement.createMany({ data: [
+-      { id: "i422-settlement-a", projectId: ids.projectA, contractKind: "contract", contractId: ids.contractA, ownerUserId: ids.staffA, state: "confirmed" },
+-      { id: "i422-settlement-b", projectId: ids.projectB, contractKind: "contract", contractId: ids.contractB, ownerUserId: ids.staffA, state: "confirmed" }
++      { id: ids.versionA, contractId: ids.contractA, versionNo: 1, changeType: "initial", status: "effective", amountCents: 1_000_000n, draftData: {}, templateSnapshot: {}, clauseSnapshot: {}, ...signing },
++      { id: ids.versionB, contractId: ids.contractB, versionNo: 1, changeType: "initial", status: "effective", amountCents: 2_000_000n, draftData: {}, templateSnapshot: {}, clauseSnapshot: {}, ...signing }
+@@ -125 +148 @@
+-      `uploads/signed-contract-settlement/${createHash("sha256").update(projectId).digest("hex")}/`;
++      `uploads/issue422-archives/${createHash("sha256").update(projectId).digest("hex")}/`;
+@@ -142,5 +164,0 @@
+-    await owner.signedContractSettlementAttachment.createMany({ data: [
+-      { settlementId: "i422-settlement-a", fileId: ids.fileA, sha256: pdfSha256 },
+-      { settlementId: "i422-settlement-b", fileId: ids.fileB, sha256: pdfSha256 },
+-      { settlementId: "i422-settlement-a", fileId: ids.fileC, sha256: pdfSha256 }
+-    ] });

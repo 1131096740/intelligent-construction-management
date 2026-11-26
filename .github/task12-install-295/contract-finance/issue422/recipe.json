@@ -1,0 +1,15 @@
+{
+  "scope": "issue422",
+  "file": "src/database/issue422-archives.http.pg.spec.ts",
+  "sourceDigest": "e1b07c48aabe8ce197cb2d26cdd93a065434c7ef5cb3a1ae51547638ad02f826",
+  "fixtureDigest": "e5d23d40b28d09b7054621db4f183dfe5492822483379b365c37774f732f1020",
+  "orderedDatabaseKey": "JG_ISSUE422_ORDERED_DATABASE",
+  "enableKey": "RUN_ISSUE422_REAL_DB",
+  "stage": "ORIGINAL_ARCHIVE_HTTP_JEST",
+  "titles": [
+    "searches archives only inside the current document visibility and filters by project, contract, counterparty, and number",
+    "issues short-lived attachment tickets without password or reason, audits downloads, and rejects another project's file",
+    "rejects an expired short-lived link and a still-valid link after the role is revoked",
+    "authorizes every package file, rejects mixed unauthorized selections, and records package audit"
+  ]
+}
