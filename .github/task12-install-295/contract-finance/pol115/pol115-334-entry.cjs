@@ -202,10 +202,14 @@ async function main() {
   for (const [file, digest] of Object.entries(inputs.fixtureSha256)) {
     assert.equal(sha256(fs.readFileSync(path.join(api, file))), digest, 'POL115_334_FIXTURE_DIGEST');
   }
-  const baseline = require(path.join(api, 'prisma/migration-baseline.cjs')).loadCanonicalMigrationBaseline();
-  assert.equal(baseline.expectedDirectoryCount, 334);
-  assert.equal(baseline.terminalMigration, historical.terminal.name);
-  assert.equal(baseline.terminalMigrationChecksum, historical.terminal.sha256);
+  const baseline = require(path.join(api, 'prisma/migration-baseline.cjs'));
+  if (expenseWitness) expenseWitness.assertRuntimeBaseline(baseline);
+  else {
+    const admitted = baseline.loadCanonicalMigrationBaseline();
+    assert.equal(admitted.expectedDirectoryCount, 334);
+    assert.equal(admitted.terminalMigration, historical.terminal.name);
+    assert.equal(admitted.terminalMigrationChecksum, historical.terminal.sha256);
+  }
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
 
   const material = { sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails };
