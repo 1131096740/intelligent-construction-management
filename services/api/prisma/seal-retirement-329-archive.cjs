@@ -9,6 +9,8 @@ const commit = "ee7a215f530f553949bb57cd029587e490bf9c84";
 const tree = "d1cd9e6246c915cdfa48be44b672e09102b59c8b";
 const seal = "8ae09674e72061cab1a5e4e0035aa0b79d18381bee2ed22d704402e59789f679";
 const subsetSha = "5c4871e8e9fa2d32bf88ea1147523c5eebc67c04a5fe43794ca996a26e46373a";
+const capturedArchives = new WeakSet();
+const nativeInstallations = new WeakMap();
 
 function captureArchive(admission, digest, source, { file, hash }) {
   const packet = JSON.parse(file(admission, digest));
@@ -38,10 +40,13 @@ function captureArchive(admission, digest, source, { file, hash }) {
   });
   assert.equal(profile.profile, "TASK12_ARCHIVE263_SOURCE_V1");
   assert.equal(profile.ledgerSha256, material.historical.ledgerSha256);
-  return { fromArchive, source: { candidateSha: commit, tree, sourceSealSha256: seal, profile } };
+  const archive = Object.freeze({ fromArchive, source: Object.freeze({ candidateSha: commit, tree, sourceSealSha256: seal, profile }) });
+  capturedArchives.add(archive);
+  return archive;
 }
 
 function installArchive(archive, sql, runId, port, app, stage) {
+  assert.ok(capturedArchives.has(archive), "NATIVE_ARCHIVE_CAPTURE_REQUIRED");
   const identity = JSON.parse(sql(`
     SELECT jsonb_build_object('database',current_database(),'databaseOid',d.oid::text,
       'namespaceOid',to_regnamespace('public')::oid::text,'ownerOid',d.datdba::text,'actorOid',current_user::regrole::oid::text,
@@ -74,8 +79,19 @@ function installArchive(archive, sql, runId, port, app, stage) {
   const reader = writer.acceptWritten(run("ARCHIVE_SEVEN_WRITE", writer.sql));
   const result = reader.acceptCommitted(run("ARCHIVE_SEVEN_COMMITTED", reader.sql));
   assert.equal(result.status, "NATIVE_TASK12_ARCHIVE_SOURCE_MATCHED_NOT_ADMISSION");
-  return { source: source.candidateSha, ledgerSha256: source.profile.ledgerSha256, roles: state.roles.length,
+  const evidence = { source: source.candidateSha, ledgerSha256: source.profile.ledgerSha256, roles: state.roles.length,
     sevenCatalogSha256: result.sevenCatalogSha256, bindingSha256: result.bindingSha256 };
+  nativeInstallations.set(evidence, () => {
+    const { completion } = archiveModule.readNativeTask12ArchiveProjection(result);
+    return Object.freeze({ owner: completion.databaseIdentity, application: completion.ordinary });
+  });
+  return evidence;
 }
 
-module.exports = { captureArchive, installArchive };
+function readOwnedNativeArchiveIdentity(evidence) {
+  const readIdentity = nativeInstallations.get(evidence);
+  assert.ok(readIdentity, "NATIVE_ARCHIVE_LIVE_INSTALLATION_REQUIRED");
+  return readIdentity();
+}
+
+module.exports = { captureArchive, installArchive, readOwnedNativeArchiveIdentity };

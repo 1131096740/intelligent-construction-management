@@ -362,22 +362,30 @@ async function main(args) {
   assert.equal(process.arch, "arm64");
   const expenseApproval = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1) === "--approval-round-a04";
   const issue430ApprovalSms = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1) === "--issue430-approval-sms";
-  const expenseCashA24Mode = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1);
-  const expenseOperatingCash346 = expenseCashA24Mode === "--expense-cash-a24-combined-346";
-  const expenseCashVoucher344 = expenseOperatingCash346 || expenseCashA24Mode === "--expense-cash-a24-combined-344";
-  const expensePending342 = expenseCashVoucher344 || expenseCashA24Mode === "--expense-cash-a24-combined-342";
-  const expenseAssignment341 = expensePending342 || expenseCashA24Mode === "--expense-cash-a24-combined-341";
-  const a24Profile = expenseCashA24Mode === "--expense-cash-a24"
+  const businessMode = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1);
+  const a08Inside346 = businessMode === "--approval-archive-a08-inside-346";
+  const expenseOperatingCash346 = businessMode === "--expense-cash-a24-combined-346";
+  const a08DirectRelationship = new Map([
+    ["--approval-archive-a08-outside-346", "outside"],
+    ["--approval-archive-a08-upward-346", "upward"]
+  ]).get(businessMode);
+  const a08Any346 = a08Inside346 || Boolean(a08DirectRelationship);
+  const combined346 = a08Any346 || expenseOperatingCash346;
+  const expenseCashVoucher344 = combined346 || businessMode === "--expense-cash-a24-combined-344";
+  const expensePending342 = expenseCashVoucher344 || businessMode === "--expense-cash-a24-combined-342";
+  const expenseAssignment341 = expensePending342 || businessMode === "--expense-cash-a24-combined-341";
+  const a24Profile = businessMode === "--expense-cash-a24"
     ? require("../test-support/task426-a24-native-profile.cjs")
-    : expenseCashA24Mode === "--expense-cash-a24-combined-340" || expenseAssignment341
+    : businessMode === "--expense-cash-a24-combined-340" || expenseAssignment341
       ? require("../test-support/task426-a24-native340-profile.cjs")
       : undefined;
-  const expenseCashA24 = Boolean(a24Profile);
-  const paymentRemainder = expenseApproval || issue430ApprovalSms || expenseCashA24 || (args.length === 11 && args.at(-1) === "--payment-remainder-331");
+  // The A08 modes reuse the combined migration checks with their own HTTP roles.
+  const expenseCashA24 = Boolean(a24Profile) && !a08Any346;
+  const paymentRemainder = expenseApproval || issue430ApprovalSms || Boolean(a24Profile) || (args.length === 11 && args.at(-1) === "--payment-remainder-331");
   assert.ok(args.length === 10 || paymentRemainder);
   const [mode, sha, pgManifest, pgSha, docManifest, docSha, office, officeSha, archiveAdmission, archiveSha] = args;
   assert.ok(["verify", "run"].includes(mode));
-  const source = captureSource(sha, paymentRemainder, a24Profile, expenseOperatingCash346 ? 346 : expenseCashVoucher344 ? 344 : expensePending342 ? 342 : expenseAssignment341 ? 341 : undefined);
+  const source = captureSource(sha, paymentRemainder, a24Profile, combined346 ? 346 : expenseCashVoucher344 ? 344 : expensePending342 ? 342 : expenseAssignment341 ? 341 : undefined);
   const normalArchiveRecipeSha = "90b698f5230ae172518e285bf8c4e197eb1d552518c55670c2b3794eb82f1b75";
   file(path.join(__dirname, "task12-normal274-archive-binding.cjs"), normalArchiveRecipeSha);
   const approvalLockRecipeSha = "5d565dc516cd26c64e3fda295b97968be7912abc62f47ab47ffd93be29fd6c2f";
@@ -388,15 +396,26 @@ async function main(args) {
   const receipt = { candidate: sha, sourceTree: source.sourceTree, migrations: source.ledger.length, ledgerSha256: source.ledgerDigest,
     postgresMaterialSha256: pgSha, historicalSourceAdmissionSha256: archiveSha, normalArchiveRecipeSha256: normalArchiveRecipeSha, approvalLockRecipeSha256: approvalLockRecipeSha, documentManifestSha256: docSha, libreOfficeWrapperSha256: officeSha, libreOfficeExecutableSha256: runtime.nativeOfficeSha,
     status: "HOST_MATERIAL_VERIFIED", stages: [], cleanup: "NOT_NEEDED" };
+  if (a08Inside346) receipt.profile = "APPROVAL_ARCHIVE_A08_INSIDE_346";
+  const a08Runtime = a08DirectRelationship && require("../test-support/task426-a08-native-runtime.cjs");
+  let a08Direct;
+  if (a08Runtime) {
+    const { captureA08Direct346Source } = require("../test-support/task426-a08-upward-pin-332-profile.cjs");
+    const sourceProfile = captureA08Direct346Source(sha, source.sourceTree, source.ledger);
+    a08Direct = await a08Runtime.prepareNativeA08Mode({ ...source, sourceProfile }, a08DirectRelationship);
+    receipt.profile = "APPROVAL_ARCHIVE_A08_DIRECT_346";
+    receipt.a08 = a08Direct.evidence;
+    if (mode === "run") a08Runtime.compileNativeA08Application({ root, api, env });
+  }
   const a24Acl = expenseCashA24 && require("../test-support/task426-a24-native-acl.cjs");
-  const a24Assignment = expenseAssignment341 && require("../test-support/task426-a24-native341-assignment.cjs");
+  const a24Assignment = expenseCashA24 && expenseAssignment341 && require("../test-support/task426-a24-native341-assignment.cjs");
   const pendingExpense = expensePending342 && require("../test-support/task426-a24-native342-fact.cjs");
   const cashVoucher = expenseCashVoucher344 && require("../test-support/task426-a24-native344-voucher.cjs");
-  const operatingCash = expenseOperatingCash346 && require("../test-support/task426-a24-native346-operating.cjs");
+  const operatingCash = combined346 && require("../test-support/task426-a24-native346-operating.cjs");
   const baseA24Plan = a24Acl && a24Acl.a24ColumnPlan(require("@prisma/client").Prisma.dmmf.datamodel.models, expensePending342);
-  const a24Plan = cashVoucher ? cashVoucher.addCashVoucherAcl(baseA24Plan) : baseA24Plan;
+  const a24Plan = baseA24Plan && cashVoucher ? cashVoucher.addCashVoucherAcl(baseA24Plan) : baseA24Plan;
   if (a24Plan) receipt.a24AclSha256 = hash(JSON.stringify(a24Plan));
-  if (expenseCashA24) receipt.a24ExpectedPrefixes = source.a24Prefixes.map(size => {
+  if (a24Profile) receipt.a24ExpectedPrefixes = source.a24Prefixes.map(size => {
     const { ledgerSha256 } = a24Profile.verifyA24Prefix(size, source.ledger.slice(0, size));
     return { count: size, ledgerSha256 };
   });
@@ -518,7 +537,7 @@ async function main(args) {
       await migrate({ source, archive, database, directory, sql, url: ownerUrl, run, stage, runId, port, a24Profile, pendingExpense, cashVoucher, operatingCash });
     receipt.tailMaterials = tailMaterials;
     receipt.archiveInstallation = archiveMaterial;
-    if (expenseCashA24) {
+    if (a24Profile) {
       receipt.a24Installation = a24Installation;
       assert.deepEqual(a24Installation, receipt.a24ExpectedPrefixes.map(prefix => ({ ...prefix, sameIdentity: true })));
     }
@@ -531,15 +550,17 @@ async function main(args) {
       receipt.paymentRemainderPredecessor = paymentRemainderPredecessor;
     }
     stage("ROLE");
-    if (!expenseCashA24) grantApplication(sql, database, app, appPassword);
+    if (!expenseCashA24 && !a08Direct) grantApplication(sql, database, app, appPassword);
     const appUrl = new URL(ownerUrl);
     appUrl.username = app;
     appUrl.password = appPassword;
     appUrl.searchParams.set("connection_limit", "8");
     const packet = path.join(directory, "input.json");
-    fs.writeFileSync(packet, JSON.stringify({ ownerUrl: ownerUrl.toString(), psql: bin("psql"), applicationOid: appOid, database, candidate: sha }), { mode: 0o600, flag: "wx" });
     const files = path.join(directory, "files");
-    fs.mkdirSync(files, { mode: 0o700 });
+    if (!a08Direct) {
+      fs.writeFileSync(packet, JSON.stringify({ ownerUrl: ownerUrl.toString(), psql: bin("psql"), applicationOid: appOid, database, candidate: sha }), { mode: 0o600, flag: "wx" });
+      fs.mkdirSync(files, { mode: 0o700 });
+    }
     let checkLegacyWriterAcl;
     let checkCashVoucherAcl;
     if (expenseCashA24) {
@@ -669,6 +690,13 @@ async function main(args) {
         }
         throw error;
       }
+    } else if (a08Direct) {
+      receipt.a08.ownerCatalog = [];
+      receipt.proof = await a08Runtime.runNativeA08Http(a08Direct, { sql, stage, ownerUrl, archiveMaterial,
+        baseEnv: { ...env, HOME: directory, TMPDIR: directory },
+        recordOwnerUpward(when, proof) { receipt.a08.ownerCatalog.push({ when, ...proof }); },
+        recordOrdinaryReviewAcl(proof) { receipt.a08.ordinaryReviewAcl = proof; },
+        recordArchiveStage(proof) { receipt.a08.archiveBeforeTicket = proof; } });
     } else if (expenseApproval) {
       stage("APPROVAL_ROUND_A04");
       const reportFile = path.join(directory, "approval-round-a04.json");
@@ -721,7 +749,7 @@ async function main(args) {
       assert.equal(receipt.proof.candidate, source.candidate);
     }
     if (paymentRemainder) {
-      stage(expenseCashA24 ? "READBACK_A24_AFTER_BUSINESS" : "READBACK_331_AFTER_BUSINESS");
+      stage(a08Any346 ? "READBACK_346_AFTER_BUSINESS" : expenseCashA24 ? "READBACK_A24_AFTER_BUSINESS" : "READBACK_331_AFTER_BUSINESS");
       receipt.ledgerAfterBusiness = verifyAfterBusiness();
       assert.equal(receipt.ledgerAfterBusiness.ledgerSha256, source.ledgerDigest);
     }
@@ -741,16 +769,20 @@ async function main(args) {
         expenseFactCatalog[341]);
       assert.deepEqual(result, expenseFactCatalog[342], "NATIVE_A24_342_CATALOG_AFTER_BUSINESS");
       expenseFactCatalog.afterBusiness = result;
-      stage("A24_V1_WRITER_ACL_AFTER_BUSINESS");
-      receipt.a24LegacyWriterAclAfterBusiness = checkLegacyWriterAcl();
+      if (checkLegacyWriterAcl) {
+        stage("A24_V1_WRITER_ACL_AFTER_BUSINESS");
+        receipt.a24LegacyWriterAclAfterBusiness = checkLegacyWriterAcl();
+      }
     }
     if (cashVoucher) {
       stage("A24_CASH_VOUCHER_CATALOG_AFTER_BUSINESS");
       const result = cashVoucher.verifyCatalog(344, readCashVoucher(344), cashVoucherCatalog[343]);
       assert.deepEqual(result, cashVoucherCatalog[344], "NATIVE_A24_344_CASH_VOUCHER_CATALOG_DRIFT");
       cashVoucherCatalog.afterBusiness = result;
-      stage("A24_CASH_VOUCHER_ACL_AFTER_BUSINESS");
-      receipt.a24CashVoucherAclAfterBusiness = checkCashVoucherAcl();
+      if (checkCashVoucherAcl) {
+        stage("A24_CASH_VOUCHER_ACL_AFTER_BUSINESS");
+        receipt.a24CashVoucherAclAfterBusiness = checkCashVoucherAcl();
+      }
     }
     if (operatingCash) {
       stage("A24_OPERATING_CASH_CATALOG_AFTER_BUSINESS");
@@ -767,7 +799,13 @@ async function main(args) {
     const catalogReason = (phase.startsWith("A24_CASH_VOUCHER_CATALOG_") || phase.startsWith("A24_OPERATING_CASH_CATALOG_"))
       ? /^NATIVE_A24_34[3456]_[A-Z_]{1,45}$/mu.exec(error.message)?.[0] : undefined;
     receipt.firstFailure = firstFailure ?? { stage: phase, code: typeof error.code === "string" && /^[A-Z0-9_]{1,50}$/u.test(error.code) ? error.code : "CHECK_FAILED",
-      ...(catalogReason ? { catalogReason } : {}), ...(tail ? { tail } : {}) };
+      ...(catalogReason ? { catalogReason } : {}), ...(tail ? { tail } : {}),
+      ...(a08Direct && Number.isInteger(error.httpStatus) ? { httpStatus: error.httpStatus, expectedStatus: error.expectedStatus } : {}),
+      ...(a08Direct && error.a08Prisma ? { prisma: error.a08Prisma } : {}),
+      ...(a08Direct && error.a08TicketRead ? { ticketRead: error.a08TicketRead } : {}),
+      ...(a08Direct && error.a08DirectSource ? { directSource: error.a08DirectSource } : {}),
+      ...(a08Direct && error.a08DomainReason ? { domainReason: error.a08DomainReason } : {}),
+      ...(a08Direct && error.a08DomainGuards ? { domainGuards: error.a08DomainGuards } : {}) };
     if (expenseCashA24 && phase === "A24_PUBLIC_CASH_AND_ATTRIBUTION") {
       const databaseLog = fs.readFileSync(path.join(directory, "postgres.log"), "utf8");
       const errorCodes = databaseLog.split("\n").flatMap(line => {
