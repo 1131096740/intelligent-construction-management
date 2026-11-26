@@ -198,6 +198,14 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
     sql("BEGIN READ ONLY; SET LOCAL search_path=pg_catalog,pg_temp;" + statement + "ROLLBACK;")
   ));
   for (const size of [...liveForwardPrefixes(source.ledger.length), ...(source.a24Prefixes ?? [])]) {
+    if (pendingExpense && size === 342) {
+      stage("A24_MIGRATE_342_FIRST_SQL_ERROR");
+      const terminal = source.ledger[341];
+      const terminalPath = path.join(__dirname, "migrations", terminal.name, "migration.sql");
+      sql(pendingExpense.rollbackMigration342(file(terminalPath, terminal.sha256).toString("utf8")));
+      verify(inspect(), 341);
+      assert.deepEqual(JSON.parse(sql(pendingExpense.readOperatingFactValidator(plan.appName))), expenseFactCatalog[341]);
+    }
     deploy(size);
     const installed = inspect();
     verify(installed, size);
@@ -384,11 +392,15 @@ async function main(args) {
       const migration = source.ledger.some(row => row.name === reportedMigration) ? reportedMigration : undefined;
       // Prisma sometimes reports a native-driver error without a P-code.
       // Project only the first database error line and redact all local connection coordinates.
-      const reason = /^Error:\s*(?:ERROR:\s*)?([^\n]{1,200})$/mu.exec(errorText)?.[1]
+      const firstSqlError = phase === "A24_MIGRATE_342_FIRST_SQL_ERROR" && pendingExpense
+        ? pendingExpense.projectMigration342Error(errorText)
+        : undefined;
+      const reason = phase === "A24_MIGRATE_342_FIRST_SQL_ERROR" ? undefined : /^Error:\s*(?:ERROR:\s*)?([^\n]{1,200})$/mu.exec(errorText)?.[1]
         ?.replace(/postgres(?:ql)?:\/\/\S+/gu, "[database URL]")
         ?.replace(/\/private\/tmp\/[^\s"']+/gu, "[owned path]")
         ?.replace(/\b(?:jg_task01_|jg_fixture_app_)?[a-f0-9]{24,}\b/gu, "[private id]");
       firstFailure ??= { stage: phase, exit: result.status, signal: result.signal ?? undefined, prismaCode, sqlState, migration, reason,
+        ...(firstSqlError ? { firstSqlError } : {}),
         ...(diagnostic ? { diagnostic: JSON.parse(diagnostic) } : {}) };
       throw new Error("NATIVE_329_COMMAND");
     }

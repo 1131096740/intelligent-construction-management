@@ -4,7 +4,8 @@ const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
-const { readOperatingFactValidator, verifyOperatingFactValidator, beforeBody, afterBody } = require("./task426-a24-native342-fact.cjs");
+const { readOperatingFactValidator, verifyOperatingFactValidator, rollbackMigration342, projectMigration342Error,
+  beforeBody, afterBody } = require("./task426-a24-native342-fact.cjs");
 
 const read = relative => readFileSync(path.join(__dirname, "..", relative), "utf8");
 
@@ -53,4 +54,20 @@ test("refuses a change to the native facts metadata, impact validator or write f
   assert.throws(() => verifyOperatingFactValidator({ ...after, safe: false }, before), /WRITE_FENCE/u);
   assert.throws(() => verifyOperatingFactValidator({ ...after, impact: "f".repeat(64) }, before), /CATALOG_DRIFT/u);
   assert.throws(() => verifyOperatingFactValidator(before, before), /FACT_BODY/u);
+});
+
+test("diagnoses the first SQL error and leaves the migration uncommitted", () => {
+  const migration = read("prisma/migrations/20261129011000_expense_pending_cost_bearer/migration.sql");
+  assert.equal(rollbackMigration342(migration).replace(/ROLLBACK;\n$/u, "COMMIT;\n"), migration);
+  assert.throws(() => rollbackMigration342(migration + "SELECT 1;"));
+  const first = 'psql:<stdin>:99: ERROR:  55000: EXPENSE_PENDING_COST_BEARER_CATALOG\n' +
+    'CONTEXT:  PL/pgSQL function inline_code_block line 73 at RAISE\n' +
+    'psql:<stdin>:102: ERROR:  25P02: postgresql://private';
+  assert.deepEqual(projectMigration342Error(first), {
+    line: 99, sqlState: "55000", guard: "CATALOG", context: "MIGRATION", blockLine: 73
+  });
+  assert.deepEqual(projectMigration342Error('psql:<stdin>:99: ERROR:  42601: syntax error private\n' +
+    'CONTEXT: SQL statement "CREATE OR REPLACE FUNCTION public."validateOperatingFactReferences"()"'), {
+    line: 99, sqlState: "42601", guard: "SYNTAX_ERROR", context: "VALIDATOR_REPLACEMENT"
+  });
 });

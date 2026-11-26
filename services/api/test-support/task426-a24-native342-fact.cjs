@@ -49,4 +49,32 @@ function verifyOperatingFactValidator(row, before) {
   return row;
 }
 
-module.exports = { readOperatingFactValidator, verifyOperatingFactValidator, beforeBody, afterBody };
+function rollbackMigration342(sql) {
+  assert.ok(sql.startsWith("BEGIN;\n") && sql.endsWith("\nCOMMIT;\n"));
+  return sql.slice(0, -"COMMIT;\n".length) + "ROLLBACK;\n";
+}
+
+function projectMigration342Error(text) {
+  const error = /^psql:<stdin>:(\d{1,6}): ERROR:\s+([0-9A-Z]{5}): ([^\n]+)/mu.exec(text);
+  if (!error) return undefined;
+  const [, line, sqlState, message] = error;
+  const scope = /^EXPENSE_PENDING_COST_BEARER_(SCOPE|PREIMAGE|POSTIMAGE|CATALOG)$/u.exec(message)?.[1];
+  const knownSqlError = [
+    ["NO_DATA_FOUND", "query returned no rows"],
+    ["TOO_MANY_ROWS", "query returned more than one row"],
+    ["SYNTAX_ERROR", "syntax error"],
+    ["AMBIGUOUS_COLUMN", "column reference"],
+    ["UNDEFINED_COLUMN", "does not exist"],
+    ["REPLACE_SIGNATURE", "cannot change"],
+    ["INSUFFICIENT_PRIVILEGE", "permission denied"]
+  ].find(([, phrase]) => message.includes(phrase))?.[0];
+  const guard = scope ?? knownSqlError ?? "OTHER";
+  const context = /CREATE OR REPLACE FUNCTION public\."validateOperatingFactReferences"\(\)/u.test(text)
+    ? "VALIDATOR_REPLACEMENT"
+    : "MIGRATION";
+  const blockLine = /PL\/pgSQL function inline_code_block line (\d{1,6}) at /u.exec(text)?.[1];
+  return { line: Number(line), sqlState, guard, context, ...(blockLine ? { blockLine: Number(blockLine) } : {}) };
+}
+
+module.exports = { readOperatingFactValidator, verifyOperatingFactValidator, rollbackMigration342,
+  projectMigration342Error, beforeBody, afterBody };
