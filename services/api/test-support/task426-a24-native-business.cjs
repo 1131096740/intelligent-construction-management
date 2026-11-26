@@ -38,29 +38,29 @@ async function proveA24CashAttribution({ send, snapshot, primary, refundCase, vo
         sourceAllocations: [{ sourceBatchId: scope.sourceId, amountCents: amount }],
         costAllocations: [{ costImpactId: scope.costImpactId, amountCents: linked }] } }
   });
-  const source = await snapshot(primary);
+  const source = await snapshot(primary, "OPENING");
   assert.deepEqual(source, { costRows: 1, costCents: "800", paymentExecutions: 0, cashDebits: 0,
     paidCents: "0", cashBalanceYuan: primary.balanceBefore, acceptedAttributions: 0 }, "A24_ORIGINAL_COST");
   await scopeCost(primary);
   const file = await upload(primary);
   const voucherBoundaryProof = await voucherBoundary?.(primary, file.id);
-  if (voucherBoundaryProof) assert.deepEqual(await snapshot(primary), source, "A24_VOUCHER_BOUNDARY_ROLLBACK");
+  if (voucherBoundaryProof) assert.deepEqual(await snapshot(primary, "VOUCHER_AUTHORITY_ROLLBACK"), source, "A24_VOUCHER_BOUNDARY_ROLLBACK");
   const exact = cashCommand(primary, file.id, "800", "300");
   const insufficient = cashCommand({ ...primary, sourceId: primary.insufficientSourceId }, file.id, "800", "300");
   await request("INSUFFICIENT_SOURCE", "keeper", expense(primary) + "/payments", 409, insufficient);
-  assert.deepEqual(await snapshot(primary), source, "A24_DECLINE_IS_ATOMIC");
+  assert.deepEqual(await snapshot(primary, "INSUFFICIENT_SOURCE_ROLLBACK"), source, "A24_DECLINE_IS_ATOMIC");
   const paid = await request("KEEPER_PUBLIC_CASH_PAYMENT", "keeper", expense(primary) + "/payments", 201, exact);
   assert.equal(paid.status, "paid");
   assert.equal(paid.registeredFunding.actualPayerKind, "public_cash");
   assert.equal(paid.registeredFunding.actualPayerCompanyId, null);
   assert.equal(paid.registeredFunding.relationshipEntryId, null);
-  const afterPay = await snapshot(primary);
+  const afterPay = await snapshot(primary, "KEEPER_PAYMENT_COMMITTED");
   assert.deepEqual(afterPay, { ...source, paymentExecutions: 1, cashDebits: 1, paidCents: "800",
     cashBalanceYuan: primary.balanceAfter }, "A24_ONE_COST_ONE_CASH_DEBIT");
   await request("FOREIGN_VOUCHER_REPLAY", "otherComprehensive", expense(primary) + "/payments", 409, exact,
-    async () => assert.deepEqual(await snapshot(primary), afterPay, "A24_FOREIGN_REPLAY_STATE"));
+    async () => assert.deepEqual(await snapshot(primary, "FOREIGN_REPLAY_UNCHANGED"), afterPay, "A24_FOREIGN_REPLAY_STATE"));
   assert.deepEqual(await request("EXACT_PAYMENT_REPLAY", "keeper", expense(primary) + "/payments", 201, exact), paid);
-  assert.deepEqual(await snapshot(primary), afterPay, "A24_EXACT_REPLAY_STATE");
+  assert.deepEqual(await snapshot(primary, "EXACT_REPLAY_UNCHANGED"), afterPay, "A24_EXACT_REPLAY_STATE");
 
   const candidate = (await request("LINKED_COST_CANDIDATES", "requester", attributions(primary), 200)).candidates
     .find(row => row.factId === primary.factId && row.expenseCashCostLinkId);
@@ -76,7 +76,7 @@ async function proveA24CashAttribution({ send, snapshot, primary, refundCase, vo
   const confirmed = await request("FINANCE_SUPERVISOR_CONFIRM", "reviewer", attributions(primary) + "/" + pending.id + "/review", 201, review);
   assert.equal(confirmed.status, "confirmed");
   assert.equal(confirmed.attributedAmountCents, "300");
-  assert.deepEqual(await snapshot(primary), { ...afterPay, acceptedAttributions: 1 }, "A24_ATTRIBUTION_PRESERVES_FINANCIAL_FACTS");
+  assert.deepEqual(await snapshot(primary, "ATTRIBUTION_COMMITTED"), { ...afterPay, acceptedAttributions: 1 }, "A24_ATTRIBUTION_PRESERVES_FINANCIAL_FACTS");
   const view = await request("PROJECT_PROJECTION", "reviewer", "/operating-projections/project/" + primary.projectId, 200);
   assert.equal(view.operating.confirmedCostCents, "800");
   assert.equal(view.costAttribution.unattributedCostCents, "500");

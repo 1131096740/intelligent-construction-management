@@ -14,7 +14,7 @@ import { apiJsonReplacer } from "../api-json-replacer";
 import { PrismaService } from "./prisma.service";
 import { projectTask16RegistrationError } from "./task16-registration-error-diagnostic";
 import { projectA24ApprovalFailure, projectA24CashFailure, projectA24SignatureFailure,
-  projectA24SubmissionFailure } from "./task426-a24-signature-diagnostic.test-support";
+  projectA24SubmissionFailure, projectA24CashSnapshot, projectA24FixtureAssertion } from "./task426-a24-signature-diagnostic.test-support";
 import { createApiValidationPipe } from "../validation/api-validation";
 
 const { proveA24CashAttribution } = require("../../test-support/task426-a24-native-business.cjs") as {
@@ -32,6 +32,10 @@ type Packet = {
   candidate: string; database: string; ownerUrl: string; applicationOid: string; observerUrl: string; observerOid: string;
 };
 type CaseScope = { projectId: string; claimId: string; factId: string; costImpactId: string; accountId: string };
+const cashSnapshotStages = ["OPENING", "VOUCHER_AUTHORITY_ROLLBACK", "INSUFFICIENT_SOURCE_ROLLBACK", "KEEPER_PAYMENT_COMMITTED",
+  "FOREIGN_REPLAY_UNCHANGED", "EXACT_REPLAY_UNCHANGED", "ATTRIBUTION_COMMITTED"] as const;
+type CashSnapshotStage = typeof cashSnapshotStages[number];
+type CashSnapshotRead = "ORIGINAL_COST" | "EXPENSE_EXECUTION" | "OPERATING_CASH_DEBIT" | "FUND_BALANCE" | "ATTRIBUTION_COUNT" | "TALLIES";
 const proofPng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64");
 const signaturePath = "/me/signature/canvas";
 
@@ -89,6 +93,9 @@ it("records and confirms only an exact A24 public cash slice with separate datab
   let submissionFailure: ReturnType<typeof projectA24SubmissionFailure> | undefined;
   let approvalFailure: ReturnType<typeof projectA24ApprovalFailure> | undefined;
   let cashFailure: ReturnType<typeof projectA24CashFailure> | undefined;
+  let cashSnapshotStage: CashSnapshotStage | undefined;
+  let cashSnapshotRead: CashSnapshotRead | undefined;
+  let observedCashSnapshot: ReturnType<typeof projectA24CashSnapshot> | undefined;
   const captureDatabaseFailure = (error: unknown, operation?: Parameters<typeof projectA24SubmissionFailure>[1]) => {
     if (activeRequest?.cashPhase && activeRequest === cashRequests.getStore()) {
       cashFailure ??= projectA24CashFailure(error, operation);
@@ -238,6 +245,9 @@ it("records and confirms only an exact A24 public cash slice with separate datab
       submissionFailure = undefined;
       approvalFailure = undefined;
       cashFailure = undefined;
+      cashSnapshotStage = undefined;
+      cashSnapshotRead = undefined;
+      observedCashSnapshot = undefined;
       cashPhase = command.cashPhase;
       if (cashPhase) {
         assert.match(cashPhase, /^[A-Z0-9_]{1,40}$/u, "A24_CASH_PHASE");
@@ -383,34 +393,44 @@ it("records and confirms only an exact A24 public cash slice with separate datab
       } : {}),
       refundCase: async () => ({ ...await approveExpense(projects[1]), refund: { accountScopeKey: "public_cash",
         receivedAt: "2026-11-21", evidenceReference: "隔离退款凭据", reason: "隔离供应商退款" } }),
-      snapshot: async (scope: CaseScope) => {
+      snapshot: async (scope: CaseScope, snapshotStage: CashSnapshotStage) => {
+        assert.ok(cashSnapshotStages.includes(snapshotStage), "A24_CASH_SNAPSHOT_STAGE");
+        cashSnapshotStage = snapshotStage;
+        cashSnapshotRead = "ORIGINAL_COST";
+        observedCashSnapshot = undefined;
         const costs = await observer.operatingImpactEntry.findMany({
           where: { projectId: scope.projectId, impactKind: "confirmed_cost" }, select: { amountCents: true }
         });
+        cashSnapshotRead = "EXPENSE_EXECUTION";
         const ownerPayment = await observer.expenseClaimPaymentExecution.findMany({
           where: { expenseClaimId: scope.claimId }, select: { id: true, amountCents: true }
         });
+        cashSnapshotRead = "OPERATING_CASH_DEBIT";
         const cashDebits = await observer.operatingImpactEntry.count({
           where: { projectId: scope.projectId, impactKind: "public_cash_funds_decrease",
             sourceType: "expense_claim_payment_execution", sourceBusinessId: { in: ownerPayment.map(payment => payment.id) } }
         });
+        cashSnapshotRead = "FUND_BALANCE";
         const balance = await observer.fundAccountBalanceRegistration.findFirstOrThrow({
           where: { accountId: scope.accountId, status: "confirmed" }, orderBy: { version: "desc" }, select: { balanceYuan: true }
         });
+        cashSnapshotRead = "ATTRIBUTION_COUNT";
         const acceptedAttributions = await observer.operatingCostAttributionConfirmation.count({
           where: { projectId: scope.projectId, operatingFactId: scope.factId, status: "confirmed" }
         });
-        return { costRows: costs.length, costCents: costs.reduce((sum, row) => sum + (row.amountCents ?? 0n), 0n).toString(),
+        cashSnapshotRead = "TALLIES";
+        const result = { costRows: costs.length, costCents: costs.reduce((sum, row) => sum + (row.amountCents ?? 0n), 0n).toString(),
           paymentExecutions: ownerPayment.length, paidCents: ownerPayment.reduce((sum, row) => sum + row.amountCents, 0n).toString(),
           cashDebits, cashBalanceYuan: balance.balanceYuan?.toFixed(4), acceptedAttributions };
+        observedCashSnapshot = projectA24CashSnapshot(result);
+        return result;
       }
     });
     process.stdout.write("NATIVE_A24_PROOF " + JSON.stringify({ candidate: packet.candidate, ...proof,
       ...(assignment341 ? { assignmentLock: { rollbackVerified: true, approvedProjectsLocked: 2 } } : {})
     }) + "\n");
   } catch (error) {
-    const firstLine = error instanceof Error ? error.message.split("\n", 1)[0] : "";
-    const message = firstLine.length <= 80 && /^A24_[A-Z_]+(?:_[A-Za-z]+)*$/u.test(firstLine) ? firstLine : "A24_CHECK_FAILED";
+    const message = projectA24FixtureAssertion(error) ?? "A24_CHECK_FAILED";
     const assertion = error as { code?: unknown; actual?: unknown; expected?: unknown };
     const isHttpStatus = (value: unknown): value is number =>
       typeof value === "number" && Number.isInteger(value) && value >= 100 && value <= 599;
@@ -425,7 +445,13 @@ it("records and confirms only an exact A24 public cash slice with separate datab
       ...(submissionFailure ? { submissionFailure } : {}),
       ...(approvalFailure ? { approvalFailure } : {}),
       ...(cashPhase ? { cashPhase } : {}),
-      ...(cashFailure ? { cashFailure } : {})
+      ...(cashFailure ? { cashFailure } : {}),
+      ...(cashSnapshotStage ? { cashSnapshotStage, cashSnapshotRead,
+        ...(observedCashSnapshot ? { observedCashSnapshot } : {}),
+        ...(cashSnapshotRead !== "TALLIES" ? { snapshotReadFailure: projectA24CashFailure(error) } : {}),
+        ...(message === "A24_ONE_COST_ONE_CASH_DEBIT" && assertion?.code === "ERR_ASSERTION"
+          ? { expectedCashSnapshot: projectA24CashSnapshot(assertion.expected) } : {})
+      } : {})
     }) + "\n");
     throw new Error(stage + " " + message);
   } finally {

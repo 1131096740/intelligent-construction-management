@@ -1,7 +1,8 @@
 import { BadRequestException, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { runInNewContext } from "node:vm";
 import { projectA24ApprovalFailure, projectA24CashFailure, projectA24SignatureFailure,
-  projectA24SubmissionFailure } from "./task426-a24-signature-diagnostic.test-support";
+  projectA24SubmissionFailure, projectA24CashSnapshot, projectA24FixtureAssertion } from "./task426-a24-signature-diagnostic.test-support";
 
 const clientVersion = "test";
 
@@ -124,4 +125,15 @@ it("classifies fixed replay refusal causes and never carries request validation 
   expect(projectA24CashFailure(new BadRequestException({
     message: "提交内容格式不正确，请检查后重试", errors: ["private-value"]
   }))).toEqual({ serverErrorKind: "OTHER_NATIVE_ERROR", node: "CASH_REPLAY_REQUEST_VALIDATION" });
+});
+
+it("keeps fixed cross-realm snapshot assertion labels and bounded synthetic numbers only", () => {
+  const assertion = runInNewContext('new Error("A24_ONE_COST_ONE_CASH_DEBIT\\nprivate-value")');
+  expect(projectA24FixtureAssertion(assertion)).toBe("A24_ONE_COST_ONE_CASH_DEBIT");
+  expect(projectA24FixtureAssertion(new Error("postgresql://private"))).toBeUndefined();
+  const counts = { costRows: 1, paymentExecutions: 1, cashDebits: 0, acceptedAttributions: 0,
+    costCents: "800", paidCents: "800", cashBalanceYuan: "22.0000" };
+  expect(projectA24CashSnapshot({ ...counts, privateField: "private-value" })).toEqual({ valid: true, ...counts });
+  expect(projectA24CashSnapshot({ costRows: 100000000, cashBalanceYuan: "private-value", cashDebits: 1 }))
+    .toEqual({ valid: false, cashDebits: 1 });
 });

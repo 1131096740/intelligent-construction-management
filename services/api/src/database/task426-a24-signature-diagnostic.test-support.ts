@@ -1,5 +1,6 @@
 import { BadRequestException, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { types } from "node:util";
 import { projectTask16RegistrationError } from "./task16-registration-error-diagnostic";
 
 const operations = {
@@ -160,4 +161,27 @@ export function projectA24CashFailure(error: unknown, operation?: Operation) {
   if (typeof prefix !== "string" ||
       !prefix.trimStart().startsWith('/* receipt_non_receipt_file_binding */\n      WITH candidates("id") AS (VALUES ')) return detail;
   return { ...detail, node: "CASH_NON_RECEIPT_BINDING" };
+}
+
+/** Native fixture summaries contain only tiny synthetic counts and amounts. */
+export function projectA24CashSnapshot(value: unknown) {
+  if (!value || typeof value !== "object" || types.isProxy(value)) return { valid: false };
+  const fields: Record<string, string | number> = {};
+  for (const key of ["costRows", "paymentExecutions", "cashDebits", "acceptedAttributions"]) {
+    const number = Object.getOwnPropertyDescriptor(value, key)?.value;
+    if (typeof number === "number" && Number.isInteger(number) && number >= 0 && number <= 100) fields[key] = number;
+  }
+  for (const key of ["costCents", "paidCents", "cashBalanceYuan"]) {
+    const amount = Object.getOwnPropertyDescriptor(value, key)?.value;
+    const pattern = key === "cashBalanceYuan" ? /^\d{1,7}[.]\d{4}$/u : /^\d{1,9}$/u;
+    if (typeof amount === "string" && pattern.test(amount)) fields[key] = amount;
+  }
+  return { valid: Object.keys(fields).length === 7, ...fields };
+}
+
+export function projectA24FixtureAssertion(error: unknown) {
+  if (!error || typeof error !== "object" || types.isProxy(error) || !types.isNativeError(error)) return undefined;
+  const projection = Object.getOwnPropertyDescriptor(error, "message")?.value;
+  const firstLine = typeof projection === "string" ? projection.split("\n", 1)[0] : "";
+  return firstLine.length <= 80 && /^A24_[A-Z_]+(?:_[A-Za-z]+)*$/u.test(firstLine) ? firstLine : undefined;
 }
