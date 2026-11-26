@@ -69,7 +69,7 @@ export function mergeContractDrilldown(input: {
     if (request.status === "approval_pending") {
       current.approvalPendingRequestCents += request.requestedAmountCents;
     }
-    if (request.status === "approved_pending_payment") {
+    if (request.status === "approved_pending_payment" || request.status === "partially_paid") {
       const approved =
         request.approvedAmountCents ?? request.requestedAmountCents;
       const remaining = approved - request.paidAmountCents;

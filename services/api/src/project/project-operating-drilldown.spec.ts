@@ -33,7 +33,7 @@ describe("OPS-14 总览按合同钻取", () => {
         },
         {
           contractId: "contract-a",
-          status: "approved_pending_payment",
+          status: "partially_paid",
           requestedAmountCents: 3000n,
           approvedAmountCents: 3000n,
           paidAmountCents: 1000n
