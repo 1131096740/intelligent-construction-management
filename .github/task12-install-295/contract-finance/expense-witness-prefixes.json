@@ -1,0 +1,122 @@
+[
+  {
+    "count": 334,
+    "ledgerSha256": "27f3af946003d07582efb288b443362fcf61bed0281feb548f9978b739fb5411",
+    "terminal": {
+      "name": "20261129003000_historical_signed_settlement_continuation",
+      "sha256": "9df6dc654b8b0ea21713cc1c1dbcc73a8a74fd49f0df84da3b1556e85215ad5f",
+      "finished": true,
+      "rolledBack": false
+    }
+  },
+  {
+    "count": 335,
+    "ledgerSha256": "c30dae0765e1ec3fab7df47cdc87fbe81e79caf044f400ac2742af13f1935e69",
+    "terminal": {
+      "name": "20261129004000_expense_public_cash_payment",
+      "sha256": "8c1e438816103a8922041a209db6893819bc138f8ac988b31e60a5b0e2206c62",
+      "finished": true,
+      "rolledBack": false
+    }
+  },
+  {
+    "count": 336,
+    "ledgerSha256": "191146be35ded4403611011595e49cdc9fae0368eba2c9c3383d36187147267b",
+    "terminal": {
+      "name": "20261129005000_expense_public_cash_cost_link",
+      "sha256": "7bb057bcc186836bbc02ed24ec102dbf5523c33a63eb790fa2aa29c7bfcf82e0",
+      "finished": true,
+      "rolledBack": false
+    }
+  },
+  {
+    "count": 337,
+    "ledgerSha256": "bf605f3797f13bdf4b0b2b10f650d2274d948fe3851067e151a07052cd9da486",
+    "terminal": {
+      "name": "20261129006000_cash_transfer_successor_guard_scope",
+      "sha256": "a99cc089894e1def2e24abf1039c6c7f2c739f77daf3e9b774fc2f42158a1c1c",
+      "finished": true,
+      "rolledBack": false
+    }
+  },
+  {
+    "count": 338,
+    "ledgerSha256": "7bc5a865850aad7699646704b3dfc0112244af05912bc117d83540132b1ef155",
+    "terminal": {
+      "name": "20261129007000_expense_cost_bearing_company",
+      "sha256": "3f9a4712a9fbf7a7ab018248fb884185773d9e48bcf38f0829172ac5a1c3d406",
+      "finished": true,
+      "rolledBack": false
+    }
+  },
+  {
+    "count": 339,
+    "ledgerSha256": "5d1613031f4e89f5effadf215cc2003fa22864aa3f5e24ce0fda9627a49c9e4f",
+    "terminal": {
+      "name": "20261129008000_expense_cash_cost_attribution",
+      "sha256": "c3251d09443467f2faaee9f61f74893e3b60ff335cbcfa2499b77bc9c98cf5d5",
+      "finished": true,
+      "rolledBack": false
+    }
+  },
+  {
+    "count": 340,
+    "ledgerSha256": "926f3247bb8404665c50706296ee12b0abb809ab70c7d7ce203701ce1bc354a1",
+    "terminal": {
+      "name": "20261129009000_general_purchase_batch_claim_guard",
+      "sha256": "96f3eb48fc233b32a7f2af85e0f1813ef1e2b25a8dd52bc1bb6f373e98f8a4a6",
+      "finished": true,
+      "rolledBack": false
+    }
+  },
+  {
+    "count": 341,
+    "ledgerSha256": "30da81d2089c941e912b0149969a508d6df8ccab1d501b78b1aedc6ff8f2832f",
+    "terminal": {
+      "name": "20261129010000_expense_standalone_assignment_lock",
+      "sha256": "3f4241e718c1b99456cb258eb9670a93f852658b4cfed630f0271a2294ce9ebe",
+      "finished": true,
+      "rolledBack": false
+    }
+  },
+  {
+    "count": 342,
+    "ledgerSha256": "0c2efc93da4e924216f7282cf573065cc8688171f83559ea5fd3ad5973070f23",
+    "terminal": {
+      "name": "20261129011000_expense_pending_cost_bearer",
+      "sha256": "81beffcec338ecea7f16adf03f43e67fcc59ee1a67713485ff4c07936059fc19",
+      "finished": true,
+      "rolledBack": false
+    }
+  },
+  {
+    "count": 343,
+    "ledgerSha256": "17c4d2d98cf19b6f3e7fd2581165940b0f803c5e306bc68adfe018ac52048307",
+    "terminal": {
+      "name": "20261129012000_issue417_historical_expense_states",
+      "sha256": "924effc588fe48f9f4e63bd5187c2eb6a1a48b35d1749d699fccc4135ddaaecd",
+      "finished": true,
+      "rolledBack": false
+    }
+  },
+  {
+    "count": 344,
+    "ledgerSha256": "463c30fe22a863396c707d28c7cae08bd6291cf8c2d5175a43856bac3e9bb5a3",
+    "terminal": {
+      "name": "20261129013000_expense_public_cash_voucher",
+      "sha256": "b35a305dbe45edd2822bf850f3ef8abcd6161820dd065db82b7b084463255106",
+      "finished": true,
+      "rolledBack": false
+    }
+  },
+  {
+    "count": 345,
+    "ledgerSha256": "ac2a34d707b306acd25ae3fa03fa46b0331c0b5301ff0575d55f8c283e8c88f4",
+    "terminal": {
+      "name": "20261129014000_expense_non_project_witness",
+      "sha256": "aa7f4d3eaebf62a4d2e199665b0945828d934e551ad6fe72b2cb9e72a2964c8e",
+      "finished": true,
+      "rolledBack": false
+    }
+  }
+]

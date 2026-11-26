@@ -1,0 +1,55 @@
+--- a/installer.cjs
++++ b/installer.cjs
+@@ -825 +825,4 @@
+-      if (signed) batches.push(tails.slice(38));
++      const expenseWitness = forward320.expenseWitness;
++      let priorExpenseCatalog;
++      if (signed) batches.push(expenseWitness ? tails.slice(38,39) : tails.slice(38));
++      if (expenseWitness) batches.push(...tails.slice(39).map(row=>[row]));
+@@ -892,0 +896,17 @@
++        }
++        if (expenseWitness) {
++          const count=current.ledger.length;
++          if (count>=334) expenseWitness.assertPrefix(count,hash(JSON.stringify(current.ledger)));
++          if ([334,341,342,343,344,345].includes(count)) {
++            const observed=await jsonSql(expenseWitness.catalogSql);
++            expenseWitness.assertCatalog(count,observed,priorExpenseCatalog);
++            priorExpenseCatalog=observed;
++            receipt.expenseWitnessCatalog ??= {};
++            receipt.expenseWitnessCatalog[count]=observed;
++          }
++          if (count===344 || count===345) {
++            const cash=await jsonSql(expenseWitness.cashSql);
++            expenseWitness.assertCash(cash);
++            if (count===344) receipt.expenseWitnessVoucher344=cash;
++            else need(equal(cash,receipt.expenseWitnessVoucher344),'EXPENSE_WITNESS_344_VOUCHER_PRESERVED');
++          }
+@@ -895 +915,4 @@
+-      receipt.forward320={count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
++      receipt.forward320=expenseWitness
++        ? {count:334,ledgerSha256:signed.ledgerSha256,sameIdentity:true,sourceTree,tails:tails.slice(0,39)}
++        : {count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails};
++      if (expenseWitness) receipt.expenseWitnessForward={count:current.ledger.length,ledgerSha256:hash(JSON.stringify(current.ledger)),sameIdentity:true,sourceTree,tails:tails.slice(39)};
+@@ -995 +1018 @@
+-        need(hash(JSON.stringify(afterConsumer.ledger))===(signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
++        need(hash(JSON.stringify(afterConsumer.ledger))===(forward320.expenseWitness?.ledgerSha256 ?? signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
+@@ -1000,0 +1024,6 @@
++        }
++        if (forward320.expenseWitness) {
++          const profile=forward320.expenseWitness;
++          need(equal(await jsonSql(profile.catalogSql),receipt.expenseWitnessCatalog[345]),'EXPENSE_WITNESS_345_CATALOG_AFTER_CONSUMER');
++          need(equal(await jsonSql(profile.cashSql),receipt.expenseWitnessVoucher344),'EXPENSE_WITNESS_344_VOUCHER_AFTER_CONSUMER');
++          receipt.expenseWitnessCatalogAfterBusiness=true;
+@@ -1402 +1431,2 @@
+-  const historicalSettlement=target===334;
++  const historicalSettlement=target>=334;
++  const expenseWitness=target===345 ? require('./expense-witness-345-profile.cjs') : null;
+@@ -1441 +1471 @@
+-  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement};
++  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement,expenseWitness};
+@@ -1547,0 +1578,5 @@
++
++module.exports.withCombined345ExpenseWitness = (receipt,consume,material) => {
++  need(typeof consume==='function' && material && typeof material==='object','EXPENSE_WITNESS_345_ARGUMENTS');
++  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,345));
++};

@@ -5,10 +5,11 @@ const {createHash}=require('node:crypto');
 const path=require('node:path');
 const {ledgerSha256: textDirectLedgerSha256}=require('./text-direct-330-profile.cjs');
 const [root,sha,mode]=process.argv.slice(2);
-assert.ok(process.argv.length===4||(process.argv.length===5&&['--current-320','--text-direct-330','--payment-remainder-331','--upward-archive-332','--historical-takeover-333','--historical-settlement-334'].includes(mode)),
+assert.ok(process.argv.length===4||(process.argv.length===5&&['--current-320','--text-direct-330','--payment-remainder-331','--upward-archive-332','--historical-takeover-333','--historical-settlement-334','--expense-witness-345'].includes(mode)),
   'CONTRACT_FINANCE_HOSTED_LEDGER_MODE');
 const textDirect=mode==='--text-direct-330';
-const historicalSettlement=mode==='--historical-settlement-334';
+const expenseWitness=mode==='--expense-witness-345' ? require('./expense-witness-345-profile.cjs') : null;
+const historicalSettlement=mode==='--historical-settlement-334'||Boolean(expenseWitness);
 const historicalTakeover=mode==='--historical-takeover-333'||historicalSettlement;
 const historicalTakeoverProfile=require('./historical-takeover-333-profile.cjs');
 const historicalSettlementProfile=require('./historical-settlement-334-profile.cjs');
@@ -30,7 +31,7 @@ const ledger=git('ls-tree','-r','--name-only','-z',sha,'--',migrationsPath).toSt
 const digest=ledgerHash(ledger);
 const predecessor295Sha256='b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d';
 if(current320) {
-  assert.equal(ledger.length,historicalSettlement?334:historicalTakeover?333:upwardArchive?332:paymentRemainder?331:textDirect?330:329,'CONTRACT_FINANCE_CURRENT_320_LEDGER_COUNT');
+  assert.equal(ledger.length,expenseWitness?345:historicalSettlement?334:historicalTakeover?333:upwardArchive?332:paymentRemainder?331:textDirect?330:329,'CONTRACT_FINANCE_CURRENT_320_LEDGER_COUNT');
   assert.equal(ledgerHash(ledger.slice(0,295)),predecessor295Sha256,'CONTRACT_FINANCE_CURRENT_320_PREDECESSOR');
   assert.equal(ledgerHash(ledger.slice(0,329)),'3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2',
     'CONTRACT_FINANCE_CURRENT_320_LEDGER_DIGEST');
@@ -42,8 +43,9 @@ if(current320) {
     'CONTRACT_FINANCE_UPWARD_ARCHIVE_332_LEDGER_DIGEST');
   if(historicalTakeover) assert.equal(ledgerHash(ledger.slice(0,333)),historicalTakeoverProfile.ledgerSha256,
     'CONTRACT_FINANCE_HISTORICAL_TAKEOVER_333_LEDGER_DIGEST');
-  if(historicalSettlement) assert.equal(digest,historicalSettlementProfile.ledgerSha256,
+  if(historicalSettlement) assert.equal(ledgerHash(ledger.slice(0,334)),historicalSettlementProfile.ledgerSha256,
     'CONTRACT_FINANCE_HISTORICAL_SETTLEMENT_334_LEDGER_DIGEST');
+  if(expenseWitness) for(let size=335;size<=345;size++) expenseWitness.assertPrefix(size,ledgerHash(ledger.slice(0,size)));
 } else {
   assert.ok(ledger.length===294||ledger.length===295,'CONTRACT_FINANCE_HOSTED_LEDGER_COUNT');
 }
@@ -66,6 +68,7 @@ if (current320) {
     ...(upwardArchive?{predecessor331:{migrationCount:331,ledgerSha256:paymentRemainderLedgerSha256}}:{}),
     ...(historicalTakeover?{predecessor332:{migrationCount:332,ledgerSha256:upwardArchiveLedgerSha256}}:{}),
     ...(historicalSettlement?{predecessor333:{migrationCount:333,ledgerSha256:historicalTakeoverProfile.ledgerSha256}}:{}),
+    ...(expenseWitness?{predecessor334:{migrationCount:334,ledgerSha256:historicalSettlementProfile.ledgerSha256}}:{}),
     tails:ledger.slice(295)
   }));
 } else {
