@@ -242,7 +242,8 @@ test("334 routes Line A, A28, finance and Remaining and rejects other groups bef
     ["issue411_third_company_repayment", "issue411", 2],
     ["issue413_construction_paid", "issue413", 1],
     ["issue414_construction_deduction", "issue414", 1],
-    ["issue416_takeover_handover", "issue416_handover", 1]]) {
+    ["issue416_takeover_handover", "issue416_handover", 1],
+    ["issue416_his_gap", "issue416_his", 3]]) {
     const group = manifest.coveredGroups.find(item => item.id === id);
     assert.equal(group.pendingTests, count);
     assert.deepEqual(resolveGroupCommand(group, { candidateSha: sha, migrationCount: 334 }).args.slice(1),
