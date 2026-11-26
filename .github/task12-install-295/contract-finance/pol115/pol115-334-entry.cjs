@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
+const { stripVTControlCharacters } = require('node:util');
 const { admitSource } = require('./install-only292.cjs');
 const { withCombined334HistoricalSettlement } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
@@ -22,6 +23,19 @@ const scope = process.argv[2];
 const receipt = { schemaVersion: 1, purpose: 'ORIGINAL_POL115_SPOT_334', sourceSha: source.sourceSha, scope,
   stages: ['INPUTS'], status: 'STOPPED' };
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+
+function summarizeFailedAssertion(file, test) {
+  const messages = stripVTControlCharacters((test.failureMessages ?? []).join('\n'));
+  const statusPair = messages.match(/Expected:\s*([1-5]\d{2})\s+Received:\s*([1-5]\d{2})\b/u);
+  const location = messages.split('\n').find(line => line.includes(file + ':') && line.trimStart().startsWith('at '));
+  const line = location?.split(file + ':')[1]?.match(/^\d{1,5}(?=:)/u)?.[0];
+  return {
+    file, titleSha256: sha256(test.fullName),
+    codes: [...new Set(messages.match(/\bP[0-9]{4}\b/gu) ?? [])].slice(0, 4),
+    ...(statusPair && { expectedStatus: Number(statusPair[1]), receivedStatus: Number(statusPair[2]) }),
+    ...(line && { line: Number(line) })
+  };
+}
 
 function prepareBrowser(workDir) {
   const side = stageWebWorkspace(workDir);
@@ -102,10 +116,8 @@ async function runOriginal(context) {
   if (result.status !== 0 || result.error || result.signal || !report?.success) {
     receipt.jest = { exit: result.status, registered: report?.numTotalTests, passed: report?.numPassedTests,
       skipped: report?.numPendingTests, failed: (report?.testResults ?? []).flatMap(suite =>
-        suite.assertionResults.filter(test => test.status === 'failed').map(test => ({
-          file: path.relative(api, suite.name), titleSha256: sha256(test.fullName),
-          codes: [...new Set((test.failureMessages ?? []).join(' ').match(/\bP[0-9]{4}\b/gu) ?? [])].slice(0, 4)
-        }))).slice(0, 8) };
+        suite.assertionResults.filter(test => test.status === 'failed')
+          .map(test => summarizeFailedAssertion(path.relative(api, suite.name), test))).slice(0, 8) };
     return;
   }
   try {
