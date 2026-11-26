@@ -51,6 +51,9 @@ if [[ $count == 346 ]]; then
   [[ $(sha256sum "$runner" | cut -d' ' -f1) == 4e1e78d46d5216ffeacd687d811406812370d319fc63be0f0f14a848b9145af0 ]] || exit 65
   patch --batch --forward --fuzz=0 --silent "$support" < "$plan/task410-support-346.patch"
   [[ $(sha256sum "$support" | cut -d' ' -f1) == 7acab0f94ff522aba999ae7a2fb3378b90140c46699b10588068b58eecf448e0 ]] || exit 65
+  spec="$work/services/api/src/database/company-proxy-repayment.http.pg.spec.ts"
+  patch --batch --forward --fuzz=0 --silent "$spec" < "$plan/task410-signed-competition-346.patch"
+  [[ $(sha256sum "$spec" | cut -d' ' -f1) == ce26a99c9e966f67a4d09c669c488b86f394f1d2998b2eac119d98ada70b1c32 ]] || exit 65
 fi
 
 installer="$common/installer.cjs"
