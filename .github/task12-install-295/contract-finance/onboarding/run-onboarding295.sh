@@ -151,7 +151,8 @@ while IFS= read -r lane; do
     *) exit 65 ;;
   esac
   memory=4g
-  if [[ ${GITHUB_ACTIONS-} == true && ( $mode == 331 || $mode == 332 || $mode == 334 || $mode == 346 ) && $lane == reset-case12 ]]; then
+  if [[ $lane == reset-case12 && ( $mode == 346 ||
+    ( ${GITHUB_ACTIONS-} == true && ( $mode == 331 || $mode == 332 || $mode == 334 ) ) ) ]]; then
     memory=6g
   fi
   dir="$material/lanes/$lane"
