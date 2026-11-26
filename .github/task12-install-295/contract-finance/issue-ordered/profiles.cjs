@@ -284,6 +284,22 @@ const profiles = {
   }
 };
 
+profiles.issue416_handover_346 = {
+  ...profiles.issue416_handover,
+  fixturePatch: 'issue416_handover.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue416_his_346 = {
+  ...profiles.issue416_his,
+  fixtureDigest: '2bb225e9b408ebccee751228d8b0b2c903e78a3b7a2700bd39216484ed01feaa',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
 function profileFor(scope) {
   assert.ok(Object.hasOwn(profiles, scope), 'ORDERED_334_SCOPE');
   return profiles[scope];

@@ -1,0 +1,10 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -534 +534 @@
+-      AND (SELECT count(*) = 334
++      AND (SELECT count(*) = 346
+@@ -539,0 +540,4 @@
++        AND count(*) FILTER (
++          WHERE migration_name = '20261129015000_expense_public_cash_operating_source'
++            AND checksum = 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
++        ) = 1
