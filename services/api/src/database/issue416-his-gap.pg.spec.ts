@@ -463,7 +463,7 @@ describe("issue 416 history takeover HIS gaps on PostgreSQL", () => {
                 companyEntityCreditCode: null,
                 companyEntityRegisteredAddress: null
               },
-              contractVersion: { amountCents: 0n, amountLimitType: "uncapped" }
+              contractVersion: { amountCents: 0n, amountLimitType: "unlimited" }
             } as never,
             ids.supervisor,
             randomUUID()
@@ -982,8 +982,10 @@ async function seedZeroTakeover(
       changeType: "historical_takeover",
       status: "draft",
       amountCents: 0n,
-      amountLimitType: "uncapped",
-      draftData: { historicalTakeover: true, relationship: "outside" },
+      pricingNature: "framework",
+      amountLimitType: "unlimited",
+      amountSource: "bill_sum",
+      draftData: { historicalTakeover: true, relationship: "outside", frameworkNoTotal: true },
       templateSnapshot: { historicalTakeover: true },
       clauseSnapshot: []
     }
