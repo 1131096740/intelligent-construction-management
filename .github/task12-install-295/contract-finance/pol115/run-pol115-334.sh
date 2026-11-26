@@ -36,7 +36,7 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$work/installer.cjs,dst=/qualification/installer.cjs,readonly"
   --mount "type=bind,src=$work/pol115-334-inputs.json,dst=/qualification/pol115-334-inputs.json,readonly"
   --mount "type=bind,src=$plan/cases.json,dst=/qualification/pol115-334-cases.json,readonly")
-for file in pol115-334-entry.cjs verify-pol115-jest.cjs; do
+for file in pol115-334-entry.cjs verify-pol115-jest.cjs browser-witness.cjs; do
   args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
 done
 for file in task12-pol109-stage-browser.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs; do

@@ -12,6 +12,7 @@ const { final } = require('./multi-witness.cjs');
 const historical = require('./historical-settlement-334-profile.cjs');
 const { stageWebWorkspace } = require('./task12-pol109-stage-browser.cjs');
 const { verifyJestCoverage } = require('./verify-pol115-jest.cjs');
+const { summarizeBrowserWitness } = require('./browser-witness.cjs');
 const recipes = require('./pol115-334-cases.json');
 const inputs = require('./pol115-334-inputs.json');
 const source = require('./contract-finance-source.json');
@@ -59,11 +60,13 @@ function summarizeFailedAssertion(file, test) {
   const location = messages.split('\n').find(line => line.includes(file + ':') && line.trimStart().startsWith('at '));
   const line = location?.split(file + ':')[1]?.match(/^\d{1,5}(?=:)/u)?.[0];
   const browser = browserProcessFailure(messages);
+  const jestTimeout = messages.match(/Exceeded timeout of (\d{1,6}) ms for a test\b/u)?.[1];
   return {
     file, titleSha256: sha256(test.fullName),
     codes: [...new Set(messages.match(/\bP[0-9]{4}\b/gu) ?? [])].slice(0, 4),
     ...(statusPair && { expectedStatus: Number(statusPair[1]), receivedStatus: Number(statusPair[2]) }),
     ...(line && { line: Number(line) }),
+    ...(jestTimeout && { jestTimeoutMs: Number(jestTimeout) }),
     ...(browser && { browser })
   };
 }
@@ -85,6 +88,12 @@ function prepareBrowser(workDir) {
     ...['pol115-expense-real', 'expense-self-service-real', 'draft-deletion-real', 'operating-takeover-real',
       'pol115-fund-real', 'pol115-spot-procurement-real'].map(name => 'apps/web-admin/e2e/' + name + '.e2e.ts')
   ]) copy(file);
+  const browserConfig = path.join(browser, 'playwright.pol115-real.config.ts');
+  const config = fs.readFileSync(browserConfig, 'utf8');
+  const lineReporter = 'reporter: "line",';
+  assert.equal(config.split(lineReporter).length, 2, 'POL115_BROWSER_REPORTER_ANCHOR');
+  const witness = JSON.stringify(path.join(root, 'browser-witness.cjs'));
+  fs.writeFileSync(browserConfig, config.replace(lineReporter, `reporter: [["line"], [${witness}]],`));
   fs.cpSync(path.join(workspace, 'packages/shared-domain/src'), path.join(shared, 'src'),
     { recursive: true, force: false, errorOnExist: true });
   // pnpm's executable shims resolve the virtual store relative to the staged workspace.
@@ -152,8 +161,10 @@ async function runOriginal(context) {
       skipped: report?.numPendingTests, failed: (report?.testResults ?? []).flatMap(suite =>
         suite.assertionResults.filter(test => test.status === 'failed')
           .map(test => summarizeFailedAssertion(path.relative(api, suite.name), test))).slice(0, 8) };
-    if (receipt.jest.failed.some(test => test.browser)) {
-      const childOutput = stripVTControlCharacters((result.stdout ?? '') + '\n' + (result.stderr ?? ''));
+    const childOutput = stripVTControlCharacters((result.stdout ?? '') + '\n' + (result.stderr ?? ''));
+    const browserWitness = summarizeBrowserWitness(childOutput);
+    if (browserWitness) receipt.jest.browserWitness = browserWitness;
+    if (browserWitness || receipt.jest.failed.some(test => test.browser)) {
       receipt.jest.browserFailureLabels = Object.entries(browserFailurePatterns)
         .filter(([, pattern]) => pattern.test(childOutput)).map(([label]) => label);
     }
