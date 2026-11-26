@@ -13,11 +13,14 @@ try {
   const paymentRemainder331=process.argv[2]==='--payment-remainder-331';
   const upwardArchive332=process.argv[2]==='--upward-archive-332';
   const historicalSettlement334=process.argv[2]==='--historical-settlement-334';
-  const forward=current320||textDirect330||paymentRemainder331||upwardArchive332||historicalSettlement334;
+  const expenseWitness346=process.argv[2]==='--expense-witness-346';
+  const forward=current320||textDirect330||paymentRemainder331||upwardArchive332||historicalSettlement334||expenseWitness346;
   assert.equal(process.argv.length,forward?3:2);
-  const count=historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
+  const count=expenseWitness346?346:historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
   assert.equal(source.migrationCount,count);
-  if(historicalSettlement334) {
+  if(expenseWitness346) {
+    require('./expense-witness-346-profile.cjs').assertSource(source,multi.final);
+  } else if(historicalSettlement334) {
     require('./historical-settlement-334-profile.cjs').assertSource(source,multi.final);
   } else if(upwardArchive332) {
     require('./upward-archive-332-profile.cjs').assertSource(source,source.sourceSha,multi.final);
@@ -33,10 +36,15 @@ try {
     assert.equal(source.tails.length,34);
   }
   if(!forward) assert.equal(source.ledgerSha256,multi.final);
-  const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
-  assert.equal(baseline.expectedDirectoryCount,count);
-  assert.equal(baseline.terminalMigrationChecksum,forward?source.tails.at(-1).sha256:multi.digest);
-  if(forward) assert.equal(baseline.terminalMigration,source.tails.at(-1).name);
+  const baselineModule=require('./workspace/services/api/prisma/migration-baseline.cjs');
+  if(expenseWitness346) {
+    require('./expense-witness-346-profile.cjs').assertRuntimeBaseline(baselineModule);
+  } else {
+    const baseline=baselineModule.loadCanonicalMigrationBaseline();
+    assert.equal(baseline.expectedDirectoryCount,count);
+    assert.equal(baseline.terminalMigrationChecksum,forward?source.tails.at(-1).sha256:multi.digest);
+    if(forward) assert.equal(baseline.terminalMigration,source.tails.at(-1).name);
+  }
   admitSource('/qualification','/qualification/source/services/api/prisma','/qualification/source-seal.txt');
   require('./consumer.cjs');
 } catch(error) {

@@ -1,0 +1,207 @@
+[
+  {
+    "path": "apps/web-admin/e2e/expense-claim-workbench.e2e.ts",
+    "expected": "8c0e7d588456b25fe7e78b35255377292ac2ff7505d21cb28aff9a63571f22f3",
+    "candidate": "301abfc4d8aa6281ab0317e656450d10ad167b56e68c035569ad306a719cd937"
+  },
+  {
+    "path": "apps/web-admin/e2e/expense-self-service-real.e2e.ts",
+    "expected": "dec2caa8106a82e18db73d312465b70162776a2f94d85066bfda08965e8be48d",
+    "candidate": "8f68c86bbd464df3b7e39dc92a7ef7512dba7ec0064bccf54e752ac590340dc4"
+  },
+  {
+    "path": "apps/web-admin/e2e/pol115-expense-real.e2e.ts",
+    "expected": "85a955c7bf9cd87ac702b6c3d9921b0a8d4c6d7f00455155d0eb0e20deda98b4",
+    "candidate": "31b2277dd76334638cca4cda93e4f53cdb4ca8a49ee1a1ce0fe51960b9d7eedf"
+  },
+  {
+    "path": "apps/web-admin/e2e/pol115-spot-procurement-real.e2e.ts",
+    "expected": "ac300b1f85c7529e8e4143094bd2af619899504e55bbadd50b40101977c09b5b",
+    "candidate": "d562a197176e23244707bade3ad19782fc2cadd119020ac2748cc6989802d819"
+  },
+  {
+    "path": "apps/web-admin/playwright.pol115-real.config.ts",
+    "expected": "264c4b2606fb1e97fccfbdac49f22e0a187a4a15c18b5058a6930dd5c1733f83",
+    "candidate": "98cb4601ebb1f075d001e67647056cce342847d909e66e9675be2a1178847eca"
+  },
+  {
+    "path": "apps/web-admin/src/api/core-flow-read.api.ts",
+    "expected": "c83128b15dbd395bae3875c5994c11e54b13ec426b6959b3e677371bb49a303f",
+    "candidate": "b6230f3610734806109ad47c18e1195dfb39577117274acab416384deeafa52f"
+  },
+  {
+    "path": "apps/web-admin/src/api/expense-claim.api.test.ts",
+    "expected": "d3c78098151ae16e134c78be27d2ccc0157d97ec36e3ddfab181eae68a45b6b6",
+    "candidate": "349084b36727c48d903abc126916b5fa1a2d6155b12bf6086c30f6263f40c9e1"
+  },
+  {
+    "path": "apps/web-admin/src/api/expense-claim.api.ts",
+    "expected": "7ab9fecf6a4955e32de1d973b9c7879a2162a245302a944e4177faf6556bfc3d",
+    "candidate": "24467bd33539043ba4a7dc2c729ea578548bcb258aa7c929003393b04be1a2b7"
+  },
+  {
+    "path": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
+    "expected": "8121eb6c0b06db777520b299b101bb4daa71902ad48a397c911a9d8bb50912db",
+    "candidate": "f0551a0f8a8938f88fbceddea9230d4459729be31945cd8e9f0e20e5407850f8"
+  },
+  {
+    "path": "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimCreateDrawer.vue",
+    "expected": "3526e820e239496d4e80d0cc1f8ba24e539c29983f9ef543b6590aa8a1bc2189",
+    "candidate": "9b1d544735fde51d45798f2785e451e899cd99ed6cb04fe8eeb899c2880f5c88"
+  },
+  {
+    "path": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
+    "expected": "d407ee01a3f21c2a94805c9b6a0c1be27187170a73965b521c57267a4c81cde6",
+    "candidate": "e3a38d80afc7ded14ae339f582b44681dc1670b1cef1cd62396e3c736d5eaa02"
+  },
+  {
+    "path": "packages/shared-domain/src/permissions.ts",
+    "expected": "35c3c4d8345a87dd76a68c9aeba32ab67349ab121672354495b4b91641ea2a05",
+    "candidate": "1f9e241ce216d55fb481d8816f3f01cd10164f4b7803ac108146977acadccfe7"
+  },
+  {
+    "path": "services/api/prisma/general-procurement-runtime-grants.sql",
+    "expected": "c6ed1b2f8a3d1ba7c5a4aa38087cd2425a8a2e5441c39790eeed3734f4412b09",
+    "candidate": "1160b6af200aeda110c7c82d13f37658721d888d39f3edbf8d1305a44b5d9680"
+  },
+  {
+    "path": "services/api/prisma/schema.prisma",
+    "expected": "8154b5a52bee19a0a105ea949f2fb272f6876f7c92fbf1e0b57b0104d93b87be",
+    "candidate": "385f217a8e5cef9fa92e1ca69532405e4078b98f17194e1762bcdc3b25a92144"
+  },
+  {
+    "path": "services/api/prisma/task12-current259-q2-seed.cjs",
+    "expected": "ede105688028ffaf7b96d31fdeed4523d3c5667361b0334b164e44c53e483a88",
+    "candidate": "0e02e927ddf67d392a9f953ba0b159f83c1a4f3821e6bc1cbfe269b65e7f8da8"
+  },
+  {
+    "path": "services/api/src/auth/guards/permission.guard.ts",
+    "expected": "8ccc2c3808ddd45837ed115202395a4f87dcc51aa4e015f4590b4f97e40021f1",
+    "candidate": "29e0cfff77048273ae232a7b52e01113eada5aa43d747d41687be86104571d61"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer-legacy-balances.ts",
+    "expected": "ae1abbe1852178a89646da025da6ad70fef10646cfce04438f48d28bddcd49d1",
+    "candidate": "be597915fb510fa35c6ccb24075c7bba6f889b2d22ffd5dad9439e42d53e4196"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer-legacy.ts",
+    "expected": "e5dc0e30cb05e8b1f230c98400d5512880b41b4ae70ee4d129698c693c1c1f3a",
+    "candidate": "07140eec7e8c4a4721efdd0a5c48960cd8f69877821bac03294ed635c7dc8d89"
+  },
+  {
+    "path": "services/api/src/company-transfer/company-transfer-read.service.ts",
+    "expected": "7affb3da08245439562f96d8747c796d32ca229fae3745c9ad88de235a31f75f",
+    "candidate": "64235993b8624227ab5ff078d683ab5e13c618cbcd32650b803c7f58b4dca7a1"
+  },
+  {
+    "path": "services/api/src/contract/contract-generated-upward-operating-installation.ts",
+    "expected": "fc475bae761ea3c961ce90689b8c3fed1a76610acc2f0b487a781b56b2f77f2b",
+    "candidate": "1378c93e71ac1e155806a340a44f87388bef78152403d2aacf48a8d64fb87144"
+  },
+  {
+    "path": "services/api/src/expense-claim/dto/create-expense-claim.dto.ts",
+    "expected": "463664e8085db95227346aec95cfd55b0c1fe981a7b263cfb7b7a30b291fb531",
+    "candidate": "84f29073c28fa4dcdc0c350d75b8c237f942bd28ac2e459e46f910b1cd01ebba"
+  },
+  {
+    "path": "services/api/src/expense-claim/dto/record-expense-claim-payment.dto.ts",
+    "expected": "d3e0ff87d63015e2b9e0b92490d04a77602fdd870dd888e1914038a9af8470ae",
+    "candidate": "2589bcdf4ae080b8a75e7e1113b1f22d23d805c0f8fb6f0ff36e6e36d602d592"
+  },
+  {
+    "path": "services/api/src/expense-claim/expense-claim-entry.adapter.ts",
+    "expected": "c7199a5d6eb13e78d2581e01bb53b03bfcdbba7aec25e0791a0d631419812438",
+    "candidate": "e3d4264492c30d24d80ae0981583d990ea0dc1c474c68851297511c59646b2dd"
+  },
+  {
+    "path": "services/api/src/expense-claim/expense-claim-entry.http.pg.spec.ts",
+    "expected": "e99beb176be2538e9424ef558241f0720e59f812c6723f2006a8e08d71046de2",
+    "candidate": "ae645f7bbc66e486b22fc1e01023f6590b9245c0017cda5f0d4ece62ef3933e2"
+  },
+  {
+    "path": "services/api/src/expense-claim/expense-claim-operating-source.adapter.spec.ts",
+    "expected": "5ed26dbce05714626912516b5cc0956693dd459bf3d74113b746d721b5ace9ec",
+    "candidate": "f71ae144000bc5840e4c070ff6ac2d4c5d467948925ad19c994d5ce0abd5c229"
+  },
+  {
+    "path": "services/api/src/expense-claim/expense-claim-operating-source.adapter.ts",
+    "expected": "8941b1f86578f32fbcdd67ab74aa2347a9a911be5c1ba29e694cccf7e982ea0c",
+    "candidate": "768aa87ddb6b1bf8dac060ffad4cbb393ba0e641647141b281a2d179183bc8fc"
+  },
+  {
+    "path": "services/api/src/expense-claim/expense-claim.controller.spec.ts",
+    "expected": "f641d87135c279ca68e513817de63db9ee261282d948c44b27b5804a93643030",
+    "candidate": "b1f668e70057c9af0da35fba797fb7c8285cdd6f9fcfa324f028f0ca2e544045"
+  },
+  {
+    "path": "services/api/src/expense-claim/expense-claim.controller.ts",
+    "expected": "74bbef4679a1302bfe029569eb699f262d0f4e1e478e7a1667ef6eca03021d4c",
+    "candidate": "3df205e25b3ddb7a19abf2eaceab92146881e1f3afb0edd8dc9f3cd4760a54e9"
+  },
+  {
+    "path": "services/api/src/expense-claim/expense-claim.service.spec.ts",
+    "expected": "509550e06797e74897e0c471211f3b046c7af5e6a9dda1677d691518ee1fb3a1",
+    "candidate": "4502d5a91b64e9fa6e9e29219ab3805c3063cf9a465dcb49c9292e014cc4abed"
+  },
+  {
+    "path": "services/api/src/expense-claim/expense-claim.service.ts",
+    "expected": "6d254a9271a611bfaa8fefbf9ff2d1933c67e0a1224d2f35a4bb09aace487584",
+    "candidate": "9122426d5acf143278b9d5da224894a47d49d213ee61000b622a4e2a8da7519a"
+  },
+  {
+    "path": "services/api/src/fund-account/fund-account-transfer.service.spec.ts",
+    "expected": "d2a52dc01ca71461126f095d4eaf81d876a54729f3e78a6eb4be28bc66989213",
+    "candidate": "f82d496836bee48ce34f8c56ab794997628f43a86b36519acaf140e62aa36acf"
+  },
+  {
+    "path": "services/api/src/fund-account/fund-account-transfer.service.ts",
+    "expected": "85585d7e55d23066a15cc1b9b865b8cb7cb74eb59669ed9bce4389220a886623",
+    "candidate": "ace9547eaf6d90c7bafdb03009504ecb22e1523ee242c874bd0d4cac1de750c1"
+  },
+  {
+    "path": "services/api/src/fund-account/registered-operational-payment.ts",
+    "expected": "250981028829d737d821470847b81079e9691e38691a651454feb4d7c1339868",
+    "candidate": "5ebd2b9b344c6c3a221e5fcc5a8e654bd21882e4453f9276efb4f7b81a875aa9"
+  },
+  {
+    "path": "services/api/src/operating-ledger/operating-ledger.service.spec.ts",
+    "expected": "4efc97cd59dc5501cb2cc64aedf3628be2a629b3ed77487e87e6041a3e61c4f1",
+    "candidate": "c6b56f910991bfbdac97fab5c89cb8d9c3ac55db8bccb603ca7a0441856958dd"
+  },
+  {
+    "path": "services/api/src/operating-ledger/operating-ledger.service.ts",
+    "expected": "7f04a2ab7fb46b2e48b856dd6c1977b4c92475a02c32cfd15ec0eb27d9207a6b",
+    "candidate": "806c5806d5bc0add9cae6a942c6abab1a8105273d4b1d70c2c93e2c01c5d1912"
+  },
+  {
+    "path": "services/api/src/operating-projection/operating-projection.reducer.spec.ts",
+    "expected": "06a294fec93f7e014734a80e973c804b35379e0f785b7b557723d7713f8610df",
+    "candidate": "ba839b01c01b7f93f791b39370647b4e9eb7ff4d3b334c47c99f6c1e4aa044e4"
+  },
+  {
+    "path": "services/api/src/operating-projection/operating-projection.reducer.ts",
+    "expected": "f0a1f1fb47106a66dfbf21ce4bb0dcb9433e874cb26110c85faf57eaf5d6693c",
+    "candidate": "0733a31a485a08994ca29dfeb0794d64decdd6372a41ff72ff2f9057290f33e5"
+  },
+  {
+    "path": "services/api/src/operating-projection/operating-projection.service.spec.ts",
+    "expected": "61935cb7aa74bc9d6a7d5b9678df3cbd6dc5d1ff640ab14f76ba376d61d36739",
+    "candidate": "76a9c7f63401cfa8221da9aec3bf81d12898db9592034220a17273d624c2ebf2"
+  },
+  {
+    "path": "services/api/src/operating-projection/operating-projection.service.ts",
+    "expected": "584d3bdc230749b81dd07064640ced8d79835dacb2a76b581c847ee0034dcf0e",
+    "candidate": "8414bcc970461a0ba92b5a6e2f885ef282c80189bf073b3201b6714c67f70508"
+  },
+  {
+    "path": "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
+    "expected": "bf0e8aed897ef6d0442d40e6726176cc1457b499b874cecbfca7164f2a218524",
+    "candidate": "643acf7185e0c1d3e3c6fea5b8f4ee1cbd211a6db02de0bc30792f2a06e60aca"
+  },
+  {
+    "path": "services/api/src/spot-procurement/spot-procurement-operating-source.adapter.ts",
+    "expected": "172c6c76f8abc18e957a1587db38f5802f344db17c838c1ad4f1459026000f58",
+    "candidate": "91b4f342923ae645966da9159bd318a7d3e1a8cdfc9362918fca1bb507eef1f8"
+  }
+]
