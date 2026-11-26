@@ -481,9 +481,9 @@ async function main(args) {
     fs.appendFileSync(path.join(data, "postgresql.conf"), [
       "", "listen_addresses='127.0.0.1'", "port=" + port, "unix_socket_directories='" + socket + "'", "ssl=on",
       "ssl_cert_file='" + certificate + "'", "ssl_key_file='" + key + "'", "password_encryption='scram-sha-256'",
-      "shared_buffers='32MB'", "min_wal_size='32MB'", "max_wal_size='64MB'", "log_min_error_statement='panic'",
+      "shared_buffers='32MB'", "min_wal_size='32MB'", "max_wal_size='64MB'",
       "log_parameter_max_length_on_error=0", "log_error_verbosity='terse'",
-      ...(expenseCashA24 ? ["log_line_prefix='%e '"] : []), ""
+      ...(expenseCashA24 ? ["log_line_prefix='%e '", "log_min_error_statement='error'"] : ["log_min_error_statement='panic'"]), ""
     ].join("\n"));
     stage("PG_START");
     startAttempted = true;
@@ -768,8 +768,8 @@ async function main(args) {
     receipt.firstFailure = firstFailure ?? { stage: phase, code: typeof error.code === "string" && /^[A-Z0-9_]{1,50}$/u.test(error.code) ? error.code : "CHECK_FAILED",
       ...(catalogReason ? { catalogReason } : {}), ...(tail ? { tail } : {}) };
     if (expenseCashA24 && phase === "A24_PUBLIC_CASH_AND_ATTRIBUTION") {
-      const errorCodes = fs.readFileSync(path.join(directory, "postgres.log"), "utf8")
-        .split("\n").flatMap(line => {
+      const databaseLog = fs.readFileSync(path.join(directory, "postgres.log"), "utf8");
+      const errorCodes = databaseLog.split("\n").flatMap(line => {
           const match = /^([0-9A-Z]{5}) ERROR:\s+(.*)$/u.exec(line);
           if (!match) return [];
           const code = /^(EXPENSE_PUBLIC_CASH_VOUCHER_[A-Z_]+|EXPENSE_OPERATING_CASH_[A-Z_]+)$/u.exec(match[2])?.[0];
@@ -779,6 +779,14 @@ async function main(args) {
             ...(permission ? { permissionKind: permission[1], permissionObject: permission[2] } : {}) }];
         });
       receipt.firstFailure.databaseErrors = errorCodes.slice(-12);
+      const attributionInsert = /^42501 STATEMENT:\s+INSERT INTO "public"[.]"OperatingCostAttributionConfirmation" \(((?:"[a-zA-Z][a-zA-Z0-9]*"(?:,\s*)?){1,30})\)/mu.exec(databaseLog);
+      if (attributionInsert) {
+        const columns = Array.from(attributionInsert[1].matchAll(/"([a-zA-Z][a-zA-Z0-9]*)"/gu), match => match[1]);
+        const known = new Set(a24Plan.read.OperatingCostAttributionConfirmation);
+        const granted = new Set(a24Plan.insert.OperatingCostAttributionConfirmation);
+        receipt.firstFailure.attributionInsert = { columns: columns.filter(column => known.has(column)),
+          missing: columns.filter(column => known.has(column) && !granted.has(column)) };
+      }
     }
   } finally {
     try {
