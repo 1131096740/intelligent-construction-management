@@ -129,29 +129,19 @@ fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
+source "$plan/remaining-installer-mounts.sh"
+source_mode=$(node -p 'require(process.argv[1]).mode ?? ""' "$prepared/source.json")
+append_remaining_installer "$source_mode"
 if [[ $count == 346 ]]; then
-  node "$plan/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
-  git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer.patch"
-  installer="$work/installer.cjs"
-  chmod 0644 "$installer"
-  canonical=$(node -p 'require(process.argv[1]).installerSha256' "$plan/expense-witness-346-profile.cjs")
-  [[ $(shasum -a 256 "$installer" | cut -d ' ' -f1) == "$canonical" ]] || exit 65
   args+=(--env "JG_REMAINING_OWNER_SOURCE_SHA=$sha"
-    --mount "type=bind,src=$installer,dst=/qualification/installer.cjs,readonly"
     --mount "type=bind,src=$plan/bank/migration-inputs-346.cjs,dst=/qualification/migration-inputs-346.cjs,readonly")
-  for file in upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
-    args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
-  done
-else
-  source "$plan/remaining-installer-mounts.sh"
-  source_mode=$(node -p 'require(process.argv[1]).mode ?? ""' "$prepared/source.json")
-  append_remaining_installer "$source_mode"
 fi
 while IFS=$'\t' read -r source relative; do
   args+=(--mount "type=bind,src=$source,dst=/qualification/workspace/services/api/$relative,readonly")
 done < "$work/fixture-mounts.tsv"
 if [[ ${7-} == --host-only ]]; then
-  node - "$work" "$prepared/source.json" "$lane" "$profiles" "$owner" "$canonical" <<'JS'
+  installer_hash=$(shasum -a 256 "$work/installer.cjs" | cut -d ' ' -f1)
+  node - "$work" "$prepared/source.json" "$lane" "$profiles" "$owner" "$installer_hash" <<'JS'
 const fs=require('node:fs'),{createHash}=require('node:crypto'),assert=require('node:assert/strict');
 const [out,sourceFile,lane,profiles,owner,installerSha256]=process.argv.slice(2);
 const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
