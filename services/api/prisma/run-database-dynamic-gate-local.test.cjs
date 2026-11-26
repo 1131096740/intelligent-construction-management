@@ -299,6 +299,18 @@ test("334 routes the original Task410 company proxy repayment group on its own",
   assert.deepEqual(resolved.args.slice(1), [sha, "company-proxy", "--historical-settlement-334"]);
 });
 
+test("334 routes the original POL275 with the pinned collision source", () => {
+  const group = loadManifest().coveredGroups.find(item => item.id === "clearing_reconciliation_pol275");
+  const sha = "e".repeat(40);
+  assert.equal(group.pendingTests, 11);
+  assert.deepEqual(group.testFiles.map(file => file.pendingTests), [10, 1]);
+  const resolved = resolveGroupCommand(group, { candidateSha: sha, migrationCount: 334 });
+  assert.equal(resolved.command, "bash");
+  assert.match(resolved.args[0], /run-contract-adjacent-ci[.]sh$/u);
+  assert.deepEqual(resolved.args.slice(1), [sha, "pol275", "--historical-settlement-334",
+    "a187dc73a133114e1cfbbc891a4aec923abe2545"]);
+});
+
 test("334 routes the original POL109 database, HTTP and browser lane", () => {
   const group = loadManifest().coveredGroups.find(item => item.id === "project_close_profit_pol109");
   assert.equal(group.pendingTests, 4);

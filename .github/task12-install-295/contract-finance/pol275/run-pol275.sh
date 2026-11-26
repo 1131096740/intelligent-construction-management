@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && $5 == warm && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 ) ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && $5 == warm && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 ) ) ]] || exit 64
 count=295
 mode=()
 case ${6-} in
@@ -10,6 +10,7 @@ case ${6-} in
   --text-direct-330) count=330; mode=(--text-direct-330) ;;
   --payment-remainder-331) count=331; mode=(--payment-remainder-331) ;;
   --upward-archive-332) count=332; mode=(--upward-archive-332) ;;
+  --historical-settlement-334) count=334; mode=(--historical-settlement-334) ;;
 esac
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
@@ -37,11 +38,12 @@ node -e '
   const source=require(process.argv[1]);
   const count=Number(process.argv[3]);
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
-  const modes={329:"current-320",330:"text-direct-330",331:"payment-remainder-331",332:"upward-archive-332"};
+  const modes={329:"current-320",330:"text-direct-330",331:"payment-remainder-331",332:"upward-archive-332",334:"historical-settlement-334"};
   if(modes[count] && (source.mode!==modes[count] || source.predecessor?.migrationCount!==295))process.exit(1);
   const base=process.argv[4];
   const sealed295=require(base+"/common/multi-witness.cjs").final;
   if(count===295&&source.ledgerSha256!==sealed295)process.exit(1);
+  if(count===334) require(base+"/historical-settlement-334-profile.cjs").assertSource(source,sealed295);
   if(count===331||count===332)require(base+"/"+source.mode+"-profile.cjs").assertSource(source,process.argv[2],sealed295);
 ' "$prepared/source.json" "$sha" "$count" "$base"
 image=$(cat "$build/image.id")
@@ -76,10 +78,20 @@ if [[ $lane == warm ]]; then
 else
   install -m 0644 "$pol/collision-observation.cjs" "$work/collision-observation.cjs"
 fi
-check "$common/installer.cjs" 5f6e2959275504ff409928e6cab08e9cffabacc8dd22e484399db3b3671056d0
-cp "$common/installer.cjs" "$work/installer.cjs"
+if [[ $count == 334 ]]; then
+  node "$base/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
+else
+  check "$common/installer.cjs" 5f6e2959275504ff409928e6cab08e9cffabacc8dd22e484399db3b3671056d0
+  cp "$common/installer.cjs" "$work/installer.cjs"
+fi
 patch -f -F 0 -s "$work/installer.cjs" "$plan/installer-pol275.patch"
-check "$work/installer.cjs" 6ce74c9b75ecff637abf6f3b2ceccfd1dd2c19fdd6dfe1f12815be28a2425e46
+if [[ $count == 334 ]]; then
+  check "$work/installer.cjs" be8700dcb03db40657cf57e76ac0b4a668d137ff83fb5df673e74e619f9bb4c4
+  patch -f -F 0 -s "$work/installer.cjs" "$plan/installer-pol275-334.patch"
+  check "$work/installer.cjs" 9d0a8c9001965928f21cb8649a2b3410e8322be770eabd5253700f070c4775d1
+else
+  check "$work/installer.cjs" 6ce74c9b75ecff637abf6f3b2ceccfd1dd2c19fdd6dfe1f12815be28a2425e46
+fi
 chmod 644 "$work/installer.cjs"
 node --check "$work/installer.cjs"
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
@@ -108,6 +120,11 @@ if [[ $lane == warm ]]; then
     --mount "type=bind,src=$work/warm-current.spec.ts,dst=/qualification/workspace/services/api/src/database/clearing-reconciliation-concurrency.spec.ts,readonly")
 else
   args+=(--mount "type=bind,src=$work/collision-observation.cjs,dst=/qualification/collision-observation.cjs,readonly")
+fi
+if [[ $count == 334 ]]; then
+  for file in upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
+    args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
+  done
 fi
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
