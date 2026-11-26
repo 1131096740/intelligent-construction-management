@@ -2,17 +2,18 @@
 
 const assert=require('node:assert/strict');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitnessForProfile,withCombined320MultiWitnessForProfile,withCombined330MultiWitnessForProfile,withCombined331MultiWitnessForProfile,withCombined332MultiWitnessForProfile,withCombined334MultiWitnessForProfile}=require('./installer.cjs');
+const {withCombined295MultiWitnessForProfile,withCombined320MultiWitnessForProfile,withCombined330MultiWitnessForProfile,withCombined331MultiWitnessForProfile,withCombined332MultiWitnessForProfile,withCombined334MultiWitnessForProfile,withCombined346MultiWitnessForProfile}=require('./installer.cjs');
 const {final,digest}=require('./multi-witness.cjs');
 const {runRetained,verifyInputs}=require('./remaining-retained.cjs');
 const source=require('./contract-finance-source.json');
+const expense=source.mode==='expense-witness-346'?require('./expense-witness-346-profile.cjs'):undefined;
 const historicalSettlement=source.mode==='historical-settlement-334';
 const historical=historicalSettlement?require('./historical-settlement-334-profile.cjs'):undefined;
 const upwardArchive=source.mode==='upward-archive-332';
 const paymentRemainder=source.mode==='payment-remainder-331';
 const textDirect=source.mode==='text-direct-330';
-const current=historicalSettlement||upwardArchive||paymentRemainder||textDirect||source.mode==='current-320';
-const count=historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current?329:295;
+const current=expense||historicalSettlement||upwardArchive||paymentRemainder||textDirect||source.mode==='current-320';
+const count=expense?expense.count:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current?329:295;
 const root='/qualification';
 const lane='profile';
 const receipt={schemaVersion:1,purpose:'REMAINING_PROFILE_WARM_EXACT_'+count,lane,sourceSha:source.sourceSha,
@@ -26,7 +27,10 @@ async function main(){
   assert.equal(source.migrationCount,count);
   assert.equal(current?source.predecessor.ledgerSha256:source.ledgerSha256,final);
   assert.equal((current?source.predecessor.tails:source.tails).at(-1).sha256,digest);
-  if(current){
+  if(expense){
+    expense.assertSource(source,final);
+    expense.assertRuntimeBaseline(require('./workspace/services/api/prisma/migration-baseline.cjs'));
+  } else if(current){
     assert.equal(source.predecessor.migrationCount,295);
     const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
     assert.equal(baseline.expectedDirectoryCount,count);
@@ -40,7 +44,11 @@ async function main(){
   historical?.assertSource(source,final);
   receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   const consume=context=>runRetained(context,receipt,lane);
-  if(current){
+  if(expense){
+    await withCombined346MultiWitnessForProfile(receipt,consume,{sourceTree:source.sourceTree,
+      migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails});
+    require('./payment-execution-346.cjs').assertInstallation(receipt,source);
+  } else if(current){
     const installCurrent=historicalSettlement?withCombined334MultiWitnessForProfile:upwardArchive?withCombined332MultiWitnessForProfile:paymentRemainder?withCombined331MultiWitnessForProfile:textDirect?withCombined330MultiWitnessForProfile:withCombined320MultiWitnessForProfile;
     await installCurrent(receipt,consume,{sourceTree:source.sourceTree,
       migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails});
@@ -62,6 +70,10 @@ async function main(){
   assert.equal(receipt.retainedOriginal.mode,lane);
   assert.equal(receipt.retainedOriginal.exit,0);
   assert.equal(receipt.retainedOriginal.seen.length,rows.length);
+  if(expense){
+    assert.equal(receipt.retainedOriginal.seen[0].passed,2);
+    assert.equal(receipt.retainedOriginal.seen[0].skipped,0);
+  }
   assert.equal(receipt.profileHistory.prefix,125);
   assert.equal(receipt.profileHistory.backfill,126);
   assert.equal(receipt.profileHistory.sameInstance,true);

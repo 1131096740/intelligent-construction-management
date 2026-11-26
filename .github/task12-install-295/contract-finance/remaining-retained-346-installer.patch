@@ -1,0 +1,10 @@
+diff --git a/installer.cjs b/installer.cjs
+--- a/installer.cjs
++++ b/installer.cjs
+@@ -1583,0 +1584,6 @@
++
++module.exports.withCombined346RetainedCleanup = (receipt,consume,material) =>
++  withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,346),'cleanup');
++
++module.exports.withCombined346MultiWitnessForProfile = (receipt,consume,material) =>
++  withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,346),'profile');

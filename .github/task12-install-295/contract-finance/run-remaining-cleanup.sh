@@ -2,7 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 ]] || exit 64
+[[ $# == 4 || ( $# == 5 && $5 == --expense-witness-346 ) ||
+  ( $# == 6 && $5 == --expense-witness-346 && $6 == --host-only ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -12,19 +13,34 @@ plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$plan/common"
 archive="$repo/.github/task12-install-289"
 scope=cleanup
+if [[ ${5:-} == --expense-witness-346 ]]; then
+  [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
+  [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$archive") ]] || exit 65
+  node "$plan/check-ledger.cjs" "$repo" "$sha" "$5" | cmp -s "$prepared/source.json" - || exit 65
+fi
 
 node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
+  const count=source.mode==="expense-witness-346"?346:source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==count||
+    (count===346)!==(process.argv[7]==="--expense-witness-346"))process.exit(1);
+  if(count===346) {
+    const plan=process.argv[6];
+    const api=process.argv[8];
+    const profile=require(plan+"/expense-witness-346-profile.cjs");
+    profile.assertSource(source,require(process.argv[4]).final);
+    require(plan+"/bank/migration-inputs-346.cjs")(api,source,profile);
+  }
   if(count===332) require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
   if(count===334) require(process.argv[5]).assertSource(source,require(process.argv[4]).final);
-' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs"
-image=$(cat "$build/image.id")
-fingerprint=$(cat "$build/context.sha256")
-[[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
-[[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
-[[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
+' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan" "${5-}" "$prepared/prepared/context/workspace/services/api"
+if [[ ${6-} != --host-only ]]; then
+  image=$(cat "$build/image.id")
+  fingerprint=$(cat "$build/context.sha256")
+  [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
+  [[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
+  [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
+fi
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
@@ -45,11 +61,14 @@ done
 source "$plan/remaining-installer-mounts.sh"
 source_mode=$(node -p 'require(process.argv[1]).mode ?? ""' "$prepared/source.json")
 append_remaining_installer "$source_mode" retained
+if [[ $source_mode == expense-witness-346 ]]; then
+  args+=(--mount "type=bind,src=$plan/payment-execution-346.cjs,dst=/qualification/payment-execution-346.cjs,readonly")
+fi
 node - "$archive" "$prepared/source.json" "$work" "$plan" > "$work/cleanup-mounts.tsv" <<'JS'
 const fs=require('node:fs'), path=require('node:path'),{createHash}=require('node:crypto'),assert=require('node:assert/strict');
 const {spawnSync}=require('node:child_process'),{gunzipSync}=require('node:zlib');
 const [archive,sourceFile,work,plan]=process.argv.slice(2);
-const current=['current-320','text-direct-330','payment-remainder-331','upward-archive-332','historical-settlement-334'].includes(require(sourceFile).mode);
+const current=['current-320','text-direct-330','payment-remainder-331','upward-archive-332','historical-settlement-334','expense-witness-346'].includes(require(sourceFile).mode);
 const lifecycle='fixtures/contract-lifecycle-route.spec.ts';
 const aggregate='fixtures/contract-draft-aggregate-concurrency.spec.ts';
 const oldLifecycle='32b015b36b9093f8354281d4807edb4f304eb657902eeb22faa43a3e952f9d1f';
@@ -117,6 +136,13 @@ JS
 while IFS=$'\t' read -r source target; do
   args+=(--mount "type=bind,src=$source,dst=/qualification/$target,readonly")
 done < "$work/cleanup-mounts.tsv"
+
+if [[ ${6-} == --host-only ]]; then
+  node --check "$work/installer.cjs"
+  node --check "$plan/remaining-cleanup-entry.cjs"
+  printf 'REMAINING_RETAINED_CLEANUP_346_HOST_READY sha=%s material=%s\n' "$sha" "$work"
+  exit 0
+fi
 
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
