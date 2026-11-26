@@ -23,7 +23,8 @@ fi
     $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts || $2 == pol109 || $2 == task398-standard || $2 == task398-ledger-loss || $2 == browser-partial || $2 == browser-completion || $2 == pfq || $2 == cash-transfer || $2 == project-advance ) ) ||
   ( $# == 3 && ( $2 == historical-takeover-a28 || $2 == line-a || $2 == onboarding || $2 == procurement || $2 == pol115-workbench || $2 == pol115-full || $ordered_issue == true ) && $3 == --historical-settlement-334 ) ||
   ( $# == 3 && ( $2 == line-a || $2 == pol115-workbench || $2 == pol115-full || $2 == payment-execution ||
-    $2 == task398-ledger-loss || $2 == historical-takeover-a28 || $2 == historical-takeover-a29 ) && $3 == --expense-witness-346 ) ||
+    $2 == task398-ledger-loss || $2 == historical-takeover-a28 || $2 == historical-takeover-a29 ||
+    $2 == browser-partial || $2 == browser-completion ) && $3 == --expense-witness-346 ) ||
   ( $# == 4 && $2 == payment-execution && $3 == --expense-witness-346 && $4 == --host-only ) ||
   ( $# == 4 && $2 == pol275 && $3 == --historical-settlement-334 && $4 == a187dc73a133114e1cfbbc891a4aec923abe2545 ) ||
   ( $# == 4 && $2 == pol275 && ( $3 == --current-320 || $3 == --text-direct-330 || $3 == --payment-remainder-331 || $3 == --upward-archive-332 ) && $4 =~ ^[a-f0-9]{40}$ ) ]] || exit 64
@@ -116,8 +117,11 @@ case "$lane" in
   expense-execution|expense-finance|expense-receipt) bash "$plan/run-expense.sh" "$root" "$work/source" "$sha" "$work/browser" "${lane#expense-}" ;;
   payment-execution) bash "$plan/run-payment-execution.sh" "$root" "$work/source" "$sha" "$work/browser" ;;
   company-proxy) bash "$plan/run-task410-company-proxy.sh" "$root" "$work/source" "$sha" "$work/browser" ;;
-  browser-partial) bash "$plan/browser-partial/run-browser-partial.sh" "$root" "$work/source" "$sha" "$work/browser" ;;
-  browser-completion) bash "$plan/browser-completion/run-browser-completion.sh" "$root" "$work/source" "$sha" "$work/browser" ;;
+  browser-partial|browser-completion)
+    browser_args=()
+    if [[ ${3:-} == --expense-witness-346 ]]; then browser_args=("$3"); fi
+    bash "$plan/$lane/run-$lane.sh" "$root" "$work/source" "$sha" "$work/browser" ${browser_args[@]+"${browser_args[@]}"}
+    ;;
   v7|invoice|pol279|pol280) bash "$plan/run-finance-adjacent.sh" "$root" "$work/source" "$sha" "$work/browser" "$lane" ${mode_args[@]+"${mode_args[@]}"} ;;
   pol108-core|pol108-facts|pol108-impacts) bash "$plan/run-pol108.sh" "$root" "$work/source" "$sha" "$work/browser" "${lane#pol108-}" ${mode_args[@]+"${mode_args[@]}"} ;;
   pol109) bash "$plan/run-pol109.sh" "$root" "$work/source" "$sha" "$work/browser" ${mode_args[@]+"${mode_args[@]}"} ;;
