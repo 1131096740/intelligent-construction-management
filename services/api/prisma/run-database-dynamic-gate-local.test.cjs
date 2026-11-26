@@ -262,6 +262,19 @@ test("334 routes Line A, A28, finance and Remaining and rejects other groups bef
   assert.doesNotMatch(result.stderr, /ENOENT|spawn|Docker/u);
 });
 
+test("334 routes the three original project expense groups with their original case counts", () => {
+  const manifest = loadManifest();
+  const sha = "e".repeat(40);
+  for (const operation of ["execution", "finance", "receipt"]) {
+    const group = manifest.coveredGroups.find(item => item.id === `project_expense_${operation}`);
+    assert.equal(group.pendingTests, 1);
+    const resolved = resolveGroupCommand(group, { candidateSha: sha, migrationCount: 334 });
+    assert.equal(resolved.command, "bash");
+    assert.match(resolved.args[0], /run-contract-adjacent-ci[.]sh$/u);
+    assert.deepEqual(resolved.args.slice(1), [sha, `expense-${operation}`, "--historical-settlement-334"]);
+  }
+});
+
 test("public inventory distinguishes CI eligible tests from the explicitly manual operator", () => {
   const result = spawnSync(process.execPath, [runnerPath, "--validate-manifest"], { encoding: "utf8", env: { PATH: "", NODE_ENV: "test" } });
   assert.equal(result.status, 0, result.stderr);
