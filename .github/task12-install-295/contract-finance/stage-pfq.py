@@ -5,7 +5,7 @@ import shutil
 import subprocess
 import sys
 
-if len(sys.argv) not in (5, 6) or (len(sys.argv) == 6 and sys.argv[5] != '--historical-settlement-334'):
+if len(sys.argv) not in (5, 6) or (len(sys.argv) == 6 and sys.argv[5] not in ('--historical-settlement-334', '--expense-witness-346')):
     raise SystemExit('PFQ_STAGING_MODE')
 historical, archive, common, out = map(Path,sys.argv[1:5])
 plan=Path(__file__).parent
@@ -55,5 +55,12 @@ if len(sys.argv) == 6:
         raise SystemExit('PFQ_334_INSTALLER_POSTIMAGE')
     if sha(entry) != '5b34c78754a353d92dd23dea6680e7b548193fa1054e9b8e95b15487f1bcf1ce':
         raise SystemExit('PFQ_334_ENTRY_POSTIMAGE')
+if sys.argv[5:] == ['--expense-witness-346']:
+    subprocess.run(['patch','--batch','--forward','--fuzz=0','--silent','-p1','-i',str((plan/'pfq-346.patch').resolve())],
+                   cwd=out,check=True)
+    if sha(installer) != '7c295260e5db55cef1552f13ee3eacc8f385bdedc12f1b1d20ccfaabd461ded4':
+        raise SystemExit('PFQ_346_INSTALLER_POSTIMAGE')
+    if sha(entry) != '2f851fbabd0d61c95df4833f81944ee80b29a4e1b343ff13c2fb1becd279081e':
+        raise SystemExit('PFQ_346_ENTRY_POSTIMAGE')
 for file in out.iterdir():
     file.chmod(0o644)

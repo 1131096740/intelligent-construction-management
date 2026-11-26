@@ -2,7 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 ) ) ||
+  ( $# == 6 && $5 == --expense-witness-346 && $6 == --host-only ) ]] || exit 64
 count=295
 mode=()
 case ${5-} in
@@ -11,11 +12,11 @@ case ${5-} in
   --payment-remainder-331) mode=(--payment-remainder-331); count=331 ;;
   --upward-archive-332) mode=(--upward-archive-332); count=332 ;;
   --historical-settlement-334) mode=(--historical-settlement-334); count=334 ;;
+  --expense-witness-346) mode=(--expense-witness-346); count=346 ;;
 esac
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
-build=$(cd "$4" && pwd -P)
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$repo/.github/task12-install-295/contract-finance/common"
@@ -25,31 +26,51 @@ source_tree=$(git -C "$repo" rev-parse "$sha^{tree}")
 scope=pfq
 
 node -e '
-  const [file,sha,count,tree,archiveProfile,historicalProfile,terminal]=process.argv.slice(1);
+  const [file,sha,count,tree,archiveProfile,historicalProfile,terminal,expenseProfile]=process.argv.slice(1);
   const source=require(file);
   const modes={"329":"current-320","330":"text-direct-330","331":"payment-remainder-331"};
   if(source.sourceSha!==sha||source.migrationCount!==Number(count)||(modes[count]&&source.mode!==modes[count]))process.exit(1);
-  if(count==="332"||count==="334") require("node:assert/strict").equal(source.sourceTree,tree);
+  if(count==="332"||count==="334"||count==="346") require("node:assert/strict").equal(source.sourceTree,tree);
   if(count==="332") {
     require(archiveProfile).assertSource(source,sha,require(terminal).final);
   }
   if(count==="334") require(historicalProfile).assertSource(source,require(terminal).final);
-' "$prepared/source.json" "$sha" "$count" "$source_tree" "$archive_profile" "$historical_profile" "$common/multi-witness.cjs"
-image=$(cat "$build/image.id")
-fingerprint=$(cat "$build/context.sha256")
-[[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
-[[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
-[[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
+  if(count==="346") require(expenseProfile).assertSource(source,require(terminal).final);
+' "$prepared/source.json" "$sha" "$count" "$source_tree" "$archive_profile" "$historical_profile" "$common/multi-witness.cjs" "$plan/expense-witness-346-profile.cjs"
+if (( count == 346 )); then
+  [[ $plan == "$repo/.github/task12-install-295/contract-finance" ]] || exit 65
+  [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$repo/.github/task12-install-289/pfq" "$repo/.github/task12-install-290") ]] || exit 65
+  cmp -s "$prepared/source.json" <(node "$plan/check-ledger.cjs" "$repo" "$sha" --expense-witness-346) || exit 65
+  node - "$plan" "$prepared/prepared/context/workspace" <<'JS'
+const [plan,workspace]=process.argv.slice(2);
+require(plan+'/expense-witness-346-profile.cjs').assertRuntimeBaseline(
+  require(workspace+'/services/api/prisma/migration-baseline.cjs'));
+JS
+fi
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 material="$work/material"
 stage_mode=()
-if (( count == 334 )); then
+if (( count >= 334 )); then
   source_spec="$prepared/prepared/context/workspace/services/api/src/database/project-financing-quota-concurrency.spec.ts"
   [[ $(sha256sum "$source_spec" | cut -d' ' -f1) == 867020f8d8f235fa5ac34407a8c774774be7c4e274bd161bb4239159c084eed2 ]] || exit 65
   stage_mode=("${mode[0]}")
 fi
 python3 "$plan/stage-pfq.py" "$repo/.github/task12-install-289" "$repo/.github/task12-install-290" "$common" "$material" ${stage_mode[@]+"${stage_mode[@]}"}
+
+if [[ ${6-} == --host-only ]]; then
+  for file in "$material"/*.cjs; do
+    node --check "$file"
+  done
+  printf 'PFQ_346_HOST_READY sha=%s material=%s\n' "$sha" "$material"
+  exit 0
+fi
+build=$(cd "$4" && pwd -P)
+image=$(cat "$build/image.id")
+fingerprint=$(cat "$build/context.sha256")
+[[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
+[[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
+[[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
   --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory 4g
@@ -65,8 +86,13 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
 if (( count >= 332 )); then
   args+=(--mount "type=bind,src=$archive_profile,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 fi
-if (( count == 334 )); then
+if (( count >= 334 )); then
   for file in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
+    args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
+  done
+fi
+if (( count == 346 )); then
+  for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
 fi

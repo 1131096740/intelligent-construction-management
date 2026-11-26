@@ -12,20 +12,22 @@ const common=join(__dirname,'common');
 const work=mkdtempSync(join(tmpdir(),'pfq-stage-test.'));
 const staged=join(work,'staged');
 const staged334=join(work,'staged334');
-const modes=[undefined,'--current-320','--text-direct-330','--payment-remainder-331','--upward-archive-332','--historical-settlement-334'];
-const migrationCounts=[295,329,330,331,332,334];
+const staged346=join(work,'staged346');
+const modes=[undefined,'--current-320','--text-direct-330','--payment-remainder-331','--upward-archive-332','--historical-settlement-334','--expense-witness-346'];
+const migrationCounts=[295,329,330,331,332,334,346];
 const lanes=['pre115-clean','pre116-legacy','duplicate','cross-business','replacement-child','replacement-parent','app'];
 const predecessor=(count,ledgerSha256)=>({count,ledgerSha256,sameIdentity:true,sameBaseB7:true});
 
 before(()=>{
-  for(const [directory,mode] of [[staged,[]],[staged334,['--historical-settlement-334']]]){
+  for(const [directory,mode] of [[staged,[]],[staged334,['--historical-settlement-334']],[staged346,['--expense-witness-346']]]){
     const result=spawnSync('python3',[
       join(__dirname,'stage-pfq.py'),join(repo,'.github/task12-install-289'),join(repo,'.github/task12-install-290'),
       common,directory,...mode,
     ],{encoding:'utf8'});
     assert.equal(result.status,0,result.stderr);
     for(const name of ['multi-witness.cjs','scope.json']) copyFileSync(join(common,name),join(directory,name));
-    for(const name of ['historical-settlement-334-profile.cjs','historical-takeover-333-profile.cjs','upward-archive-332-profile.cjs'])
+    for(const name of ['historical-settlement-334-profile.cjs','historical-takeover-333-profile.cjs','upward-archive-332-profile.cjs',
+      'expense-witness-345-profile.cjs','expense-witness-346-profile.cjs','expense-witness-prefixes.json'])
       copyFileSync(join(__dirname,name),join(directory,name));
     writeFileSync(join(directory,'mock-runtime.cjs'),`(${mockRuntime.toString()})()`);
     const appMount=join(directory,'workspace/services/api/prisma');
@@ -52,7 +54,8 @@ function mockRuntime(){
       assert.deepEqual(material,source.migrationCount===295?undefined:{
         mode:source.mode,sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails,
       });
-      installer[installerMethod]=async (result,consume)=>{
+      installer[installerMethod]=async (result,consume,_material,target)=>{
+        assert.equal(target,source.migrationCount===346?346:undefined);
         const {pfqPositive,pfqPostconsume,...beforeCallback}=receipt;
         Object.assign(result,beforeCallback);
         const fixture=require('./task12-pfq-positive-fixtures.json')[mode];
@@ -110,7 +113,8 @@ function run(index,lane,fault){
   const ledger332='b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4';
   const historical=require('./historical-settlement-334-profile.cjs');
   const previous=require('./historical-takeover-333-profile.cjs');
-  const ledgerSha256=[base295,ledger329,ledger330,ledger331,ledger332,historical.ledgerSha256][index];
+  const expense=require('./expense-witness-346-profile.cjs');
+  const ledgerSha256=[base295,ledger329,ledger330,ledger331,ledger332,historical.ledgerSha256,expense.ledgerSha256][index];
   const source={sourceSha:'a'.repeat(40),sourceTree:'b'.repeat(40),migrationCount:count,ledgerSha256,
     mode:mode?.slice(2),predecessor:{migrationCount:295,ledgerSha256:base295},
     predecessor330:{migrationCount:330,ledgerSha256:ledger330},predecessor331:{migrationCount:331,ledgerSha256:ledger331},
@@ -118,10 +122,14 @@ function run(index,lane,fault){
       {name:'20261129001000_contract_upward_archive_verifier_pin_forward',
         sha256:'4e8e6e23267f525ca2bff68719e2989126fff82e5bd0d0ba344abc2c4c8d4da3',finished:true,rolledBack:false}]};
   if(!mode) delete source.sourceTree;
-  if(count===334){
+  if(count>=334){
     source.predecessor332={migrationCount:332,ledgerSha256:ledger332};
     source.predecessor333={migrationCount:333,ledgerSha256:previous.ledgerSha256};
     source.tails.push(...[previous.terminal,historical.terminal].map(row=>({...row,finished:true,rolledBack:false})));
+  }
+  if(count===346){
+    source.predecessor334={migrationCount:334,ledgerSha256:historical.ledgerSha256};
+    source.tails.push(...require('./expense-witness-prefixes.json').slice(1).map(item=>item.terminal),expense.terminal);
   }
   const receipt={releaseTree:'67644d9465a0ab4ee80ede099139d9c129d66f14',business:'CALLBACK_COMPLETED',
     orderedTails:[{size:295}],installOnly295:{count:295,ledgerSha256:base295},
@@ -140,8 +148,8 @@ function run(index,lane,fault){
     receipt.pfqRecovery={kind:lane.replace('-','_'),markerInPostgres:true,PrismaResolve:true,originalRowPreserved:true,historicalNull:true,
       caseSpecificBindingConfirmed:true,caseSpecificBindingCleared:true};
   }
-  if(count===334){
-    receipt.forward320.observedLedgerSha256=lane.startsWith('pre')||lane==='app'?ledgerSha256:'c'.repeat(64);
+  if(count>=334){
+    receipt.forward320.observedLedgerSha256=lane.startsWith('pre')||lane==='app'?historical.ledgerSha256:'c'.repeat(64);
     receipt.historicalTakeoverPredecessor={...predecessor(332,ledger332),catalog:takeoverCatalog(false)};
     receipt.historicalTakeover333Catalog=takeoverCatalog(true);
     const [before,after]=signedCatalogs();
@@ -150,13 +158,25 @@ function run(index,lane,fault){
     receipt.historicalTakeoverCatalogAfterBusiness=true;
     receipt.historicalSettlementCatalogAfterBusiness=fault!=='catalog';
   }
-  if(fault==='terminal') source.tails.at(-1).sha256='0'.repeat(64);
+  if(count===346){
+    const recovery=Boolean(receipt.pfqRecovery);
+    receipt.forward320={...receipt.forward320,count:334,ledgerSha256:historical.ledgerSha256,
+      tails:receipt.forward320.tails.slice(0,39)};
+    receipt.expenseWitnessForward={
+      count,ledgerSha256,sameIdentity:fault!=='successor',sourceTree:source.sourceTree,
+      tails:source.tails.slice(39).map(({name,sha256})=>({name,sha256}))
+    };
+    receipt.pfqObserved346={rows:count+Number(recovery&&fault!=='rollback-row'),
+      sha256:recovery?'d'.repeat(64):ledgerSha256};
+    receipt.expenseWitnessCatalogAfterBusiness=fault!=='expense-catalog';
+  }
+  if(fault==='terminal') source.tails[source.tails.length-1]={...source.tails.at(-1),sha256:'0'.repeat(64)};
   if(fault==='predecessor') receipt.upwardArchivePredecessor.sameIdentity=false;
   if(fault==='source-predecessor') source.predecessor333.ledgerSha256='0'.repeat(64);
   if(fault==='postconsume') receipt.combinedAfterBusiness.ledgerSha256=ledger331;
   const installerMethod=['withCombined295MultiWitness','withCombined320ContractPayment','withCombined330TextAgreement',
-    'withCombined331PaymentRemainder','withCombined332UpwardArchive','withCombined334HistoricalSettlement'][index];
-  const directory=count===334?staged334:staged;
+    'withCombined331PaymentRemainder','withCombined332UpwardArchive','withCombined334HistoricalSettlement','withCombinedExpenseWitness'][index];
+  const directory=count===346?staged346:count===334?staged334:staged;
   writeFileSync(join(directory,'contract-finance-source.json'),JSON.stringify(source));
   writeFileSync(join(directory,'mock-receipt.json'),JSON.stringify({receipt,installerMethod,fault:['terminal','source-predecessor'].includes(fault)?'before-runtime':fault}));
   const result=spawnSync(process.execPath,['--require',join(directory,'mock-runtime.cjs'),join(directory,'entry.cjs'),lane,...(mode?[mode]:[])],{encoding:'utf8'});
@@ -185,6 +205,15 @@ test('staged PFQ 332 rejects a changed terminal, predecessor identity and post-b
 test('staged PFQ 334 rejects a changed tail, predecessor, or post-business ledger or catalog',()=>{
   for(const fault of ['terminal','source-predecessor','predecessor','postconsume','catalog']){
     const {status,output}=run(5,'replacement-child',fault);
+    assert.equal(status,1);
+    assert.equal(output.status,'STOPPED');
+    assert.notEqual(output.failure.code,'UNEXPECTED_RUNTIME_ENTRY');
+  }
+});
+
+test('staged PFQ 346 rejects a changed terminal, same-database successor, missing recovery row or catalog',()=>{
+  for(const fault of ['terminal','source-predecessor','successor','rollback-row','postconsume','expense-catalog']){
+    const {status,output}=run(6,'replacement-parent',fault);
     assert.equal(status,1);
     assert.equal(output.status,'STOPPED');
     assert.notEqual(output.failure.code,'UNEXPECTED_RUNTIME_ENTRY');
