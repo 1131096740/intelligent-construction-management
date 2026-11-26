@@ -200,6 +200,8 @@ module.exports.withCombined295ProjectProcurement=(receipt,consume)=>withProcurem
     if installer_pin and digest(read(installer)) != installer_pin:
         raise ValueError(f'PROCUREMENT_{count}_INSTALLER_POSTIMAGE')
     subprocess.run(['node', '--check', str(installer)], check=True)
+    if count == 346:
+        installer.chmod(0o644)
 else:
     patch(common / 'installer.cjs', out / 'installer.cjs', port['installer'], 'installer-procurement.patch')
 for name, pin in port[lane].items():
