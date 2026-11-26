@@ -2,17 +2,17 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 ) ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 || $6 == --expense-witness-346 ) ) ||
+  ( $# == 7 && $6 == --expense-witness-346 && $7 == --host-only ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
-build=$(cd "$4" && pwd -P)
 lane=$5
 mode_args=()
 count=295
-if [[ $# == 6 ]]; then
+if [[ $# -ge 6 ]]; then
   mode_args=("$6")
-  case "$6" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; --upward-archive-332) count=332;; --historical-settlement-334) count=334;; esac
+  case "$6" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; --upward-archive-332) count=332;; --historical-settlement-334) count=334;; --expense-witness-346) count=346;; esac
 fi
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -26,17 +26,33 @@ const [sourceFile,sha,profilesFile,lane,terminalFile,upwardProfile,historicalPro
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||!Object.hasOwn(require(profilesFile),lane))process.exit(65);
 if(mode!==undefined) {
-  const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331,'--upward-archive-332':332,'--historical-settlement-334':334}[mode];
+  const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331,'--upward-archive-332':332,'--historical-settlement-334':334,'--expense-witness-346':346}[mode];
   if(source.mode!==mode.slice(2)||source.migrationCount!==count||source.predecessor?.migrationCount!==295||
      source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==count-295) process.exit(65);
   if(count===332) require(upwardProfile).assertSource(source,sha,terminal.final);
   if(count===334) require(historicalProfile).assertSource(source,terminal.final);
 } else if(source.migrationCount!==295||source.ledgerSha256!==terminal.final) process.exit(65);
 JS
-image=$(cat "$build/image.id")
-fingerprint=$(cat "$build/context.sha256")
-[[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
-[[ $(node "$finance/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
+if [[ $count == 346 ]]; then
+  [[ "$plan" == "$finance" ]] || exit 65
+  [[ -z $(git -C "$root" status --porcelain --untracked-files=all -- "$plan" "$prior") ]] || exit 65
+  node "$plan/check-ledger.cjs" "$root" "$sha" --expense-witness-346 | cmp -s "$prepared/source.json" - || exit 65
+  api="$workspace/services/api"
+  git -C "$root" show "$sha:services/api/prisma/migration-baseline.cjs" | cmp -s "$api/prisma/migration-baseline.cjs" - || exit 65
+  node - "$plan" "$api" "$prepared/source.json" <<'JS'
+const [plan,api,sourceFile]=process.argv.slice(2);
+const source=require(sourceFile),profile=require(plan+'/expense-witness-346-profile.cjs');
+profile.assertSource(source,require(plan+'/common/multi-witness.cjs').final);
+require(plan+'/bank/migration-inputs-346.cjs')(api,source,profile);
+JS
+fi
+if [[ ${7-} != --host-only ]]; then
+  build=$(cd "$4" && pwd -P)
+  image=$(cat "$build/image.id")
+  fingerprint=$(cat "$build/context.sha256")
+  [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
+  [[ $(node "$finance/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
+fi
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-remaining-$lane.XXXXXXXX")
 profiles="$prior/remaining-owner-modes.json"
 node "$owner" --mounts "$lane" "$workspace" > "$work/fixture-mounts.tsv"
@@ -113,12 +129,48 @@ fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
-source "$plan/remaining-installer-mounts.sh"
-source_mode=$(node -p 'require(process.argv[1]).mode ?? ""' "$prepared/source.json")
-append_remaining_installer "$source_mode"
+if [[ $count == 346 ]]; then
+  node "$plan/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
+  git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer.patch"
+  installer="$work/installer.cjs"
+  chmod 0644 "$installer"
+  canonical=$(node -p 'require(process.argv[1]).installerSha256' "$plan/expense-witness-346-profile.cjs")
+  [[ $(shasum -a 256 "$installer" | cut -d ' ' -f1) == "$canonical" ]] || exit 65
+  args+=(--env "JG_REMAINING_OWNER_SOURCE_SHA=$sha"
+    --mount "type=bind,src=$installer,dst=/qualification/installer.cjs,readonly"
+    --mount "type=bind,src=$plan/bank/migration-inputs-346.cjs,dst=/qualification/migration-inputs-346.cjs,readonly")
+  for file in upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
+    args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
+  done
+else
+  source "$plan/remaining-installer-mounts.sh"
+  source_mode=$(node -p 'require(process.argv[1]).mode ?? ""' "$prepared/source.json")
+  append_remaining_installer "$source_mode"
+fi
 while IFS=$'\t' read -r source relative; do
   args+=(--mount "type=bind,src=$source,dst=/qualification/workspace/services/api/$relative,readonly")
 done < "$work/fixture-mounts.tsv"
+if [[ ${7-} == --host-only ]]; then
+  node - "$work" "$prepared/source.json" "$lane" "$profiles" "$owner" "$canonical" <<'JS'
+const fs=require('node:fs'),{createHash}=require('node:crypto'),assert=require('node:assert/strict');
+const [out,sourceFile,lane,profiles,owner,installerSha256]=process.argv.slice(2);
+const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const source=require(sourceFile),profile=require(profiles)[lane];
+const fixtures=fs.readFileSync(out+'/fixture-mounts.tsv','utf8').trimEnd().split('\n').map(row=>{
+  const [file,relative]=row.split('\t');
+  const sha256=hash(file);
+  assert.equal(sha256,profile.files[relative]?.sha??profile.sql[relative.split('/')[2]]);
+  return {relative,sha256};
+});
+const receipt={status:'REMAINING_OWNER_346_HOST_READY',sourceSha:source.sourceSha,sourceTree:source.sourceTree,lane,
+  ledgerSha256:source.ledgerSha256,predecessor334:source.predecessor334,sourceSha256:hash(sourceFile),installerSha256,
+  profileSha256:hash(profiles),runnerSha256:hash(owner),fixtures,
+  suites:Object.keys(profile.files).length,cases:Object.values(profile.files).reduce((n,file)=>n+file.count,0),database:'NOT_STARTED'};
+fs.writeFileSync(out+'/host-receipt.json',JSON.stringify(receipt,null,2)+'\n',{flag:'wx'});
+console.log(out+'/host-receipt.json');
+JS
+  exit 0
+fi
 
 [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
 [[ -z $(docker ps -q) ]] || exit 65
