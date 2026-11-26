@@ -147,6 +147,14 @@ async function runOriginal(context) {
   const roleInventory = "SELECT jsonb_agg(to_jsonb(r) - 'rolpassword' ORDER BY r.rolname) FROM pg_roles r;";
   const rolesBefore = (await context.sql(roleInventory)).stdout;
   url.searchParams.delete('connection_limit');
+  if (scope === 'spot') {
+    const { stdout: budget } = await context.sql(`SELECT json_build_object(
+      'maxConnections', current_setting('max_connections')::int,
+      'superuserReservedConnections', current_setting('superuser_reserved_connections')::int);`);
+    receipt.spotConnectionBudget = {
+      ...JSON.parse(budget), prismaConnectionLimit: url.searchParams.get('connection_limit')
+    };
+  }
 
   const browser = scope === 'notification' ? null : prepareBrowser(workDir);
   const files = path.join(workDir, 'pol115-files');

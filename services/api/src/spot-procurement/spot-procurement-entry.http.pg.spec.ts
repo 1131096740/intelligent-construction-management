@@ -110,11 +110,14 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
         const unknownState = exception instanceof Prisma.PrismaClientUnknownRequestError
           ? exception.message.match(/\bcode: "([0-9A-Z]{5})", message:/u)?.[1]
           : undefined;
-        const model = exception instanceof Prisma.PrismaClientKnownRequestError ? exception.meta?.modelName : undefined;
-        const column = exception instanceof Prisma.PrismaClientKnownRequestError && exception.code === "P2022"
-          ? exception.meta?.column : undefined;
+        const knownError = exception instanceof Prisma.PrismaClientKnownRequestError ? exception : undefined;
+        const knownCode = knownError?.code;
+        const model = knownError?.meta?.modelName;
+        const column = knownCode === "P2022" ? knownError?.meta?.column : undefined;
         paymentDraftReads.set(id, JSON.stringify({
           ...diagnostic,
+          serverPrismaCode: typeof knownCode === "string" && /^P[0-9]{4}$/u.test(knownCode)
+            ? knownCode : diagnostic.serverPrismaCode,
           serverSqlState: diagnostic.serverSqlState ?? unknownState,
           ...(typeof model === "string" && /^(?:SpotProcurement[A-Za-z]+|RegisteredOperationalPayment)$/u.test(model) && { model }),
           ...(typeof column === "string" && /^public\.[A-Z][A-Za-z]{1,62}\.[a-z][A-Za-z0-9]{1,62}$/u.test(column) && { column })
