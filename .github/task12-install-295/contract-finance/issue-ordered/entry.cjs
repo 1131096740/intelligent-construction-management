@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash, randomBytes } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
+const { stripVTControlCharacters } = require('node:util');
 const { admitSource } = require('./install-only292.cjs');
 const { withCombined334HistoricalSettlement } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
@@ -21,6 +22,23 @@ const purpose = scope.toUpperCase() + '_ORIGINAL_334';
 const receipt = { schemaVersion: 1, purpose, sourceSha: source.sourceSha,
   stages: ['INPUTS'], status: 'STOPPED' };
 const sha256 = value => createHash('sha256').update(value).digest('hex');
+
+function summarizeFirstFailure(file, test) {
+  const diagnostic = stripVTControlCharacters((test.failureMessages ?? []).join('\n'));
+  const codes = [...diagnostic.matchAll(
+    /\b(P\d{4})\b|\b(?:SQLSTATE|Code:)\s*`?([0-9A-Z]{5})\b/gu
+  )].map(match => match[1] ?? match[2]);
+  const statusPair = diagnostic.match(/Expected:\s*([1-5]\d{2})\s+Received:\s*([1-5]\d{2})\b/u);
+  const location = diagnostic.split('\n').find(line => line.includes(file + ':') && line.trimStart().startsWith('at '));
+  const line = location?.split(file + ':')[1]?.match(/^\d{1,5}(?=:)/u)?.[0];
+  const kind = /ISOLATED_DATABASE_REQUIRED/u.test(diagnostic) ? 'ISOLATED_DATABASE_REQUIRED' :
+    /PrismaClientInitializationError/u.test(diagnostic) ? 'PRISMA_INITIALIZATION' :
+    /PrismaClientKnownRequestError/u.test(diagnostic) ? 'PRISMA_REQUEST' :
+    /Cannot find module/u.test(diagnostic) ? 'MODULE_NOT_FOUND' : undefined;
+  return { codes: [...new Set(codes)].slice(0, 6),
+    ...(kind && { kind }), ...(line && { line: Number(line) }),
+    ...(statusPair && { expectedStatus: Number(statusPair[1]), receivedStatus: Number(statusPair[2]) }) };
+}
 
 async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql }) {
   assert.equal(candidateTree, source.sourceTree);
@@ -70,13 +88,7 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
       counts.registered === titles.length && counts.passed === titles.length && counts.skipped === 0 &&
       rows.length === titles.length && rows.every((row, index) => row.title === titles[index] && row.status === 'passed') };
   const firstFailed = rows.find(row => row.status === 'failed');
-  if (firstFailed) {
-    const diagnostic = (firstFailed.failureMessages ?? []).join('\n');
-    const codes = [...diagnostic.matchAll(
-      /\b(P\d{4})\b|\b(?:SQLSTATE|Code:)\s*`?([0-9A-Z]{5})\b/gu
-    )].map(match => match[1] ?? match[2]);
-    receipt.suite.firstFailureCodes = [...new Set(codes)].slice(0, 6);
-  }
+  if (firstFailed) receipt.suite.firstFailure = summarizeFirstFailure(file, firstFailed);
 }
 
 async function main() {
