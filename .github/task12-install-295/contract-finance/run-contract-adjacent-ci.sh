@@ -7,7 +7,7 @@ issue_lane=false
 if [[ ${2:-} == issue* ]]; then
   [[ $# == 3 ]] || exit 64
   case "$2:$3" in
-    issue403:--expense-witness-346|issue404:--expense-witness-346|issue417:--expense-witness-346) ;;
+    issue403:--expense-witness-346|issue404:--expense-witness-346|issue417:--expense-witness-346|issue418-operating:--expense-witness-346) ;;
     issue400_346:--expense-witness-346|issue405_346:--expense-witness-346) ;;
     issue411_346:--expense-witness-346|issue413_346:--expense-witness-346|issue414_346:--expense-witness-346) ;;
     issue416_handover_346:--expense-witness-346|issue416_his_346:--expense-witness-346) ;;
@@ -101,11 +101,19 @@ if [[ ( $lane == task398-ledger-loss || $lane == task398-competition ) && $3 == 
 if [[ $issue_lane == true ]]; then profile=api; fi
 bash "$plan/build.sh" "$work/source" "$sha" "$profile" "$work/browser"
 if [[ $issue_lane == true ]]; then
-  if [[ $lane == issue417 ]]; then
-    bash "$plan/expense-witness/run.sh" "$root" "$work/source" "$sha" "$work/browser" --issue417-history-expense
-  else
-    bash "$plan/issue-ordered/run.sh" "$root" "$work/source" "$sha" "$work/browser" "$lane"
-  fi
+  case "$lane" in
+    issue417)
+      bash "$plan/expense-witness/run.sh" "$root" "$work/source" "$sha" "$work/browser" --issue417-history-expense
+      ;;
+    issue418-operating)
+      # Each profile runs on a fresh database; guarded writers preserve the release ACL.
+      for scope in issue418_recognized_dedup issue418_signed_operating issue418_paired_funds \
+        issue418_cash_attribution issue418_source_unique issue418_guard issue418_contract_drilldown; do
+        bash "$plan/issue-ordered/run.sh" "$root" "$work/source" "$sha" "$work/browser" "$scope"
+      done
+      ;;
+    *) bash "$plan/issue-ordered/run.sh" "$root" "$work/source" "$sha" "$work/browser" "$lane" ;;
+  esac
   exit 0
 fi
 case "$lane" in
