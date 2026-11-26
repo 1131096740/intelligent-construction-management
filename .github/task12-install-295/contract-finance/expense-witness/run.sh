@@ -2,7 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && $5 == --host-only ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --host-only || $5 == --issue417-history-expense ) ) ||
+  ( $# == 6 && $5 == --issue417-history-expense && $6 == --host-only ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -13,7 +14,7 @@ common="$base/common"
 [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$base") ]] || exit 65
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-expense-witness.XXXXXXXX")
 node "$plan/stage.cjs" "$prepared" "$sha" "$work"
-if [[ ${5-} == --host-only ]]; then
+if [[ ${5-} == --host-only || ${6-} == --host-only ]]; then
   printf '%s\n' "$work"
   exit 0
 fi
@@ -38,6 +39,13 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$work/installer.cjs,dst=/qualification/installer.cjs,readonly"
   --mount "type=bind,src=$work/expense-witness-inputs.json,dst=/qualification/expense-witness-inputs.json,readonly"
   --mount "type=bind,src=$plan/entry.cjs,dst=/qualification/expense-witness-entry.cjs,readonly")
+entry=expense-witness-entry.cjs
+if [[ ${5-} == --issue417-history-expense ]]; then
+  entry=historical-expense-335-entry.cjs
+  for file in "$entry" historical-expense-335-profile.cjs historical-expense-335-race.cjs; do
+    args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
+  done
+fi
 for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs; do
   args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
 done
@@ -52,13 +60,23 @@ done < <(find "$work/fixtures" -type f -print0)
 if pgrep -x postgres >/dev/null; then exit 65; fi
 printf '%s\n' "$work"
 status=0
-docker run "${args[@]}" --entrypoint node "$image" /qualification/expense-witness-entry.cjs   >"$work/receipt.json" 2>"$work/private.stderr" || status=$?
+docker run "${args[@]}" --entrypoint node "$image" /qualification/"$entry" >"$work/receipt.json" 2>"$work/private.stderr" || status=$?
 [[ ! -s $work/receipt.json ]] || cat "$work/receipt.json"
 (( status == 0 )) || exit "$status"
-node - "$work/receipt.json" "$sha" "$prepared/source.json" <<'JS'
+node - "$work/receipt.json" "$sha" "$prepared/source.json" "${5-}" <<'JS'
 const assert=require('node:assert/strict');
-const [file,sha,sourceFile]=process.argv.slice(2),r=require(file),source=require(sourceFile);
+const [file,sha,sourceFile,scope]=process.argv.slice(2),r=require(file),source=require(sourceFile);
 assert.equal(r.sourceSha,sha);
+if (scope === '--issue417-history-expense') {
+  assert.equal(source.migrationCount,346);
+  assert.equal(r.status,'ISSUE417_HISTORY_EXPENSE_EXACT_346_PASSED');
+  assert.equal(r.original.operatingLedgerPort,'ORIGINAL_RECORDED_INPUTS');
+  assert.equal(r.original.complete,true);
+  assert.equal(r.sceneRace.staleSceneWriteSqlstate,'40001');
+  assert.equal(r.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
+  assert.equal(r.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
+  process.exit(0);
+}
 assert.equal(r.status,'EXPENSE_WITNESS_'+source.migrationCount+'_PASSED');
 assert.equal(r.fullShardEligible,false);
 assert.equal(r.forward320.count,334);
