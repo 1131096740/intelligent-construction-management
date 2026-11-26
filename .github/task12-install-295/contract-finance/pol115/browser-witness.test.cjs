@@ -63,3 +63,21 @@ test('classifies early browser failures without retaining exception text or sour
   assert.deepEqual(summarizeBrowserWitness(text)?.failures, [{ suite: 'expense', project: 'mobile', testLine: 236,
     category: 'interaction', operation: 'create_page', reason: 'target_closed', stepLine: 241, status: 'failed', durationMs: 91 }]);
 });
+
+test('keeps only the numeric status from the Spot cold-start assertion', (t) => {
+  const output = [];
+  const write = t.mock.method(process.stdout, 'write', chunk => { output.push(chunk); return true; });
+  const witness = new BrowserWitness();
+  const entry = { location: { file: '/private-test-value/pol115-spot-procurement-real.e2e.ts', line: 416 },
+    parent: { project: () => ({ name: 'mobile' }) } };
+  const error = { message: 'Error: POL115_SPOT_COLD_HTTP 200 502\n\nprivate-test-value' };
+  witness.onTestBegin(entry);
+  witness.onTestEnd(entry, { status: 'failed', duration: 91, errors: [error], steps: [
+    { category: 'expect', title: 'expect.toBe', location: { ...entry.location, line: 425 }, steps: [], error }
+  ] });
+  write.mock.restore();
+  const text = output.join('');
+  assert.equal(text.includes('private-test-value'), false);
+  assert.deepEqual(summarizeBrowserWitness(text)?.failures, [{ suite: 'spot', project: 'mobile', testLine: 416,
+    category: 'assertion', stepLine: 425, status: 'failed', durationMs: 91, expectedStatus: 200, receivedStatus: 502 }]);
+});

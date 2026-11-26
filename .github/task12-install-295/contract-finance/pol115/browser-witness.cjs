@@ -1,6 +1,7 @@
 'use strict';
 
 const { basename } = require('node:path');
+const { stripVTControlCharacters } = require('node:util');
 
 const marker = 'POL115_BROWSER_WITNESS ';
 const suites = {
@@ -32,6 +33,7 @@ const reasons = {
   navigation_error: /net::ERR_[A-Z_]+|Frame load interrupted|Navigation interrupted/iu
 };
 const lineNumber = line => Number.isInteger(line) && line > 0 && line <= 2_000;
+const httpStatus = status => Number.isInteger(status) && status >= 100 && status <= 599;
 
 function matchLabel(patterns, text) {
   return Object.entries(patterns).find(([, pattern]) => pattern.test(text))?.[0];
@@ -42,10 +44,13 @@ function diagnoseFailure(step, errors, suite) {
   const message = (step?.error?.message ?? error?.message ?? '').slice(0, 2_048);
   const operation = matchLabel(operations, step?.title ?? '') ?? matchLabel(operations, message.split('\n', 1)[0]);
   const reason = matchLabel(reasons, message);
+  const coldStatus = suite === 'spot' && stripVTControlCharacters(message)
+    .match(/^(?:Error: )?POL115_SPOT_COLD_HTTP 200 ([1-5]\d{2})$/mu);
   const frames = (step?.error?.stack ?? error?.stack ?? '').slice(0, 4_096);
   const frame = [...frames.matchAll(/(?:[\\/])([a-z0-9.-]+\.e2e\.ts):(\d{1,4}):\d{1,4}(?=[)\s]|$)/gu)]
     .find(([, file, line]) => suites[file] === suite && lineNumber(Number(line)));
-  return { ...(operation && { operation }), ...(reason && { reason }), ...(frame && { stepLine: Number(frame[2]) }) };
+  return { ...(operation && { operation }), ...(reason && { reason }), ...(frame && { stepLine: Number(frame[2]) }),
+    ...(coldStatus && { expectedStatus: 200, receivedStatus: Number(coldStatus[1]) }) };
 }
 
 function testIdentity(test) {
@@ -129,7 +134,7 @@ function summarizeBrowserWitness(output) {
     if (events++ >= 512) break;
     let raw;
     try { raw = JSON.parse(json); } catch { continue; }
-    const { event, suite, project, testLine, status, durationMs, category, stepLine, route, operation, reason } = raw;
+    const { event, suite, project, testLine, status, durationMs, category, stepLine, route, operation, reason, expectedStatus, receivedStatus } = raw;
     if (!Object.values(suites).includes(suite) || !projects.includes(project) || !lineNumber(testLine)) continue;
     const key = suite + ':' + project + ':' + testLine;
     const identity = { suite, project, testLine };
@@ -149,6 +154,7 @@ function summarizeBrowserWitness(output) {
         failures.push({ ...progress, ...detail, status,
           ...(typeof operation === 'string' && Object.hasOwn(operations, operation) && { operation }),
           ...(typeof reason === 'string' && Object.hasOwn(reasons, reason) && { reason }),
+          ...(suite === 'spot' && expectedStatus === 200 && httpStatus(receivedStatus) && { expectedStatus, receivedStatus }),
           ...(Number.isInteger(durationMs) && durationMs >= 0 && durationMs <= 900_000 && { durationMs }) });
       }
     }

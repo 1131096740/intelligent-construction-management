@@ -421,6 +421,7 @@ test("零采入口独立浏览器启动保持会话并完成首页读取", async
     page.waitForResponse((result) => result.request().method() === "GET" && new URL(result.url()).pathname === "/api/spot-procurements"),
     gotoWithSingleWebKitInternalErrorRetry(page, "/零星采购工作台")
   ]);
-  expect(response.status()).toBe(200);
+  const status = response.status();
+  expect(status, `POL115_SPOT_COLD_HTTP 200 ${status}`).toBe(200);
   await expect(page.getByRole("button", { name: "新建采购申请", exact: true })).toBeVisible();
 });
