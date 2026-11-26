@@ -300,6 +300,22 @@ profiles.issue416_his_346 = {
   requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
 };
 
+profiles.issue420_346 = {
+  ...profiles.issue420,
+  fixturePatch: 'issue420.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue422_346 = {
+  ...profiles.issue422,
+  fixturePatch: 'issue422.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
 function profileFor(scope) {
   assert.ok(Object.hasOwn(profiles, scope), 'ORDERED_334_SCOPE');
   return profiles[scope];
