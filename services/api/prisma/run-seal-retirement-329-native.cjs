@@ -482,7 +482,8 @@ async function main(args) {
       "", "listen_addresses='127.0.0.1'", "port=" + port, "unix_socket_directories='" + socket + "'", "ssl=on",
       "ssl_cert_file='" + certificate + "'", "ssl_key_file='" + key + "'", "password_encryption='scram-sha-256'",
       "shared_buffers='32MB'", "min_wal_size='32MB'", "max_wal_size='64MB'", "log_min_error_statement='panic'",
-      "log_parameter_max_length_on_error=0", "log_error_verbosity='terse'", ""
+      "log_parameter_max_length_on_error=0", "log_error_verbosity='terse'",
+      ...(expenseCashA24 ? ["log_line_prefix='%e '"] : []), ""
     ].join("\n"));
     stage("PG_START");
     startAttempted = true;
@@ -761,6 +762,16 @@ async function main(args) {
       ? /^NATIVE_A24_34[3456]_[A-Z_]{1,45}$/mu.exec(error.message)?.[0] : undefined;
     receipt.firstFailure = firstFailure ?? { stage: phase, code: typeof error.code === "string" && /^[A-Z0-9_]{1,50}$/u.test(error.code) ? error.code : "CHECK_FAILED",
       ...(catalogReason ? { catalogReason } : {}), ...(tail ? { tail } : {}) };
+    if (expenseCashA24 && phase === "A24_PUBLIC_CASH_AND_ATTRIBUTION") {
+      const errorCodes = fs.readFileSync(path.join(directory, "postgres.log"), "utf8")
+        .split("\n").flatMap(line => {
+          const match = /^([0-9A-Z]{5}) ERROR:\s+(.*)$/u.exec(line);
+          if (!match) return [];
+          const code = /^(EXPENSE_PUBLIC_CASH_VOUCHER_[A-Z_]+|EXPENSE_OPERATING_CASH_[A-Z_]+)$/u.exec(match[2])?.[0];
+          return [{ sqlState: match[1], ...(code ? { code } : {}) }];
+        });
+      receipt.firstFailure.databaseErrors = errorCodes.slice(-12);
+    }
   } finally {
     try {
       if (startAttempted && fs.existsSync(path.join(data, "postmaster.pid"))) {
