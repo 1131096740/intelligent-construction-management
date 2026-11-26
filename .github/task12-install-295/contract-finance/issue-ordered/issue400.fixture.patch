@@ -112,7 +112,7 @@
 -    ]
 +  const director = await prisma.position.upsert({
 +    where: { key: "finance_director" }, update: {}, create: { key: "finance_director", name: "财务主管" }
-@@ -234,15 +251,28 @@
+@@ -234,15 +251,34 @@
 -  await prisma.registeredFundAccount.create({
 -    data: { id: accountId, scopeKey: "public_cash", kind: "public_cash" }
 -  });
@@ -133,7 +133,13 @@
 +    { userId: directorUserId, positionId: director.id }
 +  ] });
 +  const company = await prisma.companyEntity.create({ data: {
-+    name: `#400 隔离我方公司 ${prefix}`, unifiedSocialCreditCode: "913100000000000018"
++    name: `#400 隔离我方公司 ${prefix}`, unifiedSocialCreditCode: "913100000000000018",
++    isActive: true, currentVersionNo: 1
++  } });
++  const companyVersion = await prisma.companyEntityVersion.create({ data: {
++    companyEntityId: company.id, versionNo: 1, name: company.name,
++    unifiedSocialCreditCode: company.unifiedSocialCreditCode, isActive: company.isActive,
++    action: "create", actorUserId: directorUserId
 +  } });
 +  const enterprise = await prisma.businessParty.create({ data: {
 +    name: `#400 隔离施工企业 ${prefix}`, normalizedName: `issue400-${prefix}`, createdByUserId: directorUserId
@@ -156,7 +162,7 @@
 +    confirmedByUserId: staffUserId, confirmedAt: new Date("2026-11-19"),
 +    sources: { create: {
 +      id: sourceBatchId, lineNo: 1, amountYuan: 2000,
-@@ -250,53 +280,37 @@
+@@ -250,53 +286,39 @@
 -    }
 -  });
 -  const refundContractId = randomUUID();
@@ -216,13 +222,15 @@
 +  async function seedPaidRequest(label: string, approved: bigint, amountYuan: number) {
 +    const contract = await prisma.contract.create({ data: {
 +      projectId, code: `HT-${label}-${prefix}`, name: `隔离财务合同 ${label}`,
-+      counterparty: "隔离供应商", contractTypeKey: "material_purchase", companyEntityName: company.name
++      counterparty: "隔离供应商", contractTypeKey: "material_purchase",
++      companyEntityId: company.id, companyEntityName: company.name
 +    } });
 +    const version = await prisma.contractVersion.create({ data: {
-+      contractId: contract.id, versionNo: 1, changeType: "initial", status: "effective",
-+      effectiveAt: new Date("2026-10-01"), amountCents: approved, signingSubjectType: "our_company",
-+      companyEntityIdSnapshot: company.id, companyEntityNameSnapshot: company.name,
-+      draftData: {}, templateSnapshot: {}, clauseSnapshot: {}
++      contractId: contract.id, versionNo: 1, changeType: "original", status: "effective",
++      effectiveAt: new Date("2026-10-01"), numericProtocolVersion: 1,
++      amountCents: approved, signingSubjectType: "our_company", companyEntityVersionId: companyVersion.id,
++      companyEntityIdSnapshot: company.id, companyEntityNameSnapshot: companyVersion.name,
++      draftData: {}, templateSnapshot: {}, clauseSnapshot: []
 +    } });
 +    const terms = await prisma.paymentTermsVersion.create({ data: {
 +      contractId: contract.id, contractVersionId: version.id, versionNo: 1,
@@ -247,7 +255,7 @@
 +      signedSettlementOccupiedCents: 0n, signedSettlementBasisAt: new Date("2026-10-31T03:30:00.000Z")
 +    } });
 +    return { contractId: contract.id, paymentId: payment.id, confirmedSource };
-@@ -304 +318,35 @@
+@@ -304 +326,35 @@
 -  return { prefix, projectId, staffUserId, directorUserId, accountId, refundContractId, correctionContractId, selfReviewContractId, refundPaymentId, correctionPaymentId, selfReviewPaymentId, refundExecutionId, correctionExecutionId, selfReviewExecutionId };
 +
 +  async function seedLegacyExecution(paymentRequestId: string, amountCents: bigint, paidOn: string) {

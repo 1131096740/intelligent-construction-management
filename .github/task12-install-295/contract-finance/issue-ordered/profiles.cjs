@@ -6,7 +6,7 @@ const profiles = {
   issue400: {
     file: 'src/database/issue400-financial-correction-refund.pg.spec.ts',
     sourceDigest: '263db63fb01eb5a821669039c92b645f456d45a51766f08d2345a4cb9986f329',
-    fixtureDigest: '34129e199bd6175105e9723e2ac342052c9637c99c65e8a3951182ab60d1bc70',
+    fixtureDigest: '4b74d949924a41c7e5e0aa070f616b4d28dcfc0562d06f93086fb6802d3b74b7',
     orderedDatabaseKey: 'JG_ISSUE400_ORDERED_DATABASE',
     databaseUrlKey: 'ISSUE400_FINANCIAL_CORRECTION_DATABASE_URL',
     enableKey: 'ISSUE400_FINANCIAL_CORRECTION_RUN',
