@@ -173,7 +173,7 @@ const profiles = {
   },
   issue418_paired_funds: {
     file: 'src/database/issue418-paired-funds.pg.spec.ts',
-    sourceDigest: 'ca9269b07cb4db34a60f79f15263ad3a05793dd8805de9baee5176130093d1cf',
+    sourceDigest: '44333d2f3b22ccafbf0de5012fcf69dc6d71f3afa0973d922a0d5eab42aa7e84',
     orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
     databaseUrlKey: 'ISSUE418_PAIRED_FUNDS_DATABASE_URL',
     enableKey: 'ISSUE418_PAIRED_FUNDS_RUN',
@@ -182,7 +182,10 @@ const profiles = {
     requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
     requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
     requiresOperatingLedgerWriteSecret: true,
-    titles: ['施工企业已付八十元、项目对外支付七十元，资金流水使用同一分录']
+    titles: [
+      '施工企业已付八十元、项目对外支付七十元，资金流水使用同一分录',
+      '同一项目业主一百、内部拨款八十及下游成本六十只入账一次'
+    ]
   },
   issue418_cash_attribution: {
     file: 'src/database/issue418-cash-attribution.pg.spec.ts',
