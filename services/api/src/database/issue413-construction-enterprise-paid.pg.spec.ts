@@ -240,7 +240,7 @@ describe("issue 413 construction enterprise paid PostgreSQL", () => {
   );
 
   integrationTest(
-    "rejects new advances without writing facts and confirms a correction to a historical advance",
+    "rejects new advances and corrects a historical advance against its fully paid request",
     async () => {
       const prisma = new PrismaClient({ datasources: { db: { url: assertDedicatedDatabase() } } });
       const fixture = fixtureIds();
@@ -256,15 +256,39 @@ describe("issue 413 construction enterprise paid PostgreSQL", () => {
           paymentKind: "advance",
           basisType: "oral"
         } as const;
-        const service = new ProjectAffiliateBusinessService(
-          prisma as never, new AuditService(), { confirmPassword: async () => undefined } as never
-        );
+        const auth = {
+          confirmPassword: async (_userId: string, password: string) => {
+            if (password !== "synthetic-approval") throw new Error("密码错误");
+          }
+        };
+        const service = new ProjectAffiliateBusinessService(prisma as never, new AuditService(), auth as never);
+        const corrections = new ProjectConstructionPaymentCorrectionService(prisma as never, new AuditService(), auth as never);
+        const contract = await prisma.contract.create({ data: {
+          projectId, counterparty: counterpartyName, name: "合成外部劳务合同", contractTypeKey: "labor_subcontract"
+        } });
+        const version = await prisma.contractVersion.create({ data: {
+          contractId: contract.id, versionNo: 1, changeType: "original", status: "effective", amountCents: 1_000_000n,
+          effectiveAt: new Date("2026-10-01"), signingSubjectType: "affiliate", affiliateAssignmentId: fixture.affiliateAssignmentId,
+          affiliateBusinessPartyVersionId: fixture.affiliateVersionId, affiliateNameSnapshot: fixture.affiliateName,
+          draftData: {}, templateSnapshot: {}, clauseSnapshot: []
+        } });
+        const terms = await prisma.paymentTermsVersion.create({ data: {
+          contractId: contract.id, contractVersionId: version.id, versionNo: 1, status: "effective", originalText: "按约定预付"
+        } });
+        const createPaidRequest = (suffix: string) => prisma.paymentRequest.create({ data: {
+          projectId, contractId: contract.id, contractVersionId: version.id, paymentTermsVersionId: terms.id,
+          code: `${fixture.prefix}_${suffix}`, paymentSubjectType: "affiliate", sourceType: "contract_advance", status: "paid",
+          requestedAmountCents: 12_000n, approvedAmountCents: 12_000n, paidAmountCents: 12_000n
+        } });
+        const request = await createPaidRequest("paid_advance");
+        const otherRequest = await createPaidRequest("other_paid_advance");
         const existingId = randomUUID();
         const historical = await prisma.projectAffiliatePaymentFact.create({ data: {
           ...payment,
           id: existingId,
           ledgerId: existingId,
           projectId,
+          paymentRequestId: request.id,
           paidAt: new Date(payment.paidAt),
           amountCents: 12_000n,
           externalPaymentReference: `${fixture.prefix}_legacy`,
@@ -289,15 +313,35 @@ describe("issue 413 construction enterprise paid PostgreSQL", () => {
         })).rejects.toThrow("施工企业预付款已停止新增登记");
         expect(await prisma.projectAffiliatePaymentFact.findMany({ where: { projectId } })).toEqual([historical]);
 
-        const correction = await service.recordPaymentFact(projectId, financeUserId, {
-          ...payment, amountCents: "1000", entryKind: "correction", effectDirection: "decrease",
-          adjustsFactId: historical.id, idempotencyKey: randomUUID()
-        });
-        await expect(service.confirmPaymentFact(projectId, correction.id, directorUserId, {
+        const adjustment = {
+          sourceType: "downstream_payment",
+          originalFactId: historical.id,
+          correctionReason: "合成预付款金额更正",
+          amountCents: "11000"
+        } as const;
+        await expect(corrections.requestCorrection(projectId, financeUserId, {
+          ...adjustment, paymentRequestId: otherRequest.id, idempotencyKey: randomUUID()
+        })).rejects.toThrow("更正后的付款申请必须已审批且付款主体、来源与施工企业付款类型一致");
+        expect(await prisma.projectAffiliatePaymentFact.findMany({ where: { projectId } })).toEqual([historical]);
+
+        await expect(corrections.requestCorrection(projectId, financeUserId, {
+          ...adjustment, idempotencyKey: randomUUID()
+        })).resolves.toMatchObject({ status: "pending_confirm" });
+        await corrections.confirmCorrection(projectId, "downstream_payment", historical.id, directorUserId, {
           confirmationPassword: "synthetic-approval", confirmationActionId: randomUUID()
-        })).resolves.toMatchObject({ status: "confirmed", amountCents: "1000" });
+        });
         expect(await prisma.projectAffiliatePaymentFact.findUnique({ where: { id: historical.id } })).toEqual(historical);
-        expect(await prisma.projectAffiliatePaymentFact.count({ where: { projectId, ledgerId: historical.ledgerId } })).toBe(2);
+        expect(await prisma.projectAffiliatePaymentFact.findMany({
+          where: { projectId, adjustsFactId: historical.id },
+          select: { entryKind: true, paymentRequestId: true, status: true, amountCents: true }
+        })).toEqual(expect.arrayContaining([
+          { entryKind: "reversal", paymentRequestId: request.id, status: "confirmed", amountCents: 12_000n },
+          { entryKind: "correction", paymentRequestId: request.id, status: "confirmed", amountCents: 11_000n }
+        ]));
+        expect(await prisma.paymentRequest.findUnique({ where: { id: request.id } })).toMatchObject({
+          status: "partially_paid", paidAmountCents: 11_000n
+        });
+        expect(await prisma.paymentRequest.findUnique({ where: { id: otherRequest.id } })).toEqual(otherRequest);
       } finally {
         await prisma.$disconnect();
       }

@@ -78,13 +78,13 @@ const profiles = {
   },
   issue413: {
     file: 'src/database/issue413-construction-enterprise-paid.pg.spec.ts',
-    sourceDigest: '32c541070eeed35cfd3c1b54fc5c17aa49b1aacbfe86163f3818907a133ce4ab',
+    sourceDigest: 'ed63b7a21358f3b57b8735c8c6a3e2447b2a321eafc6e8ca3003b20b62b71809',
     orderedDatabaseKey: 'JG_ISSUE413_ORDERED_DATABASE',
     enableKey: 'RUN_ISSUE413_CONSTRUCTION_PAID_DATABASE',
     stage: 'ORIGINAL_PAYMENT_JEST',
     titles: [
       'allows overpayment, keeps duplicate registration closed, and re-registers a correction',
-      'rejects new advances without writing facts and confirms a correction to a historical advance'
+      'rejects new advances and corrects a historical advance against its fully paid request'
     ]
   },
   issue414: {
