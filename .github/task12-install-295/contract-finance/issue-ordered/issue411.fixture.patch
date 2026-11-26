@@ -1,30 +1,30 @@
 --- a/fixture.ts
 +++ b/fixture.ts
-@@ -1,0 +2,4 @@ import "reflect-metadata";
+@@ -1,0 +2,4 @@
 +import { equal, match, ok } from "node:assert/strict";
 +import { join } from "node:path";
 +import { AuditService } from "../audit/audit.service";
 +import { ContractBankVerificationService } from "../contract-ledger/contract-bank-verification.service";
-@@ -21,0 +26,5 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -21,0 +26,5 @@
 +  let duties: ReadonlyArray<{ actor: string; role: string }>;
 +  let bankService: ContractBankVerificationService;
 +  const password = randomUUID();
 +  const secret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
 +  let ownsSecret = false;
-@@ -24 +33 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -24 +33 @@
 -  const person = async (role: string) => {
 +  const person = async (role: string, projectId: string | null = null) => {
-@@ -27 +36 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -27 +36 @@
 -    await prisma.userPosition.create({ data: { userId: user.id, positionId: position.id, projectId: null } });
 +    await prisma.userPosition.create({ data: { userId: user.id, positionId: position.id, projectId } });
-@@ -30,3 +39,3 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -30,3 +39,3 @@
 -  const file = async (userId: string) => prisma.fileObject.create({ data: {
 -    bucket: "private-local", objectKey: `issue411/${randomUUID()}`, originalName: "隔离合成依据.pdf",
 -    mimeType: "application/pdf", sizeBytes: 100, uploadedByUserId: userId,
 +  const file = async (userId: string, signature = false) => prisma.fileObject.create({ data: {
 +    bucket: "private-local", objectKey: `issue411/${randomUUID()}`, originalName: signature ? "隔离合成签名.png" : "隔离合成依据.pdf",
 +    mimeType: signature ? "image/png" : "application/pdf", sizeBytes: 100, uploadedByUserId: userId,
-@@ -35,41 +44,17 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -35,41 +44,17 @@
 -  const payerVerification = async (company: { companyId: string; companyCreditCode: string }, name: string) => {
 -    const id = randomUUID(), evidenceFile = await file(financeDirector);
 -    return prisma.paymentExecutionPayerVerification.create({ data: {
@@ -83,11 +83,11 @@
 +    equal(row.status, "confirmed");
 +    ok(row.observationId);
 +    return { id: row.observationId, bankReference };
-@@ -78 +63,2 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -78 +63,2 @@
 -    occurredAt: Date, actor: string, payerVerificationId: string, outgoingEventId?: string) => {
 +    occurredAt: Date, actor: string, outgoingEventId?: string) => {
 +    const proof = await observation(holder, account, kind === "outgoing" ? "outflow" : "inflow", amountCents, occurredAt);
-@@ -80,8 +66,9 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -80,8 +66,9 @@
 -      await writeContext(tx, actor);
 -      const observationId = await observation(tx, { holder, name: holder === a ? "甲合成公司" : holder === b ? "乙合成公司" : "丙合成公司",
 -        projectId: a.projectId, account, direction: kind === "outgoing" ? "outflow" : "inflow", amountCents, occurredAt, actor, payerVerificationId });
@@ -105,11 +105,11 @@
 +        SELECT "id" FROM public.append_company_transfer_event(${payload}::jsonb, ${secret})
 +      `;
 +      await tx.companyTransferBankClaim.create({ data: { observationId: proof.id, eventId: created.id } });
-@@ -91 +78,2 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -91 +78,2 @@
 -  const leaderLog = async (approvalInstanceId: string, approvedRoleKey: string, nodeIndex?: number) => {
 +  const approvalLog = async (approvalInstanceId: string, actor: string, approvedRoleKey: string, nodeIndex?: number) => {
 +    const signature = await prisma.handwrittenSignatureVersion.findFirstOrThrow({ where: { userId: actor } });
-@@ -93,4 +81,3 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -93,4 +81,3 @@
 -      approvalInstanceId, action: "approve", actorUserId: leader, approvedRoleKey,
 -      signatureFileIdSnapshot: evidence.id, signatureSha256Snapshot: evidence.contentSha256,
 -      signatureVersionIdSnapshot: nodeIndex === undefined ? "sig-final" : `sig-${nodeIndex}`,
@@ -117,25 +117,26 @@
 +      approvalInstanceId, action: "approve", actorUserId: actor, representedUserId: actor, approvedRoleKey,
 +      signatureFileIdSnapshot: signature.fileId, signatureSha256Snapshot: signature.contentSha256,
 +      signatureVersionIdSnapshot: signature.id, metadata: nodeIndex === undefined ? {} : { nodeIndex },
-@@ -103 +90 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -103 +90 @@
 -      status: "approved", currentNodeIndex: parallel ? 4 : 1, frozenNodes: nodes as never, applicantUserId: applicant,
 +      status: parallel ? "in_progress" : "approved", currentNodeIndex: parallel ? 0 : 1, frozenNodes: nodes as never, applicantUserId: applicant,
-@@ -105 +92 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -105 +92 @@
 -    if (!parallel) await leaderLog(instance.id, "general_manager");
 +    if (!parallel) await approvalLog(instance.id, leader, "general_manager");
-@@ -109,4 +96,3 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -109,6 +96,6 @@
 -    for (const [index, duty] of nodes.entries()) {
 -      const role = (duty.roleKeys as string[])[0];
 -      await leaderLog(approvalInstanceId, role, index);
 -      duty.approvedRoleKeys = [role];
+-    }
+-    await prisma.approvalInstance.update({ where: { id: approvalInstanceId }, data: { frozenNodes: nodes as never } });
 +    for (const [index, { actor, role }] of duties.entries()) {
 +      await approvalLog(approvalInstanceId, actor, role, index);
 +      nodes[index].approvedRoleKeys = [role];
-@@ -114 +100,2 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
--    await prisma.approvalInstance.update({ where: { id: approvalInstanceId }, data: { frozenNodes: nodes as never } });
++    }
 +    await prisma.approvalInstance.update({ where: { id: approvalInstanceId },
 +      data: { status: "approved", currentNodeIndex: duties.length, frozenNodes: nodes as never } });
-@@ -144,3 +131,13 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -144,3 +131,15 @@
 -    if (process.env.NODE_ENV !== "test" || target.hostname !== "127.0.0.1" || target.pathname !== "/jg_issue411_third_company") {
 -      throw new Error("只允许本机一次性隔离库 jg_issue411_third_company");
 -    }
@@ -149,17 +150,19 @@
 +      target.searchParams.get("sslmode") !== "require" ||
 +      target.searchParams.get("sslaccept") !== "strict" ||
 +      target.searchParams.get("sslcert") !== join(workDir, "ca.crt") ||
-+      [...target.searchParams.keys()].sort().join(",") !== "sslaccept,sslcert,sslmode"
++      target.searchParams.get("schema") !== "public" || target.searchParams.get("connection_limit") !== "1" ||
++      target.searchParams.get("connect_timeout") !== "5" || target.searchParams.get("pool_timeout") !== "5" ||
++      [...target.searchParams.keys()].sort().join(",") !== "connect_timeout,connection_limit,pool_timeout,schema,sslaccept,sslcert,sslmode"
 +    ) throw new Error("ISSUE411_ISOLATED_DATABASE_REQUIRED");
 +    match(secret ?? "", /^[a-f0-9]{64}$/u);
-@@ -147,0 +145,6 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -147,0 +147,6 @@
 +    equal(await prisma.$executeRaw`
 +      INSERT INTO public."OperatingLedgerWriteSecret" ("id", "secretHash")
 +      VALUES (1, public.crypt(${secret}, public.gen_salt('bf')))
 +      ON CONFLICT ("id") DO NOTHING
 +    `, 1, "ISSUE411_ISOLATED_LEDGER_SECRET");
 +    ownsSecret = true;
-@@ -151 +154,10 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -151 +156,10 @@
 -    await prisma.project.update({ where: { id: a.projectId }, data: { operatingLedgerEffectiveDate: new Date("2026-07-01") } });
 +    const effectiveFrom = new Date("2026-07-01");
 +    for (const company of [a, b, c]) {
@@ -171,7 +174,7 @@
 +      } });
 +    }
 +    await prisma.project.update({ where: { id: a.projectId }, data: { operatingLedgerEffectiveDate: effectiveFrom } });
-@@ -156,4 +168,19 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -156,4 +170,19 @@
 -    evidence = { id: (await file(applicant)).id, contentSha256: "a".repeat(64) };
 -    await payerVerification(a, "甲合成公司");
 -    await payerVerification(b, "乙合成公司");
@@ -195,7 +198,7 @@
 +    bankService = new ContractBankVerificationService(prisma as never, new ProjectVisibilityService(prisma as never),
 +      { confirmPassword: async (_actor: string, candidate: string) => { equal(candidate, password); } } as never,
 +      new AuditService());
-@@ -161 +188,10 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -161 +190,10 @@
 -  afterAll(async () => { await prisma?.$disconnect(); });
 +  afterAll(async () => {
 +    try {
@@ -207,21 +210,21 @@
 +      await prisma?.$disconnect();
 +    }
 +  });
-@@ -164,3 +199,0 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -164,3 +201,0 @@
 -    const verificationA = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: a.companyId } });
 -    const verificationB = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: b.companyId } });
 -    const verificationC = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: c.companyId } });
-@@ -172,2 +205,2 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -172,2 +207,2 @@
 -    const loanOutgoing = await event(loan, "outgoing", b, bAccount, 800n, new Date("2026-08-01"), financeStaff, verificationB.id);
 -    await event(loan, "incoming", a, aAccount, 800n, new Date("2026-08-02"), financeDirector, verificationA.id, loanOutgoing);
 +    const loanOutgoing = await event(loan, "outgoing", b, bAccount, 800n, new Date("2026-08-01"), financeStaff);
 +    await event(loan, "incoming", a, aAccount, 800n, new Date("2026-08-02"), financeDirector, loanOutgoing);
-@@ -178,2 +211,2 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -178,2 +213,2 @@
 -    const thirdOutgoing = await event(third, "outgoing", c, cAccount, 800n, new Date("2026-08-10"), financeStaff, verificationC.id);
 -    const thirdIncoming = await event(third, "incoming", b, bAccount, 800n, new Date("2026-08-11"), financeDirector, verificationB.id, thirdOutgoing);
 +    const thirdOutgoing = await event(third, "outgoing", c, cAccount, 800n, new Date("2026-08-10"), financeStaff);
 +    const thirdIncoming = await event(third, "incoming", b, bAccount, 800n, new Date("2026-08-11"), financeDirector, thirdOutgoing);
-@@ -213,10 +245,0 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -213,9 +248,24 @@
 -    const proxy = (amountCents: bigint) => prisma.contractProxyExecution.create({ data: {
 -      projectId: a.projectId, sourceRef: `settlement:${randomUUID()}`, entryKind: "payment", amountCents,
 -      occurredAt: new Date("2026-08-05"), actualPayerKey: `participating_company:${b.companyId}`, bankReference: randomUUID(),
@@ -231,10 +234,7 @@
 -      frozenSource: { debtor: { kind: "participating_company", id: a.companyId }, actualPayer: { kind: "participating_company", id: b.companyId } },
 -      idempotencyKey: randomUUID(), requestFingerprint: randomUUID(),
 -    } });
--    const original = await proxy(800n), target = await proxy(1000n);
-@@ -224,2 +247,24 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
--    const verificationB = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: b.companyId } });
--    const verificationC = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: c.companyId } });
++    const bAccount = "6222000022222222", cAccount = "6222000033333333";
 +    const proxy = async (amountCents: bigint) => {
 +      const occurredAt = new Date("2026-08-05");
 +      const proof = await observation(b, bAccount, "outflow", amountCents, occurredAt);
@@ -258,8 +258,11 @@
 +        } });
 +      });
 +    };
-+    const original = await proxy(800n), target = await proxy(1000n);
-@@ -228,2 +273,2 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
+@@ -223,3 +272,0 @@
+-    const bAccount = "6222000022222222", cAccount = "6222000033333333";
+-    const verificationB = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: b.companyId } });
+-    const verificationC = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: c.companyId } });
+@@ -228,2 +275,2 @@
 -    const outgoing = await event(third, "outgoing", c, cAccount, 800n, new Date("2026-08-12"), financeStaff, verificationC.id);
 -    await event(third, "incoming", b, bAccount, 800n, new Date("2026-08-13"), financeDirector, verificationB.id, outgoing);
 +    const outgoing = await event(third, "outgoing", c, cAccount, 800n, new Date("2026-08-12"), financeStaff);
