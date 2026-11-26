@@ -27,6 +27,9 @@
 +   ||expense.tails?.length!==12||expense.tails.at(-1)?.name!=="20261129015000_expense_public_cash_operating_source"
 +   ||expense.tails.at(-1)?.sha256!=="d2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a"))
 +  throw Error("TASK410_COMPANY_PROXY_346_SCOPE");
+@@ -623 +631 @@
+-   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(exact320?forward.ledgerSha256:exact295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||exact290)?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
++   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(exact346?expense.ledgerSha256:exact320?forward.ledgerSha256:exact295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||exact290)?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
 @@ -649 +657 @@
 -  expectedDirectoryCount:count,terminalMigration:forward.tails.at(-1).name,terminalMigrationChecksum:forward.tails.at(-1).sha256
 +  expectedDirectoryCount:count,terminalMigration:(expense??forward).tails.at(-1).name,terminalMigrationChecksum:(expense??forward).tails.at(-1).sha256

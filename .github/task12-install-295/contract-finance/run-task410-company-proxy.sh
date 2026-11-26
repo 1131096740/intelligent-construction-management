@@ -48,7 +48,7 @@ if [[ $count == 346 ]]; then
   runner="$work/services/api/prisma/run-task398-shared-standard-local.cjs"
   support="$work/services/api/src/database/task410-owned-test-database.ts"
   patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task410-runner-346.patch"
-  [[ $(sha256sum "$runner" | cut -d' ' -f1) == 1b5574d10671d64c434b06bd81a3d3c6fcbaa284b52453503ed8657348a53820 ]] || exit 65
+  [[ $(sha256sum "$runner" | cut -d' ' -f1) == 4e1e78d46d5216ffeacd687d811406812370d319fc63be0f0f14a848b9145af0 ]] || exit 65
   patch --batch --forward --fuzz=0 --silent "$support" < "$plan/task410-support-346.patch"
   [[ $(sha256sum "$support" | cut -d' ' -f1) == 7acab0f94ff522aba999ae7a2fb3378b90140c46699b10588068b58eecf448e0 ]] || exit 65
 fi
