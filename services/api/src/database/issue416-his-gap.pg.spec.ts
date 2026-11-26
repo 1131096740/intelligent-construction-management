@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import * as assert from "node:assert/strict";
 
 import { PrismaClient } from "@prisma/client";
@@ -35,6 +35,7 @@ describe("issue 416 history takeover HIS gaps on PostgreSQL", () => {
       const ids = fixtureIds();
       try {
         await prisma.$connect();
+        await assertOrderedDatabase(prisma, databaseUrl);
         await seedFixture(prisma, ids);
         const audit = new AuditService();
         const handover = new ContractTakeoverHandoverService(prisma as never, audit);
@@ -255,6 +256,7 @@ describe("issue 416 history takeover HIS gaps on PostgreSQL", () => {
       const ids = fixtureIds();
       try {
         await prisma.$connect();
+        await assertOrderedDatabase(prisma, databaseUrl);
         await seedRelayTakeover(prisma, ids);
         const audit = new AuditService();
         await new ContractTakeoverHandoverService(prisma as never, audit).register(
@@ -382,6 +384,7 @@ describe("issue 416 history takeover HIS gaps on PostgreSQL", () => {
       const ids = fixtureIds();
       try {
         await prisma.$connect();
+        await assertOrderedDatabase(prisma, databaseUrl);
         await seedZeroTakeover(prisma, ids);
         const audit = new AuditService();
         await new ContractTakeoverHandoverService(prisma as never, audit).register(
@@ -496,14 +499,47 @@ describe("issue 416 history takeover HIS gaps on PostgreSQL", () => {
 function assertDedicatedDatabase(): string {
   const url = process.env.ISSUE416_HIS_DATABASE_URL ?? "";
   const target = new URL(url);
+  const ordered = process.env.JG_ISSUE416_HIS_ORDERED_DATABASE;
+  const validOrdered = ordered !== undefined &&
+    /^jg_task01_[0-9a-f]{32}$/u.test(ordered) &&
+    target.protocol === "postgresql:" && target.username === "jg_task01_owner" &&
+    Boolean(target.port && target.password) && target.pathname === `/${ordered}` &&
+    target.searchParams.getAll("sslmode").join(",") === "require" &&
+    target.searchParams.getAll("sslaccept").join(",") === "strict" &&
+    /^\/tmp\/jg394-[A-Za-z0-9]+\/ca\.crt$/u.test(target.searchParams.get("sslcert") ?? "");
   if (
     process.env.NODE_ENV !== "test" ||
     target.hostname !== "127.0.0.1" ||
-    !target.pathname.endsWith("_issue416_his")
+    !(ordered === undefined ? target.pathname.endsWith("_issue416_his") : validOrdered)
   ) {
     throw new Error("ISSUE416_HIS_ISOLATED_DATABASE_REQUIRED");
   }
   return url;
+}
+
+async function assertOrderedDatabase(prisma: PrismaClient, databaseUrl: string) {
+  const ordered = process.env.JG_ISSUE416_HIS_ORDERED_DATABASE;
+  if (ordered === undefined) return;
+  const target = new URL(databaseUrl);
+  const [row] = await prisma.$queryRaw<Array<{ accepted: boolean }>>`
+    SELECT current_database() = ${ordered}
+      AND current_user = 'jg_task01_owner' AND session_user = current_user
+      AND current_user::regrole::oid = 10 AND EXISTS(
+        SELECT FROM pg_database WHERE datname = current_database() AND datdba = 10
+      )
+      AND host(inet_client_addr()) = '127.0.0.1' AND host(inet_server_addr()) = '127.0.0.1'
+      AND inet_server_port() = ${Number(target.port)}::integer
+      AND current_setting('server_version_num') = '160015'
+      AND EXISTS (SELECT 1 FROM pg_catalog.pg_stat_ssl WHERE pid = pg_backend_pid() AND ssl)
+      AND (SELECT count(*) = 334
+        AND count(*) FILTER (WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL) = 0
+        AND count(*) FILTER (
+          WHERE migration_name = '20261129003000_historical_signed_settlement_continuation'
+            AND checksum = '9df6dc654b8b0ea21713cc1c1dbcc73a8a74fd49f0df84da3b1556e85215ad5f'
+        ) = 1
+        FROM public._prisma_migrations) AS accepted
+  `;
+  assert.equal(row?.accepted, true, "ISSUE416_HIS_ORDERED_DATABASE_REQUIRED");
 }
 
 function fixtureIds() {
@@ -564,10 +600,10 @@ async function seedFixture(
     ["issue416-his-pos-finance-director", "finance_director", "财务主管"],
     ["issue416-his-pos-contract-director", "contract_director", "合同部主管"]
   ] as const;
-  await prisma.position.createMany({
-    data: positions.map(([id, key, name]) => ({ id, key, name }))
-  });
-  const positionByKey = new Map(positions.map(([id, key]) => [key, id]));
+  const existingPositions = await Promise.all(positions.map(([id, key, name]) =>
+    prisma.position.upsert({ where: { key }, create: { id, key, name }, update: {} })
+  ));
+  const positionByKey = new Map(existingPositions.map(({ id, key }) => [key, id]));
   await prisma.userPosition.createMany({
     data: users.map(([userId, , roleKey]) => ({
       userId,
@@ -582,6 +618,51 @@ async function seedFixture(
       name: "Issue416 HIS 真库项目",
       isActive: true
     }
+  });
+  const company = await prisma.companyEntity.create({
+    data: {
+      id: "issue416-his-company",
+      name: "我方公司",
+      unifiedSocialCreditCode: "913100000000000018",
+      currentVersionNo: 1,
+      dataStatus: "complete"
+    }
+  });
+  const companyVersion = await prisma.companyEntityVersion.create({
+    data: {
+      id: "issue416-his-company-version",
+      companyEntityId: company.id,
+      versionNo: 1,
+      name: company.name,
+      unifiedSocialCreditCode: company.unifiedSocialCreditCode,
+      isActive: true,
+      action: "create",
+      actorUserId: ids.supervisor
+    }
+  });
+  await prisma.projectParticipatingCompany.create({
+    data: {
+      projectId: ids.project,
+      companyEntityId: company.id,
+      companyEntityVersionId: companyVersion.id,
+      companyNameSnapshot: company.name,
+      companyCreditCodeSnapshot: company.unifiedSocialCreditCode,
+      effectiveFrom: new Date("2025-01-01T00:00:00.000Z"),
+      changeReason: "真库用例预置",
+      addedByUserId: ids.supervisor
+    }
+  });
+  const affiliate = await prisma.businessParty.create({
+    data: { name: "施工企业甲", normalizedName: "施工企业甲", createdByUserId: ids.supervisor }
+  });
+  const affiliateVersion = await prisma.businessPartyVersion.create({
+    data: { businessPartyId: affiliate.id, versionNo: 1, snapshot: { name: affiliate.name }, createdByUserId: ids.supervisor }
+  });
+  const counterparty = await prisma.businessParty.create({
+    data: { name: "历史供应商", normalizedName: "历史供应商", createdByUserId: ids.contractUser }
+  });
+  const counterpartyVersion = await prisma.businessPartyVersion.create({
+    data: { businessPartyId: counterparty.id, versionNo: 1, snapshot: { name: counterparty.name }, createdByUserId: ids.contractUser }
   });
   await prisma.contract.create({
     data: {
@@ -605,12 +686,10 @@ async function seedFixture(
       amountCents: 1_000_000n,
       amountLimitType: "capped",
       signingSubjectType: "our_company",
-      companyEntityIdSnapshot: "issue416-his-company",
-      companyEntityVersionId: "issue416-his-company-version",
-      companyEntityNameSnapshot: "我方公司",
-      affiliateAssignmentId: "issue416-his-affiliate",
-      affiliateBusinessPartyVersionId: "issue416-his-affiliate-version",
-      affiliateNameSnapshot: "施工企业甲",
+      companyEntityIdSnapshot: company.id,
+      companyEntityVersionId: companyVersion.id,
+      companyEntityNameSnapshot: company.name,
+      companyEntityCreditCodeSnapshot: company.unifiedSocialCreditCode,
       draftData: {
         historicalTakeover: true,
         relationship: "outside"
@@ -633,9 +712,9 @@ async function seedFixture(
     data: {
       id: "issue416-his-affiliate",
       projectId: ids.project,
-      businessPartyId: "issue416-his-business-party",
-      businessPartyVersionId: "issue416-his-affiliate-version",
-      affiliateNameSnapshot: "施工企业甲",
+      businessPartyId: affiliate.id,
+      businessPartyVersionId: affiliateVersion.id,
+      affiliateNameSnapshot: affiliate.name,
       effectiveFrom: new Date("2025-01-01T00:00:00.000Z"),
       changeReason: "真库用例预置",
       assignedByUserId: ids.supervisor
@@ -646,8 +725,8 @@ async function seedFixture(
       contractVersionId: ids.version,
       roleKey: "party_b",
       displayOrder: 0,
-      businessPartyVersionId: "issue416-his-counterparty-version",
-      snapshot: { name: "历史供应商" }
+      businessPartyVersionId: counterpartyVersion.id,
+      snapshot: { name: counterparty.name }
     }
   });
   await prisma.contractTakeover.create({
@@ -725,6 +804,18 @@ async function seedFixture(
       note: "接管前已付 70，累计结算 60",
       status: "draft"
     }
+  });
+  const evidenceOwners = [
+    ["issue416-his-voucher-file", ids.finance],
+    ["issue416-his-settlement-file", ids.contractUser],
+    ["issue416-his-excess-file", ids.finance]
+  ] as const;
+  await prisma.fileObject.createMany({
+    data: evidenceOwners.map(([id, userId]) => ({
+      id, bucket: "private-local", objectKey: `issue416-his/${id}.pdf`,
+      originalName: `${id}.pdf`, mimeType: "application/pdf", sizeBytes: Buffer.byteLength(id),
+      contentSha256: createHash("sha256").update(id).digest("hex"), uploadedByUserId: userId
+    }))
   });
   await prisma.contractTakeoverHistoricalPaymentVoucher.create({
     data: {
