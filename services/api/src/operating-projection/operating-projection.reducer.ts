@@ -1554,12 +1554,14 @@ export class OperatingProjectionStreamAccumulator {
   private retroactiveFactCount = 0;
   private integrityFactCount = 0;
   private integrityImpactCount = 0;
+  private readonly suppressedSettlementFactIds = new Set<string>();
 
   constructor(private readonly context: {
     numericProtocolVersion?: 1 | 2;
     scope: ProjectionScopeInput;
     cutoffAt: string;
     collectSourceReferenceTotals?: boolean;
+    collectSuppressedSettlementFactIds?: boolean;
     maxIntegrityFacts?: number;
     maxIntegrityImpacts?: number;
     maxHolderAliases?: number;
@@ -1785,7 +1787,10 @@ export class OperatingProjectionStreamAccumulator {
     this.decimalFacts.clear();
     for (const state of this.stateByFactId.values()) {
       const fact = state.fact;
-      if (state.crossSourceDuplicate) this.crossSourceDedupedFactCount += 1;
+      if (state.crossSourceDuplicate) {
+        this.crossSourceDedupedFactCount += 1;
+        if (this.context.collectSuppressedSettlementFactIds) this.suppressedSettlementFactIds.add(fact.id);
+      }
       if (state.selected) {
         if (!EVIDENCE_LEVEL_SET.has(fact.evidenceLevel)) {
           this.markMoneyIncomplete("经营事实使用未知证据等级，金额投影已关闭。");
@@ -1869,6 +1874,7 @@ export class OperatingProjectionStreamAccumulator {
         moneyComplete: this.moneyComplete,
         notices: [...this.notices]
       } satisfies ProjectionAggregateSeed,
+      suppressedSettlementFactIds: this.suppressedSettlementFactIds,
       integrityFacts: this.integrityFacts,
       restrictionCashContext: {
         conflict: this.restrictionConflict,
