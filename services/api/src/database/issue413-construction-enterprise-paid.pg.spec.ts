@@ -246,6 +246,21 @@ function assertDedicatedDatabase() {
     throw new Error("ISSUE-413 测试必须连接非生产隔离数据库");
   }
   const parsed = new URL(databaseUrl);
+  const orderedDatabase = process.env.JG_ISSUE413_ORDERED_DATABASE;
+  if (orderedDatabase !== undefined) {
+    if (
+      !/^jg_task01_[a-f0-9]{32}$/u.test(orderedDatabase) ||
+      parsed.protocol !== "postgresql:" ||
+      parsed.hostname !== "127.0.0.1" ||
+      parsed.username !== "jg_task01_owner" ||
+      parsed.pathname !== `/${orderedDatabase}` ||
+      parsed.searchParams.getAll("sslmode").join(",") !== "require" ||
+      parsed.searchParams.getAll("sslaccept").join(",") !== "strict"
+    ) {
+      throw new Error("ISSUE-413 测试需要本轮有序安装的 TLS 专库");
+    }
+    return databaseUrl;
+  }
   if (
     !["postgresql:", "postgres:"].includes(parsed.protocol) ||
     !["127.0.0.1", "localhost", "::1"].includes(parsed.hostname) ||
@@ -267,6 +282,7 @@ function fixtureIds() {
     contractLedgerId: `${prefix}_contract_ledger`,
     counterpartyName: `下游供应商 ${prefix}`,
     affiliateName: `施工企业 ${prefix}`,
+    affiliatePartyId: `${prefix}_party`,
     affiliateAssignmentId: `${prefix}_assignment`,
     affiliateVersionId: `${prefix}_version`,
     settlementLedgerId: `${prefix}_settlement_ledger_1`,
@@ -292,6 +308,35 @@ async function seedFixture(prisma: PrismaClient, fixture: ReturnType<typeof fixt
       { id: fixture.financeUserId, name: "财务经办" },
       { id: fixture.directorUserId, name: "财务主管" }
     ]
+  });
+  await prisma.businessParty.create({
+    data: {
+      id: fixture.affiliatePartyId,
+      name: fixture.affiliateName,
+      normalizedName: fixture.affiliateName,
+      createdByUserId: fixture.directorUserId
+    }
+  });
+  await prisma.businessPartyVersion.create({
+    data: {
+      id: fixture.affiliateVersionId,
+      businessPartyId: fixture.affiliatePartyId,
+      versionNo: 1,
+      snapshot: { name: fixture.affiliateName },
+      createdByUserId: fixture.directorUserId
+    }
+  });
+  await prisma.projectAffiliateAssignment.create({
+    data: {
+      id: fixture.affiliateAssignmentId,
+      projectId: fixture.projectId,
+      businessPartyId: fixture.affiliatePartyId,
+      businessPartyVersionId: fixture.affiliateVersionId,
+      affiliateNameSnapshot: fixture.affiliateName,
+      effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+      changeReason: "初始施工企业",
+      assignedByUserId: fixture.directorUserId
+    }
   });
   await prisma.projectMember.createMany({
     data: [

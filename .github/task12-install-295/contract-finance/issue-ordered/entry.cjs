@@ -1,0 +1,111 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { createHash, randomBytes } = require('node:crypto');
+const { spawnSync } = require('node:child_process');
+const { admitSource } = require('./install-only292.cjs');
+const { withCombined334HistoricalSettlement } = require('./installer.cjs');
+const { final } = require('./multi-witness.cjs');
+const historical = require('./historical-settlement-334-profile.cjs');
+const source = require('./contract-finance-source.json');
+
+const root = '/qualification';
+const api = path.join(root, 'workspace/services/api');
+const { profileFor } = require('./issue-ordered-profiles.cjs');
+const scope = process.argv[2];
+const profile = profileFor(scope);
+const { file, titles } = profile;
+const purpose = scope.toUpperCase() + '_ORIGINAL_334';
+const receipt = { schemaVersion: 1, purpose, sourceSha: source.sourceSha,
+  stages: ['INPUTS'], status: 'STOPPED' };
+const sha256 = value => createHash('sha256').update(value).digest('hex');
+
+async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql }) {
+  assert.equal(candidateTree, source.sourceTree);
+  assert.equal(database, 'jg_task01_' + runId.replaceAll('-', ''));
+  const url = new URL(ownerUrl);
+  assert.equal(url.protocol, 'postgresql:');
+  assert.equal(url.hostname, '127.0.0.1');
+  assert.equal(url.username, 'jg_task01_owner');
+  assert.equal(url.pathname, '/' + database);
+  assert.deepEqual(url.searchParams.getAll('sslmode'), ['require']);
+  assert.deepEqual(url.searchParams.getAll('sslaccept'), ['strict']);
+  assert.deepEqual(url.searchParams.getAll('sslcert'), [path.join(workDir, 'ca.crt')]);
+  historical.assertFinanceInstallation(receipt, source);
+  const { stdout } = await sql(`SELECT (
+    current_database() = '${database}' AND current_user = session_user AND current_user = 'jg_task01_owner' AND
+    current_user::regrole::oid = 10 AND EXISTS(SELECT FROM pg_database WHERE datname=current_database() AND datdba=10) AND
+    current_setting('server_version_num')::int BETWEEN 160000 AND 169999 AND inet_server_port() = ${Number(url.port)} AND
+    host(inet_client_addr()) = '127.0.0.1' AND host(inet_server_addr()) = '127.0.0.1' AND
+    EXISTS(SELECT FROM pg_stat_ssl WHERE pid=pg_backend_pid() AND ssl)
+  )::text;`);
+  assert.equal(stdout.trim(), 'true', 'ISSUE_ORDERED_ISOLATED_OWNER_TLS');
+  receipt.isolatedFixtureOwnerVerified = true;
+  const work = fs.mkdtempSync(path.join(workDir, scope + '-'));
+  const reportFile = path.join(work, 'jest.json');
+  const secret = () => randomBytes(32).toString('hex');
+  receipt.stages.push(profile.stage);
+  const child = spawnSync(process.execPath, [path.join(api, 'node_modules/jest/bin/jest.js'),
+    '--runInBand', '--runTestsByPath', file, '--json', '--outputFile', reportFile], {
+    cwd: api, encoding: 'utf8', timeout: 600_000, maxBuffer: 8 * 1024 * 1024,
+    env: { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: workDir, TMPDIR: workDir,
+      NODE_ENV: 'test', CI: 'true', DATABASE_URL: ownerUrl, [profile.orderedDatabaseKey]: database,
+      [profile.enableKey]: '1', FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: path.join(work, 'files'),
+      FILE_DOWNLOAD_SECRET: secret(), JWT_ACCESS_SECRET: secret(), JWT_REFRESH_SECRET: secret(),
+      APPROVAL_SMS_ENABLED: 'false', SMS_ENABLED: 'false' }
+  });
+  const report = fs.existsSync(reportFile) && fs.statSync(reportFile).size <= 8 * 1024 * 1024
+    ? JSON.parse(fs.readFileSync(reportFile, 'utf8')) : null;
+  const rows = report?.testResults?.[0]?.assertionResults ?? [];
+  const counts = { registered: report?.numTotalTests, passed: report?.numPassedTests,
+    skipped: report?.numPendingTests, processExit: child.status };
+  receipt.suite = { ...counts, titles: rows.map(row => ({ title: row.title, status: row.status })),
+    complete: child.status === 0 && !child.error && !child.signal && report?.success === true &&
+      report?.testResults?.length === 1 && report.testResults[0].name === path.join(api, file) &&
+      counts.registered === titles.length && counts.passed === titles.length && counts.skipped === 0 &&
+      rows.length === titles.length && rows.every((row, index) => row.title === titles[index] && row.status === 'passed') };
+  const firstFailed = rows.find(row => row.status === 'failed');
+  if (firstFailed) {
+    const diagnostic = (firstFailed.failureMessages ?? []).join('\n');
+    const codes = [...diagnostic.matchAll(
+      /\b(P\d{4})\b|\b(?:SQLSTATE|Code:)\s*`?([0-9A-Z]{5})\b/gu
+    )].map(match => match[1] ?? match[2]);
+    receipt.suite.firstFailureCodes = [...new Set(codes)].slice(0, 6);
+  }
+}
+
+async function main() {
+  assert.equal(process.argv.length, 3);
+  assert.notEqual(process.getuid(), 0);
+  assert.equal(process.env.DATABASE_URL, undefined);
+  historical.assertSource(source, final);
+  assert.equal(sha256(fs.readFileSync(path.join(root, 'installer.cjs'))), historical.installerSha256);
+  assert.equal(sha256(fs.readFileSync(path.join(api, file))),
+    profile.fixtureDigest ?? profile.sourceDigest);
+  const schema = require(path.join(api, 'prisma/migration-baseline.cjs')).loadCanonicalMigrationBaseline();
+  assert.equal(schema.expectedDirectoryCount, 334);
+  assert.equal(schema.terminalMigration, historical.terminal.name);
+  assert.equal(schema.terminalMigrationChecksum, historical.terminal.sha256);
+  receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
+  await withCombined334HistoricalSettlement(receipt, consume, {
+    sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails
+  });
+  assert.equal(receipt.combinedAfterBusiness.count, 334);
+  assert.equal(receipt.combinedAfterBusiness.ledgerSha256, source.ledgerSha256);
+  assert.equal(receipt.combinedAfterBusiness.sameIdentity, true);
+  assert.equal(receipt.combinedAfterBusiness.exactB7, true);
+  assert.equal(receipt.multiWitnessCatalogAfterBusiness, true);
+  assert.equal(receipt.historicalTakeoverCatalogAfterBusiness, true);
+  assert.equal(receipt.historicalSettlementCatalogAfterBusiness, true);
+  assert.equal(receipt.cleanup, 'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
+  assert.equal(receipt.suite?.complete, true, 'ISSUE_ORDERED_ORIGINAL_COVERAGE');
+  receipt.status = purpose + '_PASSED';
+}
+main().catch(error => {
+  receipt.failure = { stage: receipt.stages.at(-1),
+    code: /^[A-Z0-9_]+$/u.test(error.message) ? error.message : 'ISSUE_ORDERED_FAILED',
+    sqlstate: error.sqlstate, prismaCode: error.prismaCode };
+  process.exitCode = 1;
+}).finally(() => process.stdout.write(JSON.stringify(receipt) + '\n'));
