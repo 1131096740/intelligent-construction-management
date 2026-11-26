@@ -2,16 +2,16 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 ) ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 || $6 == --expense-witness-346 ) ) ||
+  ( $# == 7 && $6 == --expense-witness-346 && $7 == --host-only ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
-build=$(cd "$4" && pwd -P)
 mode_args=()
 count=295
-if [[ $# == 6 ]]; then
+if (( $# >= 6 )); then
   mode_args=("$6")
-  case "$6" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; --upward-archive-332) count=332;; --historical-settlement-334) count=334;; esac
+  case "$6" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; --upward-archive-332) count=332;; --historical-settlement-334) count=334;; --expense-witness-346) count=346;; esac
 fi
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -20,9 +20,16 @@ shard=$5
 case "$shard" in core) size=512m ;; facts) size=1g ;; impacts) size=2g ;; *) exit 64 ;; esac
 scope=pol108-$shard
 
+source_tree=
+if [[ $count == 346 ]]; then
+  [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
+  dirty=$(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" .github/task12-install-289 .github/task12-install-290)
+  [[ -z $dirty ]] || exit 65
+  source_tree=$(git -C "$repo" rev-parse "$sha^{tree}")
+fi
 node -e '
   const source=require(process.argv[1]);
-  const modes={329:"current-320",330:"text-direct-330",331:"payment-remainder-331",332:"upward-archive-332",334:"historical-settlement-334"};
+  const modes={329:"current-320",330:"text-direct-330",331:"payment-remainder-331",332:"upward-archive-332",334:"historical-settlement-334",346:"expense-witness-346"};
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==Number(process.argv[3])||source.mode!==modes[process.argv[3]])process.exit(1);
   if(source.mode==="upward-archive-332"){
     const plan=process.argv[4];
@@ -30,17 +37,26 @@ node -e '
   } else if(source.mode==="historical-settlement-334"){
     const plan=process.argv[4];
     require(plan+"/historical-settlement-334-profile.cjs").assertSource(source,require(plan+"/common/multi-witness.cjs").final);
+  } else if(source.mode==="expense-witness-346"){
+    const plan=process.argv[4];
+    require("node:assert/strict").equal(source.sourceTree,process.argv[5]);
+    require(plan+"/expense-witness-346-profile.cjs").assertSource(source,require(plan+"/common/multi-witness.cjs").final);
   }
-' "$prepared/source.json" "$sha" "$count" "$plan"
+' "$prepared/source.json" "$sha" "$count" "$plan" "$source_tree"
+work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
+material="$work/material"
+python3 "$plan/stage-pol108.py" "$repo/.github/task12-install-289" "$repo/.github/task12-install-290" "$common" "$material" "$shard" "$count"
+if [[ ${7-} == --host-only ]]; then
+  printf '%s\n' "$material"
+  exit 0
+fi
+
+build=$(cd "$4" && pwd -P)
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
 [[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
 [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
-
-work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
-material="$work/material"
-python3 "$plan/stage-pol108.py" "$repo/.github/task12-install-289" "$repo/.github/task12-install-290" "$common" "$material" "$shard" "$count"
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
   --security-opt no-new-privileges --user postgres --init --pids-limit 128 --memory 4g
@@ -56,11 +72,16 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
-if [[ $count == 332 || $count == 334 ]]; then
+if [[ $count == 332 || $count == 334 || $count == 346 ]]; then
   args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 fi
-if [[ $count == 334 ]]; then
+if [[ $count == 334 || $count == 346 ]]; then
   for file in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
+    args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
+  done
+fi
+if [[ $count == 346 ]]; then
+  for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
 fi

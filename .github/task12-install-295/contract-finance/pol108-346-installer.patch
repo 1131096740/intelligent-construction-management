@@ -1,0 +1,26 @@
+--- installer.cjs
++++ installer.cjs
+@@ -237 +237 @@
+-function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic} = {}) {
++function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic, cwd} = {}) {
+@@ -240 +240 @@
+-    cwd:process.env.JG_RUN_ROOT || '/tmp', env:{ ...baseEnv, HOME:'/tmp', ...extra },
++    cwd:cwd ?? (process.env.JG_RUN_ROOT || '/tmp'), env:{ ...baseEnv, HOME:'/tmp', ...extra },
+@@ -375 +375 @@
+-statement_timeout='60s'
++${receipt.purpose==='ORIGINAL_POL108_EXACT_346' ? "track_functions='all'\ntrack_io_timing=on\n" : ''}statement_timeout='60s'
+@@ -1583,0 +1584,14 @@
++
++module.exports.withPol108At346 = (receipt,shard,material) => {
++  need(receipt.purpose==='ORIGINAL_POL108_EXACT_346' && ['core','facts','impacts'].includes(shard),'POL108_346_SCOPE');
++  const source=require('./contract-finance-source.json');
++  const profile=require('./expense-witness-346-profile.cjs');
++  return module.exports.withCombinedExpenseWitness(receipt,context=>{
++    require('./historical-settlement-334-profile.cjs').assertFinanceInstallation(receipt,{...source,tails:source.tails.slice(0,39)});
++    need(equal(receipt.expenseWitnessForward,{
++      count:profile.count,ledgerSha256:profile.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
++      tails:source.tails.slice(39).map(({name,sha256})=>({name,sha256}))
++    }),'POL108_346_FORWARD_LEDGER');
++    return require('./pol108-289.cjs').runPol108(context,shard,receipt,runCommand,baseEnv,need);
++  },material,profile.count);
++};
