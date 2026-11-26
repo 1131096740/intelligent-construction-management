@@ -1,0 +1,219 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -1,0 +2 @@
++import { join } from "node:path";
+@@ -3 +4 @@
+-import { PrismaClient } from "@prisma/client";
++import { PrismaClient, type Prisma } from "@prisma/client";
+@@ -12 +13,2 @@
+-import type { AppendOperatingFactInput } from "../operating-ledger/operating-ledger.service";
++import { FundAccountService } from "../fund-account/fund-account.service";
++import { OperatingLedgerService, type AppendOperatingFactInput, type OperatingFactEntryKind } from "../operating-ledger/operating-ledger.service";
+@@ -32 +33,0 @@
+-    const fixture = await seedFixture(prisma);
+@@ -45,0 +47 @@
++    const operatingLedger = new OperatingLedgerService(prisma as never);
+@@ -47 +49,2 @@
+-      async appendConfirmedSourceInTransaction(_tx: unknown, input: AppendOperatingFactInput, _actorUserId: string, entryKind = "original") {
++      async appendConfirmedSourceInTransaction(tx: Prisma.TransactionClient, input: AppendOperatingFactInput, actorUserId: string, entryKind: OperatingFactEntryKind = "original") {
++        const result = await operatingLedger.appendConfirmedSourceInTransaction(tx, input, actorUserId, entryKind);
+@@ -49 +52 @@
+-        return { id: randomUUID() };
++        return result;
+@@ -65,0 +69,3 @@
++    const secret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
++    assert.match(secret ?? "", /^[a-f0-9]{64}$/u);
++    let ownsSecret = false;
+@@ -66,0 +73,8 @@
++      const fixture = await seedFixture(prisma, new FundAccountService(prisma as never, auth as never, new AuditService()));
++      const createdSecret = await prisma.$executeRaw`
++        INSERT INTO public."OperatingLedgerWriteSecret" ("id", "secretHash")
++        VALUES (1, public.crypt(${secret}, public.gen_salt('bf')))
++        ON CONFLICT ("id") DO NOTHING
++      `;
++      assert.equal(createdSecret, 1, "ISSUE405_ISOLATED_LEDGER_SECRET");
++      ownsSecret = true;
+@@ -120,30 +134,3 @@
+-      const originalFact = await prisma.operatingFact.create({
+-        data: {
+-          projectId: approvalFact.input.projectId,
+-          sourceType: approvalFact.input.sourceType,
+-          sourceBusinessId: approvalFact.input.sourceBusinessId,
+-          sourceVersion: approvalFact.input.sourceVersion,
+-          sourceBusinessCode: approvalFact.input.sourceBusinessCode,
+-          occurredAt: approvalFact.input.occurredAt,
+-          confirmedAt: approvalFact.input.confirmedAt,
+-          affiliateAssignmentId: approvalFact.input.affiliateAssignmentId,
+-          affiliateBusinessPartyVersionId: approvalFact.input.affiliateBusinessPartyVersionId,
+-          affiliateNameSnapshot: approvalFact.input.affiliateNameSnapshot,
+-          affiliateCreditCodeSnapshot: approvalFact.input.affiliateCreditCodeSnapshot ?? null,
+-          operatingLedgerEffectiveDateSnapshot: new Date("2026-01-01T00:00:00.000Z"),
+-          isBeforeOperatingLedgerEffectiveDate: approvalFact.input.isBeforeOperatingLedgerEffectiveDate,
+-          factKind: approvalFact.input.factKind,
+-          operatingLevel: approvalFact.input.operatingLevel,
+-          evidenceLevel: approvalFact.input.evidenceLevel,
+-          amountCents: approvalFact.input.amountCents,
+-          currencyCode: approvalFact.input.currencyCode,
+-          direction: approvalFact.input.direction,
+-          subjectSnapshot: {},
+-          sourceSnapshot: approvalFact.input.sourceSnapshot,
+-          basisSnapshot: approvalFact.input.basisSnapshot,
+-          idempotencyKey: approvalFact.input.idempotencyKey,
+-          recordedByUserId: fixture.handlerUserId,
+-          confirmedByUserId: approvalFact.input.confirmedByUserId,
+-          entryKind: "original"
+-        }
+-      });
++      const originalFact = await prisma.$transaction(tx => operatingLedger.appendConfirmedSourceInTransaction(
++        tx, approvalFact.input, approvalFact.input.confirmedByUserId
++      ));
+@@ -186,0 +174,6 @@
++      assert.ok(refundRow.fundRegistrationId);
++      const refundFunding = await prisma.fundAccountBalanceRegistration.findUniqueOrThrow({
++        where: { id: refundRow.fundRegistrationId }
++      });
++      expect(refundFunding.kind).toBe("payment_refund");
++      expect(refundFunding.balanceYuan?.toFixed(4)).toBe("7000.0000");
+@@ -235 +228 @@
+-      // 真实经营账会把更正事实落库；本用例用受控端口收集后按同一输入补写，验证同键回放。
++      // 更正和费用状态在同一事务写入，按实际经营账的幂等键读回。
+@@ -237,30 +230,2 @@
+-      const correctionFact = await prisma.operatingFact.create({
+-        data: {
+-          projectId: correctionInput.projectId,
+-          sourceType: correctionInput.sourceType,
+-          sourceBusinessId: correctionInput.sourceBusinessId,
+-          sourceVersion: correctionInput.sourceVersion,
+-          sourceBusinessCode: correctionInput.sourceBusinessCode,
+-          occurredAt: correctionInput.occurredAt,
+-          confirmedAt: correctionInput.confirmedAt,
+-          affiliateAssignmentId: correctionInput.affiliateAssignmentId,
+-          affiliateBusinessPartyVersionId: correctionInput.affiliateBusinessPartyVersionId,
+-          affiliateNameSnapshot: correctionInput.affiliateNameSnapshot,
+-          affiliateCreditCodeSnapshot: correctionInput.affiliateCreditCodeSnapshot ?? null,
+-          operatingLedgerEffectiveDateSnapshot: new Date("2026-01-01T00:00:00.000Z"),
+-          isBeforeOperatingLedgerEffectiveDate: correctionInput.isBeforeOperatingLedgerEffectiveDate,
+-          factKind: correctionInput.factKind,
+-          operatingLevel: correctionInput.operatingLevel,
+-          evidenceLevel: correctionInput.evidenceLevel,
+-          amountCents: correctionInput.amountCents,
+-          currencyCode: correctionInput.currencyCode,
+-          direction: correctionInput.direction,
+-          subjectSnapshot: {},
+-          sourceSnapshot: correctionInput.sourceSnapshot,
+-          basisSnapshot: correctionInput.basisSnapshot,
+-          idempotencyKey: correctionInput.idempotencyKey,
+-          recordedByUserId: fixture.financeDirectorUserId,
+-          confirmedByUserId: correctionInput.confirmedByUserId,
+-          entryKind: "correction",
+-          adjustsFactId: correctionInput.adjustsFactId
+-        }
++      const correctionFact = await prisma.operatingFact.findUniqueOrThrow({
++        where: { idempotencyKey: correctionInput.idempotencyKey }
+@@ -282 +247,10 @@
+-      await prisma.$disconnect();
++      try {
++        if (ownsSecret) {
++          assert.equal(await prisma.$executeRaw`
++            DELETE FROM public."OperatingLedgerWriteSecret" WHERE "id" = 1
++              AND public.crypt(${secret}, "secretHash") = "secretHash"
++          `, 1, "ISSUE405_ISOLATED_LEDGER_SECRET_CLEANUP");
++        }
++      } finally {
++        await prisma.$disconnect();
++      }
+@@ -290 +264,16 @@
+-  assert.match(url, /^postgresql:\/\/[^/]+\/jiangkong_issue405(\?.*)?$/u);
++  const target = new URL(url);
++  const database = process.env.JG_ISSUE405_ORDERED_DATABASE ?? "";
++  const workDir = process.env.TMPDIR;
++  if (
++    process.env.NODE_ENV !== "test" || url !== process.env.DATABASE_URL ||
++    !/^jg_task01_[a-f0-9]{32}$/u.test(database) ||
++    target.protocol !== "postgresql:" || target.hostname !== "127.0.0.1" ||
++    target.username !== "jg_task01_owner" || !target.password || !target.port ||
++    target.pathname !== "/" + database ||
++    target.searchParams.getAll("sslmode").join(",") !== "require" ||
++    target.searchParams.getAll("sslaccept").join(",") !== "strict" ||
++    !workDir || !/^\/tmp\/jg394-[A-Za-z0-9]+$/u.test(workDir) ||
++    target.searchParams.getAll("sslcert").join(",") !== join(workDir, "ca.crt")
++  ) {
++    throw new Error("ISSUE405_ORDERED_DATABASE_REQUIRED");
++  }
+@@ -310 +299 @@
+-async function seedFixture(prisma: PrismaClient) {
++async function seedFixture(prisma: PrismaClient, fundAccounts: FundAccountService) {
+@@ -319,3 +308 @@
+-  const accountId = randomUUID();
+-  const openingId = randomUUID();
+-  const sourceBatchId = randomUUID();
++  const effectiveFrom = new Date("2026-01-01T00:00:00.000Z");
+@@ -323,3 +310,8 @@
+-    data: { id: projectId, code: `P405-${prefix}`, name: `#405 无合同特殊项目 ${prefix}`, operatingLedgerEffectiveDate: new Date("2026-01-01T00:00:00.000Z") }
+-  });
+-  await prisma.companyEntity.create({ data: { id: companyEntityId, name: `我方公司 ${prefix}`, dataStatus: "complete" } });
++    data: { id: projectId, code: `P405-${prefix}`, name: `#405 无合同特殊项目 ${prefix}` }
++  });
++  const company = await prisma.companyEntity.create({
++    data: {
++      id: companyEntityId, name: `我方公司 ${prefix}`, dataStatus: "complete",
++      currentVersionNo: 1, unifiedSocialCreditCode: "913100000000000018"
++    }
++  });
+@@ -338,3 +330,2 @@
+-    const id = randomUUID();
+-    positionIds.set(key, id);
+-    await prisma.position.create({ data: { id, key, name: key } });
++    const position = await prisma.position.upsert({ where: { key }, create: { key, name: key }, update: {} });
++    positionIds.set(key, position.id);
+@@ -351,12 +342,5 @@
+-  await prisma.registeredFundAccount.create({ data: { id: accountId, scopeKey: "public_cash", kind: "public_cash" } });
+-  await prisma.fundAccountBalanceRegistration.create({
+-    data: {
+-      id: openingId, accountId, version: 1, kind: "opening", status: "confirmed",
+-      balanceYuan: 5000, asOfDate: "2026-01-01", evidenceReference: `OPEN-${prefix}`,
+-      reconciliationNote: "真库期初", reason: "真库期初", idempotencyKey: `opening-${prefix}`,
+-      payloadFingerprint: "a".repeat(64), createdByUserId: financeStaffUserId,
+-      confirmedByUserId: financeStaffUserId, confirmedAt: new Date("2026-01-01T00:00:00.000Z")
+-    }
+-  });
+-  await prisma.fundAccountSourceBatch.create({
+-    data: { id: sourceBatchId, registrationId: openingId, lineNo: 1, amountYuan: 5000, sourceStatus: "known", sourceName: "期初", projectStatus: "project", projectId }
++  const affiliate = await prisma.businessParty.create({
++    data: { name: "合成施工企业", normalizedName: `issue405-affiliate-${prefix}`, createdByUserId: handlerUserId }
++  });
++  const affiliateVersion = await prisma.businessPartyVersion.create({
++    data: { businessPartyId: affiliate.id, versionNo: 1, snapshot: { name: affiliate.name }, createdByUserId: handlerUserId }
+@@ -366,5 +350,27 @@
+-      id: randomUUID(), projectId, businessPartyId: randomUUID(), businessPartyVersionId: randomUUID(),
+-      affiliateNameSnapshot: "合成施工企业", affiliateCreditCodeSnapshot: "91350000TEST405",
+-      effectiveFrom: new Date("2026-01-01T00:00:00.000Z"), changeReason: "真库接管", assignedByUserId: handlerUserId
+-    }
+-  });
++      projectId, businessPartyId: affiliate.id, businessPartyVersionId: affiliateVersion.id,
++      affiliateNameSnapshot: affiliate.name, effectiveFrom, changeReason: "真库接管", assignedByUserId: handlerUserId
++    }
++  });
++  const version = await prisma.companyEntityVersion.create({
++    data: {
++      companyEntityId: company.id, versionNo: 1, name: company.name,
++      unifiedSocialCreditCode: company.unifiedSocialCreditCode, isActive: true,
++      action: "create", actorUserId: handlerUserId
++    }
++  });
++  await prisma.projectParticipatingCompany.create({
++    data: {
++      projectId, companyEntityId: company.id, companyEntityVersionId: version.id,
++      companyNameSnapshot: company.name, companyCreditCodeSnapshot: company.unifiedSocialCreditCode,
++      effectiveFrom, changeReason: "合成项目参与公司", addedByUserId: handlerUserId
++    }
++  });
++  await prisma.project.update({ where: { id: projectId }, data: { operatingLedgerEffectiveDate: effectiveFrom } });
++  const opening = await fundAccounts.registerOpening(financeDirectorUserId, {
++    scopeKey: "public_cash", balanceYuan: "5000", asOfDate: "2026-01-01",
++    evidenceReference: `OPEN-${prefix}`, reconciliationNote: "真库期初", reason: "真库期初",
++    idempotencyKey: `opening-${prefix}`,
++    sources: [{ amountYuan: "5000", sourceStatus: "known", sourceName: "期初", projectStatus: "project", projectId }]
++  });
++  assert.equal(opening.balanceYuan, "5000.0000");
++  const { id: accountId } = await prisma.registeredFundAccount.findUniqueOrThrow({ where: { scopeKey: "public_cash" } });

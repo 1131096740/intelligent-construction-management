@@ -57,7 +57,7 @@
   {
     "path": "services/api/prisma/run-database-dynamic-gate-local.test.cjs",
     "expected": "78a8d474a9bef166001372b1e096b4f9b190d1d6fce3988bee01ad7f9b6eb09d",
-    "candidate": "f5872f8c422c188998ba00f7a441177bf2473e64e76d53f599532ed3638792d1"
+    "candidate": "ddc1589ddccc3f9e8b18276d642153f698097284c5f0bfbf9db0cb5d6f692f38"
   },
   {
     "path": "services/api/src/contract-takeover/contract-takeover-activation.service.spec.ts",
@@ -108,6 +108,16 @@
     "path": "services/api/src/expense-claim/expense-claim.service.spec.ts",
     "expected": "509550e06797e74897e0c471211f3b046c7af5e6a9dda1677d691518ee1fb3a1",
     "candidate": "1c040a22066693f2a88426bdddcb11c833f139841a03b339d45af65b7976627b"
+  },
+  {
+    "path": "services/api/src/file/file.service.spec.ts",
+    "expected": "40c5addfc6f940ba2fbfd091a094e520b954b1712d4a4edb87592189b2dd2f02",
+    "candidate": "f9db3fd212539160b39e7d1f4753d5127364b8b41ce95e2106e1c7ada3c2c03f"
+  },
+  {
+    "path": "services/api/src/file/file.service.ts",
+    "expected": "ee4604a5117ad40f14a27739633a265b37881702bd610ae45781a99ff389a7dd",
+    "candidate": "0b10452f51643beeb91905a3ec93ff6f13f51d96d7c5c051d6572bb32e8ef9f2"
   },
   {
     "path": "services/api/src/me/me.service.ts",

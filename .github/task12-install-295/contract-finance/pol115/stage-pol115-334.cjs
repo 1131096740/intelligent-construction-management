@@ -61,7 +61,9 @@ for (const row of cases[scope]) {
   assert.equal(hash(original), candidateSha256, file);
   const name = path.basename(file);
   const namespace = path.dirname(file) === 'src/database' ? '.' : '../database';
-  const importLine = `import { isPol115Owned334 } from "${namespace}/pol115-owned-334.test-support";\n`;
+  const imports = browserSpecs.has(name)
+    ? 'isPol115Owned334, pol115BrowserExitError, pol115BrowserSpawnError' : 'isPol115Owned334';
+  const importLine = `import { ${imports} } from "${namespace}/pol115-owned-334.test-support";\n`;
   const owned = `isPol115Owned334(url, "${scope}")`;
   let adapted = importLine + original.toString('utf8');
   if (scope === 'spot') {
@@ -77,6 +79,12 @@ for (const row of cases[scope]) {
   if (browserSpecs.has(name)) {
     const cwd = 'cwd: resolve(__dirname, "../../../../apps/web-admin")';
     adapted = once(adapted, cwd, 'cwd: process.env.JG_POL115_334_WEB_ROOT ?? resolve(__dirname, "../../../../apps/web-admin")');
+    adapted = once(adapted, 'child.on("error", reject)',
+      'child.on("error", (error) => reject(pol115BrowserSpawnError(error)))');
+    const exit = adapted.match(/child\.on\("exit", (?:\(code\)|code) => code === 0 \? done\(\) : reject\(new Error\("[^"\r\n]+"\)\)\)/gu);
+    assert.equal(exit?.length, 1, 'POL115_BROWSER_EXIT_HANDLER ' + file);
+    adapted = once(adapted, exit[0],
+      'child.on("exit", (code, signal) => code === 0 ? done() : reject(pol115BrowserExitError(code, signal)))');
   }
   write(file, adapted);
   fixtureHashes[file] = hash(adapted);

@@ -8,3 +8,24 @@ export function isPol115Owned334(url: URL, scope: "pol115" | "spot"): boolean {
     && url.searchParams.getAll("sslaccept").join(",") === "strict"
     && /^\/tmp\/jg394-[A-Za-z0-9]+\/ca\.crt$/u.test(url.searchParams.getAll("sslcert").join(","));
 }
+
+const spawnCodes = ["ENOENT", "EACCES", "EPERM", "EAGAIN", "ENOMEM"];
+const exitSignals = ["SIGTERM", "SIGKILL", "SIGABRT", "SIGSEGV", "SIGINT"];
+
+export function pol115BrowserSpawnError(error: NodeJS.ErrnoException): Error {
+  return new Error("POL115_BROWSER_FAILURE " + JSON.stringify({
+    phase: "spawn",
+    exitCode: null,
+    signal: null,
+    spawnCode: error.code && spawnCodes.includes(error.code) ? error.code : "OTHER"
+  }));
+}
+
+export function pol115BrowserExitError(code: number | null, signal: NodeJS.Signals | null): Error {
+  return new Error("POL115_BROWSER_FAILURE " + JSON.stringify({
+    phase: "exit",
+    exitCode: code !== null && Number.isInteger(code) && code >= 0 && code <= 255 ? code : null,
+    signal: signal === null || exitSignals.includes(signal) ? signal : "OTHER",
+    spawnCode: null
+  }));
+}
