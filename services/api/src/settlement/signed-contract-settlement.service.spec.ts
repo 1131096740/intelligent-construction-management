@@ -334,6 +334,32 @@ describe("已签结算复核业务", () => {
 });
 
 describe("已签结算付款依据附件", () => {
+  it("retains the historical upstream opening without loading a current affiliate contract alias", async () => {
+    const { svc, tx } = fixture();
+    const key = "SIGNED_SETTLEMENT_ATTACHMENT_WITNESS_KEY";
+    const priorKey = process.env[key];
+    process.env[key] = "a".repeat(64);
+    try {
+      const binding = { database: "isolated", role: "runtime", xid: "88", backend: "5", expires: "1795370000" };
+      tx.$queryRaw.mockResolvedValueOnce([binding]).mockResolvedValueOnce([{ projection: {
+        confirmedYuan: "70.0000", canReadSignedAttachments: true,
+        rows: [{ id: "signed", number: "接管后结算", amountYuan: "10.0000", confirmedAt: "2026-11-25T00:00:00.000Z", confirmationNo: "1", attachmentFileIds: [] }]
+      } }]).mockResolvedValueOnce([binding]).mockResolvedValueOnce([{ result: {
+        contractVersionId: "historical-version", historicalTakeoverId: "takeover", originalFileId: null, relationship: "upward"
+      } }]);
+
+      await expect(svc.paymentBasis("project", "staff", "upward", "historical-contract")).resolves.toMatchObject({
+        confirmedYuan: "70.0000", latestConfirmed: { id: "signed", amountYuan: "10.0000" },
+        confirmedHistory: [], downstreamCapacity: null
+      });
+      expect(tx.projectAffiliateSettlementFact.findMany).not.toHaveBeenCalled();
+      expect(tx.settlement.findMany).not.toHaveBeenCalled();
+    } finally {
+      if (priorKey === undefined) delete process.env[key];
+      else process.env[key] = priorKey;
+    }
+  });
+
   it.each([
     ["project_manager", false, []],
     ["contract_staff", true, ["file"]]

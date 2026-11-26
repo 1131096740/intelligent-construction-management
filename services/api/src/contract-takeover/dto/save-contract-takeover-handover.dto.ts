@@ -1,4 +1,4 @@
-import { IsOptional, IsUUID, MaxLength } from "class-validator";
+import { IsOptional, IsUUID, MaxLength, ValidateIf } from "class-validator";
 import {
   IsOptionalNonBlankText,
   IsRequiredText
@@ -33,6 +33,7 @@ export class SaveContractTakeoverHandoverDto {
   @MaxLength(64, { message: "合同复核负责人无效" })
   supervisorUserId!: string;
 
+  @ValidateIf((_object, value) => value !== undefined)
   @IsOptionalNonBlankText({
     typeMessage: "更换接管责任人原因必须是文字",
     blankMessage: "更换接管责任人原因不能为空白"

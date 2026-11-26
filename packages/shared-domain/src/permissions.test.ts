@@ -381,6 +381,7 @@ describe("role-specific gates", () => {
       "finance_director"
     ]);
     expect(ACTION_REQUIRED_ROLES["contract.takeover.finance_facts.confirm"]).toEqual([
+      "finance_staff",
       "finance_director"
     ]);
 
@@ -394,7 +395,7 @@ describe("role-specific gates", () => {
       false
     );
     expect(canPerform("contract.takeover.finance_facts.confirm", ["finance_staff"])).toBe(
-      false
+      true
     );
   });
 

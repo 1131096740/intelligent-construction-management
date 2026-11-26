@@ -207,7 +207,7 @@ export const ACTION_REQUIRED_ROLES: Record<BusinessAction, readonly RoleKey[]> =
   "contract.takeover.contract_facts.edit": ["contract_staff", "contract_director"],
   "contract.takeover.contract_facts.confirm": ["contract_director"],
   "contract.takeover.finance_facts.edit": ["finance_staff", "finance_director"],
-  "contract.takeover.finance_facts.confirm": ["finance_director"],
+  "contract.takeover.finance_facts.confirm": ["finance_staff", "finance_director"],
   "contract.takeover.confirmation.withdraw": [
     "contract_director",
     "finance_director"

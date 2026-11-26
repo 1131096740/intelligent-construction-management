@@ -1,0 +1,48 @@
+diff --git a/installer.cjs b/installer.cjs
+index 721353777..e29f294f9 100644
+--- a/installer.cjs
++++ b/installer.cjs
+@@ -821 +821,3 @@ statement_timeout='60s'
+-      if (forward320.upwardArchive) batches.push(tails.slice(36));
++      if (forward320.upwardArchive) batches.push(tails.slice(36,37));
++      const a28 = forward320.historicalTakeover ? require('./historical-takeover-333-profile.cjs') : null;
++      if (a28) batches.push(tails.slice(37));
+@@ -864,0 +867,13 @@ statement_timeout='60s'
++        if (a28 && current.ledger.length===332) {
++          const digest=hash(JSON.stringify(current.ledger));
++          need(digest===a28.predecessor332 && equal(await jsonSql(finalSql),final),'A28_333_PREDECESSOR_CONTINUITY');
++          const catalog=await jsonSql(a28.catalogSql);
++          a28.assertCatalog(catalog,false);
++          receipt.historicalTakeoverPredecessor={count:332,ledgerSha256:digest,sameIdentity:true,sameBaseB7:true,catalog};
++        }
++        if (a28 && current.ledger.length===333) {
++          need(hash(JSON.stringify(current.ledger))===a28.ledgerSha256,'A28_333_LEDGER_DIGEST');
++          const catalog=await jsonSql(a28.catalogSql);
++          a28.assertCatalog(catalog,true);
++          receipt.historicalTakeover333Catalog=catalog;
++        }
+@@ -962,0 +978,6 @@ statement_timeout='60s'
++      if (forward320?.historicalTakeover) {
++        const a28=require('./historical-takeover-333-profile.cjs');
++        need(hash(JSON.stringify(afterConsumer.ledger))===a28.ledgerSha256,'A28_333_LEDGER_AFTER_CONSUMER');
++        need(equal(await jsonSql(a28.catalogSql),receipt.historicalTakeover333Catalog),'A28_333_CATALOG_AFTER_CONSUMER');
++        receipt.historicalTakeoverCatalogAfterBusiness=true;
++      }
+@@ -1360 +1381,2 @@ function readForward320({sourceTree,migrations,tails},target=329) {
+-  const upwardArchive=target===332;
++  const upwardArchive=target>=332;
++  const historicalTakeover=target===333;
+@@ -1378,0 +1401,4 @@ function readForward320({sourceTree,migrations,tails},target=329) {
++  if(historicalTakeover) {
++    const {terminal}=require('./historical-takeover-333-profile.cjs');
++    need(tails[37]?.name===terminal.name && tails[37]?.sha256===terminal.sha256,'A28_333_TERMINAL');
++  }
+@@ -1391 +1417 @@ function readForward320({sourceTree,migrations,tails},target=329) {
+-  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive};
++  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover};
+@@ -1415,0 +1442,5 @@ module.exports.withCombined332UpwardArchive = (receipt,consume,material) => {
++module.exports.withCombined333HistoricalTakeover = (receipt,consume,material) => {
++  need(typeof consume==='function' && material && typeof material==='object','A28_333_ARGUMENTS');
++  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,333));
++};
++

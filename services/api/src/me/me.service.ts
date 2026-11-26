@@ -831,8 +831,8 @@ export class MeService {
         this.projectIdsFor(scopes, ["contract.takeover.finance_facts.edit"]),
         ["pending_finance"],
         projectNameById,
-        "填写历史实付",
-        "合同部已提交，请核对历史实付/收款后提交财务主管",
+        "核对历史收付",
+        "合同部已提交，请核对历史实际收付，完成财务核对后交合同主管复核",
         "primary"
       )),
       ...(await this.contractTakeoverWorkItems(

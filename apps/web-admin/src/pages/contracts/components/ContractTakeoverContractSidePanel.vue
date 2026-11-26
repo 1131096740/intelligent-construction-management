@@ -54,6 +54,20 @@
             @update:model-value="updateContractFact('counterparty', textValue($event))"
           />
         </label>
+        <HistoricalPartyVersionField
+          v-if="originalPartyRelationship === 'outside'"
+          label="原签约施工企业"
+          :model-value="modelValue.contractFacts.signingPartyVersionId"
+          :editable="editable"
+          @update:model-value="updateContractFact('signingPartyVersionId', $event)"
+        />
+        <HistoricalPartyVersionField
+          v-if="originalPartyRelationship"
+          label="原签约相对方"
+          :model-value="modelValue.contractFacts.counterpartyVersionId"
+          :editable="editable"
+          @update:model-value="updateContractFact('counterpartyVersionId', $event)"
+        />
         <label>
           <span>原始合同金额（元）</span>
           <YuanMoneyInput
@@ -158,6 +172,7 @@
 
 <script setup lang="ts">
 import YuanMoneyInput from "../../../components/YuanMoneyInput.vue";
+import HistoricalPartyVersionField from "./HistoricalPartyVersionField.vue";
 import type { UploadFile } from "tdesign-vue-next";
 import type {
   ContractTakeoverPerformanceStatus,
@@ -178,6 +193,7 @@ const props = defineProps<{
   saving: boolean;
   dirty: boolean;
   statusText: string;
+  originalPartyRelationship?: "inside" | "outside";
 }>();
 
 const emit = defineEmits<{
@@ -224,7 +240,7 @@ function updateRoot<Key extends keyof ContractSideFormModel>(
 
 function updateContractFact(
   key: keyof ContractSideFormModel["contractFacts"],
-  value: string
+  value: string | undefined
 ) {
   if (!props.modelValue) return;
   emit("update:modelValue", {

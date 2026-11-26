@@ -371,6 +371,7 @@ type ContractTakeoverHistoricalPaymentVoucherRow = {
 
 type ContractTakeoverActivationContractRow = {
   id: string;
+  counterparty: string;
   contractTypeKey: string | null;
   companyEntityId: string | null;
   companyEntityName: string | null;
@@ -384,6 +385,7 @@ type ContractTakeoverActivationContractRow = {
 
 type ContractTakeoverActivationVersionRow = {
   id: string;
+  draftData: Prisma.JsonValue;
   amountCents: bigint;
   amountLimitType: string;
   pricingNature: string;
@@ -1775,12 +1777,11 @@ export class ContractTakeoverService {
           projectId,
           takeoverId
         );
-        await this.assertProjectSideDirector(
-          tx,
-          projectId,
-          actorUserId,
-          side
-        );
+        if (side === "finance" && aggregate.takeover.takeoverLevel === "NONE") {
+          await this.assertProjectFinanceEditor(tx, projectId, actorUserId);
+        } else {
+          await this.assertProjectSideDirector(tx, projectId, actorUserId, side);
+        }
         const priorEvent =
           await tx.contractTakeoverConfirmationEvent.findUnique({
             where: { idempotencyKey }
@@ -1827,7 +1828,7 @@ export class ContractTakeoverService {
               aggregate.contractFacts.financeBasisRevision
           ) {
             throw new BadRequestException(
-              "请先完成财务填写并由财务主管核对，再由合同主管复核"
+              "请先完成财务填写和核对，再由合同主管复核"
             );
           }
         }
@@ -2985,6 +2986,15 @@ export class ContractTakeoverService {
         throw new Error("当前接管记录不能提交复核，请确认仍处于草稿或待补充状态");
       }
       await assertTakeoverHandoverReady(tx, takeover, "提交复核");
+      if (takeover.takeoverLevel === "NONE") {
+        const contractFacts = await tx.contractTakeoverContractFacts.findUnique({
+          where: { takeoverId: takeover.id },
+          select: { takeoverId: true }
+        });
+        if (!contractFacts) {
+          throw new BadRequestException("请先核实并保存历史累计结算，再提交财务核对");
+        }
+      }
 
       // 合同部提交后进入财务填写；重新提交一律清空上一次财务/主管确认，
       // 强制财务重新核对、主管再复核。
@@ -5286,6 +5296,8 @@ export class ContractTakeoverService {
         contractName,
         contractTypeKey,
         counterparty,
+        ...(sourceFacts.counterpartyVersionId ? { counterpartyVersionId: sourceFacts.counterpartyVersionId } : {}),
+        ...(sourceFacts.signingPartyVersionId ? { signingPartyVersionId: sourceFacts.signingPartyVersionId } : {}),
         originalAmountCents: originalAmountCents.toString(),
         settlementCutoffDate: settlementCutoffDate || null,
         zeroSettlementDeclared: sourceFacts.zeroSettlementDeclared,
@@ -5301,6 +5313,12 @@ export class ContractTakeoverService {
       historicalSettledCents: input.historicalSettledCents.toString(),
       paymentTerms: input.paymentTerms,
       contractTypeKey: input.contractFacts.contractTypeKey,
+      ...(input.contractFacts.counterpartyVersionId || input.contractFacts.signingPartyVersionId ? {
+        signedAt: input.signedAt.toISOString(),
+        counterparty: input.contractFacts.counterparty,
+        counterpartyVersionId: input.contractFacts.counterpartyVersionId ?? null,
+        signingPartyVersionId: input.contractFacts.signingPartyVersionId ?? null
+      } : {}),
       originalAmountCents: input.contractFacts.originalAmountCents,
       settlementCutoffDate: input.contractFacts.settlementCutoffDate,
       zeroSettlementDeclared: input.contractFacts.zeroSettlementDeclared,
@@ -5321,6 +5339,12 @@ export class ContractTakeoverService {
       historicalSettledCents: facts.historicalSettledCents.toString(),
       paymentTerms: facts.paymentTermsSnapshot,
       contractTypeKey: contractFacts["contractTypeKey"] ?? null,
+      ...(contractFacts["counterpartyVersionId"] || contractFacts["signingPartyVersionId"] ? {
+        signedAt: facts.signedAt.toISOString(),
+        counterparty: contractFacts["counterparty"] ?? null,
+        counterpartyVersionId: contractFacts["counterpartyVersionId"] ?? null,
+        signingPartyVersionId: contractFacts["signingPartyVersionId"] ?? null
+      } : {}),
       originalAmountCents: contractFacts["originalAmountCents"] ?? null,
       settlementCutoffDate: contractFacts["settlementCutoffDate"] ?? null,
       zeroSettlementDeclared: facts.zeroSettlementDeclared,
@@ -5420,6 +5444,7 @@ export class ContractTakeoverService {
         SELECT
           contract."id",
           contract."contractTypeKey",
+          contract."counterparty",
           contract."companyEntityId",
           contract."companyEntityName",
           entity."isActive" AS "companyEntityIsActive",
@@ -5439,7 +5464,7 @@ export class ContractTakeoverService {
       `);
     const [contractVersion] =
       await tx.$queryRaw<ContractTakeoverActivationVersionRow[]>(Prisma.sql`
-        SELECT "id", "amountCents", "amountLimitType", "pricingNature", "status"
+        SELECT "id", "amountCents", "amountLimitType", "pricingNature", "status", "draftData"
         FROM "ContractVersion"
         WHERE "id" = ${takeover.contractVersionId}
         FOR UPDATE

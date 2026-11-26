@@ -1390,7 +1390,7 @@ describe("ContractTakeoverService", () => {
         "contract-director"
       )
     ).rejects.toThrow(
-      "请先完成财务填写并由财务主管核对，再由合同主管复核"
+      "请先完成财务填写和核对，再由合同主管复核"
     );
     expect(tx.contractTakeoverContractFacts.updateMany).not.toHaveBeenCalled();
   });

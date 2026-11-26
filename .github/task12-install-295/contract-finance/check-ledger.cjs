@@ -5,13 +5,18 @@ const {createHash}=require('node:crypto');
 const path=require('node:path');
 const {ledgerSha256: textDirectLedgerSha256}=require('./text-direct-330-profile.cjs');
 const [root,sha,mode]=process.argv.slice(2);
-assert.ok(process.argv.length===4||(process.argv.length===5&&['--current-320','--text-direct-330','--payment-remainder-331','--upward-archive-332'].includes(mode)),
+assert.ok(process.argv.length===4||(process.argv.length===5&&['--current-320','--text-direct-330','--payment-remainder-331','--upward-archive-332','--historical-takeover-333','--historical-settlement-334'].includes(mode)),
   'CONTRACT_FINANCE_HOSTED_LEDGER_MODE');
 const textDirect=mode==='--text-direct-330';
-const upwardArchive=mode==='--upward-archive-332';
+const historicalSettlement=mode==='--historical-settlement-334';
+const historicalTakeover=mode==='--historical-takeover-333'||historicalSettlement;
+const historicalTakeoverProfile=require('./historical-takeover-333-profile.cjs');
+const historicalSettlementProfile=require('./historical-settlement-334-profile.cjs');
+const upwardArchive=mode==='--upward-archive-332'||historicalTakeover;
 const paymentRemainder=mode==='--payment-remainder-331'||upwardArchive;
 const current320=mode==='--current-320'||textDirect||paymentRemainder;
 const paymentRemainderLedgerSha256='0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014';
+const upwardArchiveLedgerSha256='b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4';
 assert.match(sha,/^[a-f0-9]{40}$/u);
 const git=(...args)=>execFileSync('git',['-C',root,...args],{maxBuffer:16*1024*1024});
 assert.equal(git('rev-parse','HEAD').toString().trim(),sha);
@@ -25,7 +30,7 @@ const ledger=git('ls-tree','-r','--name-only','-z',sha,'--',migrationsPath).toSt
 const digest=ledgerHash(ledger);
 const predecessor295Sha256='b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d';
 if(current320) {
-  assert.equal(ledger.length,upwardArchive?332:paymentRemainder?331:textDirect?330:329,'CONTRACT_FINANCE_CURRENT_320_LEDGER_COUNT');
+  assert.equal(ledger.length,historicalSettlement?334:historicalTakeover?333:upwardArchive?332:paymentRemainder?331:textDirect?330:329,'CONTRACT_FINANCE_CURRENT_320_LEDGER_COUNT');
   assert.equal(ledgerHash(ledger.slice(0,295)),predecessor295Sha256,'CONTRACT_FINANCE_CURRENT_320_PREDECESSOR');
   assert.equal(ledgerHash(ledger.slice(0,329)),'3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2',
     'CONTRACT_FINANCE_CURRENT_320_LEDGER_DIGEST');
@@ -33,8 +38,12 @@ if(current320) {
     'CONTRACT_FINANCE_TEXT_DIRECT_330_LEDGER_DIGEST');
   if(paymentRemainder) assert.equal(ledgerHash(ledger.slice(0,331)),paymentRemainderLedgerSha256,
     'CONTRACT_FINANCE_PAYMENT_REMAINDER_331_LEDGER_DIGEST');
-  if(upwardArchive) assert.equal(digest,'b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4',
+  if(upwardArchive) assert.equal(ledgerHash(ledger.slice(0,332)),upwardArchiveLedgerSha256,
     'CONTRACT_FINANCE_UPWARD_ARCHIVE_332_LEDGER_DIGEST');
+  if(historicalTakeover) assert.equal(ledgerHash(ledger.slice(0,333)),historicalTakeoverProfile.ledgerSha256,
+    'CONTRACT_FINANCE_HISTORICAL_TAKEOVER_333_LEDGER_DIGEST');
+  if(historicalSettlement) assert.equal(digest,historicalSettlementProfile.ledgerSha256,
+    'CONTRACT_FINANCE_HISTORICAL_SETTLEMENT_334_LEDGER_DIGEST');
 } else {
   assert.ok(ledger.length===294||ledger.length===295,'CONTRACT_FINANCE_HOSTED_LEDGER_COUNT');
 }
@@ -55,6 +64,8 @@ if (current320) {
     predecessor:{migrationCount:295,ledgerSha256:predecessor295Sha256,tails:ledger.slice(292,295)},
     ...(paymentRemainder?{predecessor330:{migrationCount:330,ledgerSha256:textDirectLedgerSha256}}:{}),
     ...(upwardArchive?{predecessor331:{migrationCount:331,ledgerSha256:paymentRemainderLedgerSha256}}:{}),
+    ...(historicalTakeover?{predecessor332:{migrationCount:332,ledgerSha256:upwardArchiveLedgerSha256}}:{}),
+    ...(historicalSettlement?{predecessor333:{migrationCount:333,ledgerSha256:historicalTakeoverProfile.ledgerSha256}}:{}),
     tails:ledger.slice(295)
   }));
 } else {

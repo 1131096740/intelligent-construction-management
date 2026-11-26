@@ -1,7 +1,14 @@
 import { assertEconomicContractReady } from "../contract-ledger/contract-economic-coverage";
-import { ConflictException, Inject, Injectable } from "@nestjs/common";
+import { BadRequestException, ConflictException, Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
+import { freezeHistoricalUpwardAuthority, isHistoricalUpwardDraft } from "./historical-upward-authority";
+import {
+  freezeHistoricalDownstreamSettlementAuthority,
+  historicalDownstreamRelationship,
+  historicalSettlementPartySelections
+} from "./historical-settlement-authority";
+import { sourceJson } from "../operating-ledger/formal-operating-source.helpers";
 import { assertTakeoverHandoverReady } from "./contract-takeover-handover";
 import { dbMoneyToBigInt } from "../money/decimal-money";
 import {
@@ -34,8 +41,10 @@ interface PreparedTakeover {
 }
 
 interface PreparedContractFacts {
+  signedAt: Date;
   historicalSettledCents: bigint;
   zeroSettlementDeclared: boolean;
+  contractFactsSnapshot?: Prisma.JsonValue;
 }
 
 interface PreparedFinanceFacts {
@@ -54,6 +63,7 @@ interface PreparedHistoricalPaymentVoucher {
 }
 
 interface PreparedContract {
+  counterparty: string;
   contractTypeKey: string | null;
   companyEntityId: string | null;
   companyEntityIsActive: boolean | null;
@@ -65,6 +75,7 @@ interface PreparedContract {
 }
 
 interface PreparedContractVersion {
+  draftData: Prisma.JsonValue;
   amountCents: bigint;
   amountLimitType: string;
 }
@@ -166,6 +177,33 @@ export class ContractTakeoverActivationService {
     }
 
     await assertEconomicContractReady(tx, takeover.projectId, `contract:${takeover.contractId}`, historicalSettledCents, undefined, takeover.contractVersionId);
+    const draftData = prepared.contractVersion.draftData;
+    const upwardDraft = takeover.takeoverLevel === "NONE" && isHistoricalUpwardDraft(draftData) ? draftData : null;
+    const downstreamRelationship = takeover.takeoverLevel === "NONE" ? historicalDownstreamRelationship(draftData) : null;
+    let historicalSettlementAuthority: Awaited<ReturnType<typeof freezeHistoricalDownstreamSettlementAuthority>> | undefined;
+    if (downstreamRelationship) {
+      const { counterparty, counterpartyVersionId, signingPartyVersionId } = historicalSettlementPartySelections(contractFacts.contractFactsSnapshot);
+      if (counterpartyVersionId && counterparty !== contract.counterparty) {
+        throw new BadRequestException("合同侧相对方与原合同资料不一致，请先核对合同信息");
+      }
+      historicalSettlementAuthority = await freezeHistoricalDownstreamSettlementAuthority(tx, {
+        projectId: takeover.projectId, signedAt: contractFacts.signedAt, relationship: downstreamRelationship,
+        companyEntityId: contract.companyEntityId, counterparty: contract.counterparty,
+        counterpartyVersionId, signingPartyVersionId
+      });
+    }
+    let historicalUpwardAuthority: Awaited<ReturnType<typeof freezeHistoricalUpwardAuthority>> | undefined;
+    if (upwardDraft) {
+      const project = await tx.project.findUnique({
+        where: { id: takeover.projectId }, select: { operatingLedgerEffectiveDate: true }
+      });
+      if (project?.operatingLedgerEffectiveDate) {
+        historicalUpwardAuthority = await freezeHistoricalUpwardAuthority(tx, {
+          projectId: takeover.projectId, signedAt: contractFacts.signedAt,
+          companyEntityId: contract.companyEntityId, counterparty: contract.counterparty
+        });
+      }
+    }
     const capacityCents = isSettlementContract ? historicalSettledCents : 0n;
     const requestedExcessTreatment =
       financeFacts.excessTreatment === "historical_advance" ||
@@ -259,6 +297,9 @@ export class ContractTakeoverActivationService {
         settlementModeSource: "backfill",
         settlementModeConfirmedByUserId: actorUserId,
         settlementModeConfirmedAt: activatedAt,
+        ...(historicalUpwardAuthority ? { draftData: sourceJson({ ...upwardDraft, historicalUpwardAuthority }) } : {}),
+        ...(historicalSettlementAuthority
+          ? { draftData: sourceJson({ ...(draftData as Prisma.JsonObject), historicalSettlementAuthority }) } : {}),
         ...(contract.companyEntityId &&
         contract.companyEntityIsActive === true &&
         contract.companyEntityDataStatus === "complete" &&
@@ -290,7 +331,7 @@ export class ContractTakeoverActivationService {
       );
     }
 
-    if (allocation.excessAllocatedCents > 0n && excessTreatment) {
+    if (allocation.excessAllocatedCents > 0n && excessTreatment && !upwardDraft) {
       const balanceAccount =
         await tx.contractTakeoverBalanceAccount.create({
           data: {
@@ -321,7 +362,7 @@ export class ContractTakeoverActivationService {
         confirmedAt: activatedAt,
         historicalPaidCents: allocation.totalPaidCents,
         historicalAdvancePaidCents:
-          excessTreatment === "historical_advance"
+          excessTreatment === "historical_advance" && !upwardDraft
             ? allocation.excessAllocatedCents
             : 0n,
         historicalBalanceConfirmedByUserId: actorUserId,

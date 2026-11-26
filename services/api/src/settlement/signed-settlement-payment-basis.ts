@@ -1,6 +1,7 @@
 import { ConflictException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { contractProxyPaidForContract } from "../contract-ledger/contract-proxy-capacity";
+import { historicalAdvancePaymentBasis } from "../payment/contract-takeover-balance";
 import { loadSettlementPaymentConfirmationFacts } from "../payment/settlement-confirmation-facts";
 import { calculateSettlementPaymentCapacityBigInt, CONTRACT_DUE_PAYMENT_SETTLEMENT_STATUSES, type SettlementCapacityPaymentRequest } from "../payment/settlement-payment-capacity";
 import { calculateSignedSettlementPaymentCapacity, settlementAmountYuanToCents } from "../payment/signed-settlement-payment-capacity";
@@ -38,6 +39,7 @@ export function signedSettlementPaymentBalance(input: {
   historicalOutstandingCents: bigint;
   requests: readonly SettlementCapacityPaymentRequest[];
   opening?: {
+    takeoverLevel?: string | null;
     historicalAdvancePaidCents?: bigint | null;
     historicalAdvanceDeductedCents?: bigint | null;
   } | null;
@@ -48,9 +50,7 @@ export function signedSettlementPaymentBalance(input: {
     proxyPaidAmountCents: input.proxyPaidCents,
     paymentRequests: input.requests
   });
-  const historicalAdvanceCents =
-    (input.opening?.historicalAdvancePaidCents ?? 0n) -
-    (input.opening?.historicalAdvanceDeductedCents ?? 0n);
+  const historicalAdvance = historicalAdvancePaymentBasis(input.opening);
   const advancePaidCents =
     input.requests.reduce(
       (total, request) =>
@@ -58,10 +58,10 @@ export function signedSettlementPaymentBalance(input: {
           ? total + request.paidAmountCents
           : total,
       0n
-    ) + (historicalAdvanceCents > 0n ? historicalAdvanceCents : 0n);
+    ) + historicalAdvance.netAdvanceCents;
   const capacity = calculateSignedSettlementPaymentCapacity({
     confirmedCents: settlementAmountYuanToCents(new decimal(input.confirmedYuan)),
-    paidCents: input.recordedPaidCents + (historicalAdvanceCents > 0n ? historicalAdvanceCents : 0n),
+    paidCents: input.recordedPaidCents + historicalAdvance.advanceOutsidePaidTotalCents,
     advancePaidCents,
     outstandingCents: centsCapacity.outstandingPaymentCents,
     proxyPaidCents: input.proxyPaidCents,
@@ -96,7 +96,7 @@ export async function loadDownstreamPaymentBasis(tx: Prisma.TransactionClient, p
     tx.paymentRequest.findMany({ where: { projectId, contractId },
       select: { sourceType: true, status: true, requestedAmountCents: true, approvedAmountCents: true, paidAmountCents: true } }),
     tx.contractTakeover.findMany({ where: { projectId, contractId, takeoverStatus: "confirmed", historicalBalanceConfirmedAt: { not: null } }, take: 2,
-      select: { historicalPaidCents: true, historicalProxyPaidCents: true,
+      select: { takeoverLevel: true, historicalPaidCents: true, historicalProxyPaidCents: true,
         historicalAdvancePaidCents: true, historicalAdvanceDeductedCents: true,
         historicalRetentionWithheldCents: true, historicalRetentionReleasedCents: true, otherConfirmedOccupancyCents: true,
         historicalApprovalPendingPaymentCents: true, historicalApprovedPendingPaymentCents: true } }),

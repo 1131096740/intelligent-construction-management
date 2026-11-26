@@ -3,9 +3,9 @@
   "id": "jiangkong-local-postgresql16-pending-dynamic-gate",
   "description": "Current RUN_* gated database test inventory and the disposable local PostgreSQL 16 runners that can execute a verified subset.",
   "migrationBaseline": {
-    "expectedDirectoryCount": 332,
-    "terminalMigration": "20261129001000_contract_upward_archive_verifier_pin_forward",
-    "terminalMigrationChecksum": "4e8e6e23267f525ca2bff68719e2989126fff82e5bd0d0ba344abc2c4c8d4da3",
+    "expectedDirectoryCount": 334,
+    "terminalMigration": "20261129003000_historical_signed_settlement_continuation",
+    "terminalMigrationChecksum": "9df6dc654b8b0ea21713cc1c1dbcc73a8a74fd49f0df84da3b1556e85215ad5f",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false
@@ -26,14 +26,14 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 105,
-    "fullyPendingSuites": 84,
+    "pendingFiles": 106,
+    "fullyPendingSuites": 85,
     "partiallyPendingSuites": 21,
-    "pendingTests": 627,
+    "pendingTests": 630,
     "coveredFiles": 105,
     "coveredTests": 627,
-    "remainingFiles": 0,
-    "remainingTests": 0
+    "remainingFiles": 1,
+    "remainingTests": 3
   },
   "coveredGroups": [
     {
@@ -1109,7 +1109,18 @@
       "state": "executable_local_runner"
     }
   ],
-  "remainingFiles": [],
+  "remainingFiles": [
+    {
+      "path": "services/api/src/contract-takeover/contract-takeover-a28.http.pg.spec.ts",
+      "pendingTests": 3,
+      "suiteStatus": "fully_pending",
+      "runFlag": "RUN_CONTRACT_TAKEOVER_A28_PG16",
+      "databaseEnv": [
+        "DATABASE_URL"
+      ],
+      "reason": "missing_disposable_pg16_orchestration"
+    }
+  ],
   "executionInventory": {
     "ciEligible": {
       "groups": 44,

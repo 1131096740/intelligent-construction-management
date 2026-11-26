@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import {
   calculateSignedSettlementPaymentCapacity,
+  loadSignedSettlementPaymentBasis,
   settlementAmountYuanToCents
 } from "./signed-settlement-payment-capacity";
 
@@ -41,6 +42,31 @@ describe("signed settlement payment capacity (PAY-03/PAY-04/PAY-07/PAY-08)", () 
     expect(result.overpayCents).toBe(3_000n);
     expect(result.unsettledAdvanceCents).toBe(1_000n);
     expect(result.abnormalOverpayCents).toBe(2_000n);
+  });
+
+  it.each([
+    ["NONE", 7_000n],
+    ["B", 6_000n]
+  ])("does not recount the historical advance in the write capacity for takeover level %s", async (takeoverLevel, historicalPaidCents) => {
+    const tx = {
+      signedContractSettlement: { findMany: jest.fn().mockResolvedValue([{
+        id: "signed", number: "接管后结算", amountYuan: "10.0000", confirmationNo: 1n,
+        reviewedAt: new Date("2026-11-24T00:00:00Z")
+      }]) },
+      settlement: { findMany: jest.fn().mockResolvedValue([]) },
+      contractTakeover: { findFirst: jest.fn().mockResolvedValue({
+        id: "takeover", takeoverLevel, takeoverStatus: "confirmed",
+        historicalBalanceConfirmedAt: new Date("2026-11-23T00:00:00Z"),
+        historicalSettledCents: 6_000n, historicalPaidCents, historicalAdvancePaidCents: 1_000n
+      }) },
+      paymentRequest: { findMany: jest.fn().mockResolvedValue([]) },
+      projectProxyPayment: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    await expect(loadSignedSettlementPaymentBasis(tx as never, "contract"))
+      .resolves.toMatchObject({
+        historicalConfirmedCents: 6_000n, confirmedCents: 7_000n, netPaidCents: 7_000n,
+        advancePaidCents: 1_000n, abnormalOverpayCents: 0n, remainingCents: 0n, suspended: false
+      });
   });
 
   it("uses the cumulative settlement rather than the latest period as the ceiling", () => {

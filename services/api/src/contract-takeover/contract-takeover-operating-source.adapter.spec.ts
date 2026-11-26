@@ -95,6 +95,66 @@ describe("ContractTakeoverHistoricalPaymentOperatingSourceAdapter", () => {
     }
   );
 
+  it.each([6_000n, 0n])("records a frozen upward receipt with %s cents matched", async (matched) => {
+    const adapter = new ContractTakeoverHistoricalPaymentOperatingSourceAdapter();
+    const tx = historicalPaymentTx();
+    tx.contractTakeover.findFirst.mockResolvedValue({
+      ...(await tx.contractTakeover.findFirst()),
+      takeoverLevel: "NONE",
+      historicalInitialSettlementId: matched > 0n ? "initial-settlement-1" : null
+    });
+    tx.contractVersion.findUnique.mockResolvedValue({
+      ...(await tx.contractVersion.findUnique()),
+      draftData: {
+        historicalTakeover: true, relationship: "upward",
+        historicalUpwardAuthority: {
+          companyEntityId: "company-1", companyEntityVersionId: "company-version-1", companyName: "我方公司",
+          affiliate: { assignmentId: "affiliate-assignment-1", businessPartyVersionId: "affiliate-version-1", name: "施工企业甲" }
+        }
+      }
+    });
+    tx.contractPartySnapshot.findFirst.mockResolvedValue({
+      businessPartyVersionId: null,
+      snapshot: { name: "我方公司", companyEntityId: "company-1" }
+    });
+    tx.contractTakeoverHistoricalPayment.findUnique.mockResolvedValue({
+      ...historicalPaymentRow(), amountCents: 7_000n,
+      payerName: "施工企业甲", payeeName: "我方公司"
+    });
+    tx.contractTakeoverHistoricalPaymentAllocation.findMany.mockResolvedValue([
+      ...(matched > 0n ? [{ allocationType: "settlement", amountCents: matched, allocationOrder: 1 }] : []),
+      { allocationType: "abnormal_overpay", amountCents: 7_000n - matched, allocationOrder: 2 }
+    ]);
+
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1",
+      sourceType: adapter.sourceType,
+      sourceBusinessId: "historical-payment-1"
+    });
+    expect(snapshot).not.toBeNull();
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+    expect(input).toMatchObject({
+      factKind: "fund_movement",
+      direction: "inflow",
+      evidenceLevel: "A",
+      amountCents: 7_000n,
+      isBeforeOperatingLedgerEffectiveDate: true,
+      sourceSnapshot: { contractRelationship: "upward", unmatchedReceiptCents: (7_000n - matched).toString() },
+      subjects: {
+        actualPayer: { kind: "construction_enterprise", id: "affiliate-version-1" },
+        payee: { kind: "participating_company", id: "company-1" }
+      }
+    });
+    expect(input.impacts).toEqual([
+      matched > 0n ? expect.objectContaining({
+        impactKind: "receivable_decrease", amountCents: matched, direction: "decrease"
+      }) : expect.objectContaining({
+        impactKind: "evidence_gap_notice", amountCents: 7_000n, direction: "notice",
+        description: "对上历史实收已核实，尚无可核销结算，超收待核对"
+      })
+    ]);
+  });
+
   it("filters only confirmed and activated takeovers regardless of legacy level", async () => {
     const adapter = new ContractTakeoverHistoricalPaymentOperatingSourceAdapter();
     const tx = historicalPaymentTx();
