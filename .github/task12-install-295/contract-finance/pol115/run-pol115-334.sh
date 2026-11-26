@@ -12,7 +12,7 @@ scope=$5
 plan=$(cd "$(dirname "$0")" && pwd -P)
 base="$plan/.."
 common="$base/common"
-[[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$common/installer.cjs"   "$base/stage-historical-takeover-333.cjs" "$base/historical-takeover-333-profile.cjs"   "$base/historical-settlement-334-profile.cjs" "$base/upward-archive-332-profile.cjs"   "$base/historical-takeover-333-installer.patch" "$base/historical-settlement-334-installer.patch"   "$base/task12-pol109-stage-browser.cjs") ]] || exit 65
+[[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$common/installer.cjs"   "$base/stage-historical-takeover-333.cjs" "$base/historical-takeover-333-profile.cjs"   "$base/historical-settlement-334-profile.cjs" "$base/upward-archive-332-profile.cjs"   "$base/historical-takeover-333-installer.patch" "$base/historical-settlement-334-installer.patch"   "$base/task12-pol109-stage-browser.cjs" "$base/expense-witness/installer.patch" "$base/expense-witness-345-profile.cjs" "$base/expense-witness-346-profile.cjs" "$base/expense-witness-prefixes.json") ]] || exit 65
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-pol115-334-$scope.XXXXXXXX")
 if [[ $scope == pol115 ]]; then
   child_status=0
@@ -47,7 +47,7 @@ if (hostOnly) {
   const declared = receipts.reduce((sum, item) => sum + item.declared, 0);
   const currentCases = receipts.reduce((sum, item) => sum + item.currentCases, 0);
   assert.deepEqual([declared, currentCases], [138, 140]);
-  combined = { status: 'POL115_334_HOST_READY', sourceSha: source.sourceSha, sourceTree: source.sourceTree,
+  combined = { status: 'POL115_' + source.migrationCount + '_HOST_READY', sourceSha: source.sourceSha, sourceTree: source.sourceTree,
     scope: 'pol115', ledgerSha256: source.ledgerSha256, declared, currentCases,
     shards: Object.fromEntries(receipts.map(receipt => [receipt.scope, receipt.currentCases])) };
 } else {
@@ -85,7 +85,7 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
 for file in pol115-334-entry.cjs verify-pol115-jest.cjs browser-witness.cjs; do
   args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
 done
-for file in task12-pol109-stage-browser.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs; do
+for file in task12-pol109-stage-browser.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
   args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
 done
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do

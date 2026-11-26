@@ -16,7 +16,9 @@ const selected = pol115Scope(cases, scope);
 assert.match(candidateSha, /^[a-f0-9]{40}$/u);
 const source = require(path.join(prepared, 'source.json'));
 assert.equal(source.sourceSha, candidateSha);
-historical.assertSource(source, final);
+const expenseWitness = source.mode === 'expense-witness-346' ? require('../expense-witness-346-profile.cjs') : null;
+const profile = expenseWitness ?? historical;
+profile.assertSource(source, final);
 
 const workspace = path.join(prepared, 'prepared/context/workspace');
 const api = path.join(workspace, 'services/api');
@@ -104,9 +106,13 @@ for (const row of selected) {
   fixtureHashes[file] = hash(adapted);
 }
 execFileSync(process.execPath, [path.join(__dirname, '../stage-historical-takeover-333.cjs'), output, historical.mode], { stdio: 'inherit' });
+if (expenseWitness) {
+  execFileSync('git', ['apply', '--unidiff-zero', path.join(__dirname, '../expense-witness/installer.patch')], { cwd: output });
+}
+assert.equal(hash(read(path.join(output, 'installer.cjs'))), profile.installerSha256);
 const receipt = { sourceSha: candidateSha, sourceTree: source.sourceTree, scope, ledgerSha256: source.ledgerSha256,
-  installerSha256: historical.installerSha256, fixtureSha256: fixtureHashes,
+  installerSha256: profile.installerSha256, fixtureSha256: fixtureHashes,
   declared: selected.reduce((sum, row) => sum + row.declared, 0),
   currentCases: selected.reduce((sum, row) => sum + row.reported, 0) };
 fs.writeFileSync(path.join(output, 'pol115-334-inputs.json'), JSON.stringify(receipt) + '\n', { flag: 'wx', mode: 0o644 });
-console.log(JSON.stringify({ status: 'POL115_334_HOST_READY', ...receipt }));
+console.log(JSON.stringify({ status: 'POL115_' + source.migrationCount + '_HOST_READY', ...receipt }));

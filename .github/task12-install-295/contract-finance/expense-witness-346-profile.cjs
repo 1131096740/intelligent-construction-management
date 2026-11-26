@@ -5,6 +5,7 @@ const previous = require('./expense-witness-345-profile.cjs');
 
 const mode = 'expense-witness-346';
 const count = 346;
+const installerSha256 = '50208a12c5ac61b396655807e87f8c86ea92db83aa2a3297c38f253735ce155d';
 const ledgerSha256 = 'bdddd170728d7c28c1b5a4f4a4b2b8981aa1ba2d041590475d695427502d8225';
 const terminal = Object.freeze({
   name: '20261129015000_expense_public_cash_operating_source',
@@ -92,5 +93,5 @@ function assertCatalog(size, snapshot, before) {
   }
 }
 
-module.exports = { mode, count, terminal, ledgerSha256, assertSource, assertPrefix, catalogSql, assertCatalog,
+module.exports = { mode, count, installerSha256, terminal, ledgerSha256, assertSource, assertPrefix, catalogSql, assertCatalog,
   cashSql: previous.cashSql, assertCash: previous.assertCash };

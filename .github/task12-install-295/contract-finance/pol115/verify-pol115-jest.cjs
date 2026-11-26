@@ -26,7 +26,8 @@ function pol115Scope(cases, scope) {
 function verifyPol115ChildReceipt({ cases, source, scope, receipt }) {
   const rows = pol115Scope(cases, scope);
   const [declared, currentPassed] = scopeCounts[scope];
-  assert.equal(receipt.status, 'POL115_334_ORIGINAL_' + scope.toUpperCase() + '_PASSED');
+  assert.ok([334, 346].includes(source.migrationCount), 'POL115_MIGRATION_SCOPE');
+  assert.equal(receipt.status, 'POL115_' + source.migrationCount + '_ORIGINAL_' + scope.toUpperCase() + '_PASSED');
   assert.equal(receipt.sourceSha, source.sourceSha);
   assert.equal(receipt.scope, scope);
   assert.deepEqual(receipt.coverage, { declared, currentPassed, independentSmsCounted: 0 });
@@ -42,7 +43,6 @@ function verifyPol115ChildReceipt({ cases, source, scope, receipt }) {
 
 function aggregatePol115Shards({ cases, source, receipts }) {
   assert.equal(receipts.length, pol115Shards.length);
-  assert.equal(source.migrationCount, 334);
   for (const [index, scope] of pol115Shards.entries()) {
     verifyPol115ChildReceipt({ cases, source, scope, receipt: receipts[index] });
   }
@@ -57,7 +57,7 @@ function aggregatePol115Shards({ cases, source, receipts }) {
     coverage.currentPassed += receipt.coverage.currentPassed;
   }
   assert.deepEqual(coverage, { declared: 138, currentPassed: 140, independentSmsCounted: 0 });
-  return { sourceSha: source.sourceSha, scope: 'pol115', status: 'POL115_334_ORIGINAL_POL115_PASSED',
+  return { sourceSha: source.sourceSha, scope: 'pol115', status: 'POL115_' + source.migrationCount + '_ORIGINAL_POL115_PASSED',
     ledgerSha256: source.ledgerSha256, coverage, shards: Object.fromEntries(receipts.map(receipt =>
       [receipt.scope, receipt.coverage.currentPassed])) };
 }

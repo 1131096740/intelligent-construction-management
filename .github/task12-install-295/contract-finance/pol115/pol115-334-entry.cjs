@@ -7,7 +7,7 @@ const { createHash, randomUUID } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { stripVTControlCharacters } = require('node:util');
 const { admitSource } = require('./install-only292.cjs');
-const { withCombined334HistoricalSettlement } = require('./installer.cjs');
+const { withCombined334HistoricalSettlement, withCombinedExpenseWitness } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
 const historical = require('./historical-settlement-334-profile.cjs');
 const { stageWebWorkspace } = require('./task12-pol109-stage-browser.cjs');
@@ -16,13 +16,15 @@ const { summarizeBrowserWitness } = require('./browser-witness.cjs');
 const recipes = require('./pol115-334-cases.json');
 const inputs = require('./pol115-334-inputs.json');
 const source = require('./contract-finance-source.json');
+const expenseWitness = source.mode === 'expense-witness-346' ? require('./expense-witness-346-profile.cjs') : null;
+const profile = expenseWitness ?? historical;
 
 const root = '/qualification';
 const workspace = path.join(root, 'workspace');
 const api = path.join(workspace, 'services/api');
 const scope = process.argv[2];
 const selected = pol115Scope(recipes, scope);
-const receipt = { schemaVersion: 1, purpose: 'ORIGINAL_POL115_SPOT_334', sourceSha: source.sourceSha, scope,
+const receipt = { schemaVersion: 1, purpose: 'ORIGINAL_POL115_SPOT_' + source.migrationCount, sourceSha: source.sourceSha, scope,
   stages: ['INPUTS'], status: 'STOPPED' };
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
@@ -121,7 +123,12 @@ async function runOriginal(context) {
   assert.equal(url.searchParams.getAll('sslmode').join(','), 'require');
   assert.equal(url.searchParams.getAll('sslaccept').join(','), 'strict');
   assert.equal(url.searchParams.getAll('sslcert').join(','), path.join(workDir, 'ca.crt'));
-  historical.assertFinanceInstallation(receipt, source);
+  historical.assertFinanceInstallation(receipt, expenseWitness ? { ...source, tails: source.tails.slice(0, 39) } : source);
+  if (expenseWitness) {
+    assert.equal(receipt.expenseWitnessForward.count, expenseWitness.count);
+    assert.equal(receipt.expenseWitnessForward.ledgerSha256, expenseWitness.ledgerSha256);
+    assert.equal(receipt.expenseWitnessForward.sameIdentity, true);
+  }
 
   const { stdout } = await context.sql(`SELECT (current_user=session_user AND
     current_user='jg_task01_owner' AND current_user::regrole::oid=10 AND
@@ -187,8 +194,9 @@ async function main() {
   assert.equal(inputs.sourceSha, source.sourceSha);
   assert.equal(inputs.sourceTree, source.sourceTree);
   assert.equal(inputs.ledgerSha256, source.ledgerSha256);
-  historical.assertSource(source, final);
-  assert.equal(sha256(fs.readFileSync(path.join(root, 'installer.cjs'))), historical.installerSha256);
+  profile.assertSource(source, final);
+  assert.equal(inputs.installerSha256, profile.installerSha256);
+  assert.equal(sha256(fs.readFileSync(path.join(root, 'installer.cjs'))), profile.installerSha256);
   const expectedFiles = ['src/database/pol115-owned-334.test-support.ts', ...selected.map(row => row.file)];
   assert.deepEqual(Object.keys(inputs.fixtureSha256), expectedFiles);
   for (const [file, digest] of Object.entries(inputs.fixtureSha256)) {
@@ -200,10 +208,14 @@ async function main() {
   assert.equal(baseline.terminalMigrationChecksum, historical.terminal.sha256);
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
 
-  await withCombined334HistoricalSettlement(receipt, runOriginal, {
-    sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails
-  });
-  assert.equal(receipt.combinedAfterBusiness.count, 334);
+  const material = { sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails };
+  if (expenseWitness) {
+    await withCombinedExpenseWitness(receipt, runOriginal, material, expenseWitness.count);
+    assert.equal(receipt.expenseWitnessCatalogAfterBusiness, true);
+  } else {
+    await withCombined334HistoricalSettlement(receipt, runOriginal, material);
+  }
+  assert.equal(receipt.combinedAfterBusiness.count, source.migrationCount);
   assert.equal(receipt.combinedAfterBusiness.ledgerSha256, source.ledgerSha256);
   assert.equal(receipt.combinedAfterBusiness.sameIdentity, true);
   assert.equal(receipt.combinedAfterBusiness.exactB7, true);
@@ -216,7 +228,7 @@ async function main() {
   const passed = receipt.jest.files.reduce((sum, row) => sum + row.passed, 0);
   assert.equal(passed, inputs.currentCases);
   receipt.coverage = { declared: inputs.declared, currentPassed: passed, independentSmsCounted: 0 };
-  receipt.status = 'POL115_334_ORIGINAL_' + scope.toUpperCase() + '_PASSED';
+  receipt.status = 'POL115_' + source.migrationCount + '_ORIGINAL_' + scope.toUpperCase() + '_PASSED';
 }
 
 main().catch(error => {
