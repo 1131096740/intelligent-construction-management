@@ -1,0 +1,26 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -56 +56,8 @@
+-    if (process.env.NODE_ENV !== "test" || target.hostname !== "127.0.0.1" || !target.pathname.endsWith("_issue420_approval")) {
++    const orderedDatabase = process.env.JG_ISSUE420_ORDERED_DATABASE;
++    const ordered = /^jg_task01_[a-f0-9]{32}$/u.test(orderedDatabase ?? "") &&
++      target.pathname === "/" + orderedDatabase && target.protocol === "postgresql:" &&
++      target.username === "jg_task01_owner" && Number(target.port) > 1024 &&
++      target.searchParams.get("sslmode") === "require" && target.searchParams.get("sslaccept") === "strict" &&
++      /^\/tmp\/jg394-[A-Za-z0-9]+\/ca\.crt$/u.test(target.searchParams.get("sslcert") ?? "");
++    if (process.env.NODE_ENV !== "test" || target.hostname !== "127.0.0.1" ||
++        (!target.pathname.endsWith("_issue420_approval") && !ordered)) {
+@@ -83,0 +91,13 @@
++    if (ordered) {
++      const enterprise = await owner.businessParty.create({ data: {
++        name: "隔离审批中心施工企业", normalizedName: "issue420-enterprise", createdByUserId: ids.applicant
++      } });
++      const version = await owner.businessPartyVersion.create({ data: {
++        businessPartyId: enterprise.id, versionNo: 1, snapshot: { name: enterprise.name }, createdByUserId: ids.applicant
++      } });
++      await owner.projectAffiliateAssignment.create({ data: {
++        projectId: ids.project, businessPartyId: enterprise.id, businessPartyVersionId: version.id,
++        affiliateNameSnapshot: enterprise.name, effectiveFrom: new Date("2020-01-01"),
++        changeReason: "隔离验收施工企业", assignedByUserId: ids.applicant
++      } });
++    }
