@@ -2,7 +2,7 @@
 
 const assert = require("node:assert/strict");
 const signature = "public.jg_lock_standalone_expense_assignment_v1()";
-const routineSha256 = "533adb1bbac573225518b532dcf72553afc12c5af616b63cee22f898fed9e5ff";
+const routineSha256 = "a9ddd8f3cdd09c73b92444745e21f55bdca12702d6a33e92132c80800ce7962d";
 
 function readExpenseAssignmentLock(app) {
   assert.match(app, /^jg_fixture_app_[a-f0-9]{24}$/u);
@@ -35,6 +35,7 @@ function readExpenseAssignmentLock(app) {
       AND (SELECT count(*) FROM pg_trigger WHERE tgfoid = p.oid) = 1,
     'triggers', (
       SELECT jsonb_agg(jsonb_build_object('name', t.tgname, 'oid', t.oid::text,
+        'predicateSha256', encode(sha256(convert_to(t.tgqual::text, 'UTF8')), 'hex'),
         'routine', f.proname, 'safe', t.tgtype = 21 AND t.tgenabled = 'O' AND NOT t.tgisinternal
           AND NOT (t.tgdeferrable OR t.tginitdeferred) AND t.tgconstraint = 0
           AND t.tgqual IS NOT NULL AND t.tgnargs = 0 AND t.tgattr::text = '')
@@ -52,7 +53,9 @@ function verifyExpenseAssignmentLock(row) {
     ["ExpenseClaim_lock_construction_enterprise", "lockProjectConstructionEnterpriseFromFormalFact"],
     ["ExpenseClaim_lock_standalone_assignment", "jg_lock_standalone_expense_assignment_v1"]
   ], "NATIVE_A24_341_ASSIGNMENT_WIRING");
-  assert.ok(row.triggers.every(trigger => trigger.safe === true && /^[1-9][0-9]*$/u.test(trigger.oid)));
+  assert.ok(row.triggers.every(trigger => trigger.safe === true && /^[1-9][0-9]*$/u.test(trigger.oid)
+    && /^[a-f0-9]{64}$/u.test(trigger.predicateSha256)));
+  assert.notEqual(row.triggers[0].predicateSha256, row.triggers[1].predicateSha256);
   return row;
 }
 
