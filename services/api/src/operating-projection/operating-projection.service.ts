@@ -1,5 +1,6 @@
 import { expenseCashCostAvailable, expenseCashCostEvidenceSelect } from "../operating-ledger/expense-cash-cost-attribution";
 import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
+import { SETTLEMENT_SOURCE_TYPES } from "../operating-ledger/settlement-source-dedup";
 import {readCompanyTransferBalances} from "../company-transfer/company-transfer-summary";
 import { createReadStream } from "node:fs";
 import { mkdtemp, open, rm, type FileHandle } from "node:fs/promises";
@@ -45,6 +46,7 @@ import {
   ProjectionResourceBudgetExceededError,
   toOperatingProjectionAggregate,
   OperatingProjectionStreamAccumulator,
+  SettlementProjectionCandidates,
   projectionFactMatchesFilters,
   projectionLegacyContractAmountUnknown,
   toOperatingProjectionPublicDetail,
@@ -1145,12 +1147,24 @@ export class OperatingProjectionService {
               assignment.businessPartyVersionId
             ])))
         : undefined;
+      await preflightRestrictionResources(
+        tx,
+        projectIds,
+        cutoffAt,
+        readAt,
+        input.scope.filters,
+        constructionEnterpriseSubjectIds,
+        companyEntityVersionIds ? Array.from(companyEntityVersionIds) : undefined
+      );
+      // Pairing may change when another row is found on a later fact page.
+      // Read only settlement candidates before folding any impacts in this snapshot.
+      const settlementDeduplication = await readSettlementDeduplication(tx, projectIds, cutoffAt, readAt);
       const accumulator = new OperatingProjectionStreamAccumulator({
         numericProtocolVersion: input.numericProtocolVersion ?? 1,
         scope,
         cutoffAt: cutoffAt.toISOString(),
         collectSourceReferenceTotals: input.collectSourceReferenceTotals,
-        collectSuppressedSettlementFactIds: input.requireDetailPermission,
+        settlementDeduplication,
         constructionEnterpriseSubjectIds,
         companyEntityVersionIds: companyEntityVersionIds
           ? Array.from(companyEntityVersionIds)
@@ -1162,15 +1176,6 @@ export class OperatingProjectionService {
         maxHolderCoordinates: MAX_HOLDER_BALANCE_COORDINATES,
         maxSourceReferenceTotals: MAX_SOURCE_REFERENCE_TOTALS
       });
-      await preflightRestrictionResources(
-        tx,
-        projectIds,
-        cutoffAt,
-        readAt,
-        input.scope.filters,
-        constructionEnterpriseSubjectIds,
-        companyEntityVersionIds ? Array.from(companyEntityVersionIds) : undefined
-      );
       await readOperatingFactsInBatches(tx, projectIds, cutoffAt, readAt, {
         startFacts: (facts) => {
           const mapped = facts.map((fact) => versionedProjectionFactFromStored(
@@ -2241,21 +2246,18 @@ function riskStatusLabel(value: ProjectionRiskInput["items"][number]["status"]):
   if (value === "resolved") return "已核定";
   return "定义反向待纠正";
 }
-async function readOperatingFactsInBatches(
-  tx: Prisma.TransactionClient,
+async function* operatingFactPages<Fact extends { id: string }>(
   projectIds: string[],
   cutoffAt: Date,
   readAt: Date,
-  consumer: {
-    startFacts: (facts: StoredOperatingFact[]) => void;
-    addImpacts: (impacts: StoredOperatingImpact[]) => void;
-    finishFacts: () => void;
-  }
-): Promise<void> {
+  readPage: (args: Prisma.OperatingFactFindManyArgs & {
+    where: Prisma.OperatingFactWhereInput;
+  }) => Promise<Fact[]>
+): AsyncGenerator<Fact[]> {
   for (const projectBatch of batches(projectIds, PROJECT_QUERY_BATCH_SIZE)) {
     let cursorId: string | undefined;
     for (;;) {
-      const page = await tx.operatingFact.findMany({
+      const page = await readPage({
         where: {
           projectId: { in: projectBatch },
           status: "confirmed",
@@ -2267,26 +2269,63 @@ async function readOperatingFactsInBatches(
         take: OPERATING_FACT_BATCH_SIZE,
         ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {})
       });
-      if (page.length === 0) break;
-      consumer.startFacts(page);
-      for (const factBatch of batches(page.map((fact) => fact.id), DATABASE_IN_BATCH_SIZE)) {
-        let impactCursorId: string | undefined;
-        for (;;) {
-          const impacts = await tx.operatingImpactEntry.findMany({
-            where: { factId: { in: factBatch }, createdAt: { lte: readAt } },
-            orderBy: { id: "asc" },
-            take: OPERATING_IMPACT_BATCH_SIZE,
-            ...(impactCursorId ? { cursor: { id: impactCursorId }, skip: 1 } : {})
-          });
-          consumer.addImpacts(impacts);
-          if (impacts.length < OPERATING_IMPACT_BATCH_SIZE) break;
-          impactCursorId = impacts.at(-1)!.id;
-        }
-      }
-      consumer.finishFacts();
+      if (!page.length) break;
+      yield page;
       if (page.length < OPERATING_FACT_BATCH_SIZE) break;
       cursorId = page.at(-1)!.id;
     }
+  }
+}
+
+async function readSettlementDeduplication(
+  tx: Prisma.TransactionClient,
+  projectIds: string[],
+  cutoffAt: Date,
+  readAt: Date
+) {
+  const candidates = new SettlementProjectionCandidates();
+  const pages = operatingFactPages(projectIds, cutoffAt, readAt, args =>
+    tx.operatingFact.findMany({
+      ...args,
+      where: { ...args.where, sourceType: { in: [...SETTLEMENT_SOURCE_TYPES] }, numericProtocolVersion: 1 },
+      select: { id: true, projectId: true, sourceType: true, sourceSnapshot: true, amountCents: true }
+    })
+  );
+  for await (const page of pages) {
+    for (const fact of page) candidates.add(fact);
+  }
+  return candidates.resolve();
+}
+
+async function readOperatingFactsInBatches(
+  tx: Prisma.TransactionClient,
+  projectIds: string[],
+  cutoffAt: Date,
+  readAt: Date,
+  consumer: {
+    startFacts: (facts: StoredOperatingFact[]) => void;
+    addImpacts: (impacts: StoredOperatingImpact[]) => void;
+    finishFacts: () => void;
+  }
+): Promise<void> {
+  const pages = operatingFactPages(projectIds, cutoffAt, readAt, args => tx.operatingFact.findMany(args));
+  for await (const page of pages) {
+    consumer.startFacts(page);
+    for (const factBatch of batches(page.map((fact) => fact.id), DATABASE_IN_BATCH_SIZE)) {
+      let impactCursorId: string | undefined;
+      for (;;) {
+        const impacts = await tx.operatingImpactEntry.findMany({
+          where: { factId: { in: factBatch }, createdAt: { lte: readAt } },
+          orderBy: { id: "asc" },
+          take: OPERATING_IMPACT_BATCH_SIZE,
+          ...(impactCursorId ? { cursor: { id: impactCursorId }, skip: 1 } : {})
+        });
+        consumer.addImpacts(impacts);
+        if (impacts.length < OPERATING_IMPACT_BATCH_SIZE) break;
+        impactCursorId = impacts.at(-1)!.id;
+      }
+    }
+    consumer.finishFacts();
   }
 }
 

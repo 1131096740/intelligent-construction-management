@@ -1465,6 +1465,66 @@ type StreamingFactState = {
   restrictionImpacts: ProjectionImpactInput[];
 };
 
+type SettlementProjectionCandidate = Pick<
+  ProjectionFactInput, "id" | "projectId" | "sourceType" | "sourceSnapshot"
+> & { amountCents: bigint | null };
+
+interface SettlementProjectionDeduplication {
+  suppressedFactIds: ReadonlySet<string>;
+  notices: readonly string[];
+  moneyComplete: boolean;
+}
+
+/** Keeps only the coordinates needed to decide a whole contract/period bucket. */
+export class SettlementProjectionCandidates {
+  private readonly buckets = new Map<string, {
+    first: Pick<SettlementProjectionCandidate, "sourceType" | "amountCents">;
+    count: number;
+    otherSource?: { id: string; amountCents: bigint | null; period: string };
+  }>();
+
+  add(fact: SettlementProjectionCandidate): void {
+    const identity = settlementEconomicIdentity(fact.sourceType, fact.sourceSnapshot);
+    if (!identity) return;
+    const key = `${fact.projectId}\u0000${settlementDedupKey(identity)}`;
+    const bucket = this.buckets.get(key);
+    if (!bucket) {
+      this.buckets.set(key, {
+        first: { sourceType: fact.sourceType, amountCents: fact.amountCents },
+        count: 1
+      });
+      return;
+    }
+    bucket.count += 1;
+    if (bucket.first.sourceType !== fact.sourceType && !bucket.otherSource) {
+      bucket.otherSource = { id: fact.id, amountCents: fact.amountCents, period: identity.period };
+    }
+  }
+
+  resolve(): SettlementProjectionDeduplication {
+    const suppressedFactIds = new Set<string>();
+    const notices = new Set<string>();
+    let moneyComplete = true;
+    for (const { first, count, otherSource } of this.buckets.values()) {
+      if (!otherSource) continue;
+      if (count > 2) {
+        moneyComplete = false;
+        notices.add("同一合同期次存在多来源且有多笔结算，无法确定对应关系。请核对原结算单后确认金额汇总。");
+        continue;
+      }
+      suppressedFactIds.add(otherSource.id);
+      if (first.amountCents !== otherSource.amountCents) {
+        moneyComplete = false;
+        notices.add("同一合同期次的多来源结算金额不一致，跨来源去重已关闭金额投影。");
+      }
+      notices.add(
+        `同一合同期次「${otherSource.period}」存在多来源结算，已按一次计入成本；请核对原结算单。`
+      );
+    }
+    return { suppressedFactIds, notices: [...notices], moneyComplete };
+  }
+}
+
 /**
  * Bounded aggregate reducer used by the authenticated API reader. A database
  * fact page is registered, its impact pages are folded immediately, and the
@@ -1545,8 +1605,6 @@ export class OperatingProjectionStreamAccumulator {
   private confirmedProjectOutflowsCents = 0n;
   private constructionEnterprisePaidCents = 0n;
   private projectExternalPaidCents = 0n;
-  private crossSourceDedupedFactCount = 0;
-  private readonly settlementDedupSeen = new Map<string, { amountCents: bigint; sourceType: string }>();
   private readonly costByBearingCompany = new Map<string, { kind: string; id: string; name: string | null; costCents: bigint }>();
   private unattributedCostCents = 0n;
   private publicCashCostCents = 0n;
@@ -1554,14 +1612,13 @@ export class OperatingProjectionStreamAccumulator {
   private retroactiveFactCount = 0;
   private integrityFactCount = 0;
   private integrityImpactCount = 0;
-  private readonly suppressedSettlementFactIds = new Set<string>();
 
   constructor(private readonly context: {
     numericProtocolVersion?: 1 | 2;
     scope: ProjectionScopeInput;
     cutoffAt: string;
     collectSourceReferenceTotals?: boolean;
-    collectSuppressedSettlementFactIds?: boolean;
+    settlementDeduplication?: SettlementProjectionDeduplication;
     maxIntegrityFacts?: number;
     maxIntegrityImpacts?: number;
     maxHolderAliases?: number;
@@ -1575,6 +1632,11 @@ export class OperatingProjectionStreamAccumulator {
       context.holderAliases ?? [],
       context.maxHolderAliases
     );
+    const settlements = context.settlementDeduplication;
+    if (settlements) {
+      this.moneyComplete = settlements.moneyComplete;
+      for (const notice of settlements.notices) this.notices.add(notice);
+    }
   }
 
   startFacts(facts: Array<ProjectionFactInput | ProjectionV2FactInput>): void {
@@ -1610,33 +1672,7 @@ export class OperatingProjectionStreamAccumulator {
           this.context.constructionEnterpriseSubjectIds,
           this.context.companyEntityVersionIds
         );
-      const settlementIdentity = settlementEconomicIdentity(
-        fact.sourceType,
-        fact.sourceSnapshot
-      );
-      const settlementKey = settlementIdentity
-        ? settlementDedupKey(settlementIdentity)
-        : null;
-      let crossSourceDuplicate = false;
-      if (settlementKey) {
-        const seen = this.settlementDedupSeen.get(settlementKey);
-        if (seen) {
-          crossSourceDuplicate = true;
-          if (seen.amountCents !== fact.amountCents) {
-            this.markMoneyIncomplete(
-              "同一合同期次的多来源结算金额不一致，跨来源去重已关闭金额投影。"
-            );
-          }
-          this.notices.add(
-            `同一合同期次「${settlementIdentity!.period}」存在多来源结算，已按一次计入成本；请核对原结算单。`
-          );
-        } else {
-          this.settlementDedupSeen.set(settlementKey, {
-            amountCents: fact.amountCents,
-            sourceType: fact.sourceType
-          });
-        }
-      }
+      const crossSourceDuplicate = this.context.settlementDeduplication?.suppressedFactIds.has(fact.id) ?? false;
       this.stateByFactId.set(fact.id, {
         fact: { ...fact, impacts: [] },
         selected: !crossSourceDuplicate && noImpactFilter && sourceSelected,
@@ -1787,10 +1823,6 @@ export class OperatingProjectionStreamAccumulator {
     this.decimalFacts.clear();
     for (const state of this.stateByFactId.values()) {
       const fact = state.fact;
-      if (state.crossSourceDuplicate) {
-        this.crossSourceDedupedFactCount += 1;
-        if (this.context.collectSuppressedSettlementFactIds) this.suppressedSettlementFactIds.add(fact.id);
-      }
       if (state.selected) {
         if (!EVIDENCE_LEVEL_SET.has(fact.evidenceLevel)) {
           this.markMoneyIncomplete("经营事实使用未知证据等级，金额投影已关闭。");
@@ -1859,7 +1891,7 @@ export class OperatingProjectionStreamAccumulator {
         selectedHolderCashBalances: Array.from(this.selectedHolderCashBalances.entries()),
         confirmedProjectInflowsCents: this.confirmedProjectInflowsCents,
         confirmedProjectOutflowsCents: this.confirmedProjectOutflowsCents,
-        crossSourceDedupedFactCount: this.crossSourceDedupedFactCount,
+        crossSourceDedupedFactCount: this.context.settlementDeduplication?.suppressedFactIds.size ?? 0,
         costByBearingCompany: Array.from(this.costByBearingCompany.values()),
         unattributedCostCents: this.unattributedCostCents,
         publicCashCostCents: this.publicCashCostCents,
@@ -1874,7 +1906,7 @@ export class OperatingProjectionStreamAccumulator {
         moneyComplete: this.moneyComplete,
         notices: [...this.notices]
       } satisfies ProjectionAggregateSeed,
-      suppressedSettlementFactIds: this.suppressedSettlementFactIds,
+      suppressedSettlementFactIds: this.context.settlementDeduplication?.suppressedFactIds ?? new Set<string>(),
       integrityFacts: this.integrityFacts,
       restrictionCashContext: {
         conflict: this.restrictionConflict,
@@ -2288,8 +2320,13 @@ function reduceLegacyOperatingProjection(
     });
   }
   const cashNetByFact = new Map<string, bigint>();
-  const settlementDedupSeen = new Map<string, { amountCents: bigint; sourceType: string }>();
-  let crossSourceDedupedFactCount = 0;
+  const settlements = new SettlementProjectionCandidates();
+  if (!input.aggregateSeed) {
+    for (const fact of input.facts) settlements.add(fact);
+  }
+  const settlementDeduplication = settlements.resolve();
+  moneyComplete &&= settlementDeduplication.moneyComplete;
+  notices.push(...settlementDeduplication.notices);
   const costByBearingCompany = new Map<string, { kind: string; id: string; name: string | null; costCents: bigint }>();
   let unattributedCostCents = 0n;
   let publicCashCostCents = 0n;
@@ -2303,29 +2340,7 @@ function reduceLegacyOperatingProjection(
   let retroactiveFactCount = input.aggregateSeed?.retroactiveFactCount ?? 0;
 
   for (const fact of input.aggregateSeed ? [] : input.facts) {
-    const settlementIdentity = settlementEconomicIdentity(
-      fact.sourceType,
-      fact.sourceSnapshot
-    );
-    if (settlementIdentity) {
-      const key = settlementDedupKey(settlementIdentity);
-      const seen = settlementDedupSeen.get(key);
-      if (seen) {
-        crossSourceDedupedFactCount += 1;
-        if (seen.amountCents !== fact.amountCents) {
-          moneyComplete = false;
-          notices.push("同一合同期次的多来源结算金额不一致，跨来源去重已关闭金额投影。");
-        }
-        notices.push(
-          `同一合同期次「${settlementIdentity.period}」存在多来源结算，已按一次计入成本；请核对原结算单。`
-        );
-        continue;
-      }
-      settlementDedupSeen.set(key, {
-        amountCents: fact.amountCents,
-        sourceType: fact.sourceType
-      });
-    }
+    if (settlementDeduplication.suppressedFactIds.has(fact.id)) continue;
     const { factSelected, matchingImpacts } = selectFactImpacts(input, fact);
     if (!factSelected) continue;
     const evidenceKnown = EVIDENCE_LEVEL_SET.has(fact.evidenceLevel);
@@ -2713,7 +2728,7 @@ function reduceLegacyOperatingProjection(
       retroactiveFactCount,
       crossSourceDedupedFactCount:
         input.aggregateSeed?.crossSourceDedupedFactCount ??
-        crossSourceDedupedFactCount
+        settlementDeduplication.suppressedFactIds.size
     },
     integrity: {
       status: moneyComplete ? "complete" : "incomplete",
