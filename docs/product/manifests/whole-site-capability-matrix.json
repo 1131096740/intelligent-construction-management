@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "4bb248bf6c26179200aa2282b9430ca68ce163903e08dc5e7641f47ffe7b994c",
+      "sha256": "b891f304418840167a236c45d020d5b12dcb34635008c99bd01b47107d8a1197",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
@@ -42,18 +42,18 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "2ab1cca5fb3f2de90cd55c23686f5c5384716d6158a1ed7581877a840f2475fe",
+      "sha256": "9bfe6ec96f24dac0f23b7503e4ef68dbecc325fc89b510ef741f2da69ee7e54a",
       "status": "ready",
       "summary": {
         "registeredActionCount": 435,
         "pageActionCount": 108,
         "backgroundActionCount": 327,
-        "reachableVueFileCount": 236,
+        "reachableVueFileCount": 237,
         "routeRootCount": 82,
-        "totalVueFileCount": 256,
-        "parsedVueFileCount": 256,
-        "reachableProductionModuleCount": 406,
-        "templateEventDirectiveCount": 1541,
+        "totalVueFileCount": 257,
+        "parsedVueFileCount": 257,
+        "reachableProductionModuleCount": 407,
+        "templateEventDirectiveCount": 1548,
         "propCallbackDirectiveCount": 8,
         "coveredProductionMutationConsumerCount": 426,
         "candidateProductionMutationConsumerCount": 426,
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "d0aa53aa7e079bfd638043c405a686ae0348dc86a28308a94f6a114fe97a9454",
+      "sha256": "b64b7f6b91d23848827ee416046593509febe1db21cfec2f3b07121811d6e6ca",
       "status": "ready",
       "summary": {
         "routeCount": 884,
@@ -1505,6 +1505,7 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
+            "apps/web-admin/src/pages/contracts/components/HistoricalPartyVersionField.vue",
             "apps/web-admin/src/pages/contracts/workbench/DirectPendingDraftSection.vue"
           ],
           "testConsumers": [
@@ -1588,6 +1589,7 @@
           "bodyKind": "none",
           "productionConsumers": [
             "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue",
+            "apps/web-admin/src/pages/contracts/components/HistoricalPartyVersionField.vue",
             "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue",
             "apps/web-admin/src/pages/contracts/workbench/DirectPendingDraftSection.vue"
           ],
