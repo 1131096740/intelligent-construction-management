@@ -35,6 +35,7 @@ fi
     $2 == task398-ledger-loss || $2 == task398-competition || $2 == historical-takeover-a28 || $2 == historical-takeover-a29 ||
     $2 == browser-partial || $2 == browser-completion || $2 == procurement ||
     $2 == settlement || $2 == template || $2 == draft || $2 == v7 || $2 == invoice || $2 == pol279 || $2 == pol280 ||
+    $2 == expense-execution || $2 == expense-finance || $2 == expense-receipt || $2 == cash-handover || $2 == principal-return || $2 == company-proxy ||
     $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts || $2 == pol109 || $ordered_issue == true ) && $3 == --expense-witness-346 ) ||
   ( $# == 4 && ( $2 == payment-execution || $2 == task398-competition || $2 == pol109 ) && $3 == --expense-witness-346 && $4 == --host-only ) ||
   ( $# == 4 && $2 == pol275 && $3 == --historical-settlement-334 && $4 == a187dc73a133114e1cfbbc891a4aec923abe2545 ) ||
@@ -134,7 +135,11 @@ case "$lane" in
     bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work/browser"
     ;;
   cash-handover|principal-return|cash-transfer|project-advance) bash "$plan/run-task398-cash-principal.sh" "$root" "$work/source" "$sha" "$work/browser" "$lane" ;;
-  expense-execution|expense-finance|expense-receipt) bash "$plan/run-expense.sh" "$root" "$work/source" "$sha" "$work/browser" "${lane#expense-}" ;;
+  expense-execution|expense-finance|expense-receipt)
+    expense_args=()
+    if [[ ${3:-} == --expense-witness-346 ]]; then expense_args=("$3"); fi
+    bash "$plan/run-expense.sh" "$root" "$work/source" "$sha" "$work/browser" "${lane#expense-}" ${expense_args[@]+"${expense_args[@]}"}
+    ;;
   payment-execution) bash "$plan/run-payment-execution.sh" "$root" "$work/source" "$sha" "$work/browser" ;;
   company-proxy) bash "$plan/run-task410-company-proxy.sh" "$root" "$work/source" "$sha" "$work/browser" ;;
   browser-partial|browser-completion)
