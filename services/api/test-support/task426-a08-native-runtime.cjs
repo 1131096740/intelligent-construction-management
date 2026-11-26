@@ -46,6 +46,9 @@ const prismaDiagnosticRoutes = new Map([
   ["A08_HTTP_OUTSIDER_LOGIN", "POST /auth/login"],
   ["A08_HTTP_OUTSIDER_TICKET", "POST /files/:fileId/download-ticket"]
 ]);
+// FileService filters ArchiveRecord by fileId/businessType and returns the
+// business coordinates. Prisma 5.22 also selects the model identifier.
+const archiveRecordLookupColumns = ["businessType", "businessId", "id"];
 const signedBindingRowIdentifiers = [
   ["ContractSignedChange", "id"],
   ["SignedContractSettlementAttachment", "settlementId"]
@@ -227,6 +230,7 @@ function grantOrdinaryAcl(requirements, role) {
     statements.push(`GRANT SELECT (${identifier(column)}) ON public.${identifier(table)} TO ${target};`);
   }
   statements.push(`GRANT SELECT (${reviewReadColumns.map(identifier).join(", ")}) ON public."ContractEconomicReview" TO ${target};`);
+  statements.push(`GRANT SELECT (${archiveRecordLookupColumns.map(identifier).join(", ")}) ON public."ArchiveRecord" TO ${target};`);
   return statements;
 }
 
@@ -255,6 +259,14 @@ function prepareA08TlsSessions({ ownerUrl, archiveMaterial, requirements, sql, r
     `NOT has_table_privilege(${application.oid}::oid,${sqlLiteral(`public.${identifier(table)}`)}::regclass,'SELECT')`;
   const signedBindingAcl = granted => signedBindingRowIdentifiers.map(([table, column]) =>
     `${noTableRead(table)} AND ${columnRead(table, sqlLiteral(column))} IS ${granted ? "TRUE" : "FALSE"}`).join(" AND ");
+  const archiveRecordColumns = [...requirements.tables.ArchiveRecord[0], ...archiveRecordLookupColumns];
+  const archiveRecordAcl = `(${archiveRecordColumns.map(column => columnRead("ArchiveRecord", sqlLiteral(column))).join(" AND ")}
+    AND NOT has_table_privilege(${application.oid}::oid,'public."ArchiveRecord"','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+    AND NOT EXISTS (SELECT FROM pg_attribute a WHERE a.attrelid='public."ArchiveRecord"'::regclass
+      AND a.attnum>0 AND NOT a.attisdropped
+      AND (has_column_privilege(${application.oid}::oid,a.attrelid,a.attnum,'SELECT WITH GRANT OPTION,INSERT,UPDATE,REFERENCES')
+        OR (a.attname NOT IN (${archiveRecordColumns.map(sqlLiteral).join(", ")})
+          AND has_column_privilege(${application.oid}::oid,a.attrelid,a.attnum,'SELECT')))))`;
   const reviewTable = "ContractEconomicReview";
   const readableReviewColumns = `ARRAY(SELECT col FROM unnest(ARRAY[${reviewReadColumns.map(sqlLiteral).join(", ")}]) col
     WHERE ${columnRead(reviewTable, "col")})`;
@@ -276,6 +288,7 @@ GRANT CONNECT ON DATABASE ${identifier(owner.database)} TO ${identifier(applicat
 GRANT USAGE ON SCHEMA public TO ${identifier(application.name)};
 ${grantOrdinaryAcl(requirements, application.name).join("\n")}
 DO $a08_session_acl$ BEGIN
+  IF NOT ${archiveRecordAcl} THEN RAISE EXCEPTION 'A08_ARCHIVE_RECORD_READ_ACL'; END IF;
   IF NOT (${roleWitness(3)} AND ${signedBindingAcl(true)} AND ${noTableRead(reviewTable)}
     AND cardinality(${readableReviewColumns})=${reviewReadColumns.length}) OR EXISTS (SELECT FROM pg_class c WHERE c.oid IN (${requirements.privateTablesDenied
     .map(table => `to_regclass(${sqlLiteral(`public.${table}`)})`).join(", ")}) AND
@@ -284,11 +297,13 @@ DO $a08_session_acl$ BEGIN
     THEN RAISE EXCEPTION 'A08_SESSION_ACL_POSTIMAGE'; END IF;
 END $a08_session_acl$;
 SELECT jsonb_build_object('before',current_setting('jg.a08_review_columns_before')::jsonb,
-  'after',to_jsonb(${readableReviewColumns}),'tableRead',NOT (${noTableRead(reviewTable)}));
+  'after',to_jsonb(${readableReviewColumns}),'tableRead',NOT (${noTableRead(reviewTable)}),
+  'archiveRecordExactRead',${archiveRecordAcl});
 COMMIT;`));
   assert.ok(Array.isArray(reviewAcl.before) && reviewAcl.before.every(column => reviewReadColumns.includes(column)));
   assert.deepEqual(reviewAcl.after, reviewReadColumns);
   assert.equal(reviewAcl.tableRead, false);
+  assert.equal(reviewAcl.archiveRecordExactRead, true, "A08_ARCHIVE_RECORD_READ_ACL");
   recordReviewAcl(reviewAcl);
   return Object.fromEntries(Object.entries(roles).map(([key, role]) => {
     const url = new URL(ownerUrl);
