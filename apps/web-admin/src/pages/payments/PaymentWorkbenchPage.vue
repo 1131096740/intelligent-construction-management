@@ -484,6 +484,7 @@ const contractPaymentRoute = computed<
     ? "settlement_required"
     : "unsupported";
 });
+const isAffiliatePayment = computed(() => selectedContract.value?.paymentSubjectType === "affiliate");
 const availablePaymentSourceOptions = computed(() => {
   if (["unselected", "unsupported"].includes(contractPaymentRoute.value)) return [];
   const allowed = contractPaymentRoute.value === "generic_direct"
@@ -492,7 +493,7 @@ const availablePaymentSourceOptions = computed(() => {
     : new Set<PaymentCreateSourceType>(["settlement", "signed_settlement", "contract_advance"]);
   return paymentCreateSourceOptions
     .filter((option) => allowed.has(option.value) &&
-      (option.value !== "contract_advance" || selectedContract.value?.paymentSubjectType !== "affiliate"))
+      (option.value !== "contract_advance" || !isAffiliatePayment.value))
     .map((option) => option.value === "contract_due"
       ? { ...option, label: "按冻结付款条款直接付款" }
       : option);
@@ -509,7 +510,7 @@ const contractPaymentRouteDescription = computed(() =>
     ? "依据生效的合同付款约定办理。提交时会核对约定和可用额度。"
     : contractPaymentRoute.value === "unsupported"
       ? "当前合同类型尚未明确，不能判断合法付款来源。请先由合同部核对合同类型。"
-      : selectedContract.value?.paymentSubjectType === "affiliate"
+      : isAffiliatePayment.value
         ? "施工企业付款从已生效结算发起。"
         : "需要结算的合同从已生效结算发起付款；合同预付款仍按已生效条款办理。"
 );
@@ -520,7 +521,9 @@ const paymentSourceHint = computed(() => {
   }
   return contractPaymentRoute.value === "generic_direct"
     ? "只能依据已生效合同版本和冻结付款条款办理。"
-    : "普通进度款须选择已生效结算；预付款保留既有合法入口。";
+    : isAffiliatePayment.value
+      ? "请选择已生效结算。"
+      : "普通进度款须选择已生效结算；预付款保留既有合法入口。";
 });
 const selectedContractHint = computed(() => {
   const contract = selectedContract.value;
@@ -528,7 +531,9 @@ const selectedContractHint = computed(() => {
   if (contract.paymentUnavailableReason) return contract.paymentUnavailableReason;
   return contractPaymentRoute.value === "generic_direct"
     ? "可按该合同已生效的付款约定申请。"
-    : "请选择已生效结算；预付款按合同冻结条款办理。";
+    : isAffiliatePayment.value
+      ? "请从该合同已生效的结算发起付款。"
+      : "请选择已生效结算；预付款按合同冻结条款办理。";
 });
 const selectedSettlementHint = computed(() => {
   const settlement = selectedSettlement.value;

@@ -27,11 +27,11 @@
   },
   "inventory": {
     "pendingFiles": 111,
-    "fullyPendingSuites": 90,
-    "partiallyPendingSuites": 21,
-    "pendingTests": 636,
+    "fullyPendingSuites": 91,
+    "partiallyPendingSuites": 20,
+    "pendingTests": 637,
     "coveredFiles": 111,
-    "coveredTests": 636,
+    "coveredTests": 637,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -872,12 +872,12 @@
     },
     {
       "id": "issue413_construction_paid",
-      "pendingTests": 1,
+      "pendingTests": 2,
       "testFiles": [
         {
           "path": "services/api/src/database/issue413-construction-enterprise-paid.pg.spec.ts",
-          "pendingTests": 1,
-          "suiteStatus": "partial_pending"
+          "pendingTests": 2,
+          "suiteStatus": "fully_pending"
         }
       ],
       "runner": {
@@ -1158,7 +1158,7 @@
     "ciEligible": {
       "groups": 45,
       "files": 110,
-      "tests": 635
+      "tests": 636
     },
     "manualOnly": {
       "groups": 1,
