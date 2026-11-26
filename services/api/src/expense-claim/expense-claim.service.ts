@@ -1831,9 +1831,6 @@ export class ExpenseClaimService {
         );
       }
       await this.audit.record(tx, { actorUserId, action: claim.claimType === "incidental_expense" ? "incidental_expense.payment.record" : "expense_claim.reimbursement.payment.record", businessType, businessId: claim.id, metadata: { paymentExecutionId: execution.id, amountCents: amountCents.toString(), voucherFileId, paymentMethod, ...(registered ? { registeredFunding: registered } : {}), fundingAllocation: fundingAllocation ? { kind: fundingAllocation.kind, projectCashAmountCents: fundingAllocation.projectCashAmountCents.toString(), financingQuotaAmountCents: fundingAllocation.financingQuotaAmountCents.toString(), allocations: fundingAllocation.allocations.map((allocation) => ({ sourceType: allocation.sourceType, sourceId: allocation.sourceId, amountCents: allocation.amountCents.toString() })) } : null } });
-      if (isPublicCash) {
-        await tx.$executeRaw`SET CONSTRAINTS public.jg_expense_public_cash_voucher_debit_required IMMEDIATE`;
-      }
         return { id: execution.id, expenseClaimId: claim.id, paidAmountCents: moneyCentsToApi(fundedAmountCents), status, claimType: claim.claimType, replayed: false, ...(registered ? { registeredFunding: registered } : {}) };
       }),
       "费用付款遇到参与公司并发变化，请刷新后重试"
