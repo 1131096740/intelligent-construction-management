@@ -30,13 +30,14 @@ function file(pathname, expected) {
   return bytes;
 }
 
-function captureSource(candidate, paymentRemainder) {
+function captureSource(candidate, paymentRemainder, a24Profile) {
   assert.match(candidate, /^[a-f0-9]{40}$/u);
   assert.equal(git(["rev-parse", "HEAD"]).toString().trim(), candidate);
   assert.equal(tracked(), "");
   const ledger = git(["ls-tree", "-r", "--name-only", "-z", candidate, "--", "services/api/prisma/migrations"]).toString().split("\0")
     .filter(name => name.endsWith("/migration.sql"))
     .map(name => ({ name: path.basename(path.dirname(name)), sha256: hash(fs.readFileSync(path.join(root, name))), finished: true, rolledBack: false }));
+  if (a24Profile) return a24Profile.qualifyA24Source(candidate, git(["rev-parse", candidate + "^{tree}"]).toString().trim(), ledger);
   assert.ok(paymentRemainder ? ledger.length === 331 : ledger.length === 329 || ledger.length === 330);
   const mode = paymentRemainder ? "--payment-remainder-331" : ledger.length === 330 ? "--text-direct-330" : "--current-320";
   const archive = JSON.parse(execFileSync(process.execPath,
@@ -109,8 +110,9 @@ function localPort() {
 
 const liveForwardPrefixes = count => [271, 289, 295, 329, 330, 331].filter(size => size <= count);
 
-function migrationPrefixes(directory, ledger) {
-  const sizes = [203, 205, 213, 215, 218, 221, 263, ...liveForwardPrefixes(ledger.length)];
+function migrationPrefixes(directory, source) {
+  const { ledger } = source;
+  const sizes = [203, 205, 213, 215, 218, 221, 263, ...liveForwardPrefixes(ledger.length), ...(source.a24Prefixes ?? [])];
   return new Map(sizes.map(size => {
     const prefix = path.join(directory, "prefix-" + size);
     fs.mkdirSync(path.join(prefix, "migrations"), { recursive: true, mode: 0o700 });
@@ -126,8 +128,8 @@ function migrationPrefixes(directory, ledger) {
   }));
 }
 
-async function migrate({ source, archive, database, directory, sql, url, run, stage, runId, port }) {
-  const prefixes = migrationPrefixes(directory, source.ledger);
+async function migrate({ source, archive, database, directory, sql, url, run, stage, runId, port, a24Profile }) {
+  const prefixes = migrationPrefixes(directory, source);
   const deploy = (size, target = url) => {
     stage("MIGRATE_" + size);
     run(process.execPath, [require.resolve("prisma"), "migrate", "deploy", "--schema", prefixes.get(size)], {
@@ -188,10 +190,21 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
   verify(inspect(), 263);
   const archiveMaterial = installArchive(archive, sql, runId, port, { name: plan.appName, oid: setup.appOid, nonce: plan.nonce }, stage);
   let paymentRemainderPredecessor;
-  for (const size of liveForwardPrefixes(source.ledger.length)) {
+  const a24Installation = [];
+  const historicalCatalog = a24Profile?.createHistoricalCatalogCheck?.(statement => JSON.parse(
+    sql("BEGIN READ ONLY; SET LOCAL search_path=pg_catalog,pg_temp;" + statement + "ROLLBACK;")
+  ));
+  for (const size of [...liveForwardPrefixes(source.ledger.length), ...(source.a24Prefixes ?? [])]) {
     deploy(size);
     const installed = inspect();
     verify(installed, size);
+    if (source.a24Prefixes?.includes(size)) {
+      a24Installation.push(a24Profile.verifyA24Prefix(size, installed.ledger));
+      if (historicalCatalog && [332, 333, 334, 340].includes(size)) {
+        stage("A24_HISTORICAL_CATALOG_" + size);
+        historicalCatalog.atPrefix(size);
+      }
+    }
     if (size === 330 && source.predecessor330) {
       const ledgerSha256 = hash(JSON.stringify(installed.ledger));
       assert.equal(ledgerSha256, source.predecessor330.ledgerSha256);
@@ -204,7 +217,7 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
     return { count: final.ledger.length, ledgerSha256: hash(JSON.stringify(final.ledger)), sameIdentity: true };
   };
   return { appOid: setup.appOid, app: plan.appName, tailMaterials, archiveMaterial,
-    paymentRemainderPredecessor, verifyAfterBusiness };
+    paymentRemainderPredecessor, a24Installation, historicalCatalog, verifyAfterBusiness };
 }
 
 function grantApplication(sql, database, app, appPassword) {
@@ -300,11 +313,18 @@ async function main(args) {
   assert.equal(process.arch, "arm64");
   const expenseApproval = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1) === "--approval-round-a04";
   const issue430ApprovalSms = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1) === "--issue430-approval-sms";
-  const paymentRemainder = expenseApproval || issue430ApprovalSms || (args.length === 11 && args.at(-1) === "--payment-remainder-331");
+  const expenseCashA24Mode = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1);
+  const a24Profile = expenseCashA24Mode === "--expense-cash-a24"
+    ? require("../test-support/task426-a24-native-profile.cjs")
+    : expenseCashA24Mode === "--expense-cash-a24-combined-340"
+      ? require("../test-support/task426-a24-native340-profile.cjs")
+      : undefined;
+  const expenseCashA24 = Boolean(a24Profile);
+  const paymentRemainder = expenseApproval || issue430ApprovalSms || expenseCashA24 || (args.length === 11 && args.at(-1) === "--payment-remainder-331");
   assert.ok(args.length === 10 || paymentRemainder);
   const [mode, sha, pgManifest, pgSha, docManifest, docSha, office, officeSha, archiveAdmission, archiveSha] = args;
   assert.ok(["verify", "run"].includes(mode));
-  const source = captureSource(sha, paymentRemainder);
+  const source = captureSource(sha, paymentRemainder, a24Profile);
   const normalArchiveRecipeSha = "90b698f5230ae172518e285bf8c4e197eb1d552518c55670c2b3794eb82f1b75";
   file(path.join(__dirname, "task12-normal274-archive-binding.cjs"), normalArchiveRecipeSha);
   const approvalLockRecipeSha = "5d565dc516cd26c64e3fda295b97968be7912abc62f47ab47ffd93be29fd6c2f";
@@ -315,6 +335,13 @@ async function main(args) {
   const receipt = { candidate: sha, sourceTree: source.sourceTree, migrations: source.ledger.length, ledgerSha256: source.ledgerDigest,
     postgresMaterialSha256: pgSha, historicalSourceAdmissionSha256: archiveSha, normalArchiveRecipeSha256: normalArchiveRecipeSha, approvalLockRecipeSha256: approvalLockRecipeSha, documentManifestSha256: docSha, libreOfficeWrapperSha256: officeSha, libreOfficeExecutableSha256: runtime.nativeOfficeSha,
     status: "HOST_MATERIAL_VERIFIED", stages: [], cleanup: "NOT_NEEDED" };
+  const a24Acl = expenseCashA24 && require("../test-support/task426-a24-native-acl.cjs");
+  const a24Plan = a24Acl && a24Acl.a24ColumnPlan(require("@prisma/client").Prisma.dmmf.datamodel.models);
+  if (a24Plan) receipt.a24AclSha256 = hash(JSON.stringify(a24Plan));
+  if (expenseCashA24) receipt.a24ExpectedPrefixes = source.a24Prefixes.map(size => {
+    const { ledgerSha256 } = a24Profile.verifyA24Prefix(size, source.ledger.slice(0, size));
+    return { count: size, ledgerSha256 };
+  });
   if (mode === "verify") return receipt;
 
   const directory = fs.mkdtempSync("/private/tmp/jg425-seal-329-");
@@ -335,8 +362,8 @@ async function main(args) {
     if (result.status !== 0) {
       // Some tools return connection strings and fixture secrets on failure.
       // Each command's projection is limited to its status and business stage.
-      const diagnostic = result.stdout?.match(/SEAL_329_NATIVE_FAILURE (\{[^\n]{1,1500}\})/u)?.[1];
       const errorText = (result.stderr ?? "") + "\n" + (result.stdout ?? "");
+      const diagnostic = errorText.match(/(?:SEAL_329_NATIVE_FAILURE|NATIVE_A24_FAILURE) (\{[^\n]{1,1500}\})/u)?.[1];
       const prismaCode = errorText.match(/(?:Error: |^)(P[0-9]{4})\b/mu)?.[1];
       const sqlState = (errorText.match(/Database error code:\s*([0-9A-Z]{5})\b/u) ??
         errorText.match(/^(?:psql:.*?: )?ERROR:\s+([0-9A-Z]{5}):/mu))?.[1];
@@ -419,16 +446,21 @@ async function main(args) {
       });
       assert.equal(negative.status, 2);
     }
-    const { appOid, app, tailMaterials, archiveMaterial, paymentRemainderPredecessor, verifyAfterBusiness } =
-      await migrate({ source, archive, database, directory, sql, url: ownerUrl, run, stage, runId, port });
+    const { appOid, app, tailMaterials, archiveMaterial, paymentRemainderPredecessor, a24Installation, historicalCatalog, verifyAfterBusiness } =
+      await migrate({ source, archive, database, directory, sql, url: ownerUrl, run, stage, runId, port, a24Profile });
     receipt.tailMaterials = tailMaterials;
     receipt.archiveInstallation = archiveMaterial;
+    if (expenseCashA24) {
+      receipt.a24Installation = a24Installation;
+      assert.deepEqual(a24Installation, receipt.a24ExpectedPrefixes.map(prefix => ({ ...prefix, sameIdentity: true })));
+    }
+    if (historicalCatalog) receipt.a24HistoricalCatalog = historicalCatalog.snapshots;
     if (paymentRemainder) {
       assert.ok(paymentRemainderPredecessor);
       receipt.paymentRemainderPredecessor = paymentRemainderPredecessor;
     }
     stage("ROLE");
-    grantApplication(sql, database, app, appPassword);
+    if (!expenseCashA24) grantApplication(sql, database, app, appPassword);
     const appUrl = new URL(ownerUrl);
     appUrl.username = app;
     appUrl.password = appPassword;
@@ -437,7 +469,60 @@ async function main(args) {
     fs.writeFileSync(packet, JSON.stringify({ ownerUrl: ownerUrl.toString(), psql: bin("psql"), applicationOid: appOid, database, candidate: sha }), { mode: 0o600, flag: "wx" });
     const files = path.join(directory, "files");
     fs.mkdirSync(files, { mode: 0o700 });
-    if (issue430ApprovalSms) {
+    if (expenseCashA24) {
+      stage("A24_SCOPED_ROLES");
+      const observationRole = "jg_a24_observer_" + runId.replaceAll("-", "");
+      const observerPassword = secret();
+      const operatingWriteSecret = secret();
+      const appRole = identifier(app);
+      const observerRole = identifier(observationRole);
+      const db = identifier(database);
+      sql(`BEGIN;
+        ALTER ROLE ${appRole} LOGIN PASSWORD '${appPassword}' CONNECTION LIMIT 12;
+        CREATE ROLE ${observerRole} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS PASSWORD '${observerPassword}' CONNECTION LIMIT 2;
+        ALTER ROLE ${observerRole} SET default_transaction_read_only = on;
+        GRANT CONNECT ON DATABASE ${db} TO ${appRole}, ${observerRole};
+        GRANT USAGE ON SCHEMA public TO ${appRole}, ${observerRole};
+        ${a24Acl.renderA24FixtureAcl(a24Plan, app, observationRole)}
+        INSERT INTO public."OperatingLedgerWriteSecret" ("id","secretHash") VALUES (1,public.crypt('${operatingWriteSecret}',public.gen_salt('bf')));
+        COMMIT;`);
+      const scope = JSON.parse(sql(`
+        SELECT jsonb_build_object('observerOid',observer.oid::text,'safe',
+          NOT (observer.rolsuper OR observer.rolinherit OR observer.rolcreatedb OR observer.rolcreaterole OR observer.rolreplication OR observer.rolbypassrls)
+          AND NOT EXISTS (SELECT FROM pg_catalog.pg_auth_members member WHERE member.member = observer.oid OR member.roleid = observer.oid)
+          AND NOT has_any_column_privilege('${app}', 'public."OperatingFact"', 'INSERT,UPDATE,REFERENCES')
+          AND NOT has_any_column_privilege('${app}', 'public."OperatingImpactEntry"', 'INSERT,UPDATE,REFERENCES')
+          AND NOT has_any_column_privilege('${app}', 'public."OperatingLedgerWriteSecret"', 'SELECT,INSERT,UPDATE,REFERENCES')
+          AND NOT has_any_column_privilege('${app}', 'public."ExpensePublicCashCostLink"', 'UPDATE,REFERENCES')
+          AND NOT has_table_privilege('${app}', 'public."ExpensePublicCashCostLink"', 'DELETE,TRUNCATE,TRIGGER')
+          AND NOT EXISTS (
+            SELECT FROM pg_catalog.pg_class relation JOIN pg_catalog.pg_namespace ns ON ns.oid=relation.relnamespace
+            WHERE ns.nspname = 'public' AND relation.relkind IN ('r','p')
+              AND (has_any_column_privilege(observer.oid, relation.oid, 'INSERT,UPDATE,REFERENCES')
+                OR has_table_privilege(observer.oid, relation.oid, 'DELETE,TRUNCATE,TRIGGER')))
+        )
+        FROM pg_catalog.pg_roles observer WHERE observer.rolname = '${observationRole}';
+      `));
+      assert.equal(scope.safe, true, "A24_SCOPED_ROLES");
+      const observerUrl = new URL(ownerUrl);
+      observerUrl.username = observationRole;
+      observerUrl.password = observerPassword;
+      const a24Packet = path.join(directory, "a24-input.json");
+      fs.writeFileSync(a24Packet, JSON.stringify({ ownerUrl: ownerUrl.toString(), observerUrl: observerUrl.toString(),
+        applicationOid: appOid, observerOid: scope.observerOid, database, candidate: sha }), { mode: 0o600, flag: "wx" });
+      stage("A24_PUBLIC_CASH_AND_ATTRIBUTION");
+      const outcome = run(process.execPath, [require.resolve("jest/bin/jest"), "--runInBand", "--testRegex",
+        "task426-a24-native[.]test-support[.]ts$", "--runTestsByPath", "src/database/task426-a24-native.test-support.ts"], {
+        NODE_ENV: "test", TMPDIR: directory, TASK426_A24_NATIVE_PACKET: a24Packet, DATABASE_URL: appUrl.toString(),
+        FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: files, FILE_DOWNLOAD_SECRET: secret(),
+        JWT_ACCESS_SECRET: secret(), JWT_REFRESH_SECRET: secret(), OPERATING_LEDGER_DB_WRITE_SECRET: operatingWriteSecret,
+        CONTRACT_DOCX4J_RUNTIME_MANIFEST: runtime.document, DOC_CONVERTER_COMMAND: office
+      }, undefined, 230_000);
+      const proof = outcome.match(/NATIVE_A24_PROOF (\{[^\n]+\})/u);
+      assert.ok(proof);
+      receipt.proof = JSON.parse(proof[1]);
+      assert.equal(receipt.proof.candidate, source.candidate);
+    } else if (issue430ApprovalSms) {
       stage("APPROVAL_SMS_ISSUE430");
       const reportFile = path.join(directory, "issue430-approval-sms.json");
       try {
@@ -524,9 +609,13 @@ async function main(args) {
       assert.equal(receipt.proof.candidate, source.candidate);
     }
     if (paymentRemainder) {
-      stage("READBACK_331_AFTER_BUSINESS");
+      stage(expenseCashA24 ? "READBACK_A24_AFTER_BUSINESS" : "READBACK_331_AFTER_BUSINESS");
       receipt.ledgerAfterBusiness = verifyAfterBusiness();
       assert.equal(receipt.ledgerAfterBusiness.ledgerSha256, source.ledgerDigest);
+    }
+    if (historicalCatalog) {
+      stage("A24_HISTORICAL_CATALOG_AFTER_BUSINESS");
+      receipt.a24HistoricalCatalog.afterBusiness340 = historicalCatalog.verifyAfterBusiness();
     }
     assert.equal(tracked(), "");
     file(runtime.document, runtime.documentSha);
