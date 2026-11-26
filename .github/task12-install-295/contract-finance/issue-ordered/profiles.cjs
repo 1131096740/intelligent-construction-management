@@ -158,6 +158,19 @@ const profiles = {
     requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
     titles: ['拒绝合同同版本同期次跨入口登记，允许不同期次']
   },
+  issue418_signed_operating: {
+    file: 'src/database/issue418-signed-operating.pg.spec.ts',
+    sourceDigest: '86491dd5c87593b600dffa75760b65ae12b741f27a68ef191c17fe03a69d9582',
+    orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
+    databaseUrlKey: 'ISSUE418_SIGNED_OPERATING_DATABASE_URL',
+    enableKey: 'ISSUE418_SIGNED_OPERATING_RUN',
+    stage: 'ORDERED_SIGNED_SETTLEMENT_OPERATING_JEST',
+    requiredMigrationCount: 346,
+    requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+    requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: ['对上五十元只形成内部应收，表外三十元进入成本与应付，明细可追溯']
+  },
   issue420: {
     file: 'src/database/issue420-approval-center.http.pg.spec.ts',
     sourceDigest: 'd4effcfb32e745737be3278c0556f903c2ae6c55c631016a59a3c0c79588d5a3',
