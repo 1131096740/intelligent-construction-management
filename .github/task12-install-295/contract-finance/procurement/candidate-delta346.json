@@ -10,6 +10,11 @@
     "candidate": "8f68c86bbd464df3b7e39dc92a7ef7512dba7ec0064bccf54e752ac590340dc4"
   },
   {
+    "path": "apps/web-admin/e2e/helpers/contract-grid-synthetic-server.cjs",
+    "expected": "e607d332a42c6bc36e9cd5096d3e585eda6b5ee0cdc4b0eba0cf10158fb8fbfd",
+    "candidate": "136d95e00b2ca12bf75fca6f9013f3e786606e8cad365837d1d0df1f2fd90f69"
+  },
+  {
     "path": "apps/web-admin/e2e/pol115-expense-real.e2e.ts",
     "expected": "85a955c7bf9cd87ac702b6c3d9921b0a8d4c6d7f00455155d0eb0e20deda98b4",
     "candidate": "31b2277dd76334638cca4cda93e4f53cdb4ca8a49ee1a1ce0fe51960b9d7eedf"
