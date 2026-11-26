@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 umask 077
-[[ $# == 4 || ( $# == 5 && $4 == bank && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 ) ) ||
-  ( $# == 6 && $4 == bank && $5 == --historical-settlement-334 && $6 == --host-only ) ||
+[[ $# == 4 || ( $# == 5 && $4 == bank && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 ) ) ||
+  ( $# == 6 && $4 == bank && ( $5 == --historical-settlement-334 || $5 == --expense-witness-346 ) && $6 == --host-only ) ||
   ( $# == 6 && $4 == restore && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 ) ) ||
   ( $# == 7 && $4 == restore && ( $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 ) && $7 == --host-only ) ]] || exit 64
 
@@ -30,7 +30,9 @@ node - "$prepared/source.json" "$sha" "$plan" ${bank_args[@]+"${bank_args[@]}"} 
 const [source,sha,plan,mode]=process.argv.slice(2);
 const candidate=require(source),m=require(plan+'/common/multi-witness.cjs');
 if(candidate.sourceSha!==sha)process.exit(65);
-if(mode==='--historical-settlement-334') {
+if(mode==='--expense-witness-346') {
+  require(plan+'/expense-witness-346-profile.cjs').assertSource(candidate,m.final);
+} else if(mode==='--historical-settlement-334') {
   require(plan+'/historical-settlement-334-profile.cjs').assertSource(candidate,m.final);
 } else if(mode==='--upward-archive-332') {
   require(plan+'/upward-archive-332-profile.cjs').assertSource(candidate,sha,m.final);
@@ -45,6 +47,18 @@ if(mode==='--historical-settlement-334') {
       candidate.ledgerSha256!=='3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2')process.exit(65);
 } else if(candidate.migrationCount!==295||candidate.ledgerSha256!==m.final) process.exit(65);
 JS
+if [[ $lane == bank && $mode == --expense-witness-346 ]]; then
+  repo=$(git -C "$plan" rev-parse --show-toplevel)
+  [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
+  [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan") ]] || exit 65
+  node "$plan/check-ledger.cjs" "$repo" "$sha" "$mode" | cmp -s "$prepared/source.json" - || exit 65
+  api="$prepared/prepared/context/workspace/services/api"
+  git -C "$repo" show "$sha:services/api/prisma/migration-baseline.cjs" | cmp -s "$api/prisma/migration-baseline.cjs" - || exit 65
+  node - "$plan" "$api" "$prepared/source.json" <<'JS'
+const [plan,api,source]=process.argv.slice(2);
+require(plan+'/bank/migration-inputs-346.cjs')(api,require(source),require(plan+'/expense-witness-346-profile.cjs'));
+JS
+fi
 if [[ $lane == restore && ( $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 || $mode == --historical-settlement-334 ) ]]; then
   node - "$prepared/source.json" "$current_prepared/source.json" "$plan" "$mode" <<'JS'
 const [oldFile,currentFile,plan,mode]=process.argv.slice(2);
@@ -70,7 +84,7 @@ if [[ ${7-} != --host-only && ${6-} != --host-only ]]; then
   image=$(cat "$image_dir/image.id")
   context_sha=$(cat "$image_dir/context.sha256")
   [[ $image =~ ^sha256:[a-f0-9]{64}$ && $context_sha =~ ^[a-f0-9]{64}$ ]] || exit 65
-  if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 || $mode == --historical-settlement-334 ]]; then
+  if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 || $mode == --historical-settlement-334 || $mode == --expense-witness-346 ]]; then
     [[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$image_dir/Dockerfile" "$prepared/source.json") == "$context_sha" ]] || exit 65
   fi
   [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $context_sha" ]] || exit 65
@@ -82,14 +96,27 @@ printf '%s\n' "$out"
 overlay="$out/overlay"
 python3 "$plan/stage-overlays.py" "$prepared/prepared/context/workspace" "$overlay" "$lane" ${bank_args[@]+"${bank_args[@]}"}
 installer="$plan/common/installer.cjs"
-if [[ $mode == --historical-settlement-334 ]]; then
+if [[ $mode == --historical-settlement-334 || $mode == --expense-witness-346 ]]; then
   installer_mode="${mode#--}"
+  if [[ $mode == --expense-witness-346 ]]; then installer_mode=historical-settlement-334; fi
   if [[ $lane == restore ]]; then installer_mode+=-restore; fi
   node "$plan/stage-historical-takeover-333.cjs" "$out" "$installer_mode"
   installer="$out/installer.cjs"
 fi
+if [[ $mode == --expense-witness-346 ]]; then
+  git -C "$out" apply --unidiff-zero "$plan/expense-witness/installer.patch"
+  chmod 0644 "$installer"
+  node - "$plan/expense-witness-346-profile.cjs" "$installer" <<'JS'
+const [profile,installer]=process.argv.slice(2);
+const bytes=require('node:fs').readFileSync(installer);
+require('node:assert/strict').equal(require('node:crypto').createHash('sha256').update(bytes).digest('hex'),
+  require(profile).installerSha256,'BANK_346_INSTALLER_SHA');
+JS
+fi
 if [[ $lane == bank && ${6-} == --host-only ]]; then
-  printf 'BANK_334_HOST_READY sha=%s\n' "$sha"
+  count=334
+  if [[ $mode == --expense-witness-346 ]]; then count=346; fi
+  printf 'BANK_%s_HOST_READY sha=%s\n' "$count" "$sha"
   exit 0
 fi
 if [[ ${7-} == --host-only ]]; then
@@ -121,6 +148,7 @@ JS
 fi
 
 mounts=()
+bank_env=()
 readonly_mount(){
   [[ ( -f $1 || -d $1 ) && ! -L $1 ]] || exit 65
   mounts+=(--mount "type=bind,src=$1,dst=$2,readonly")
@@ -147,7 +175,14 @@ if [[ $lane == bank ]]; then
   for file in named-bank-ci.cjs original-titles.json failure-projection.cjs; do
     readonly_mount "$plan/bank/$file" "/qualification/$file"
   done
-  if [[ $mode == --historical-settlement-334 ]]; then
+  if [[ $mode == --expense-witness-346 ]]; then
+    for profile in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
+      readonly_mount "$plan/$profile" "/qualification/$profile"
+    done
+    bank_env=(--env "JG_BANK_SOURCE_SHA=$sha")
+    readonly_mount "$plan/bank/staging-346.json" /qualification/bank-staging-346.json
+    readonly_mount "$plan/bank/migration-inputs-346.cjs" /qualification/migration-inputs-346.cjs
+  elif [[ $mode == --historical-settlement-334 ]]; then
     for profile in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs; do
       readonly_mount "$plan/$profile" "/qualification/$profile"
     done
@@ -204,7 +239,7 @@ fi
 run(){
   docker run --platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL \
     --security-opt no-new-privileges --user postgres --init --pids-limit "$pids" --memory "$memory" \
-    --tmpfs /tmp:rw,noexec,nosuid,nodev,size=512m "${mounts[@]}" \
+    --tmpfs /tmp:rw,noexec,nosuid,nodev,size=512m "${mounts[@]}" ${bank_env[@]+"${bank_env[@]}"} \
     --entrypoint node "$image" "/qualification/$entry" "$@"
 }
 capture(){
@@ -217,7 +252,7 @@ capture(){
     node - "$out/$mode.stdout" "$out/$mode.json" "$mode" "$sha" ${bank_args[@]+"${bank_args[@]}"} <<'JS' || proof_status=$?
 const [file,receipt,mode,sha,sourceMode]=process.argv.slice(2);
 const r=JSON.parse(require('node:fs').readFileSync(file,'utf8').trimEnd().split('\n').at(-1));
-const count=sourceMode==='--historical-settlement-334'?334:sourceMode==='--upward-archive-332'?332:sourceMode==='--payment-remainder-331'?331:sourceMode==='--text-direct-330'?330:sourceMode==='--current-320'?329:295;
+const count=sourceMode==='--expense-witness-346'?346:sourceMode==='--historical-settlement-334'?334:sourceMode==='--upward-archive-332'?332:sourceMode==='--payment-remainder-331'?331:sourceMode==='--text-direct-330'?330:sourceMode==='--current-320'?329:295;
 const result=mode==='preflight'?'DIAGNOSTIC_NO_DATABASE_PREFLIGHT_PASSED':'ORIGINAL_FULL_12_PASSED';
 const expected='BANK_'+count+'_'+result;
 require('node:fs').writeFileSync(receipt,JSON.stringify(r,null,2)+'\n',{flag:'wx',mode:0o600});
