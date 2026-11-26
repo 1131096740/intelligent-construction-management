@@ -70,6 +70,11 @@
     "candidate": "5a7e89e3ebfb671e27869b77ee212567c6e5fa2f8c13cb2cace1953eb4d705af"
   },
   {
+    "path": "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue",
+    "expected": "d0dfe56e00d4268f843952986d2f47a873af12c4582f7c0445dc873360095811",
+    "candidate": "08c577d761d685b339169123e55cf1a52ee550723e3eddc0d5686722cb72f7ad"
+  },
+  {
     "path": "apps/web-admin/src/pages/projects/project-operating-overview.structure.test.ts",
     "expected": "20f3a4986501b193e47f9138a15c228bd23e4b2dd441c46122e13b7586f963c3",
     "candidate": "00d28eaf931d93bd03c22a14abf65be18e7ac315ef019406200576514768498b"

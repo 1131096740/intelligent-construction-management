@@ -13,6 +13,7 @@
   "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue": "f0551a0f8a8938f88fbceddea9230d4459729be31945cd8e9f0e20e5407850f8",
   "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimCreateDrawer.vue": "9b1d544735fde51d45798f2785e451e899cd99ed6cb04fe8eeb899c2880f5c88",
   "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue": "5a7e89e3ebfb671e27869b77ee212567c6e5fa2f8c13cb2cace1953eb4d705af",
+  "apps/web-admin/src/pages/projects/components/AffiliateBusinessLedgerPanel.vue": "08c577d761d685b339169123e55cf1a52ee550723e3eddc0d5686722cb72f7ad",
   "apps/web-admin/src/pages/projects/project-operating-overview.structure.test.ts": "00d28eaf931d93bd03c22a14abf65be18e7ac315ef019406200576514768498b",
   "packages/shared-domain/src/permissions.ts": "1f9e241ce216d55fb481d8816f3f01cd10164f4b7803ac108146977acadccfe7",
   "services/api/prisma/database-dynamic-gate-manifest.json": "72fa9956be126451579181c79c5611eec0d28dd54d1675d8844634ae484d96ff",
