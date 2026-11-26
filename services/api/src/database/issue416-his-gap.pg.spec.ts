@@ -297,7 +297,7 @@ describe("issue 416 history takeover HIS gaps on PostgreSQL", () => {
           });
         assert.equal(clearedFacts.confirmedRevision, null);
 
-        // 财务经办不能代替财务主管确认；主管确认后进入合同主管复核。
+        // 非财务岗位不能核对；财务经办核对完成后进入合同主管复核。
         await assert.rejects(
           service.confirmFinanceSide(
             ids.project,
@@ -309,9 +309,9 @@ describe("issue 416 history takeover HIS gaps on PostgreSQL", () => {
               basedOnContractRevision: 1,
               basedOnFinanceBasisRevision: 1
             },
-            ids.finance
+            ids.contractUser
           ),
-          /仅财务主管可以确认财务侧接管资料/
+          /当前岗位不能编辑财务侧接管资料/
         );
         const financeConfirmed = (await service.confirmFinanceSide(
           ids.project,
@@ -323,7 +323,7 @@ describe("issue 416 history takeover HIS gaps on PostgreSQL", () => {
             basedOnContractRevision: 1,
             basedOnFinanceBasisRevision: 1
           },
-          ids.financeDirector
+          ids.finance
         )) as { confirmed: boolean };
         assert.equal(financeConfirmed.confirmed, true);
         const afterFinance = await prisma.contractTakeover.findUniqueOrThrow({
