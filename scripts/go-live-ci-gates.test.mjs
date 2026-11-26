@@ -439,6 +439,7 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
     ["payment_execution", "", 0, "payment-execution"],
     ["employee_onboarding", "", 0, "onboarding"],
     ["general_procurement", "", 0, "procurement"],
+    ["issue421_signed_settlement_ledger", "", 0, "issue421"],
     ["issue422_archives", "", 0, "issue422"],
     ["issue420_approval_center", "", 0, "issue420"],
     ["issue400_financial_correction_refund", "", 0, "issue400"],
