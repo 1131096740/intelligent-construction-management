@@ -7,8 +7,11 @@ ordered_issue=false
 if [[ ${2:-} == issue* ]]; then
   [[ $# == 3 ]] || exit 64
   case "$2:$3" in
+    issue400_346:--expense-witness-346|issue405_346:--expense-witness-346) ;;
+    issue411_346:--expense-witness-346|issue413_346:--expense-witness-346|issue414_346:--expense-witness-346) ;;
     issue416_handover_346:--expense-witness-346|issue416_his_346:--expense-witness-346) ;;
     issue420_346:--expense-witness-346|issue422_346:--expense-witness-346) ;;
+    issue421_346:--expense-witness-346|issue421b_346:--expense-witness-346) ;;
     *:--historical-settlement-334)
       node -e 'const p=require(process.argv[1]).profileFor(process.argv[2]); if(p.requiredMigrationCount) process.exit(65)' "$plan/issue-ordered/profiles.cjs" "$2" >/dev/null 2>&1 || exit 64 ;;
     *) exit 64 ;;

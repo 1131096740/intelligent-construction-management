@@ -284,6 +284,45 @@ const profiles = {
   }
 };
 
+profiles.issue400_346 = {
+  ...profiles.issue400,
+  fixturePatch: 'issue400.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue405_346 = {
+  ...profiles.issue405,
+  fixturePatch: 'issue405.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue411_346 = {
+  ...profiles.issue411,
+  fixturePatch: 'issue411.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue413_346 = {
+  ...profiles.issue413,
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue414_346 = {
+  ...profiles.issue414,
+  fixturePatch: 'issue414.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
 profiles.issue416_handover_346 = {
   ...profiles.issue416_handover,
   fixturePatch: 'issue416_handover.fixture.patch',
@@ -303,6 +342,22 @@ profiles.issue416_his_346 = {
 profiles.issue420_346 = {
   ...profiles.issue420,
   fixturePatch: 'issue420.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue421_346 = {
+  ...profiles.issue421,
+  fixturePatch: 'issue421.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue421b_346 = {
+  ...profiles.issue421b,
+  fixturePatch: 'issue421b.fixture.patch',
   requiredMigrationCount: 346,
   requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
   requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
