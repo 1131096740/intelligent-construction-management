@@ -219,7 +219,7 @@ const profiles = {
   },
   issue418_recognized_dedup: {
     file: 'src/database/issue418-recognized-dedup.pg.spec.ts',
-    sourceDigest: '02d5be4a71f21a6bc48baf091f3e9928920384fb62408757590073a3bd3a6eb8',
+    sourceDigest: 'ba5865a7a47471c72a4488dea07dc4f7295bb533bad0dcf837bf3b8bfc5476f8',
     orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
     databaseUrlKey: 'ISSUE418_RECOGNIZED_DEDUP_DATABASE_URL',
     enableKey: 'ISSUE418_RECOGNIZED_DEDUP_RUN',

@@ -265,11 +265,60 @@ run("issue #418 identifiable settlement dedup on the ordered operating ledger", 
     expect(extendedCsv).not.toContain(`"${suppressedCode}"`);
     expectNoInternalIds(extendedDetail, extendedCsv, extendedFacts);
 
+    const relationshipDate = new Date("2026-11-05T12:00:00Z");
+    const otherSettlements = [];
+    for (const [contractKind, number, amountYuan] of [
+      ["upward", "合成对上结算", "50.0000"],
+      ["outside_fact", "合成表外结算", "30.0000"]
+    ] as const) {
+      const contractId = randomUUID();
+      const upward = contractKind === "upward";
+      const signed = await prisma.signedContractSettlement.create({ data: {
+        projectId: project.id, contractId, contractKind, ownerUserId: maker.id,
+        number, amountYuan, state: "confirmed", revision: 2, confirmationNo: 1n,
+        submittedAt: relationshipDate, reviewedAt: relationshipDate, reviewedByUserId: reviewer.id,
+        confirmedContractSource: {
+          relationship: upward ? "upward" : "outside", sourceRecordId: contractId, sourceVersion: 1,
+          contractTypeKey: upward ? null : "labor_subcontract",
+          counterparty: upward ? company.name : counterparty.name,
+          counterpartyKind: upward ? "participating_company" : "downstream_counterparty",
+          counterpartyVersionId: upward ? companyVersion.id : counterpartyVersion.id,
+          payerKind: "construction_enterprise", payerVersionId: enterpriseVersion.id,
+          companyEntityId: upward ? company.id : null,
+          affiliateAssignmentId: affiliate.id, affiliateBusinessPartyVersionId: enterpriseVersion.id
+        }
+      } });
+      await appendSource(SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE, signed.id);
+      otherSettlements.push(signed);
+    }
+
+    const composed = await projection.getProjectView(reader.id, { projectId: project.id });
+    expect(composed.asOf.crossSourceDedupedFactCount).toBe(1);
+    expect(composed.operating).toMatchObject({ confirmedCostCents: "12100", payableCents: "12100" });
+    expect(composed.relationshipTotals).toEqual(expect.arrayContaining([
+      expect.objectContaining({ relationship: "upward", confirmedCostCents: "0", receivableCents: "5000" }),
+      expect.objectContaining({ relationship: "outside", confirmedCostCents: "3000", payableCents: "3000" })
+    ]));
+    expect((await readAllDetail(11)).map(item => item.sourceBusinessCode).sort()).toEqual([
+      ...extendedDetail.map(item => item.sourceBusinessCode),
+      "合成对上结算", "合成表外结算", "合成表外结算"
+    ].sort());
+    const composedFacts = await readStoredFacts();
+    const visibleSettlement = samePeriod[0]!;
+    for (const sourceBusinessId of [visibleSettlement.sourceBusinessId, ...otherSettlements.map(row => row.id)]) {
+      const fact = composedFacts.find(row => row.sourceBusinessId === sourceBusinessId)!;
+      const entries = await prisma.operatingImpactEntry.findMany({
+        where: { factId: fact.id, sourceType: fact.sourceType, sourceBusinessId },
+        select: { id: true }
+      });
+      expect(entries.map(entry => entry.id).sort()).toEqual(fact.impacts.map(impact => impact.id).sort());
+    }
+
     // Reconstruct another independently confirmed historical source in the first period.
     const ambiguousSigned = await seedSigned("第1期", "12.34", 5n, new Date("2026-11-06T00:00:00Z"));
     await appendSource(SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE, ambiguousSigned.id);
     const ambiguousFacts = await readStoredFacts();
-    expect(ambiguousFacts).toHaveLength(6);
+    expect(ambiguousFacts).toHaveLength(8);
     expect(ambiguousFacts.find(fact => fact.sourceBusinessId === ambiguousSigned.id))
       .toMatchObject({ sourceVersion: 5, amountCents: 1234n });
 
@@ -293,14 +342,16 @@ run("issue #418 identifiable settlement dedup on the ordered operating ledger", 
     });
     expect(ambiguousV2View.profitAndLoss.currentOperatingProfitYuan).toBeNull();
 
-    const ambiguousDetail = await readAllDetail(12);
+    const ambiguousDetail = await readAllDetail(15);
     const ambiguousCsv = await readExport();
     const [, ...ambiguousCsvRows] = ambiguousCsv.trimEnd().split("\n");
-    expect(ambiguousCsvRows).toHaveLength(12);
+    expect(ambiguousCsvRows).toHaveLength(15);
     for (const [code, amountsCents, amountsYuan] of [
       [legacy.code, ["6000", "6000"], ["60.00", "60.00"]],
       [duplicate.number, ["6000", "6000"], ["60.00", "60.00"]],
       [ambiguousSigned.number, ["1234", "1234"], ["12.34", "12.34"]],
+      ["合成对上结算", ["5000"], ["50.00"]],
+      ["合成表外结算", ["3000", "3000"], ["30.00", "30.00"]],
       [nextPeriod.number, ["-900", "-900", "1500", "1500", "2500", "2500"],
         ["'-9.00", "'-9.00", "15.00", "15.00", "25.00", "25.00"]]
     ] as const) {
