@@ -1771,6 +1771,9 @@ it.each(["reimbursement", "incidental_expense"])(
         { previousSourceBatchId: sourceBatchId, sourceStatus: "pending", sourceName: null }
       ]);
       expect(createSources.mock.calls[0][0].data[0].amountYuan.toFixed(4)).toBe("92.0000");
+      expect(tx.$executeRaw.mock.calls.filter(([query]) =>
+        String(query).includes('FundAccountBalanceRegistration_transfer_capacity')
+      )).toHaveLength(1);
       expect(createPayment).toHaveBeenCalledTimes(1);
       expect(createPayment.mock.calls[0][0].data).toMatchObject({
         actualPayerCompanyId: null, actualPayerName: "公共现金", originalDebtorCompanyId: claim.companyEntityId,
