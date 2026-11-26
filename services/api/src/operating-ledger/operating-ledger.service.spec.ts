@@ -103,6 +103,45 @@ describe("OperatingLedgerService", () => {
     expect(prisma.operatingFact.create).not.toHaveBeenCalled();
   });
 
+  it("requires the registered expense execution, claim and public cash account to match the ledger payment", async () => {
+    const prisma = createPrismaMock({
+      user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }],
+      project: projectRecord(), assignment: assignmentRecord(), persistControlledRows: true
+    });
+    const base = baseInput();
+    const payer = { kind: "public_cash", id: "public_cash" } as const;
+    const input = {
+      ...base, sourceType: "expense_claim_payment_execution", sourceBusinessId: "expense-payment-1",
+      factKind: "downstream_payment" as const,
+      subjects: { actualPayer: payer, payee: { kind: "downstream_counterparty" as const, id: "counterparty-version-1" } },
+      impacts: [{
+        idempotencyKey: "expense-payment-1:funds", sourceImpactKey: "public_cash_funds_decrease",
+        impactKind: "public_cash_funds_decrease" as const, amountCents: base.amountCents,
+        direction: "decrease" as const, subjectRole: "actual_payer" as const, subject: payer
+      }]
+    };
+    const funding = {
+      actualPayerCompanyId: null, actualPayerName: "公共现金", originalDebtorCompanyId: "company-1",
+      projectId: input.projectId, actorUserId: input.confirmedByUserId, amountCents: input.amountCents, paidAt: input.occurredAt,
+      account: { kind: "public_cash", scopeKey: "public_cash", companyEntityId: null },
+      expenseExecution: { id: input.sourceBusinessId, expenseClaimId: "expense-1", amountCents: input.amountCents,
+        paidAt: input.occurredAt, createdAt: input.confirmedAt, recordedByUserId: input.confirmedByUserId }
+    };
+    const findFunding = jest.fn()
+      .mockResolvedValueOnce({ ...funding, projectId: "another-project" })
+      .mockResolvedValue(funding);
+    const tx = { ...prisma,
+      registeredOperationalPayment: { findUnique: findFunding },
+      expenseClaim: { findUnique: jest.fn().mockResolvedValue({
+        projectId: input.projectId, companyEntityId: "company-1", claimType: "reimbursement"
+      }) }
+    } as never;
+    const service = new OperatingLedgerService(prisma as never);
+    await expect(service.appendFromSourceInTransaction(tx, input, "actor-1")).rejects.toThrow("公共现金经营后果必须关联同一正式实付");
+    await expect(service.appendFromSourceInTransaction(tx, input, "actor-1")).resolves.toMatchObject({ created: true });
+    expect(findFunding).toHaveBeenCalledWith(expect.objectContaining({ where: { expenseExecutionId: "expense-payment-1" } }));
+  });
+
   it("只在末次确认的受控成本入口写账，不查询经营整行或调用通用写函数", async () => {
     const prisma = createPrismaMock({ user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }],
       project: projectRecord(), assignment: assignmentRecord() });

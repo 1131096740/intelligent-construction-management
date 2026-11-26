@@ -1107,13 +1107,18 @@ export class OperatingLedgerService {
         continue;
       }
       if (subject.kind === "public_cash") {
-        const funding = input.sourceType === "payment_execution" && await registeredPaymentInstalled(tx)
-          ? await tx.registeredPaymentFunding.findUnique({where:{executionId:input.sourceBusinessId}})
-          : null;
-        const execution = funding ? await tx.paymentExecution.findUnique({where:{id:funding.executionId}}) : null;
-        const account = funding ? await tx.registeredFundAccount.findUnique({where:{id:funding.accountId}}) : null;
-        if (subject.id !== "public_cash" || funding?.actualPayerKind !== "public_cash" || funding.actualPayerId !== subject.id || account?.kind !== "public_cash" || account.companyEntityId !== null || execution?.amountCents !== input.amountCents) throw new BadRequestException("公共现金经营后果必须关联同一正式实付及无公司资金容器，不能用客户端标记替代");
-        continue;
+        if (input.sourceType === "expense_claim_payment_execution") {
+          if (role === "actualPayer" && subject.id === "public_cash" && await this.hasRegisteredExpenseCash(tx, input)) continue;
+        } else {
+          const funding = input.sourceType === "payment_execution" && await registeredPaymentInstalled(tx)
+            ? await tx.registeredPaymentFunding.findUnique({ where: { executionId: input.sourceBusinessId } })
+            : null;
+          const execution = funding ? await tx.paymentExecution.findUnique({ where: { id: funding.executionId } }) : null;
+          const account = funding ? await tx.registeredFundAccount.findUnique({ where: { id: funding.accountId } }) : null;
+          if (subject.id === "public_cash" && funding?.actualPayerKind === "public_cash" && funding.actualPayerId === subject.id &&
+              account?.kind === "public_cash" && account.companyEntityId === null && execution?.amountCents === input.amountCents) continue;
+        }
+        throw new BadRequestException("公共现金经营后果必须关联同一正式实付及无公司资金容器，不能用客户端标记替代");
       }
       if (subject.kind !== "participating_company") continue;
       if (role === "actualPayer" && await this.registeredActualCompanySnapshot(tx,input,subject,"actual_payer")) continue;
@@ -1133,6 +1138,32 @@ export class OperatingLedgerService {
       }
     }
     return { effectiveDate: project.operatingLedgerEffectiveDate };
+  }
+
+  private async hasRegisteredExpenseCash(tx: OperatingLedgerTransaction, input: AppendOperatingFactInput) {
+    if (input.sourceVersion !== 1 || input.factKind !== "downstream_payment" || input.direction !== "outflow") return false;
+    const funding = await tx.registeredOperationalPayment.findUnique({
+      where: { expenseExecutionId: input.sourceBusinessId },
+      select: {
+        actualPayerCompanyId: true, actualPayerName: true, originalDebtorCompanyId: true,
+        projectId: true, actorUserId: true, amountCents: true, paidAt: true,
+        account: { select: { kind: true, scopeKey: true, companyEntityId: true } },
+        expenseExecution: { select: { id: true, expenseClaimId: true, amountCents: true, paidAt: true, createdAt: true, recordedByUserId: true } }
+      }
+    });
+    const execution = funding?.expenseExecution;
+    if (!funding || !execution || funding.actualPayerCompanyId !== null || funding.actualPayerName !== "公共现金" ||
+        funding.account.kind !== "public_cash" || funding.account.scopeKey !== "public_cash" || funding.account.companyEntityId !== null ||
+        funding.projectId !== input.projectId || funding.actorUserId !== input.confirmedByUserId ||
+        funding.amountCents !== input.amountCents || funding.paidAt.getTime() !== input.occurredAt.getTime() ||
+        execution.id !== input.sourceBusinessId || execution.amountCents !== input.amountCents ||
+        execution.paidAt.getTime() !== input.occurredAt.getTime() || execution.createdAt.getTime() !== input.confirmedAt.getTime() ||
+        execution.recordedByUserId !== input.confirmedByUserId) return false;
+    const claim = await tx.expenseClaim.findUnique({
+      where: { id: execution.expenseClaimId }, select: { projectId: true, companyEntityId: true, claimType: true }
+    });
+    return claim?.projectId === input.projectId && claim.companyEntityId === funding.originalDebtorCompanyId &&
+      (claim.claimType === "reimbursement" || claim.claimType === "incidental_expense");
   }
 
   private async assertProjectFinanceManager(
