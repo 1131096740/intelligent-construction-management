@@ -272,6 +272,16 @@ test("334 routes standalone payment execution without substituting Core Payment"
   assert.deepEqual(resolved.args.slice(1), [sha, "payment-execution", "--historical-settlement-334"]);
 });
 
+test("334 routes the original POL109 database, HTTP and browser lane", () => {
+  const group = loadManifest().coveredGroups.find(item => item.id === "project_close_profit_pol109");
+  assert.equal(group.pendingTests, 4);
+  const sha = "e".repeat(40);
+  const resolved = resolveGroupCommand(group, { candidateSha: sha, migrationCount: 334 });
+  assert.equal(resolved.command, "bash");
+  assert.match(resolved.args[0], /run-contract-adjacent-ci[.]sh$/u);
+  assert.deepEqual(resolved.args.slice(1), [sha, "pol109", "--historical-settlement-334"]);
+});
+
 test("334 routes the three original POL108 shards with their original case counts", () => {
   const manifest = loadManifest();
   const sha = "e".repeat(40);

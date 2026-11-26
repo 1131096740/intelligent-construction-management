@@ -23,6 +23,7 @@ const lanes = Object.freeze({
   operating_projection_pol108: "pol108-core",
   operating_projection_pol108_facts: "pol108-facts",
   operating_projection_pol108_impacts: "pol108-impacts",
+  project_close_profit_pol109: "pol109",
   project_expense_execution: "expense-execution",
   project_expense_finance: "expense-finance",
   project_expense_receipt: "expense-receipt",
