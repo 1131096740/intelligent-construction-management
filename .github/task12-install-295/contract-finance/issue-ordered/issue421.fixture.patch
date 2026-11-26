@@ -1,0 +1,29 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -88,0 +89,6 @@
++    const orderedDatabase = process.env.JG_ISSUE421_ORDERED_DATABASE;
++    const ordered = /^jg_task01_[a-f0-9]{32}$/u.test(orderedDatabase ?? "") &&
++      target.pathname === "/" + orderedDatabase && target.protocol === "postgresql:" &&
++      target.username === "jg_task01_owner" && Number(target.port) > 1024 &&
++      target.searchParams.get("sslmode") === "require" && target.searchParams.get("sslaccept") === "strict" &&
++      /^\/tmp\/jg394-[A-Za-z0-9]+\/ca\.crt$/u.test(target.searchParams.get("sslcert") ?? "");
+@@ -92 +98 @@
+-      !target.pathname.endsWith("_issue421_ledger")
++      (!target.pathname.endsWith("_issue421_ledger") && !ordered)
+@@ -150,0 +157,16 @@
++    if (ordered) {
++      await owner.companyEntity.create({ data: {
++        id: "i421-company", name: "四川建工智管建筑工程有限公司"
++      } });
++      const enterprise = await owner.businessParty.create({ data: {
++        name: "隔离台账施工企业", normalizedName: "issue421-enterprise", createdByUserId: ids.director
++      } });
++      const version = await owner.businessPartyVersion.create({ data: {
++        businessPartyId: enterprise.id, versionNo: 1, snapshot: { name: enterprise.name }, createdByUserId: ids.director
++      } });
++      await owner.projectAffiliateAssignment.createMany({ data: [ids.projectA, ids.projectB].map(projectId => ({
++        projectId, businessPartyId: enterprise.id, businessPartyVersionId: version.id,
++        affiliateNameSnapshot: enterprise.name, effectiveFrom: new Date("2020-01-01"),
++        changeReason: "隔离验收施工企业", assignedByUserId: ids.director
++      })) });
++    }

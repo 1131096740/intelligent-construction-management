@@ -1,0 +1,110 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -317,0 +318,18 @@
++  const orderedDatabase = process.env.JG_ISSUE414_ORDERED_DATABASE;
++  if (orderedDatabase) {
++    if (
++      process.env.NODE_ENV !== "test" ||
++      !/^jg_task01_[a-f0-9]{32}$/u.test(orderedDatabase) ||
++      parsed.protocol !== "postgresql:" ||
++      parsed.hostname !== "127.0.0.1" ||
++      parsed.username !== "jg_task01_owner" ||
++      Number(parsed.port) <= 1024 ||
++      parsed.pathname !== "/" + orderedDatabase ||
++      parsed.searchParams.get("sslmode") !== "require" ||
++      parsed.searchParams.get("sslaccept") !== "strict" ||
++      !/^\/tmp\/jg394-[A-Za-z0-9]+\/ca\.crt$/u.test(parsed.searchParams.get("sslcert") ?? "")
++    ) {
++      throw new Error("ISSUE-414 测试需要本轮有序安装的 TLS 专库");
++    }
++    return databaseUrl;
++  }
+@@ -349,0 +368 @@
++  const start = new Date("2026-01-01T00:00:00.000Z");
+@@ -354,2 +373 @@
+-      name: `#414 真库项目 ${fixture.prefix}`,
+-      operatingLedgerEffectiveDate: new Date("2026-01-01T00:00:00.000Z")
++      name: `#414 真库项目 ${fixture.prefix}`
+@@ -386,0 +405,17 @@
++  const affiliate = await prisma.businessParty.create({
++    data: {
++      id: `${fixture.prefix}_party`,
++      name: fixture.affiliateName,
++      normalizedName: fixture.affiliateName,
++      createdByUserId: fixture.directorUserId
++    }
++  });
++  await prisma.businessPartyVersion.create({
++    data: {
++      id: fixture.affiliateVersionId,
++      businessPartyId: affiliate.id,
++      versionNo: 1,
++      snapshot: { name: fixture.affiliateName },
++      createdByUserId: fixture.directorUserId
++    }
++  });
+@@ -391 +426 @@
+-      businessPartyId: `${fixture.prefix}_party`,
++      businessPartyId: affiliate.id,
+@@ -394 +429 @@
+-      effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
++      effectiveFrom: start,
+@@ -397,0 +433,50 @@
++  });
++  const company = await prisma.companyEntity.create({
++    data: {
++      name: `#414 我方参与公司 ${fixture.prefix}`,
++      unifiedSocialCreditCode: "913100000000000018",
++      currentVersionNo: 1,
++      dataStatus: "complete"
++    }
++  });
++  const companyVersion = await prisma.companyEntityVersion.create({
++    data: {
++      companyEntityId: company.id,
++      versionNo: 1,
++      name: company.name,
++      unifiedSocialCreditCode: company.unifiedSocialCreditCode,
++      isActive: true,
++      action: "create",
++      actorUserId: fixture.directorUserId
++    }
++  });
++  await prisma.projectParticipatingCompany.create({
++    data: {
++      projectId: fixture.projectId,
++      companyEntityId: company.id,
++      companyEntityVersionId: companyVersion.id,
++      companyNameSnapshot: company.name,
++      companyCreditCodeSnapshot: company.unifiedSocialCreditCode,
++      effectiveFrom: start,
++      changeReason: "隔离验收我方参与公司",
++      addedByUserId: fixture.directorUserId
++    }
++  });
++  await prisma.project.update({
++    where: { id: fixture.projectId },
++    data: { operatingLedgerEffectiveDate: start }
++  });
++  const ownerEvidenceId = `${fixture.prefix}_owner_evidence`;
++  const paidEvidenceId = `${fixture.prefix}_paid_evidence`;
++  await prisma.fileObject.createMany({
++    data: [ownerEvidenceId, paidEvidenceId].map((id) => ({
++      id,
++      bucket: "private",
++      objectKey: `issue414/${fixture.prefix}/${id}.pdf`,
++      originalName: "书面凭证.pdf",
++      mimeType: "application/pdf",
++      sizeBytes: 128,
++      uploadedByUserId: fixture.financeUserId,
++      contentSha256: sha,
++      storageStatus: "active"
++    }))
+@@ -441,0 +527,2 @@
++      evidenceFileId: ownerEvidenceId,
++      fileContentSha256Snapshot: sha,
+@@ -465,0 +553 @@
++      externalPaymentReference: `ISSUE414-${fixture.prefix}-PAID`,
+@@ -469,0 +558,2 @@
++      evidenceFileId: paidEvidenceId,
++      fileContentSha256Snapshot: sha,
