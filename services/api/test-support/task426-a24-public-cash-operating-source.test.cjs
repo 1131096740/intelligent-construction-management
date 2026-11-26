@@ -18,6 +18,12 @@ test("uses the registered cash receipt and original paid expense as the only cas
   assert.match(sql, /payment\."amountCents" = execution\."amountCents" AND payment\."paidAt" = execution\."paidAt"/u);
   assert.match(sql, /account.kind = 'public_cash' AND account\."scopeKey" = 'public_cash'\s+AND account\."companyEntityId" IS NULL/u);
   assert.match(sql, /NEW\."confirmedAt" = source\."createdAt"/u);
+  assert.match(sql, /NEW\."payeeSubjectId" = source.payee_id/u);
+  assert.match(sql, /THEN claim\."applicantUserId"[\s\S]+ELSE 'employee:'/u);
+  assert.match(sql, /'downstream_counterparty:' \|\| nullif\(btrim\(claim\."payeeNameSnapshot", subject_whitespace\)/u);
+  assert.match(sql, /TG_RELID <> 'public\."OperatingFact"'::regclass OR TG_OP <> 'INSERT'/u);
+  assert.match(sql, /TG_RELID <> 'public\."OperatingImpactEntry"'::regclass OR TG_OP <> 'INSERT'/u);
+  assert.match(sql, /acl.grantee <> owner_oid[\s\S]+REVOKE ALL ON FUNCTION %s FROM %s/u);
   assert.match(sql, /NEW\."sourceSnapshot"->'registeredFunding' = jsonb_build_object/u);
   assert.match(sql, /NEW\."factKind" = 'downstream_payment' AND NEW\."operatingLevel" = 'project'/u);
   assert.match(sql, /NEW\."impactKind" = 'public_cash_funds_decrease'[\s\S]+NEW\."impactKind" = 'payable_decrease'/u);

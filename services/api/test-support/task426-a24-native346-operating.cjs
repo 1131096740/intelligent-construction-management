@@ -15,9 +15,9 @@ const existing = [
 ];
 const added = [
   ["public.jg_validate_expense_public_cash_fact_v1()", "OperatingFact", "OperatingFact_expense_public_cash_source",
-    "a6f915f0aca044e1ff0188c155052a3333e24786614e79ee6fdc36fd59023e76"],
+    "0cd263a827c1b4ddeb4f8aa61cb9e65c10f91002fc6ec1218253c914e43ecfa2"],
   ["public.jg_validate_expense_public_cash_impact_v1()", "OperatingImpactEntry", "OperatingImpactEntry_expense_public_cash_source",
-    "dee2e2addae79e31c50c2a2f7520c9709fa64c304b4b8cb45b08a23cb63b9083"],
+    "4df155debf8024c2030f3e279e14bb8a63cf6f737bb5228a7269675c80c467d5"],
 ];
 
 function readCatalog(size, app) {
@@ -39,7 +39,8 @@ function readCatalog(size, app) {
         'wiring',encode(sha256(convert_to(to_jsonb(t)::text,'UTF8')),'hex'),
         'definer',p.prosecdef,'condition',CASE WHEN t.tgqual IS NULL THEN '' ELSE pg_get_triggerdef(t.oid) END,
         'private',NOT has_function_privilege('${app}',p.oid,'EXECUTE') AND NOT EXISTS (
-          SELECT FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a WHERE a.grantee=0
+          SELECT FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+          WHERE a.grantee<>p.proowner OR a.grantor<>p.proowner OR a.privilege_type<>'EXECUTE' OR a.is_grantable
         )
       )) FROM (VALUES ${targets}) q(routine, relation, hook)
       JOIN pg_catalog.pg_proc p ON p.oid=to_regprocedure(q.routine) AND p.proowner=current_user::regrole::oid
