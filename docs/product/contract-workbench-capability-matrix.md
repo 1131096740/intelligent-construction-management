@@ -31,9 +31,9 @@
 
 | Method | Route | API wrapper | 生产消费者 | 分类 | 决策 | 物理删除授权 | 退出/删除缺失证据 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| GET | `/business-parties` | listBusinessParties | apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue<br>apps/web-admin/src/pages/contracts/workbench/DirectPendingDraftSection.vue | matched | 保留 | 否 | — |
+| GET | `/business-parties` | listBusinessParties | apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue<br>apps/web-admin/src/pages/contracts/components/HistoricalPartyVersionField.vue<br>apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue<br>apps/web-admin/src/pages/contracts/workbench/DirectPendingDraftSection.vue | matched | 保留 | 否 | — |
 | POST | `/business-parties` | — |  | backend_without_frontend | 补入口 | 否 | — |
-| GET | `/business-parties/:param` | getBusinessParty | apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue<br>apps/web-admin/src/pages/contracts/workbench/DirectPendingDraftSection.vue | matched | 保留 | 否 | — |
+| GET | `/business-parties/:param` | getBusinessParty | apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue<br>apps/web-admin/src/pages/contracts/components/HistoricalPartyVersionField.vue<br>apps/web-admin/src/pages/contracts/workbench/DirectPendingDraftSection.vue | matched | 保留 | 否 | — |
 | GET | `/business-parties/:param/maintenance-capability` | getBusinessPartyMaintenanceCapability | apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue | matched | 保留 | 否 | — |
 | POST | `/business-parties/:param/status` | updateBusinessPartyStatus | apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue | matched | 保留 | 否 | — |
 | POST | `/business-parties/:param/versions` | createBusinessPartyVersion | apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue | matched | 保留 | 否 | — |

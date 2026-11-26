@@ -12,12 +12,12 @@
     "registeredActionCount": 435,
     "pageActionCount": 108,
     "backgroundActionCount": 327,
-    "reachableVueFileCount": 236,
+    "reachableVueFileCount": 237,
     "routeRootCount": 82,
-    "totalVueFileCount": 256,
-    "parsedVueFileCount": 256,
-    "reachableProductionModuleCount": 406,
-    "templateEventDirectiveCount": 1541,
+    "totalVueFileCount": 257,
+    "parsedVueFileCount": 257,
+    "reachableProductionModuleCount": 407,
+    "templateEventDirectiveCount": 1548,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 426,
     "candidateProductionMutationConsumerCount": 426,
@@ -26,10 +26,10 @@
     "blockerCount": 0
   },
   "evidence": {
-    "totalProductionModuleCount": 437,
-    "reachableProductionModuleCount": 406,
-    "totalVueFileCount": 256,
-    "parsedVueFileCount": 256
+    "totalProductionModuleCount": 438,
+    "reachableProductionModuleCount": 407,
+    "totalVueFileCount": 257,
+    "parsedVueFileCount": 257
   },
   "actions": [
     {
@@ -2333,7 +2333,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5688,
+              "sourceLine": 5690,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2379,7 +2379,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5688,
+              "sourceLine": 5690,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3529,7 +3529,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5688,
+              "sourceLine": 5690,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3573,7 +3573,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5688,
+              "sourceLine": 5690,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5138,7 +5138,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5688,
+              "sourceLine": 5690,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5182,7 +5182,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5688,
+              "sourceLine": 5690,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6249,7 +6249,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5688,
+              "sourceLine": 5690,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6295,7 +6295,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5688,
+              "sourceLine": 5690,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7345,7 +7345,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5688,
+              "sourceLine": 5690,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7389,7 +7389,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5688,
+              "sourceLine": 5690,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7582,7 +7582,7 @@
         "event": "call",
         "handler": "abandonContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 2014,
+        "sourceLine": 2016,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7647,7 +7647,7 @@
         "event": "call",
         "handler": "applyContractTakeoverBatchAbandonmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1972,
+        "sourceLine": 1974,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7712,7 +7712,7 @@
         "event": "call",
         "handler": "applyContractTakeoverExcelImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1933,
+        "sourceLine": 1935,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7777,7 +7777,7 @@
         "event": "call",
         "handler": "attachContractTakeoverEvidenceFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 2078,
+        "sourceLine": 2080,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7842,7 +7842,7 @@
         "event": "call",
         "handler": "attachHistoricalPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 2091,
+        "sourceLine": 2093,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7907,7 +7907,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverChangeBaselineWithCapability",
         "kind": "background_call",
-        "sourceLine": 2065,
+        "sourceLine": 2067,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -7972,7 +7972,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverContractSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2130,
+        "sourceLine": 2132,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8037,7 +8037,7 @@
         "event": "call",
         "handler": "confirmContractTakeoverFinanceSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2143,
+        "sourceLine": 2145,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8102,7 +8102,7 @@
         "event": "call",
         "handler": "createContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 1885,
+        "sourceLine": 1887,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8167,7 +8167,7 @@
         "event": "call",
         "handler": "createContractTakeoverDraftsFromImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1909,
+        "sourceLine": 1911,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8232,7 +8232,7 @@
         "event": "call",
         "handler": "createContractTakeoverFileDownloadTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 2249,
+        "sourceLine": 2251,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8297,7 +8297,7 @@
         "event": "call",
         "handler": "returnContractTakeoverForFinanceSupplementWithCapability",
         "kind": "background_call",
-        "sourceLine": 2052,
+        "sourceLine": 2054,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8362,7 +8362,7 @@
         "event": "call",
         "handler": "precheckContractTakeoverImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1897,
+        "sourceLine": 1899,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8427,7 +8427,7 @@
         "event": "call",
         "handler": "previewContractTakeoverBatchAbandonmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 1958,
+        "sourceLine": 1960,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8492,7 +8492,7 @@
         "event": "call",
         "handler": "previewContractTakeoverExcelImportWithCapability",
         "kind": "background_call",
-        "sourceLine": 1921,
+        "sourceLine": 1923,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8622,7 +8622,7 @@
         "event": "call",
         "handler": "returnContractTakeoverForSupplementWithCapability",
         "kind": "background_call",
-        "sourceLine": 2039,
+        "sourceLine": 2041,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8687,7 +8687,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverCompanyEntityCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2228,
+        "sourceLine": 2230,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8752,7 +8752,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2199,
+        "sourceLine": 2201,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8817,7 +8817,7 @@
         "event": "call",
         "handler": "reviewContractTakeoverImportBatchWithCapability",
         "kind": "background_call",
-        "sourceLine": 1945,
+        "sourceLine": 1947,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8882,7 +8882,7 @@
         "event": "call",
         "handler": "saveContractTakeoverContractSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2104,
+        "sourceLine": 2106,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -8947,7 +8947,7 @@
         "event": "call",
         "handler": "saveContractTakeoverFinanceSideWithCapability",
         "kind": "background_call",
-        "sourceLine": 2117,
+        "sourceLine": 2119,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9012,7 +9012,7 @@
         "event": "call",
         "handler": "submitContractTakeoverCompanyEntityCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2213,
+        "sourceLine": 2215,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9077,7 +9077,7 @@
         "event": "call",
         "handler": "submitContractTakeoverCorrectionWithCapability",
         "kind": "background_call",
-        "sourceLine": 2186,
+        "sourceLine": 2188,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9142,7 +9142,7 @@
         "event": "call",
         "handler": "submitContractTakeoverReviewWithCapability",
         "kind": "background_call",
-        "sourceLine": 2027,
+        "sourceLine": 2029,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9207,7 +9207,7 @@
         "event": "call",
         "handler": "updateContractTakeoverWithCapability",
         "kind": "background_call",
-        "sourceLine": 2001,
+        "sourceLine": 2003,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9272,7 +9272,7 @@
         "event": "call",
         "handler": "uploadContractTakeoverPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1987,
+        "sourceLine": 1989,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9339,7 +9339,7 @@
         "event": "call",
         "handler": "withdrawContractTakeoverContractSideConfirmationWithCapability",
         "kind": "background_call",
-        "sourceLine": 2156,
+        "sourceLine": 2158,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -9404,7 +9404,7 @@
         "event": "call",
         "handler": "withdrawContractTakeoverFinanceSideConfirmationWithCapability",
         "kind": "background_call",
-        "sourceLine": 2171,
+        "sourceLine": 2173,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15614,7 +15614,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5688,
+              "sourceLine": 5690,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -15658,7 +15658,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5688,
+              "sourceLine": 5690,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17255,7 +17255,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5688,
+              "sourceLine": 5690,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17299,7 +17299,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5688,
+              "sourceLine": 5690,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20098,7 +20098,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5688,
+              "sourceLine": 5690,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20142,7 +20142,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5688,
+              "sourceLine": 5690,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"

@@ -1236,6 +1236,7 @@
             "normalizedKey": "GET /business-parties",
             "productionConsumers": [
               "apps/web-admin/src/pages/business-parties/BusinessPartyListPage.vue",
+              "apps/web-admin/src/pages/contracts/components/HistoricalPartyVersionField.vue",
               "apps/web-admin/src/pages/contracts/workbench/ContractPartySection.vue",
               "apps/web-admin/src/pages/contracts/workbench/DirectPendingDraftSection.vue"
             ]
@@ -1279,6 +1280,7 @@
             "normalizedKey": "GET /business-parties/:param",
             "productionConsumers": [
               "apps/web-admin/src/pages/business-parties/BusinessPartyEditorPage.vue",
+              "apps/web-admin/src/pages/contracts/components/HistoricalPartyVersionField.vue",
               "apps/web-admin/src/pages/contracts/workbench/DirectPendingDraftSection.vue"
             ]
           }
@@ -5046,7 +5048,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5688,
+            "sourceLine": 5690,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
