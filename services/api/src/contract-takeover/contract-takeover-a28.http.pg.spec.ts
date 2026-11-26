@@ -12,7 +12,15 @@ import { createApiValidationPipe } from "../validation/api-validation";
 
 const enabled = process.env.RUN_CONTRACT_TAKEOVER_A28_PG16 === "1";
 const roles = ["contract_staff", "finance_staff", "finance_director", "contract_director"] as const;
-type Role = (typeof roles)[number];
+const paymentReviewRoles = ["comprehensive_director", "project_manager", "chairman", "general_manager"] as const;
+const openingProof = process.env.JG_HISTORICAL_ACCEPTANCE_SCENARIO === "a29-opening";
+type OpeningCheckpoint = "ACTORS_READY" | "OPENING_REGISTERED" | "FINANCE_CONFIRMED" | "TAKEOVER_ACTIVATED" |
+  "HISTORY_AND_OPENING_RECONCILED" | "SIGNED_APPLICATION_READY" | "SIGNED_SETTLEMENT_CONFIRMED" | "PAYMENT_BASIS_CONFIRMED" |
+  "PAYMENT_REQUESTED" | "PAYMENT_APPROVED" | "PAYMENT_OPTIONS_CONFIRMED" | "PAYMENT_REGISTERED" | "PAYMENT_RECONCILED";
+function openingCheckpoint(checkpoint: OpeningCheckpoint) {
+  if (openingProof) process.stdout.write(`A29_CHECKPOINT ${checkpoint}\n`);
+}
+type Role = (typeof roles | typeof paymentReviewRoles)[number];
 type Actor = { id: string; token: string };
 type Revision = { revision: number; financeBasisRevision: number };
 type ContractOption = {
@@ -76,11 +84,13 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     const company = await prisma.companyEntity.create({ data: { name: ourCompany } });
     companyEntityId = company.id;
     const passwordHash = await hash(password, 4);
-    for (const role of roles) {
+    for (const role of openingProof ? [...roles, ...paymentReviewRoles] : roles) {
       const phone = `a28-${role}-${suffix}`;
       const actor = await prisma.user.create({ data: { name: role, phone, passwordHash, mustChangePassword: false } });
       const position = await prisma.position.upsert({ where: { key: role }, create: { key: role, name: role }, update: {} });
-      await prisma.userPosition.create({ data: { userId: actor.id, positionId: position.id } });
+      await prisma.userPosition.create({
+        data: { userId: actor.id, positionId: position.id, ...(role === "project_manager" ? { projectId } : {}) }
+      });
       if (role === "finance_director") {
         await prisma.userPosition.create({ data: { userId: actor.id, positionId: position.id, projectId } });
       }
@@ -95,6 +105,7 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
       actors[role] = { id: actor.id, token: session.tokens.accessToken };
     }
     affiliateVersionId = await configureProjectParties();
+    openingCheckpoint("ACTORS_READY");
   });
 
   afterAll(async () => {
@@ -165,7 +176,7 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     return partyVersion.id;
   }
 
-  async function enableUpwardOperatingLedger() {
+  async function enableOperatingLedger() {
     const secret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
     if (!secret) throw new Error("A28 启用经营账场景需要隔离经营账写入凭据");
     await prisma.$executeRaw`INSERT INTO "OperatingLedgerWriteSecret" ("id", "secretHash")
@@ -181,17 +192,162 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
       paymentExecutions: await prisma.paymentExecution.count(),
       fundExecutions: await prisma.fundExecution.count(),
       fundMovements: await prisma.fundMovement.count(),
-      refunds: await prisma.paymentExecutionRefund.count()
+      refunds: await prisma.paymentExecutionRefund.count(),
+      registeredFunding: await prisma.registeredPaymentFunding.count(),
+      registeredAllocations: await prisma.registeredFundPaymentAllocation.count()
     };
   }
 
+  async function registerNewPayment(
+    signedSettlementId: string,
+    code: string,
+    scopeKey: string,
+    opening: { id: string; sources: [{ id: string }] }
+  ) {
+    const before = await moneyWrites();
+    const payment = await request<{ id: string }>("contract_staff", "/payments", "POST", {
+      sourceType: "signed_settlement", signedSettlementId, code: `${code}-PAY`,
+      requestedAmountCents: "1000", paymentMatter: "接管后新增结算实付",
+      amountCalculationExplanation: "历史累计实付六十元已计，批准本期新增十元"
+    });
+    expect(payment).toMatchObject({ status: 201, body: { status: "approval_pending", signedSettlementId } });
+    openingCheckpoint("PAYMENT_REQUESTED");
+    const paymentRoute = `/payments/${payment.body.id}`;
+    const signature = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+    const signedRoles = new Set<Role>();
+    const approvedDuties: Role[] = [];
+    let lastApproval: unknown;
+    const recordApprovalStep = (operation: "SIGNATURE" | "DETAIL" | "REVIEW", index: number, status: number) =>
+      process.stdout.write(`A29_APPROVAL ${operation} ${index} ${status}\n`);
+    for (let step = 0; step < 12; step++) {
+      const round = await prisma.approvalInstance.findFirst({
+        where: { businessType: "payment_request", businessId: payment.body.id, status: "in_progress" }
+      });
+      if (!round) break;
+      const nodes = round.frozenNodes as unknown as Array<{ roleKeys: Role[]; approvedRoleKeys?: Role[] }>;
+      const pending = nodes[round.currentNodeIndex];
+      const actor = pending?.roleKeys.find((role) => actors[role] && !pending.approvedRoleKeys?.includes(role));
+      if (!actor) throw new Error("付款审批缺少隔离测试岗位");
+      if (!signedRoles.has(actor)) {
+        const form = new FormData();
+        form.append("file", new Blob([signature], { type: "image/png" }), "synthetic-a29-signature.png");
+        const uploaded = await fetch(`${baseUrl}/me/signature/canvas`, {
+          method: "POST", headers: { authorization: `Bearer ${actors[actor].token}` }, body: form
+        });
+        recordApprovalStep("SIGNATURE", step, uploaded.status);
+        expect(uploaded.status).toBe(201);
+        signedRoles.add(actor);
+      }
+      const detail = await request<{ reviewApprovalContext: {
+        expectedPaymentUpdatedAt: string; expectedApprovalInstanceId: string;
+        expectedNodeIndex: number; expectedApprovalUpdatedAt: string;
+      } | null }>(actor, paymentRoute);
+      recordApprovalStep("DETAIL", step, detail.status);
+      expect(detail.status).toBe(200);
+      const coordinates = detail.body.reviewApprovalContext;
+      if (!coordinates) throw new Error("公开付款详情没有审批坐标");
+      const { expectedPaymentUpdatedAt, expectedApprovalInstanceId, expectedNodeIndex, expectedApprovalUpdatedAt } = coordinates;
+      expect(expectedApprovalInstanceId).toBe(round.id);
+      expect(expectedNodeIndex).toBe(round.currentNodeIndex);
+      const approval = await request(actor, `${paymentRoute}/approval`, "POST", {
+        expectedPaymentUpdatedAt, expectedApprovalInstanceId, expectedNodeIndex, expectedApprovalUpdatedAt,
+        decision: "approve", confirmationPassword: password
+      });
+      recordApprovalStep("REVIEW", step, approval.status);
+      expect(approval.status).toBe(201);
+      lastApproval = approval.body;
+      approvedDuties.push(actor);
+    }
+    expect(approvedDuties).toEqual(["comprehensive_director", "project_manager", "finance_director", "contract_director", "chairman"]);
+    expect(lastApproval).toMatchObject({
+      status: "approved_pending_payment", approvedAmountCents: "1000",
+      businessEntrySnapshot: { values: { approvedAmountYuan: "10.00" } }
+    });
+    expect(await request("finance_staff", paymentRoute)).toMatchObject({
+      status: 200, body: {
+        reviewApprovalContext: null,
+        meta: expect.arrayContaining([expect.objectContaining({ label: "审批状态", value: "已通过" })]),
+        baseInfo: expect.arrayContaining([expect.objectContaining({ label: "批准金额", value: "¥10.00" })])
+      }
+    });
+    openingCheckpoint("PAYMENT_APPROVED");
+    const executionRoute = `/payment-executions/${payment.body.id}`;
+    const options = await request<{ expectedPaymentUpdatedAt: string; contractHistoryBasis: { fingerprint: string } }>(
+      "finance_staff", `${executionRoute}/registration-options`);
+    expect(options).toMatchObject({
+      status: 200, body: {
+        remainingAmountCents: "1000",
+        accounts: expect.arrayContaining([expect.objectContaining({ scopeKey, eligible: true, currentRegistrationId: opening.id })]),
+        contractHistoryBasis: { required: true, records: [{ historicalPaidCents: "6000" }] }
+      }
+    });
+    openingCheckpoint("PAYMENT_OPTIONS_CONFIRMED");
+    const command = {
+      idempotencyKey: randomUUID(), expectedPaymentUpdatedAt: options.body.expectedPaymentUpdatedAt,
+      amountCents: "1000", paidAt: "2026-11-12", scopeKey, expectedRegistrationId: opening.id,
+      openingTreatment: "not_included", openingReason: "同项目期初只包含原历史实付",
+      openingEvidence: "合成新增付款凭据", sourceAllocations: [{ sourceBatchId: opening.sources[0].id, amountCents: "1000" }],
+      confirmationPassword: password,
+      contractHistoryConfirmation: {
+        treatment: "not_included", expectedFingerprint: options.body.contractHistoryBasis.fingerprint,
+        reason: "本次新增付款未计入原历史合同实付六十元", evidence: "合成合同历史与新增付款核对表"
+      }
+    };
+    const register = () => request<{ id: string }>("finance_staff", `${executionRoute}/registrations`, "POST", command);
+    const recorded = await register();
+    expect(recorded).toMatchObject({ status: 201, body: { id: expect.any(String) } });
+    openingCheckpoint("PAYMENT_REGISTERED");
+    expect(await register()).toMatchObject({ status: 201, body: { id: recorded.body.id } });
+    expect(await request("finance_staff", `/payment-executions/results/${command.idempotencyKey}`)).toMatchObject({
+      status: 200, body: { status: "recorded", execution: { executionId: recorded.body.id, amountCents: "1000" } }
+    });
+    expect(await prisma.paymentExecution.findMany({ where: { paymentRequestId: payment.body.id } }))
+      .toMatchObject([{ id: recorded.body.id, amountCents: 1_000n }]);
+    expect(await prisma.registeredFundPaymentAllocation.findMany({ where: { executionId: recorded.body.id } }))
+      .toMatchObject([{ sourceBatchId: opening.sources[0].id, amountCents: 1_000n }]);
+    const after = await moneyWrites();
+    expect(after).toMatchObject({
+      paymentExecutions: before.paymentExecutions + 1, registeredFunding: before.registeredFunding + 1,
+      registeredAllocations: before.registeredAllocations + 1, refunds: before.refunds
+    });
+  }
+
   const test = enabled ? it : it.skip;
-  test.each([
+  type HistoricalCase = {
+    relationship: "outside" | "inside" | "upward";
+    settledCents: "0" | "6000";
+    finance: "finance_staff" | "finance_director";
+    excessTreatment: "historical_advance" | "abnormal_overpay" | null | undefined;
+  };
+  const cases: HistoricalCase[] = [
     { relationship: "outside", settledCents: "6000", finance: "finance_staff", excessTreatment: "historical_advance" },
     { relationship: "inside", settledCents: "0", finance: "finance_director", excessTreatment: null },
     { relationship: "upward", settledCents: "6000", finance: "finance_staff", excessTreatment: "abnormal_overpay" }
-  ] as const)("由实际岗位接管并继续办理 $relationship 历史合同", async ({ relationship, settledCents, finance, excessTreatment }) => {
-    if (relationship === "upward") await enableUpwardOperatingLedger();
+  ];
+  const selectedCases: HistoricalCase[] = openingProof
+    ? [{ relationship: "inside", settledCents: "6000", finance: "finance_director", excessTreatment: undefined }]
+    : cases;
+  test.each(selectedCases)("由实际岗位接管并继续办理 $relationship 历史合同", async ({ relationship, settledCents, finance, excessTreatment }) => {
+    if (relationship === "upward" || openingProof) await enableOperatingLedger();
+    const scopeKey = `company:${companyEntityId}`;
+    const opening = openingProof ? await request<{ id: string; sources: [{ id: string }] }>("finance_staff", "/fund-accounts/openings", "POST", {
+      scopeKey, balanceYuan: "100.0000", asOfDate: "2026-11-01",
+      evidenceReference: "合成期初核对表", reconciliationNote: "本项目期初余额已包含十月三十日历史实付六十元",
+      reason: "历史实付已在期初余额中核对", idempotencyKey: randomUUID(),
+      sources: [{ amountYuan: "100.0000", sourceStatus: "known", sourceName: "本项目合成公司资金",
+        projectStatus: "project", projectId }]
+    }) : null;
+    async function assertOpening(balanceYuan: string) {
+      expect(await request("finance_staff", `/fund-accounts/${encodeURIComponent(scopeKey)}`)).toMatchObject({
+        status: 200, body: { balanceYuan, currentRegistrationId: opening?.body.id,
+          projectBalances: [{ projectStatus: "project", projectId, amountYuan: balanceYuan }] }
+      });
+    }
+    if (openingProof) {
+      expect(opening).toMatchObject({ status: 201, body: { balanceYuan: "100.0000", kind: "opening", status: "confirmed" } });
+      await assertOpening("100.0000");
+      openingCheckpoint("OPENING_REGISTERED");
+    }
     const beforeMoney = await moneyWrites();
     const zero = settledCents === "0";
     const code = `A28-${relationship}-${randomUUID()}`;
@@ -279,12 +435,15 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
     const facts = zero
       ? { zeroPaymentDeclared: true, payments: [] }
       : {
-          zeroPaymentDeclared: false, excessTreatment,
-          excessReason: relationship === "upward" ? "超收性质待复核" : "原合同明确约定预付",
-          excessEvidenceFileIds: [await uploadPdf(finance, "独立超额核对依据")],
+          zeroPaymentDeclared: false,
+          ...(excessTreatment ? { excessTreatment,
+            excessReason: relationship === "upward" ? "超额款项性质尚待核对" : "原合同明确约定预付",
+            excessEvidenceFileIds: [await uploadPdf(finance, "独立超额核对依据")]
+          } : {}),
           payments: [{
-            rowKey: "历史回单-1", paidAt: "2026-10-30", amountCents: "7000",
+            rowKey: "历史回单-1", paidAt: "2026-10-30", amountCents: openingProof ? "6000" : "7000",
             ...(relationship === "upward" ? { payerName: constructionEnterprise, payeeName: ourCompany } : {}),
+            ...(openingProof ? { payerName: ourCompany, payeeName: counterparty } : {}),
             voucherFileIds: [await uploadPdf(finance, "历史银行回单")]
           }]
         };
@@ -326,19 +485,26 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
       await assertUnposted("pending_review");
     }
 
+    openingCheckpoint("FINANCE_CONFIRMED");
     const activation = await confirmDirector();
     if (activation.status !== 201) {
       const message = (activation.body as { message?: unknown } | null)?.message;
-      const publicMessage = typeof message === "string" && /^[\p{Script=Han}，。；：！？、]{1,96}$/u.test(message)
-        ? message : "未提供符合回执格式的公开提示";
+      const publicMessage = message === "C级证据只能进入历史资料缺口，不能直接进入正式经营账"
+        ? "历史实付证据等级不允许进入正式经营账"
+        : typeof message === "string" && /^[\p{Script=Han}，。；：！？、]{1,96}$/u.test(message)
+          ? message : "未提供符合回执格式的公开提示";
       throw new Error(`A28_ACTIVATION_HTTP(${activation.status},${publicMessage})`);
     }
     expect(activation.body).toMatchObject({ confirmed: true, activated: true });
+    openingCheckpoint("TAKEOVER_ACTIVATED");
     const moneySummary = relationship === "upward"
       ? { historicalReceiptsCents: "7000", historicalOverReceivedCents: "1000", historicalOverReceivedPendingVerification: true, historicalOverpaidCents: "0" }
       : zero
         ? { historicalPaidTotalCents: "0", historicalOverpaidCents: "0", financeSide: { zeroPaymentDeclared: true }, contractSide: { contractFacts: { zeroSettlementDeclared: true } } }
-        : { historicalPaidTotalCents: "7000", historicalOverpaidCents: "1000", historicalOverpaymentLabel: "未结算预付款" };
+        : openingProof
+          ? { historicalPaidTotalCents: "6000", historicalOverpaidCents: "0" }
+          : { historicalPaidTotalCents: "7000", historicalOverpaidCents: "1000",
+              historicalOverpaymentLabel: "未结算预付款", historicalOverpaymentKind: "unsettled_advance" };
     expect(await request("contract_staff", entry)).toMatchObject({
       status: 200, body: { takeoverStatus: "confirmed", historicalFactStatus: "confirmed", ...moneySummary }
     });
@@ -368,14 +534,26 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
       ]));
       expect(persisted.flatMap((fact) => fact.impacts)).toHaveLength(3);
       expect(await prisma.contractTakeoverBalanceAccount.count({ where: { takeoverId: draft.body.id } })).toBe(0);
+    } else if (openingProof) {
+      expect(afterMoney).toEqual({ ...beforeMoney, operatingFacts: beforeMoney.operatingFacts + 3 });
+      expect(await prisma.operatingFact.findFirst({
+        where: { projectId, sourceType: "contract_takeover_historical_payment" }, include: { impacts: true }
+      })).toMatchObject({
+        amountCents: 6_000n,
+        isBeforeOperatingLedgerEffectiveDate: true, actualPayerSubjectKind: "participating_company",
+        sourceSnapshot: { historicalOpeningPayment: true },
+        impacts: [{ impactKind: "payable_decrease", amountCents: 6_000n }]
+      });
+      await assertOpening("100.0000");
+      openingCheckpoint("HISTORY_AND_OPENING_RECONCILED");
     } else {
       expect(afterMoney).toEqual(beforeMoney);
     }
-
     const retired = await request("contract_staff", `/projects/${projectId}/settlement-drafts`, "POST", {});
     expect(retired).toMatchObject({ status: 410, body: { code: "OLD_WRITE_ENTRY_RETIRED" } });
 
     signedQualification ??= await openSignedSettlementQualification(prisma, process.env.DATABASE_URL!, { historicalPaymentBasis: true });
+    openingCheckpoint("SIGNED_APPLICATION_READY");
     const signedPath = `/projects/${projectId}/signed-contract-settlements`;
     const signedTarget = signedQualification.baseUrl;
     const picker = await request<SignedSettlementOption[]>("contract_staff", `${signedPath}/contracts`, "GET", undefined, signedTarget);
@@ -414,6 +592,7 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
         } : {})
       } }
     });
+    openingCheckpoint("SIGNED_SETTLEMENT_CONFIRMED");
     const confirmedYuan = zero ? "10.0000" : "70.0000";
     expect(await request("contract_staff", overviewPath, "GET", undefined, signedTarget))
       .toMatchObject({ status: 200, body: { confirmedYuan } });
@@ -429,16 +608,26 @@ describe("A28 历史合同接管真实 HTTP 与 PostgreSQL 16", () => {
         confirmedYuan,
         latestConfirmed: { id: saved.body.id, amountYuan: "10.0000", source: "signed_registration" },
         downstreamCapacity: relationship === "upward" ? null : {
-          recordedPaidYuan: zero ? "0.0000" : "70.0000",
-          wholeCentLimit: zero ? "1000" : "0",
-          ...(zero ? {} : { advancePaidYuan: "10.0000", abnormalOverpayYuan: "0.0000" })
+          recordedPaidYuan: zero ? "0.0000" : openingProof ? "60.0000" : "70.0000",
+          wholeCentLimit: zero || openingProof ? "1000" : "0",
+          ...(zero || openingProof ? {} : { advancePaidYuan: "10.0000", abnormalOverpayYuan: "0.0000" })
         }
       }
     });
 
     expect(await moneyWrites()).toEqual({
       ...afterMoney,
-      operatingFacts: afterMoney.operatingFacts + (relationship === "upward" ? 1 : 0)
+      operatingFacts: afterMoney.operatingFacts + (relationship === "upward" || openingProof ? 1 : 0)
     });
-  }, 60_000);
+    if (openingProof && opening) {
+      await assertOpening("100.0000");
+      openingCheckpoint("PAYMENT_BASIS_CONFIRMED");
+      await registerNewPayment(saved.body.id, code, scopeKey, opening.body);
+      await assertOpening("90.0000");
+      expect(await request("contract_staff", entry)).toMatchObject({
+        status: 200, body: { takeoverStatus: "confirmed", historicalPaidTotalCents: "6000", historicalOverpaidCents: "0" }
+      });
+      openingCheckpoint("PAYMENT_RECONCILED");
+    }
+  }, openingProof ? 120_000 : 60_000);
 });

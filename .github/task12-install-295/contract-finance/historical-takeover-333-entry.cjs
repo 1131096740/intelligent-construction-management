@@ -17,8 +17,18 @@ const historicalSettlement = source.mode === 'historical-settlement-334';
 const count = historicalSettlement ? 334 : 333;
 const profile = historicalSettlement
   ? require('./historical-settlement-334-profile.cjs') : require('./historical-takeover-333-profile.cjs');
-const purpose = 'HISTORICAL_TAKEOVER_A28_' + count;
+const scenario = process.env.JG_HISTORICAL_ACCEPTANCE_SCENARIO ?? '';
+const opening = scenario === 'a29-opening';
+const purpose = 'HISTORICAL_TAKEOVER_' + (opening ? 'A29_OPENING' : 'A28') + '_' + count;
+const expectedCases = scenario ? 1 : 3;
+const businessStage = opening ? 'A29_HISTORICAL_OPENING_AND_NEW_PAYMENT_HTTP'
+  : 'A28_HISTORICAL_CONTRACT_TAKEOVER_HTTP';
 const receipt = { schemaVersion: 1, purpose, sourceSha: source.sourceSha, stages: ['INPUTS'], status: 'STOPPED' };
+const openingCheckpoints = [
+  'ACTORS_READY', 'OPENING_REGISTERED', 'FINANCE_CONFIRMED', 'TAKEOVER_ACTIVATED',
+  'HISTORY_AND_OPENING_RECONCILED', 'SIGNED_APPLICATION_READY', 'SIGNED_SETTLEMENT_CONFIRMED', 'PAYMENT_BASIS_CONFIRMED',
+  'PAYMENT_REQUESTED', 'PAYMENT_APPROVED', 'PAYMENT_OPTIONS_CONFIRMED', 'PAYMENT_REGISTERED', 'PAYMENT_RECONCILED'
+];
 
 async function consume({ ownerUrl, database, workDir, candidateTree }) {
   assert.equal(candidateTree, source.sourceTree);
@@ -32,7 +42,7 @@ async function consume({ ownerUrl, database, workDir, candidateTree }) {
   assert.equal(owner.searchParams.get('sslaccept'), 'strict');
   assert.equal(owner.searchParams.get('sslcert'), path.join(workDir, 'ca.crt'));
 
-  receipt.stages.push('A28_HISTORICAL_CONTRACT_TAKEOVER_HTTP');
+  receipt.stages.push(businessStage);
   const directory = fs.mkdtempSync(path.join(workDir, 'a28-'));
   const reportPath = path.join(directory, 'jest.json');
   // A28 mutates takeover tables outside the original Line A runtime grants.
@@ -43,7 +53,7 @@ async function consume({ ownerUrl, database, workDir, candidateTree }) {
     cwd: api, encoding: 'utf8', timeout: 300_000, maxBuffer: 8 * 1024 * 1024,
     env: {
       PATH: '/usr/local/bin:/usr/bin:/bin', HOME: workDir, TMPDIR: workDir, NODE_ENV: 'test', CI: 'true',
-      RUN_CONTRACT_TAKEOVER_A28_PG16: '1', JG_NATIVE_A28_DATABASE: database, DATABASE_URL: owner.href,
+      RUN_CONTRACT_TAKEOVER_A28_PG16: '1', JG_HISTORICAL_ACCEPTANCE_SCENARIO: scenario, JG_NATIVE_A28_DATABASE: database, DATABASE_URL: owner.href,
       FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: path.join(directory, 'files'),
       APPROVAL_SMS_ENABLED: 'false', SMS_ENABLED: 'false',
       FILE_DOWNLOAD_SECRET: randomSecret(), JWT_ACCESS_SECRET: randomSecret(), JWT_REFRESH_SECRET: randomSecret(),
@@ -57,10 +67,16 @@ async function consume({ ownerUrl, database, workDir, candidateTree }) {
   receipt.a28 = {
     databaseRole: 'isolated_fixture_owner',
     httpAuthorization: 'application_business_roles',
-    enabledOperatingLedgerRelationships: ['upward'],
+    enabledOperatingLedgerRelationships: opening ? ['inside'] : ['upward'],
     passed: report?.numPassedTests ?? 0,
     skipped: report?.numPendingTests ?? 0,
     registered: report?.numTotalTests ?? 0,
+    ...(opening ? {
+      checkpoints: [...(child.stdout ?? '').matchAll(/^A29_CHECKPOINT ([A-Z_]+)$/gmu)]
+        .map(match => match[1]).filter(checkpoint => openingCheckpoints.includes(checkpoint)).slice(0, openingCheckpoints.length),
+      approvalSteps: [...(child.stdout ?? '').matchAll(/^A29_APPROVAL (SIGNATURE|DETAIL|REVIEW) (\d|1[01]) ([1-5]\d{2})$/gmu)]
+        .slice(0, 36).map(([, operation, step, status]) => ({ operation, step: Number(step), status: Number(status) }))
+    } : {}),
     failedCases: cases.flatMap((test, index) => {
       if (test.status !== 'failed') return [];
       const message = (test.failureMessages ?? []).join('\n').replace(/\u001b\[[0-9;]*m/gu, '').slice(0, 32_768);
@@ -68,7 +84,8 @@ async function consume({ ownerUrl, database, workDir, candidateTree }) {
         .map(match => Number(match[1])))].slice(0, 4);
       const activationFailure = /A28_ACTIVATION_HTTP\(([1-5]\d{2}),([\p{Script=Han}，。；：！？、]{1,96})\)/u.exec(message);
       const paymentBasisFailure = /A28_SIGNED_PAYMENT_BASIS_HTTP\(([1-5]\d{2}),(POL114_SIGNED_SETTLEMENT_QUERY_[A-Z0-9]+|QUERY_UNAVAILABLE)(?:,([A-Za-z.]{1,60}),([A-Za-z]{1,45}))?\)/u.exec(message);
-      return [{ index: index + 1, lines,
+      const kind = /^(?:Error: )?(PrismaClientKnownRequestError|PrismaClientValidationError|PrismaClientInitializationError|TypeError|RangeError|ReferenceError|SyntaxError|Exceeded timeout of)\b/mu.exec(message)?.[1];
+      return [{ index: index + 1, lines, ...(opening && kind ? { kind } : {}),
         statuses: activationFailure ? [201, Number(activationFailure[1])]
           : paymentBasisFailure ? [200, Number(paymentBasisFailure[1])]
           : [...message.matchAll(/"status": ([1-5]\d{2})/gu)].slice(0, 2).map(match => Number(match[1])),
@@ -81,12 +98,13 @@ async function consume({ ownerUrl, database, workDir, candidateTree }) {
     })
   };
   receipt.a28.complete = child.status === 0 && report?.success === true && report.testResults.length === 1 &&
-    suite.name === path.join(api, spec) && report.numPassedTests === 3 && report.numTotalTests === 3 &&
-    report.numPendingTests === 0 && cases.length === 3 && cases.every(test => test.status === 'passed');
+    suite.name === path.join(api, spec) && report.numPassedTests === expectedCases && report.numTotalTests === expectedCases &&
+    report.numPendingTests === 0 && cases.length === expectedCases && cases.every(test => test.status === 'passed');
 }
 
 async function main() {
   assert.equal(process.argv.length, 2);
+  assert.ok(!scenario || (historicalSettlement && opening));
   assert.notEqual(process.getuid(), 0);
   assert.equal(process.env.DATABASE_URL, undefined);
   profile.assertSource(source, final);
