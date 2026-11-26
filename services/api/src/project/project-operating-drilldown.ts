@@ -7,9 +7,9 @@
  */
 export interface ContractDrilldownProjectionRow {
   contractKey: string;
-  settledCents: string;
+  settledCents: string | null;
   paidCents: string;
-  unpaidCents: string;
+  unpaidCents: string | null;
 }
 
 export interface ContractDrilldownRequestRow {
@@ -25,9 +25,9 @@ export interface ContractDrilldownRow {
   contractCode: string;
   contractName: string;
   contractKindLabel: "下游合同" | "表外合同" | "对上合同" | "合同";
-  settledCents: string;
+  settledCents: string | null;
   paidCents: string;
-  unpaidCents: string;
+  unpaidCents: string | null;
   approvalPendingRequestCents: string;
   approvedPendingPaymentCents: string;
 }
@@ -84,13 +84,6 @@ export function mergeContractDrilldown(input: {
   return [...keys]
     .map((contractKey) => {
       const projection = settledByContract.get(contractKey);
-      const settlement = projection
-        ? {
-            settledCents: BigInt(projection.settledCents),
-            paidCents: BigInt(projection.paidCents),
-            unpaidCents: BigInt(projection.unpaidCents)
-          }
-        : { settledCents: 0n, paidCents: 0n, unpaidCents: 0n };
       const pending = requestByContract.get(contractKey) ?? {
         approvalPendingRequestCents: 0n,
         approvedPendingPaymentCents: 0n
@@ -113,9 +106,9 @@ export function mergeContractDrilldown(input: {
             : company
               ? ("对上合同" as const)
               : ("合同" as const),
-        settledCents: settlement.settledCents.toString(),
-        paidCents: settlement.paidCents.toString(),
-        unpaidCents: settlement.unpaidCents.toString(),
+        settledCents: projection ? projection.settledCents : "0",
+        paidCents: projection ? projection.paidCents : "0",
+        unpaidCents: projection ? projection.unpaidCents : "0",
         approvalPendingRequestCents:
           pending.approvalPendingRequestCents.toString(),
         approvedPendingPaymentCents:

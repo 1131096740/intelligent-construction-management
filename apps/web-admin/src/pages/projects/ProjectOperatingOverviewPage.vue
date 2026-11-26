@@ -2014,18 +2014,21 @@ const profitAndLossItems = computed(() => {
   const profit = overview.value?.operatingProjection.profitAndLoss;
   const distribution = overview.value?.operatingProjection.distribution;
   const currentProfitCents = profit?.currentOperatingProfitCents ?? null;
-  const currentProfitYuan = overview.value?.business.grossProfitYuan;
+  const currentProfitYuan = profit?.currentOperatingProfitYuan;
+  const knownCurrentProfit = currentProfitCents !== null || currentProfitYuan != null;
   const currentProfit = currentProfitCents === null && currentProfitYuan
     ? `¥${currentProfitYuan}`
     : formatCents(currentProfitCents);
   return [
     {
-      label: profitIncomplete.value
+      label: knownCurrentProfit && profitIncomplete.value
         ? "当前经营盈亏（已知数，资料待补充）"
         : "当前经营盈亏",
-      value: profitIncomplete.value
-        ? `${currentProfit}（已知数，不作为最终利润）`
-        : currentProfit
+      value: !knownCurrentProfit
+        ? "暂不可确认（资料待核对）"
+        : profitIncomplete.value
+          ? `${currentProfit}（已知数，不作为最终利润）`
+          : currentProfit
     },
     { label: "预计待清算费用", value: formatCents(profit?.estimatedClearingExpenseCents ?? null) },
     { label: "当前预计盈亏", value: formatCents(profit?.currentEstimatedProfitCents ?? null) },

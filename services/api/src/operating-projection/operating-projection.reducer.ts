@@ -206,6 +206,7 @@ export interface ProjectionAggregateSeed {
   sourceReferenceOutflows: Array<[string, bigint]>;
   retroactiveFactCount: number;
   crossSourceDedupedFactCount?: number;
+  settlementUncertainty?: SettlementProjectionUncertainty;
   costByBearingCompany?: Array<{ kind: string; id: string; name: string | null; costCents: bigint }>;
   unattributedCostCents?: bigint;
   publicCashCostCents?: bigint;
@@ -271,13 +272,13 @@ export interface OperatingProjectionReadModel {
     notices: string[];
   };
   commitments: { contractCommitmentCents: string };
-  relationshipTotals?: Array<{ relationship: ContractRelationship; label: string; contractCommitmentCents: string; confirmedCostCents: string; receivableCents: string; payableCents: string; interSubjectBalanceCents: string; interSubjectReceivableCents: string; interSubjectPayableCents: string }>;
+  relationshipTotals?: Array<{ relationship: ContractRelationship; label: string; contractCommitmentCents: string; confirmedCostCents: ApiMoney; receivableCents: ApiMoney; payableCents: ApiMoney; interSubjectBalanceCents: string; interSubjectReceivableCents: string; interSubjectPayableCents: string }>;
   operating: {
     confirmedIncomeCents: string;
-    confirmedCostCents: string;
-    internalReceivableCents?: string;
-    receivableCents: string;
-    payableCents: string;
+    confirmedCostCents: ApiMoney;
+    internalReceivableCents?: ApiMoney;
+    receivableCents: ApiMoney;
+    payableCents: ApiMoney;
   };
   /** FND-22 成本主体归属读侧：已确认成本按承担公司汇总，未明承担公司单列待归属。 */
   costAttribution: {
@@ -285,18 +286,18 @@ export interface OperatingProjectionReadModel {
       kind: string;
       id: string;
       name: string | null;
-      costCents: string;
+      costCents: ApiMoney;
     }>;
-    unattributedCostCents: string;
-    publicCashCostCents: string;
+    unattributedCostCents: ApiMoney;
+    publicCashCostCents: ApiMoney;
     needsReview?: true;
   };
   /** OPS-14：下游已结算/已付按合同汇总；待审批与已批待付由 API 层补充，不在此相加。 */
   contractDrilldown: Array<{
     contractKey: string;
-    settledCents: string;
+    settledCents: ApiMoney;
     paidCents: string;
-    unpaidCents: string;
+    unpaidCents: ApiMoney;
   }>;
   actualFunds: {
     constructionEnterpriseFundsCents: string;
@@ -326,22 +327,22 @@ export interface OperatingProjectionReadModel {
     temporaryProfitDistributionCents: string;
   };
   profitAndLoss: {
-    currentOperatingProfitCents: string;
+    currentOperatingProfitCents: ApiMoney;
     estimatedClearingExpenseCents: string;
-    currentEstimatedProfitCents: string;
+    currentEstimatedProfitCents: ApiMoney;
     finalConfirmedProfitCents: ApiMoney;
     finalConfirmable: boolean;
   };
   distribution: {
     cashCeilingCents: ApiMoney;
-    projectedProfitCeilingCents: string;
+    projectedProfitCeilingCents: ApiMoney;
     currentDistributableProfitCents: ApiMoney;
   };
   evidence: Record<EvidenceLevel, { factCount: number; amountCents: string }> & {
     gapFactCount: number;
     gapAmountCents: string;
   };
-  impactTotalsByKind: Partial<Record<OperatingImpactKind, string>>;
+  impactTotalsByKind: Partial<Record<OperatingImpactKind, ApiMoney>>;
   details: OperatingProjectionDetail[];
   clearingRiskDetails: Array<{
     projectId: string;
@@ -679,7 +680,8 @@ function foldCostBearing(
   byCompany: Map<string, { kind: string; id: string; name: string | null; costCents: bigint }>,
   fact: ProjectionFactInput,
   impact: ProjectionImpactInput,
-  signed: bigint
+  signed: bigint,
+  uncertainCompanies?: Set<string>
 ) {
   const slices = impact.costBearingSlices ?? [];
   const assigned = slices.reduce((sum, slice) => sum + slice.amountCents, 0n);
@@ -695,6 +697,7 @@ function foldCostBearing(
     const row = byCompany.get(key) ?? { kind, id, name: name || null, costCents: 0n };
     row.costCents += amount;
     byCompany.set(key, row);
+    uncertainCompanies?.add(key);
   }
   return {
     unassigned: bearing ? 0n : signed - assigned,
@@ -1471,6 +1474,7 @@ type SettlementProjectionCandidate = Pick<
 
 interface SettlementProjectionDeduplication {
   suppressedFactIds: ReadonlySet<string>;
+  uncertainFactIds: ReadonlySet<string>;
   notices: readonly string[];
   moneyComplete: boolean;
 }
@@ -1478,50 +1482,77 @@ interface SettlementProjectionDeduplication {
 /** Keeps only the coordinates needed to decide a whole contract/period bucket. */
 export class SettlementProjectionCandidates {
   private readonly buckets = new Map<string, {
-    first: Pick<SettlementProjectionCandidate, "sourceType" | "amountCents">;
-    count: number;
-    otherSource?: { id: string; amountCents: bigint | null; period: string };
+    first: { sourceType: string; signedAmountCents: bigint | null };
+    ids: string[];
+    otherSource?: { signedAmountCents: bigint | null; period: string };
   }>();
 
   add(fact: SettlementProjectionCandidate): void {
     const identity = settlementEconomicIdentity(fact.sourceType, fact.sourceSnapshot);
     if (!identity) return;
+    const snapshot = jsonRecord(fact.sourceSnapshot);
+    const decreasing = snapshot.effectDirection === "decrease" ||
+      (typeof snapshot.amountCents === "string" && /^-\d+$/.test(snapshot.amountCents));
+    const signedAmountCents = decreasing && fact.amountCents !== null ? -fact.amountCents : fact.amountCents;
     const key = `${fact.projectId}\u0000${settlementDedupKey(identity)}`;
     const bucket = this.buckets.get(key);
     if (!bucket) {
       this.buckets.set(key, {
-        first: { sourceType: fact.sourceType, amountCents: fact.amountCents },
-        count: 1
+        first: { sourceType: fact.sourceType, signedAmountCents },
+        ids: [fact.id]
       });
       return;
     }
-    bucket.count += 1;
+    bucket.ids.push(fact.id);
     if (bucket.first.sourceType !== fact.sourceType && !bucket.otherSource) {
-      bucket.otherSource = { id: fact.id, amountCents: fact.amountCents, period: identity.period };
+      bucket.otherSource = { signedAmountCents, period: identity.period };
     }
   }
 
   resolve(): SettlementProjectionDeduplication {
     const suppressedFactIds = new Set<string>();
+    const uncertainFactIds = new Set<string>();
     const notices = new Set<string>();
-    let moneyComplete = true;
-    for (const { first, count, otherSource } of this.buckets.values()) {
+    for (const { first, ids, otherSource } of this.buckets.values()) {
       if (!otherSource) continue;
-      if (count > 2) {
-        moneyComplete = false;
+      if (ids.length > 2) {
+        for (const id of ids) uncertainFactIds.add(id);
         notices.add("同一合同期次存在多来源且有多笔结算，无法确定对应关系。请核对原结算单后确认金额汇总。");
-        continue;
+      } else if (first.signedAmountCents === null || first.signedAmountCents !== otherSource.signedAmountCents) {
+        for (const id of ids) uncertainFactIds.add(id);
+        notices.add("同一合同期次的多来源结算金额不一致或缺失，请核对原结算单后确认金额汇总。");
+      } else {
+        suppressedFactIds.add(ids[1]!);
+        notices.add(
+          `同一合同期次「${otherSource.period}」存在多来源结算，已按一次计入成本；请核对原结算单。`
+        );
       }
-      suppressedFactIds.add(otherSource.id);
-      if (first.amountCents !== otherSource.amountCents) {
-        moneyComplete = false;
-        notices.add("同一合同期次的多来源结算金额不一致，跨来源去重已关闭金额投影。");
-      }
-      notices.add(
-        `同一合同期次「${otherSource.period}」存在多来源结算，已按一次计入成本；请核对原结算单。`
-      );
     }
-    return { suppressedFactIds, notices: [...notices], moneyComplete };
+    return { suppressedFactIds, uncertainFactIds, notices: [...notices], moneyComplete: uncertainFactIds.size === 0 };
+  }
+}
+
+class SettlementProjectionUncertainty {
+  readonly impactKinds = new Set<OperatingImpactKind>();
+  readonly relationshipImpacts = new Set<string>();
+  readonly contractSettlements = new Set<string>();
+  readonly costCompanies = new Set<string>();
+  unattributedCost = false;
+  publicCashCost = false;
+
+  addImpact(fact: ProjectionFactInput, kind: OperatingImpactKind): void {
+    this.impactKinds.add(kind);
+    const relationship = operatingContractRelationship(fact.sourceType, fact.sourceSnapshot);
+    this.relationshipImpacts.add(`${relationship}:${kind}`);
+    if (fact.factKind === "downstream_settlement" && (kind === "payable_increase" || kind === "payable_decrease")) {
+      const contractKey = contractKeyFromSnapshot(fact.sourceSnapshot);
+      if (contractKey) this.contractSettlements.add(contractKey);
+    }
+  }
+
+  addCostBearing(bearing: ReturnType<typeof foldCostBearing>): void {
+    this.unattributedCost ||= bearing.unassigned !== 0n;
+    this.publicCashCost ||= bearing.cash !== 0n;
   }
 }
 
@@ -1600,6 +1631,7 @@ export class OperatingProjectionStreamAccumulator {
   private readonly notices = new Set<string>();
   private readonly holderAliasByKey: Map<string, string>;
   private moneyComplete = true;
+  private readonly settlementUncertainty = new SettlementProjectionUncertainty();
   private restrictionConflict = false;
   private confirmedProjectInflowsCents = 0n;
   private confirmedProjectOutflowsCents = 0n;
@@ -1755,6 +1787,8 @@ export class OperatingProjectionStreamAccumulator {
           : financialSigned;
       if (projectionSigned === null) continue;
       const kind = impact.impactKind as OperatingImpactKind;
+      const uncertainSettlement = this.context.settlementDeduplication?.uncertainFactIds.has(fact.id);
+      if (uncertainSettlement) this.settlementUncertainty.addImpact(fact, kind);
       this.totals.set(kind, (this.totals.get(kind) ?? 0n) + projectionSigned);
       foldRelationship(this.relationshipTotals, fact, kind, projectionSigned, this.context.scope.filters?.companyEntityId);
       state.matchingSignedImpactCents += projectionSigned;
@@ -1771,7 +1805,9 @@ export class OperatingProjectionStreamAccumulator {
         }
       }
       if (kind === "confirmed_cost") {
-        const bearing = foldCostBearing(this.costByBearingCompany, fact, impact, projectionSigned);
+        const bearing = foldCostBearing(this.costByBearingCompany, fact, impact, projectionSigned,
+          uncertainSettlement ? this.settlementUncertainty.costCompanies : undefined);
+        if (uncertainSettlement) this.settlementUncertainty.addCostBearing(bearing);
         this.unattributedCostCents += bearing.unassigned;
         this.publicCashCostCents += bearing.cash;
         if (impact.cashAttributionNeedsReview) this.notices.add(CASH_ATTRIBUTION_REVIEW_NOTICE);
@@ -1903,6 +1939,7 @@ export class OperatingProjectionStreamAccumulator {
         projectExternalPaidCents: this.projectExternalPaidCents,
         sourceReferenceOutflows: Array.from(this.sourceReferenceOutflows.entries()),
         retroactiveFactCount: this.retroactiveFactCount,
+        settlementUncertainty: this.settlementUncertainty,
         moneyComplete: this.moneyComplete,
         notices: [...this.notices]
       } satisfies ProjectionAggregateSeed,
@@ -2087,14 +2124,14 @@ export type OperatingProjectionV2ReadModel = Omit<OperatingProjectionReadModel,
     receivableCents: string | null;
     confirmedIncomeYuan: string;
     confirmedCostCents: string | null;
-    confirmedCostYuan: string;
-    receivableYuan: string;
+    confirmedCostYuan: ApiMoney;
+    receivableYuan: ApiMoney;
   };
   profitAndLoss: Omit<OperatingProjectionReadModel["profitAndLoss"], "currentOperatingProfitCents" | "currentEstimatedProfitCents"> & {
     currentOperatingProfitCents: string | null;
-    currentOperatingProfitYuan: string;
+    currentOperatingProfitYuan: ApiMoney;
     currentEstimatedProfitCents: string | null;
-    currentEstimatedProfitYuan: string;
+    currentEstimatedProfitYuan: ApiMoney;
   };
   impactTotalsByKind: Partial<Record<OperatingImpactKind, string | null>>;
   details: Array<OperatingProjectionDetail & { signedImpactYuan: string | null; amountState: "known" | "unknown"; numericProtocolVersion?:1|2; sourceNumericProtocolVersion?:1;sourceAmountCents?:string }>;
@@ -2252,13 +2289,13 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
     receivableCents: ownerSettlement ? null : result.operating.receivableCents,
     confirmedCostCents: completionCostYuan === undefined ? result.operating.confirmedCostCents : null,
     confirmedCostYuan: sumBusinessAmounts([businessAmountFromLegacyCents(result.operating.confirmedCostCents),
-      completionCostYuan ?? "0.0000"])!,
+      completionCostYuan ?? "0.0000"]),
     confirmedIncomeYuan: sumBusinessAmounts([
       businessAmountFromLegacyCents(result.operating.confirmedIncomeCents), ownerSettlement?.incomeYuan ?? "0.0000"
     ])!,
     receivableYuan: sumBusinessAmounts([
       businessAmountFromLegacyCents(result.operating.receivableCents), ownerSettlement?.receivableYuan ?? "0.0000"
-    ])!
+    ])
   };
   const costDecrease = completionCostYuan === undefined ? "0.0000" : `-${completionCostYuan}`;
   const profitAndLoss = {
@@ -2266,11 +2303,11 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
     currentOperatingProfitCents: ownerSettlement || completionCostYuan !== undefined ? null : result.profitAndLoss.currentOperatingProfitCents,
     currentOperatingProfitYuan: sumBusinessAmounts([
       businessAmountFromLegacyCents(result.profitAndLoss.currentOperatingProfitCents), ownerSettlement?.incomeYuan ?? "0.0000", costDecrease
-    ])!,
+    ]),
     currentEstimatedProfitCents: ownerSettlement || completionCostYuan !== undefined ? null : result.profitAndLoss.currentEstimatedProfitCents,
     currentEstimatedProfitYuan: sumBusinessAmounts([
       businessAmountFromLegacyCents(result.profitAndLoss.currentEstimatedProfitCents), ownerSettlement?.incomeYuan ?? "0.0000", costDecrease
-    ])!
+    ])
   };
   return { ...result, schema: "operating_projection/V2", numericProtocolVersion: 2, operating, profitAndLoss,
     commitments: { contractCommitmentCents: selectedDecimalCount ? null : result.commitments.contractCommitmentCents, contractCommitmentYuan: commitment.amountYuan, knownContractCommitmentYuan: commitment.knownSubtotalYuan, unknownContractCommitmentCount: commitment.unknownCount },
@@ -2325,6 +2362,7 @@ function reduceLegacyOperatingProjection(
     for (const fact of input.facts) settlements.add(fact);
   }
   const settlementDeduplication = settlements.resolve();
+  const settlementUncertainty = input.aggregateSeed?.settlementUncertainty ?? new SettlementProjectionUncertainty();
   moneyComplete &&= settlementDeduplication.moneyComplete;
   notices.push(...settlementDeduplication.notices);
   const costByBearingCompany = new Map<string, { kind: string; id: string; name: string | null; costCents: bigint }>();
@@ -2406,6 +2444,8 @@ function reduceLegacyOperatingProjection(
           : financialSigned;
       if (projectionSigned !== null) {
         const kind = impact.impactKind as OperatingImpactKind;
+        const uncertainSettlement = settlementDeduplication.uncertainFactIds.has(fact.id);
+        if (uncertainSettlement) settlementUncertainty.addImpact(fact, kind);
         totals.set(kind, (totals.get(kind) ?? 0n) + projectionSigned);
         foldRelationship(relationshipTotals, fact, kind, projectionSigned, input.scope.filters?.companyEntityId);
         if (CASH_IMPACT_KINDS.has(kind)) {
@@ -2419,7 +2459,9 @@ function reduceLegacyOperatingProjection(
           }
         }
         if (kind === "confirmed_cost") {
-          const bearing = foldCostBearing(costByBearingCompany, fact, impact, projectionSigned);
+          const bearing = foldCostBearing(costByBearingCompany, fact, impact, projectionSigned,
+            uncertainSettlement ? settlementUncertainty.costCompanies : undefined);
+          if (uncertainSettlement) settlementUncertainty.addCostBearing(bearing);
           unattributedCostCents += bearing.unassigned;
           publicCashCostCents += bearing.cash;
           if (impact.cashAttributionNeedsReview) notices.push(CASH_ATTRIBUTION_REVIEW_NOTICE);
@@ -2650,9 +2692,18 @@ function reduceLegacyOperatingProjection(
   if (!projectDistributionAvailable) {
     notices.push("跨项目或公司视角只展示归属金额；项目可分配利润必须回到单项目投影读取。");
   }
+  const { impactKinds, relationshipImpacts, contractSettlements, costCompanies } = settlementUncertainty;
+  const costUncertain = impactKinds.has("confirmed_cost");
+  const payableUncertain = impactKinds.has("payable_increase") || impactKinds.has("payable_decrease");
+  const receivableUncertainFor = (relationship: string) =>
+    relationshipImpacts.has(`${relationship}:receivable_increase`) || relationshipImpacts.has(`${relationship}:receivable_decrease`);
+  // On the consolidated project view, the upward receivable is cancelled out.
+  const receivableUncertain = Object.keys(CONTRACT_RELATIONSHIP_LABELS).some(relationship =>
+    receivableUncertainFor(relationship) &&
+    (relationship !== "upward" || input.scope.kind === "company" || input.scope.filters?.companyEntityId));
   const impactTotalsByKind = Object.fromEntries(
-    Array.from(totals.entries()).map(([kind, value]) => [kind, apiMoney(value)])
-  ) as Partial<Record<OperatingImpactKind, string>>;
+    Array.from(totals.entries()).map(([kind, value]) => [kind, impactKinds.has(kind) ? null : apiMoney(value)])
+  ) as Partial<Record<OperatingImpactKind, ApiMoney>>;
   const clearingRiskDetails = riskMoneyKnown ? input.riskByProject.flatMap((risk) => [
     ...risk.items.map((item) => ({
       projectId: risk.projectId,
@@ -2738,10 +2789,10 @@ function reduceLegacyOperatingProjection(
     commitments: { contractCommitmentCents: apiMoney(contractCommitment) },
     operating: {
       confirmedIncomeCents: apiMoney(confirmedIncome),
-      confirmedCostCents: apiMoney(confirmedCost),
-      internalReceivableCents: apiMoney(internalReceivable),
-      receivableCents: apiMoney(receivable),
-      payableCents: apiMoney(payable)
+      confirmedCostCents: costUncertain ? null : apiMoney(confirmedCost),
+      internalReceivableCents: receivableUncertainFor("upward") ? null : apiMoney(internalReceivable),
+      receivableCents: receivableUncertain ? null : apiMoney(receivable),
+      payableCents: payableUncertain ? null : apiMoney(payable)
     },
     contractDrilldown: (
       input.aggregateSeed?.contractDrilldown ??
@@ -2752,9 +2803,9 @@ function reduceLegacyOperatingProjection(
     )
       .map((row) => ({
         contractKey: row.contractKey,
-        settledCents: apiMoney(row.settledCents),
+        settledCents: contractSettlements.has(row.contractKey) ? null : apiMoney(row.settledCents),
         paidCents: apiMoney(row.paidCents),
-        unpaidCents: apiMoney(
+        unpaidCents: contractSettlements.has(row.contractKey) ? null : apiMoney(
           nonNegative(row.settledCents - row.paidCents)
         )
       }))
@@ -2768,16 +2819,16 @@ function reduceLegacyOperatingProjection(
           kind: row.kind,
           id: row.id,
           name: row.name,
-          costCents: apiMoney(row.costCents)
+          costCents: costCompanies.has(`${row.kind}\u0000${row.id}`) ? null : apiMoney(row.costCents)
         }))
         .sort(
           (left, right) =>
             left.kind.localeCompare(right.kind) || left.id.localeCompare(right.id)
         ),
-      unattributedCostCents: apiMoney(
+      unattributedCostCents: settlementUncertainty.unattributedCost ? null : apiMoney(
         input.aggregateSeed?.unattributedCostCents ?? unattributedCostCents
       ),
-      publicCashCostCents: apiMoney(
+      publicCashCostCents: settlementUncertainty.publicCashCost ? null : apiMoney(
         input.aggregateSeed?.publicCashCostCents ?? publicCashCostCents
       ),
       ...(notices.includes(CASH_ATTRIBUTION_REVIEW_NOTICE) ? { needsReview: true as const } : {})
@@ -2808,9 +2859,9 @@ function reduceLegacyOperatingProjection(
       temporaryProfitDistributionCents: apiMoney(temporaryDistribution)
     },
     profitAndLoss: {
-      currentOperatingProfitCents: apiMoney(currentOperatingProfit),
+      currentOperatingProfitCents: costUncertain ? null : apiMoney(currentOperatingProfit),
       estimatedClearingExpenseCents: apiMoney(estimatedClearing),
-      currentEstimatedProfitCents: apiMoney(currentEstimatedProfit),
+      currentEstimatedProfitCents: costUncertain ? null : apiMoney(currentEstimatedProfit),
       finalConfirmedProfitCents: null,
       finalConfirmable: false
     },
@@ -2818,7 +2869,7 @@ function reduceLegacyOperatingProjection(
       cashCeilingCents: projectDistributionAvailable && cashCeiling !== null
         ? apiMoney(cashCeiling)
         : null,
-      projectedProfitCeilingCents: apiMoney(projectedProfitCeiling),
+      projectedProfitCeilingCents: costUncertain ? null : apiMoney(projectedProfitCeiling),
       currentDistributableProfitCents:
         projectDistributionAvailable && distributable !== null
           ? apiMoney(distributable)
@@ -2834,9 +2885,9 @@ function reduceLegacyOperatingProjection(
     relationshipTotals: Object.entries(CONTRACT_RELATIONSHIP_LABELS).map(([relationship, label]) => ({
       relationship: relationship as ContractRelationship, label,
       contractCommitmentCents: (relationshipTotals.get(`${relationship}:contract_commitment_reference`) ?? 0n).toString(),
-      confirmedCostCents: (relationshipTotals.get(`${relationship}:confirmed_cost`) ?? 0n).toString(),
-      receivableCents: ((relationshipTotals.get(`${relationship}:receivable_increase`) ?? 0n) + (relationshipTotals.get(`${relationship}:receivable_decrease`) ?? 0n)).toString(),
-      payableCents: ((relationshipTotals.get(`${relationship}:payable_increase`) ?? 0n) + (relationshipTotals.get(`${relationship}:payable_decrease`) ?? 0n)).toString(),
+      confirmedCostCents: relationshipImpacts.has(`${relationship}:confirmed_cost`) ? null : (relationshipTotals.get(`${relationship}:confirmed_cost`) ?? 0n).toString(),
+      receivableCents: receivableUncertainFor(relationship) ? null : ((relationshipTotals.get(`${relationship}:receivable_increase`) ?? 0n) + (relationshipTotals.get(`${relationship}:receivable_decrease`) ?? 0n)).toString(),
+      payableCents: relationshipImpacts.has(`${relationship}:payable_increase`) || relationshipImpacts.has(`${relationship}:payable_decrease`) ? null : ((relationshipTotals.get(`${relationship}:payable_increase`) ?? 0n) + (relationshipTotals.get(`${relationship}:payable_decrease`) ?? 0n)).toString(),
       interSubjectReceivableCents: (relationshipTotals.get(`${relationship}:inter_subject_receivable`) ?? 0n).toString(),
       interSubjectPayableCents: (relationshipTotals.get(`${relationship}:inter_subject_payable`) ?? 0n).toString(),
       interSubjectBalanceCents: ((relationshipTotals.get(`${relationship}:inter_subject_balance_increase`) ?? 0n) + (relationshipTotals.get(`${relationship}:inter_subject_balance_decrease`) ?? 0n)).toString()

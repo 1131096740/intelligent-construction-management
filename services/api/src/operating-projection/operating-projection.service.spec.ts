@@ -323,7 +323,7 @@ describe("OperatingProjectionService", () => {
       mixedHistory: true,
       repeatSigned: true,
       expectedCodes: ["SIGNED-CORRECTION", "SIGNED-REPEAT", "SIGNED-DUPLICATE", "SETTLEMENT-B", "SETTLEMENT-A"],
-      amount: "350",
+      amount: null,
       suppressed: 0
     }
   ])("明细分页和导出保留经营结算记录：$scenario", async ({
@@ -441,6 +441,9 @@ describe("OperatingProjectionService", () => {
       const correctionRow = csv.split("\n").find((line) => line.includes('"SIGNED-CORRECTION"'));
       expect(correctionRow).toContain(`"'-0.50"`);
     }
+    const pendingSettlementRows = csv.split("\n").filter(line => line.includes("同一期次多来源结算待核对"));
+    expect(pendingSettlementRows).toHaveLength(ambiguous ? 4 : 0);
+    expect(pendingSettlementRows.every(line => !line.includes('"SETTLEMENT-B"'))).toBe(true);
     expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       action: "operating_projection.export", metadata: expect.objectContaining({ rowCount: expectedCodes.length })
     }));

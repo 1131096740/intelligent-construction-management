@@ -148,6 +148,7 @@ type ProjectionReadContext = {
   costAttributionByFactId?: Map<string, { companyEntityVersionId: string; companyName: string }>;
   expenseCashByImpactId: Map<string, ExpenseCashProjectionRow[]>;
   suppressedSettlementFactIds: ReadonlySet<string>;
+  uncertainSettlementFactIds: ReadonlySet<string>;
   constructionEnterpriseSubjectIds?: string[];
   companyEntityVersionIds?: string[];
   affiliateAssignments: Array<{
@@ -1424,6 +1425,7 @@ export class OperatingProjectionService {
             costAttributionByFactId,
             expenseCashByImpactId,
             suppressedSettlementFactIds: streamed.suppressedSettlementFactIds,
+            uncertainSettlementFactIds: settlementDeduplication.uncertainFactIds,
             constructionEnterpriseSubjectIds,
             companyEntityVersionIds: companyEntityVersionIds
               ? Array.from(companyEntityVersionIds)
@@ -1638,6 +1640,7 @@ type ProjectionExportMetadata = {
   impactKind: string;
   subjectLabels: string[];
   legacyContractAmountUnknown?:true;
+  settlementPendingReconciliation?: true;
 } & ({ numericProtocolVersion?: 1; factAmountCents: string } | { numericProtocolVersion: 2; factAmountCents: null; factAmountYuan: string | null });
 type ProjectionDetailPageResult = {
   items: Array<Record<string, unknown>>;
@@ -2127,6 +2130,7 @@ async function readFactDetailPageInTransaction(
             factKind: fact.factKind,
             impactKind: impact.impactKind,
             ...(legacyUnknown?{legacyContractAmountUnknown:true as const}:{}),
+            ...(context.uncertainSettlementFactIds.has(fact.id) ? { settlementPendingReconciliation: true as const } : {}),
             ...(fact.numericProtocolVersion === 2
               ? { numericProtocolVersion: 2 as const, factAmountCents: null, factAmountYuan: fact.amountYuan }
               : { factAmountCents: requireLegacyOperatingCents(fact).toString() }),
@@ -3068,7 +3072,7 @@ function projectionExportCsvRow(
     projectionExportCostLabel(item.costCategoryCode),
     nullableStringValue(item.fundPurpose) ?? "",
     subjectLabels.join("；"),
-    nullableStringValue(risk.statusLabel) ?? "",
+    metadata.settlementPendingReconciliation ? "同一期次多来源结算待核对" : nullableStringValue(risk.statusLabel) ?? "",
     ["operating_takeover", "contract_takeover_historical_payment"].includes(sourceType)
       ? "是"
       : "否"

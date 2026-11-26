@@ -1832,24 +1832,24 @@ export interface OperatingProjectionAggregateReadModel {
   asOf: { businessDate: string; readAt: string; retroactiveFactCount: number };
   integrity: { statusLabel: string; moneyComplete: boolean; notices: string[] };
   commitments: { contractCommitmentCents: string };
-  relationshipTotals?: Array<{ relationship: string; label: string; contractCommitmentCents: string; confirmedCostCents: string; receivableCents: string; payableCents: string; interSubjectBalanceCents: string; interSubjectReceivableCents: string; interSubjectPayableCents: string }>;
+  relationshipTotals?: Array<{ relationship: string; label: string; contractCommitmentCents: string; confirmedCostCents: string | null; receivableCents: string | null; payableCents: string | null; interSubjectBalanceCents: string; interSubjectReceivableCents: string; interSubjectPayableCents: string }>;
   operating: {
     confirmedIncomeCents: string;
     confirmedCostCents: string | null;
-    confirmedCostYuan?: string;
-    internalReceivableCents?: string;
-    receivableCents: string;
-    payableCents: string;
+    confirmedCostYuan?: string | null;
+    internalReceivableCents?: string | null;
+    receivableCents: string | null;
+    payableCents: string | null;
   };
   costAttribution?: {
     byBearingCompany: Array<{
       kind: string;
       id: string;
       name: string | null;
-      costCents: string;
+      costCents: string | null;
     }>;
-    unattributedCostCents: string;
-    publicCashCostCents: string;
+    unattributedCostCents: string | null;
+    publicCashCostCents: string | null;
     needsReview?: true;
   };
   actualFunds: {
@@ -1878,15 +1878,17 @@ export interface OperatingProjectionAggregateReadModel {
     relationshipCompletenessLabel: string;
   };
   profitAndLoss: {
-    currentOperatingProfitCents: string;
+    currentOperatingProfitCents: string | null;
+    currentOperatingProfitYuan?: string | null;
     estimatedClearingExpenseCents: string;
-    currentEstimatedProfitCents: string;
+    currentEstimatedProfitCents: string | null;
+    currentEstimatedProfitYuan?: string | null;
     finalConfirmedProfitCents: string | null;
     finalConfirmable: boolean;
   };
   distribution: {
     cashCeilingCents: string | null;
-    projectedProfitCeilingCents: string;
+    projectedProfitCeilingCents: string | null;
     currentDistributableProfitCents: string | null;
   };
   evidence: Record<"A" | "B" | "C", { factCount: number; amountCents: string }> & {
@@ -1927,9 +1929,9 @@ export interface ProjectContractDrilldownRowReadModel {
   contractCode: string;
   contractName: string;
   contractKindLabel: string;
-  settledCents: string;
+  settledCents: string | null;
   paidCents: string;
-  unpaidCents: string;
+  unpaidCents: string | null;
   approvalPendingRequestCents: string;
   approvedPendingPaymentCents: string;
 }

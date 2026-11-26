@@ -23,6 +23,7 @@ watch(() => [props.projectId,props.companyEntityId,props.asOf],load,{immediate:t
 onBeforeUnmount(() => { generation++; });
 async function exportTransfers(){try{await exportCompanyTransfers({projectsOnly:"true",...props.projectId?{projectId:props.projectId}:{},...props.companyEntityId?{companyId:props.companyEntityId}:{},...props.asOf?{asOf:props.asOf}:{}});}catch(e){error.value=formatUnknownApiError(e,"互转余额导出失败");}}
 function amount(value: string) { return centsTextToYuanText(value); }
+function checkedAmount(value: string | null) { return value === null ? "待核对" : `${amount(value)} 元`; }
 </script>
 <template>
   <router-link :to="{path:'/公司互转台账',query:{projectId,companyId:companyEntityId,asOf}}">查看公司互转、在途及往来台账</router-link>
@@ -61,15 +62,15 @@ function amount(value: string) { return centsTextToYuanText(value); }
             :key="row.relationship"
           >
             <strong>{{ row.label }}</strong>
-            <p>确认成本：{{ amount(row.confirmedCostCents) }} 元</p>
-            <p>应收余额：{{ amount(row.receivableCents) }} 元</p>
-            <p>应付余额：{{ amount(row.payableCents) }} 元</p>
+            <p>确认成本：{{ checkedAmount(row.confirmedCostCents) }}</p>
+            <p>应收余额：{{ checkedAmount(row.receivableCents) }}</p>
+            <p>应付余额：{{ checkedAmount(row.payableCents) }}</p>
             <p>代付往来应收：{{ amount(row.interSubjectReceivableCents) }} 元；应还代付款：{{ amount(row.interSubjectPayableCents) }} 元</p>
           </article>
         </div>
-        <p>对外应收：{{ amount(data.operating.receivableCents) }} 元；应付余额：{{ amount(data.operating.payableCents) }} 元。</p>
+        <p>对外应收：{{ checkedAmount(data.operating.receivableCents) }}；应付余额：{{ checkedAmount(data.operating.payableCents) }}。</p>
         <p v-if="!companyEntityId">
-          对上内部应收：{{ amount(data.operating.internalReceivableCents ?? '0') }} 元（项目合并单列）。
+          对上内部应收：{{ checkedAmount(data.operating.internalReceivableCents === undefined ? '0' : data.operating.internalReceivableCents) }}（项目合并单列）。
         </p>
         <p>{{ companyEntityId ? '该公司项目资金' : '我方公司项目资金合计' }}：{{ amount(data.actualFunds.companyProjectFundsCents) }} 元；代垫：{{ amount(data.actualFunds.companyAdvanceForProjectCents) }} 元。</p>
         <p v-if="companyEntityId">

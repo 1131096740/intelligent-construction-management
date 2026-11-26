@@ -1441,7 +1441,7 @@ describe("跨来源结算去重：同一合同版本同一期次只计一次成�
     sourceBusinessId: "legacy-settlement-1",
     factKind: "downstream_settlement",
     amountCents: 6000n,
-    sourceSnapshot: { contractVersionId: "version-1", periodLabel: "第1期" },
+    sourceSnapshot: { contractId: "contract-1", contractVersionId: "version-1", periodLabel: "第1期", signingSubjectType: "our_company", companyEntityVersionId: "company-v1" },
     impacts: [
       { id: "legacy-cost", impactKind: "confirmed_cost", amountCents: 6000n, direction: "increase" },
       { id: "legacy-payable", impactKind: "payable_increase", amountCents: 6000n, direction: "increase" }
@@ -1455,6 +1455,7 @@ describe("跨来源结算去重：同一合同版本同一期次只计一次成�
     amountCents: 6000n,
     sourceSnapshot: {
       contractKind: "downstream",
+      contractId: "contract-1",
       contractVersionId: "version-1",
       settlementNumber: "第1期",
       relationship: "inside"
@@ -1482,8 +1483,8 @@ describe("跨来源结算去重：同一合同版本同一期次只计一次成�
 
   it.each([
     { scenario: "两来源各一笔", rows: [legacy, signed], cost: "6000", suppressed: 1, complete: true },
-    { scenario: "多笔跨来源", rows: [legacy, signed, repeated], cost: "18000", suppressed: 0, complete: false },
-    { scenario: "多笔跨来源顺序调换", rows: [repeated, signed, legacy], cost: "18000", suppressed: 0, complete: false }
+    { scenario: "多笔跨来源", rows: [legacy, signed, repeated], cost: null, suppressed: 0, complete: false },
+    { scenario: "多笔跨来源顺序调换", rows: [repeated, signed, legacy], cost: null, suppressed: 0, complete: false }
   ])("直读与分页去重结果一致：$scenario", ({ rows, cost, suppressed, complete }) => {
     const direct = reduceOperatingProjection({ ...context, facts: rows });
     const candidates = new SettlementProjectionCandidates();
@@ -1499,10 +1500,113 @@ describe("跨来源结算去重：同一合同版本同一期次只计一次成�
     const paged = reduceOperatingProjection({ ...context, facts: [], ...stream.result() });
     for (const result of [direct, paged]) {
       expect(result.operating.confirmedCostCents).toBe(cost);
+      expect(result.operating.payableCents).toBe(cost);
+      expect(result.profitAndLoss.currentOperatingProfitCents).toBe(complete ? "-6000" : null);
+      expect(result.profitAndLoss.currentEstimatedProfitCents).toBe(complete ? "-6000" : null);
       expect(result.asOf.crossSourceDedupedFactCount).toBe(suppressed);
       expect(result.integrity.moneyComplete).toBe(complete);
       expect(result.integrity.notices.join("\n")).toContain("多来源");
     }
+  });
+
+  it("V2 直读和分页保留四位收入，且待核对成本不转换为零元", () => {
+    const income: ProjectionV2FactInput = {
+      ...fact({ id: "recognized-income", sourceType: "project_owner_settlement_entry", direction: "inflow" }),
+      numericProtocolVersion: 2, amountCents: null, amountYuan: "100.0001",
+      impacts: (["confirmed_income", "receivable_increase"] as const).map(impactKind => ({
+        id: impactKind, impactKind, numericProtocolVersion: 2, amountCents: null,
+        amountYuan: "100.0001", direction: "increase"
+      }))
+    };
+    const cash = fact({ id: "actual-cash", impacts: [
+      { id: "cash-impact", impactKind: "company_project_funds_increase", amountCents: 5000n, direction: "increase" }
+    ] });
+    const payment = fact({
+      id: "payment", sourceType: "payment_execution", factKind: "downstream_payment",
+      sourceSnapshot: { contractId: "contract-1" }, impacts: [
+        { id: "payment-impact", impactKind: "payable_decrease", amountCents: 900n, direction: "decrease" }
+      ]
+    });
+    const other = {
+      ...legacy, id: "other-contract-settlement", sourceBusinessId: "settlement-other",
+      sourceSnapshot: { contractId: "contract-other", contractVersionId: "version-other", periodLabel: "第1期", signingSubjectType: "affiliate", affiliate: { assignmentId: "assignment-1", businessPartyVersionId: "enterprise-v1" } },
+      impacts: legacy.impacts.map(impact => ({ ...impact, id: `other-${impact.id}` }))
+    };
+    const settings = { ...context, numericProtocolVersion: 2 as const };
+    const candidates = new SettlementProjectionCandidates();
+    const legacyRows = [legacy, signed, repeated, cash, payment, other];
+    legacyRows.forEach(row => candidates.add(row));
+    const rows = [...legacyRows, income];
+    const stream = new OperatingProjectionStreamAccumulator({ ...settings, settlementDeduplication: candidates.resolve() });
+    for (const row of rows) {
+      stream.startFacts([{ ...row, impacts: [] }]);
+      stream.addImpacts(row.impacts.map(impact => ({ ...impact, factId: row.id })));
+      stream.finishFacts();
+    }
+    const direct = reduceOperatingProjection({ ...settings, facts: rows });
+    const paged = reduceOperatingProjection({ ...settings, facts: [], ...stream.result() });
+
+    for (const result of [direct, paged]) {
+      expect(result.operating).toMatchObject({
+        confirmedIncomeYuan: "100.0001", receivableYuan: "100.0001",
+        confirmedCostCents: null, confirmedCostYuan: null, payableCents: null
+      });
+      expect(result.profitAndLoss).toMatchObject({
+        currentOperatingProfitCents: null, currentOperatingProfitYuan: null,
+        currentEstimatedProfitCents: null, currentEstimatedProfitYuan: null
+      });
+      expect(result.distribution.projectedProfitCeilingCents).toBeNull();
+      expect(result.actualFunds.companyProjectFundsCents).toBe("5000");
+      expect(result.contractDrilldown).toEqual([
+        { contractKey: "contract-1", settledCents: null, paidCents: "900", unpaidCents: null },
+        { contractKey: "contract-other", settledCents: "6000", paidCents: "0", unpaidCents: "6000" }
+      ]);
+      expect(result.impactTotalsByKind).toMatchObject({ confirmed_cost: null, payable_increase: null, payable_decrease: "-900" });
+      expect(result.relationshipTotals).toEqual(expect.arrayContaining([
+        expect.objectContaining({ relationship: "inside", confirmedCostCents: null, payableCents: null }),
+        expect.objectContaining({ relationship: "outside", confirmedCostCents: "6000", payableCents: "6000" })
+      ]));
+      expect(result.costAttribution).toMatchObject({ unattributedCostCents: null, publicCashCostCents: "0" });
+    }
+    expect(direct.details.filter(row => row.impactKind === "confirmed_cost")).toHaveLength(4);
+  });
+
+  it("对上多来源结算待核对只影响内部应收及公司视角应收", () => {
+    const oldUpward = fact({
+      id: "upward-old", amountCents: 800n, sourceType: "project_affiliate_settlement_fact",
+      sourceSnapshot: { affiliateCompanyContractId: "upward-1", periodLabel: "第1期" },
+      impacts: [{ id: "upward-old-receivable", impactKind: "receivable_increase", direction: "increase", amountCents: 800n }]
+    });
+    const signedUpward = fact({
+      id: "upward-signed", amountCents: 700n, sourceType: "signed_contract_settlement",
+      sourceSnapshot: { contractKind: "upward", relationship: "upward", contractVersionId: "upward-1", settlementNumber: "第1期" },
+      impacts: [{ id: "upward-signed-receivable", impactKind: "receivable_increase", direction: "increase", amountCents: 700n }]
+    });
+    const external = fact({ id: "outside-income", impacts: [
+      { id: "external-receivable", impactKind: "receivable_increase", direction: "increase", amountCents: 2000n },
+      { id: "external-income", impactKind: "confirmed_income", direction: "increase", amountCents: 2000n }
+    ] });
+    const facts = [oldUpward, signedUpward, external];
+    const project = reduceOperatingProjection({ ...context, facts });
+    const company = reduceOperatingProjection({ ...context, facts, scope: { kind: "company", projectIds: ["project-1"] } });
+
+    expect(project.operating).toMatchObject({ internalReceivableCents: null, receivableCents: "2000", confirmedCostCents: "0", payableCents: "0" });
+    expect(company.operating.receivableCents).toBeNull();
+    expect(project.profitAndLoss.currentOperatingProfitCents).toBe("2000");
+    expect(project.details).toHaveLength(4);
+    expect(project.asOf.crossSourceDedupedFactCount).toBe(0);
+  });
+
+  it("等额的跨来源冲减保留反向分录，不当成正向结算的副本", () => {
+    const correction = {
+      ...signed,
+      sourceSnapshot: { ...(signed.sourceSnapshot as Record<string, unknown>), amountCents: "-6000" },
+      impacts: signed.impacts.map(impact => ({ ...impact, direction: "decrease" }))
+    };
+    const result = reduceOperatingProjection({ ...context, facts: [legacy, correction] });
+    expect(result.operating.confirmedCostCents).toBeNull();
+    expect(result.asOf.crossSourceDedupedFactCount).toBe(0);
+    expect(result.details.map(row => row.signedImpactCents).sort()).toEqual(["-6000", "-6000", "6000", "6000"]);
   });
 
   it("同一来源允许同合同同编号确认两笔同金额结算", () => {

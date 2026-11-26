@@ -146,7 +146,18 @@ describe("project operating overview structure", () => {
     expect(source).toContain("projection?.profitAndLoss.finalConfirmable");
   });
 
-  it("shows the known V2 current profit when the final profit remains unknown", () => {
+  it.each([
+    {
+      currentYuan: "40.0000",
+      label: "当前经营盈亏（已知数，资料待补充）",
+      value: "¥40.0000（已知数，不作为最终利润）"
+    },
+    {
+      currentYuan: null,
+      label: "当前经营盈亏",
+      value: "暂不可确认（资料待核对）"
+    }
+  ])("shows V2 current profit only when the amount is known ($currentYuan)", ({ currentYuan, label, value }) => {
     const profitMetrics = source.slice(
       source.indexOf("const profitIncomplete ="),
       source.indexOf("const evidenceItems =")
@@ -155,13 +166,12 @@ describe("project operating overview structure", () => {
       .slice(source.indexOf("function formatCents("), source.indexOf("function upstreamFundStatusLabel("))
       .replace("(value: string | null): string", "(value)");
     const v2Overview = {
-      business: { grossProfitCents: null, grossProfitYuan: "40.0000" },
       operatingProjection: {
         numericProtocolVersion: 2,
         integrity: { moneyComplete: false },
         profitAndLoss: {
           currentOperatingProfitCents: null,
-          currentOperatingProfitYuan: "40.0000",
+          currentOperatingProfitYuan: currentYuan,
           finalConfirmedProfitCents: null,
           finalConfirmable: false
         }
@@ -171,10 +181,7 @@ describe("project operating overview structure", () => {
       formatCents + profitMetrics + "\nprofitAndLossItems.value",
       { overview: { value: v2Overview }, computed, centsTextToYuanText }
     );
-    expect(items).toContainEqual({
-      label: "当前经营盈亏（已知数，资料待补充）",
-      value: "¥40.0000（已知数，不作为最终利润）"
-    });
+    expect(items).toContainEqual({ label, value });
     expect(items).toContainEqual({
       label: "最终确认盈亏",
       value: "暂不可确认（资料待补充）"

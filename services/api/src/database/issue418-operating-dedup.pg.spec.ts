@@ -850,12 +850,13 @@ run("issue #418 operating dedup on real PostgreSQL", () => {
         unpaidCents: "3000"
       })
     );
+    expect(rows.every(row => row.unpaidCents !== null)).toBe(true);
     const contractUnpaidTotal = rows.reduce(
-      (sum, row) => sum + BigInt(row.unpaidCents),
+      (sum, row) => sum + BigInt(row.unpaidCents!),
       0n
     );
     expect(contractUnpaidTotal).toBe(3000n);
     // 合同一超付不抵扣表外欠款：总体应付净额 2000，而按合同未付合计 3000。
-    expect(BigInt(view.operating.payableCents)).toBe(2000n);
+    expect(view.operating.payableCents).toBe("2000");
   });
 });

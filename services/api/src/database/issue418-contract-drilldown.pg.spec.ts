@@ -228,7 +228,8 @@ run("issue #418 contract drill-down on the ordered operating ledger", () => {
         paidCents: "0", unpaidCents: "3000"
       })
     ]));
-    expect(overview.contractDrilldown.reduce((sum, row) => sum + BigInt(row.unpaidCents), 0n)).toBe(3000n);
+    expect(overview.contractDrilldown.every(row => row.unpaidCents !== null)).toBe(true);
+    expect(overview.contractDrilldown.reduce((sum, row) => sum + BigInt(row.unpaidCents!), 0n)).toBe(3000n);
     const view = await projection.getProjectView(reader.id, { projectId: project.id });
     expect(view.operating.payableCents).toBe("2000");
   });
