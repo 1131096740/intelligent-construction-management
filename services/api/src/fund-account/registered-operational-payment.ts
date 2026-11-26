@@ -182,5 +182,8 @@ export async function appendRegisteredOperationalPayment(
   } });
   if (costLines) await linkExpensePublicCashCost(tx, row.id, input.executionId, projectId, costLines);
   await tx.$executeRaw`SET CONSTRAINTS public."RegisteredOperationalPayment_conservation", public."FundAccountBalanceRegistration_operational_payment" IMMEDIATE`;
+  if (isPublicCash) {
+    await tx.$executeRaw`SET CONSTRAINTS public."FundAccountBalanceRegistration_transfer_capacity" IMMEDIATE`;
+  }
   return result(row);
 }
