@@ -213,7 +213,7 @@ const profiles = {
   issue418_source_unique: {
     file: 'src/database/issue418-signed-operating.pg.spec.ts',
     sourceDigest: '86491dd5c87593b600dffa75760b65ae12b741f27a68ef191c17fe03a69d9582',
-    fixtureDigest: 'cda2c5bad1c5ea01fdf51e537dd35e632fab4e6c077b2c9c2cd76dd49f90ae31',
+    fixtureDigest: '9ab9fd281245599d6bbad87a91ae58048049a5789b15659963c179e2eefde75b',
     orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
     databaseUrlKey: 'ISSUE418_SOURCE_UNIQUE_DATABASE_URL',
     enableKey: 'ISSUE418_SOURCE_UNIQUE_RUN',
