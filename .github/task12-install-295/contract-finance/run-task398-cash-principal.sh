@@ -71,7 +71,7 @@ if [[ $count == 334 || $count == 346 ]]; then
 fi
 if [[ $count == 346 ]]; then
   patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-principal-346.patch"
-  [[ $(runner_sha) == 494e51499feac2cb92e2820612723e55f2400d119f5471d8d49f04f0cbe38e4e ]] || exit 65
+  [[ $(runner_sha) == e9c1bcbd831e1a2d29ce2a9d13fe577238bf95549efbd968febb2b20547b757c ]] || exit 65
 fi
 if [[ $extended == true ]]; then
   patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-transfer-advance-332.patch"
