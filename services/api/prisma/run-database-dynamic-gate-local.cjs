@@ -22,6 +22,8 @@ const {
   POL113_POL115_GROUP, pol113Pol115Batches, assertPol113Pol115Coverage, projectPol113Pol115Shard
 } = require("./pol113-pol115-shards.cjs");
 
+const gate334 = require("./dynamic-gate-334.cjs");
+
 const root = path.resolve(__dirname, "../../..");
 const manifestPath = path.join(
   __dirname,
@@ -35,7 +37,7 @@ const pnpm =
 const docker = process.platform === "win32" ? "docker.exe" : "docker";
 const SHA_PATTERN = /^[0-9a-f]{40}$/iu;
 const SUITE_STATUSES = new Set(["fully_pending", "partial_pending"]);
-const RUNNER_KINDS = new Set(["workspaceScript", "apiScript", "node"]);
+const RUNNER_KINDS = new Set(["workspaceScript", "apiScript", "node", "exactLedgerShell"]);
 const TASK01_GROUP = "enterprise_task01_entry";
 const TASK01_DRIVER = "services/api/prisma/run-enterprise-task01-local.cjs";
 const TASK01_HELPER = "services/api/prisma/enterprise-task01-resources.cjs";
@@ -128,6 +130,14 @@ function assertRunGatedPgSpecsRegistered(registeredPaths) {
 function validateRunner(runner, groupId, rootPackage, apiPackage) {
   if (!runner || !RUNNER_KINDS.has(runner.kind)) {
     fail(`coveredGroups.${groupId}.runner.kind 不受支持`);
+  }
+  if (groupId === gate334.historicalTakeoverGroup || runner.kind === "exactLedgerShell") {
+    if (groupId !== gate334.historicalTakeoverGroup || runner.kind !== "exactLedgerShell" ||
+        runner.path !== gate334.runner || Object.keys(runner).sort().join(",") !== "kind,path" ||
+        !statSync(resolveRepositoryPath(runner.path, "334 PostgreSQL 隔离入口"), { throwIfNoEntry: false })?.isFile()) {
+      fail("A28 只允许固定的 334 PostgreSQL 隔离入口");
+    }
+    return;
   }
   if (groupId === TASK01_GROUP || runner.invocation === "task01_explicit_inputs") {
     if (groupId !== TASK01_GROUP || runner.kind !== "node" || runner.path !== TASK01_DRIVER
@@ -660,6 +670,16 @@ const current330Lanes = Object.freeze({
 });
 
 function resolveGroupCommand(group, options = {}) {
+  if (options.migrationCount === 334) {
+    const lane = gate334.laneFor334(group.id);
+    if (!lane) fail(`334 PostgreSQL 动态组未接入：${group.id}`);
+    if (!/^[a-f0-9]{40}$/u.test(options.candidateSha ?? "")) fail("334 运行必须提供完整候选 SHA");
+    return {
+      command: "bash",
+      args: [resolveRepositoryPath(gate334.runner, "334 PostgreSQL 隔离入口"), options.candidateSha, lane, gate334.mode]
+    };
+  }
+  if (group.id === gate334.historicalTakeoverGroup) fail("A28 需要准确的 334 迁移基线");
   if (options.migrationCount === 330 && Object.hasOwn(current330Lanes, group.id)) {
     if (!/^[a-f0-9]{40}$/u.test(options.candidateSha ?? "")) fail("330 运行必须提供完整候选 SHA");
     return {
@@ -776,6 +796,11 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       driverReceiptPath: path.join(options.task01["--task01-artifacts"], "task01-receipt.json"),
       coveredTests: 1, fullDynamicGate: false, executionInventory: executionInventory(coveredGroups), ciExecution: "manual-only" };
   }
+  const migrationCount = manifest.migrationBaseline.expectedDirectoryCount;
+  if (migrationCount === 334) {
+    const unadmitted = gate334.unadmittedGroups334(coveredGroups);
+    if (unadmitted.length) fail(`334 PostgreSQL 动态组未接入：${unadmitted.join(", ")}`);
+  }
   const temporaryRoot = await mkdtemp(
     path.join(tmpdir(), "jiangkong-database-dynamic-gate-" +
       (options.pol113Pol115Shard === undefined ? "" : options.pol113Pol115Shard + "-"))
@@ -803,8 +828,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
     childEnvironment.DATABASE_DYNAMIC_GATE_CANDIDATE_SHA = candidateSha;
     // The remaining runner owns preparation for both standalone and CI use.
     // No environment flag or persisted cache can bypass that preparation.
-    const migrationCount = manifest.migrationBaseline.expectedDirectoryCount;
-    if (coveredGroups.some(group => group.id !== "remaining_dynamic_postgresql16" &&
+    if (migrationCount !== 334 && coveredGroups.some(group => group.id !== "remaining_dynamic_postgresql16" &&
         !(migrationCount === 330 && Object.hasOwn(current330Lanes, group.id)))) {
       await runPreflight(childEnvironment);
     }
