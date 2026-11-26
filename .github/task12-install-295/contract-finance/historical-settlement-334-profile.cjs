@@ -5,6 +5,7 @@ const previous = require('./historical-takeover-333-profile.cjs');
 
 const mode = 'historical-settlement-334';
 const installerSha256 = '89b088447358ac8cd9e49ae43492c26a33e24aa4fead4b2ddc11a78a46a364da';
+const restoreInstallerSha256 = 'db5fef9a160b3db101b0075138b93cb4c0187b541a1ec3643dbb7e324a7072a9';
 const ledgerSha256 = '27f3af946003d07582efb288b443362fcf61bed0281feb548f9978b739fb5411';
 const terminal = Object.freeze({
   name: '20261129003000_historical_signed_settlement_continuation',
@@ -89,5 +90,5 @@ function assertFinanceInstallation(receipt, source) {
   assert.deepEqual(receipt.forward320.tails, source.tails.map(({name, sha256}) => ({name, sha256})));
 }
 
-module.exports = { mode, installerSha256, ledgerSha256, terminal, catalogSql, assertCatalog, assertSource, assertFinanceInstallation,
+module.exports = { mode, installerSha256, restoreInstallerSha256, ledgerSha256, terminal, catalogSql, assertCatalog, assertSource, assertFinanceInstallation,
   predecessor332: previous.predecessor332 };

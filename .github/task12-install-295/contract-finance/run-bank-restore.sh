@@ -3,8 +3,8 @@ set -euo pipefail
 umask 077
 [[ $# == 4 || ( $# == 5 && $4 == bank && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 ) ) ||
   ( $# == 6 && $4 == bank && $5 == --historical-settlement-334 && $6 == --host-only ) ||
-  ( $# == 6 && $4 == restore && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 ) ) ||
-  ( $# == 7 && $4 == restore && ( $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 ) && $7 == --host-only ) ]] || exit 64
+  ( $# == 6 && $4 == restore && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 ) ) ||
+  ( $# == 7 && $4 == restore && ( $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 ) && $7 == --host-only ) ]] || exit 64
 
 prepared=$(cd "$1" && pwd -P)
 sha=$2
@@ -45,20 +45,24 @@ if(mode==='--historical-settlement-334') {
       candidate.ledgerSha256!=='3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2')process.exit(65);
 } else if(candidate.migrationCount!==295||candidate.ledgerSha256!==m.final) process.exit(65);
 JS
-if [[ $lane == restore && ( $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 ) ]]; then
+if [[ $lane == restore && ( $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 || $mode == --historical-settlement-334 ) ]]; then
   node - "$prepared/source.json" "$current_prepared/source.json" "$plan" "$mode" <<'JS'
 const [oldFile,currentFile,plan,mode]=process.argv.slice(2);
 const assert=require('node:assert/strict');
 const old=require(oldFile),current=require(currentFile);
 assert.equal(current.mode,mode.slice(2));
-require(plan+'/'+current.mode+'-profile.cjs').assertSource(current,current.sourceSha,old.ledgerSha256);
+const profile=require(plan+'/'+current.mode+'-profile.cjs');
+if(mode==='--historical-settlement-334') {
+  assert.equal(old.sourceSha,'a187dc73a133114e1cfbbc891a4aec923abe2545');
+  profile.assertSource(current,old.ledgerSha256);
+} else profile.assertSource(current,current.sourceSha,old.ledgerSha256);
 assert.notEqual(old.sourceSha,current.sourceSha);
 const install={
   'text-direct-330':'withCombined330ContractPaymentForRestore',
   'payment-remainder-331':'withCombined331PaymentRemainderForRestore',
   'upward-archive-332':'withCombined332UpwardArchiveForRestore'
 }[current.mode];
-assert.equal(typeof require(plan+'/common/installer.cjs')[install],'function');
+if (mode !== '--historical-settlement-334') assert.equal(typeof require(plan+'/common/installer.cjs')[install],'function');
 JS
 fi
 if [[ ${7-} != --host-only && ${6-} != --host-only ]]; then
@@ -79,7 +83,9 @@ overlay="$out/overlay"
 python3 "$plan/stage-overlays.py" "$prepared/prepared/context/workspace" "$overlay" "$lane" ${bank_args[@]+"${bank_args[@]}"}
 installer="$plan/common/installer.cjs"
 if [[ $mode == --historical-settlement-334 ]]; then
-  node "$plan/stage-historical-takeover-333.cjs" "$out" "${mode#--}"
+  installer_mode="${mode#--}"
+  if [[ $lane == restore ]]; then installer_mode+=-restore; fi
+  node "$plan/stage-historical-takeover-333.cjs" "$out" "$installer_mode"
   installer="$out/installer.cjs"
 fi
 if [[ $lane == bank && ${6-} == --host-only ]]; then
@@ -87,8 +93,8 @@ if [[ $lane == bank && ${6-} == --host-only ]]; then
   exit 0
 fi
 if [[ ${7-} == --host-only ]]; then
-  node - "$out" "$prepared/source.json" "$current_prepared/source.json" "$plan" <<'JS'
-const [out,oldFile,currentFile,plan]=process.argv.slice(2);
+  node - "$out" "$prepared/source.json" "$current_prepared/source.json" "$plan" "$installer" <<'JS'
+const [out,oldFile,currentFile,plan,installer]=process.argv.slice(2);
 const {readFileSync,writeFileSync}=require('node:fs');
 const {createHash}=require('node:crypto');
 const hash=file=>createHash('sha256').update(readFileSync(file)).digest('hex');
@@ -97,6 +103,9 @@ const profile=current.mode+'-profile.cjs';
 const receipt={status:'BACKUP'+current.migrationCount+'_HOST_INPUTS_VERIFIED',candidateSha:current.sourceSha,candidateTree:current.sourceTree,
   migrationCount:current.migrationCount,ledgerSha256:current.ledgerSha256,
   ...(current.mode==='upward-archive-332'?{predecessor331:current.predecessor331}:{}),
+  ...(current.mode==='historical-settlement-334'?{
+    predecessor332:current.predecessor332,predecessor333:current.predecessor333,installerSha256:hash(installer)
+  }:{}),
   fixturePredecessorSha:old.sourceSha,fixturePredecessorSourceSha256:hash(oldFile),candidateSourceSha256:hash(currentFile),
   appInputsSha256:hash(out+'/overlay/restore/app-inputs.json'),
   relocatedLoanSha256:hash(out+'/overlay/restore/loan-relocated-manifest.json'),
@@ -163,7 +172,7 @@ else
 const [file,head,source,mode,predecessorSource]=process.argv.slice(2);
 const {ledgerSha256:ledger294}=require(source);
 const fs=require('node:fs');
-const predecessorSourceSha256=['--text-direct-330','--payment-remainder-331','--upward-archive-332'].includes(mode)
+const predecessorSourceSha256=['--text-direct-330','--payment-remainder-331','--upward-archive-332','--historical-settlement-334'].includes(mode)
   ? require('node:crypto').createHash('sha256').update(fs.readFileSync(predecessorSource)).digest('hex')
   : undefined;
 fs.writeFileSync(file,JSON.stringify({status:'FINANCE294_COMMITTED_MIGRATION_INPUTS_ADMITTED_OFFLINE',head,ledger294,predecessorSourceSha256}),
@@ -172,6 +181,11 @@ JS
   chmod 0644 "$out/committed-admission.json"
   readonly_mount "$out/committed-admission.json" /qualification/committed-admission.json
   case "$mode" in
+    --historical-settlement-334)
+      for profile in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs; do
+        readonly_mount "$plan/$profile" "/qualification/$profile"
+      done
+      ;;
     --text-direct-330) readonly_mount "$plan/text-direct-330-profile.cjs" /qualification/text-direct-330-profile.cjs ;;
     --payment-remainder-331) readonly_mount "$plan/payment-remainder-331-profile.cjs" /qualification/payment-remainder-331-profile.cjs ;;
     --upward-archive-332) readonly_mount "$plan/upward-archive-332-profile.cjs" /qualification/upward-archive-332-profile.cjs ;;

@@ -296,7 +296,7 @@ function importAsNamedBackup(sql,invoke,tables,sequences,dataArchive,dataList,pr
 
 async function restoreBusinessDatabase(context,credentials,enter,forward320,textDirectInputs) {
   const profile=textDirectInputs?textDirect:forward320?successor:legacy;
-  assert.equal([330,331,332].includes(forward320?.count),Boolean(textDirectInputs),'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
+  assert.equal([330,331,332,334].includes(forward320?.count),Boolean(textDirectInputs),'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
   const expectedTree=forward320?.sourceTree ?? scope.tree;
   assert.match(expectedTree,/^[a-f0-9]{40}$/u);
   const {technical}=profile;
@@ -323,14 +323,20 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
   }
   const paymentProof=paymentChecks?readTextDirect330(source):undefined;
   const paymentRemainderProof=textDirectInputs?.paymentRemainder?readPaymentRemainder331(source):undefined;
+  const historical=forward320?.count===334?require('./historical-settlement-334-profile.cjs'):undefined;
   function readUpwardArchive332(db) {
     const ledger = JSON.parse(sql(owner,db,`SELECT jsonb_agg(jsonb_build_object(
       'name',migration_name,'sha256',checksum,'finished',finished_at IS NOT NULL,
       'rolledBack',rolled_back_at IS NOT NULL) ORDER BY migration_name) FROM public._prisma_migrations;`))
       .map(({name,sha256,finished,rolledBack})=>({name,sha256,finished,rolledBack}));
-    const ledgerSha256=createHash('sha256').update(JSON.stringify(ledger)).digest('hex');
-    assert.equal(ledger.length,332,'BACKUP332_LEDGER_COUNT');
-    assert.equal(ledgerSha256,forward320.ledgerSha256,'BACKUP332_LEDGER_DIGEST');
+    const digest=rows=>createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+    assert.equal(ledger.length,forward320.count,'BACKUP_UPWARD_LEDGER_COUNT');
+    assert.equal(digest(ledger),forward320.ledgerSha256,'BACKUP_UPWARD_LEDGER_DIGEST');
+    const ledgerSha256=digest(ledger.slice(0,332));
+    if(historical) {
+      assert.equal(ledgerSha256,historical.predecessor332,'BACKUP334_UPWARD_PREFIX');
+      assert.equal(digest(ledger.slice(0,333)),require('./historical-takeover-333-profile.cjs').ledgerSha256,'BACKUP334_HISTORICAL_PREFIX');
+    }
     const postimages = JSON.parse(sql(owner,db,`SELECT jsonb_object_agg(p.proname,encode(sha256(convert_to(p.prosrc,'UTF8')),'hex'))
       FROM pg_proc p WHERE p.oid IN (
         to_regprocedure('public.jg_upward_archive_catalog_projection_v2()'),
@@ -341,7 +347,17 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
     },'BACKUP332_UPWARD_ARCHIVE_POSTIMAGES');
     return {ledgerSha256,postimages};
   }
-  const upwardArchiveProof=forward320?.count===332?readUpwardArchive332(source):undefined;
+  const upwardArchiveProof=[332,334].includes(forward320?.count)?readUpwardArchive332(source):undefined;
+  function readHistoricalSettlement334(db) {
+    const previous=require('./historical-takeover-333-profile.cjs');
+    const checks=JSON.parse(sql(owner,db,previous.catalogSql));
+    previous.assertCatalog(checks,true);
+    const catalog=JSON.parse(sql(owner,db,historical.catalogSql));
+    // Restoring the same SQL creates new object OIDs. Compare bodies and portable ACL/catalog metadata.
+    const comparable=Object.fromEntries(Object.entries(catalog).map(([name,{oid,...row}])=>[name,row]));
+    return {checks,catalog,comparable};
+  }
+  const historicalProof=historical?readHistoricalSettlement334(source):undefined;
   function readPaymentRemainder331(db) {
     const proof=JSON.parse(sql(owner,db,`SELECT jsonb_build_object(
       'historicalRowsUnchanged', NOT EXISTS(SELECT FROM public."PaymentRequest" WHERE "remainingWithdrawnCents" IS NOT NULL),
@@ -482,6 +498,13 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
       assert.deepEqual(readUpwardArchive332(restoreDb),upwardArchiveProof);
       assert.deepEqual(readUpwardArchive332(source),upwardArchiveProof);
     }
+    if(historicalProof) {
+      const restored=readHistoricalSettlement334(restoreDb);
+      const unchangedSource=readHistoricalSettlement334(source);
+      assert.deepEqual(restored.checks,historicalProof.checks,'BACKUP334_RESTORED_HISTORICAL_CHECKS');
+      assert.deepEqual(restored.comparable,historicalProof.comparable,'BACKUP334_RESTORED_SETTLEMENT_CATALOG');
+      assert.deepEqual(unchangedSource,historicalProof,'BACKUP334_SOURCE_SETTLEMENT_CATALOG');
+    }
     if (forward320) {
       for (const role of [backupRole,bankRuntime])
         for (const table of profile.technical)
@@ -500,6 +523,7 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
       history,sourceKeyRows:beforeKeys.keyCount,ownerOnlyRekeyed:true,namedNegativeTests:true,probes,
       ...(paymentRemainderProof?{paymentRemainder331:paymentRemainderProof}:{}),
       ...(upwardArchiveProof?{upwardArchive332:{...upwardArchiveProof,sourceAndRestoredMatched:true}}:{}),
+      ...(historicalProof?{historicalSettlement334:{ledgerSha256:historical.ledgerSha256,sourceAndRestoredMatched:true}}:{}),
       ...(paymentProof?{textDirect330:{...paymentProof,oldColumnProjectionMatched:true,newColumnNull:true,
         sourceAndRestoredCatalogMatched:true,sourceAndRestoredNamedExecutionDenied:true}}:{})};
   } finally {
