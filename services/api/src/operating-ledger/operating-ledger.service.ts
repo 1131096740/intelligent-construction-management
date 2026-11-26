@@ -1,4 +1,5 @@
 import { CONTRACT_WORK_COMPLETION_SOURCE } from "../contract/contract-work-completion-operating-source.adapter";
+import { EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE } from "../expense-claim/expense-claim-operating-source.adapter";
 import { normalizeOperatingMoney, normalizeOperatingSourceSnapshot, operatingNumericSnapshot, requireLegacyOperatingCents, sameOperatingMoney, type OperatingMoneyInput } from "./operating-money-protocol";
 import { repaymentOwnershipDate } from "../company-transfer/company-transfer-ownership";
 import { randomUUID } from "node:crypto";
@@ -528,7 +529,7 @@ export class OperatingLedgerService {
     entryKind: OperatingFactEntryKind = "original"
   ): Promise<OperatingSourceComparisonState> {
     const input = normalizeFactInput(rawInput);
-    validateFactInput(input);
+    validateFactInput(input, await this.isExplicitlyUnassignedExpense(tx, input, entryKind));
     validateOperatingMoneyScope(input, entryKind);
     const project = await tx.project.findUnique({
       where: { id: input.projectId },
@@ -570,7 +571,7 @@ export class OperatingLedgerService {
     allowPartialReversal = false
   ): Promise<OperatingFactWriteResult> {
     const input = normalizeFactInput(rawInput);
-    validateFactInput(input);
+    validateFactInput(input, confirmationAuthority !== "actor" && await this.isExplicitlyUnassignedExpense(tx, input, entryKind));
     validateOperatingMoneyScope(input, entryKind);
     if (input.sourceType === "company_transfer_event") ownershipOccurredAt = await repaymentOwnershipDate(tx, input) ?? ownershipOccurredAt;
     if (input.numericProtocolVersion === 2 && input.sourceType === "contract_economic_review") {
@@ -740,6 +741,62 @@ export class OperatingLedgerService {
       impactIds.push(result.id);
     }
     return toWriteResult(created, true, impactIds);
+  }
+
+  private async isExplicitlyUnassignedExpense(
+    tx: OperatingLedgerTransaction,
+    input: AppendOperatingFactInput,
+    entryKind: OperatingFactEntryKind
+  ): Promise<boolean> {
+    const claimType = input.sourceSnapshot?.claimType;
+    if (input.factKind !== "expense" || input.subjects.costBearingCompany || entryKind !== "original" ||
+      input.sourceType !== EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE || input.sourceVersion !== 1 ||
+      input.adjustsFactId || input.historicalTakeoverBatchId || input.numericProtocolVersion === 2 ||
+      input.operatingLevel !== "project" || input.evidenceLevel !== "A" || input.direction !== "outflow" ||
+      input.idempotencyKey !== `${input.sourceType}:${input.sourceBusinessId}` ||
+      input.sourceSnapshot?.formalStatus !== "confirmed" || input.sourceSnapshot.costBearingCompanyEntityId !== null ||
+      (claimType !== "reimbursement" && claimType !== "incidental_expense")) return false;
+
+    const claim = await tx.expenseClaim.findFirst({
+      where: {
+        id: input.sourceBusinessId,
+        code: input.sourceBusinessCode,
+        projectId: input.projectId,
+        claimType,
+        actualPurchaseBatchId: null,
+        generalProcurementId: null,
+        voidedAt: null,
+        status: { in: claimType === "reimbursement"
+          ? ["approved_pending_payment", "partially_paid", "paid", "offset_completed"]
+          : ["approved_pending_payment", "partially_paid", "paid"] },
+        approvedAt: input.occurredAt,
+        approvalInstanceId: { not: null },
+        requestedAmountCents: input.amountCents,
+        costBearingCompanySpecified: true,
+        costBearingCompanyEntityId: null
+      },
+      select: { approvalInstanceId: true }
+    });
+    if (!claim?.approvalInstanceId) return false;
+    const approval = await tx.approvalInstance.findFirst({
+      where: {
+        id: claim.approvalInstanceId,
+        businessId: input.sourceBusinessId,
+        businessType: "expense_claim",
+        flowType: "expense_claim.approve",
+        status: "approved"
+      },
+      select: { id: true }
+    });
+    return Boolean(approval && await tx.approvalActionLog.findFirst({
+      where: {
+        approvalInstanceId: approval.id,
+        action: "approve",
+        actorUserId: input.confirmedByUserId,
+        createdAt: input.confirmedAt
+      },
+      select: { id: true }
+    }));
   }
 
   private async appendImpact(
@@ -1343,7 +1400,7 @@ function inverseFactDirection(direction: string): string {
   return "neutral";
 }
 
-function validateFactInput(input: AppendOperatingFactInput) {
+function validateFactInput(input: AppendOperatingFactInput, explicitlyUnassignedExpense: boolean) {
   requiredText(input.projectId, "项目不能为空");
   requiredText(input.sourceType, "来源类型不能为空");
   requiredText(input.sourceBusinessId, "来源业务主键不能为空");
@@ -1386,6 +1443,7 @@ function validateFactInput(input: AppendOperatingFactInput) {
     if (subject) validateSubjectRoleKind(FACT_SUBJECT_ROLE_BY_PROPERTY[property], subject);
   }
   for (const role of requiredFactSubjectRoles(input)) {
+    if (role === "costBearingCompany" && explicitlyUnassignedExpense) continue;
     if (!input.subjects[role]) {
       throw new BadRequestException(`事实种类${input.factKind}必须填写${role}主体`);
     }
