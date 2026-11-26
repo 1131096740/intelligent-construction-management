@@ -32,7 +32,7 @@ const browserFailurePatterns = {
   VITE_WEBSERVER_STARTUP: /Process from config\.webServer (?:was not able to start|exited)|waiting for config\.webServer/iu,
   VITE_BIND: /port 4215 is already in use|listen EADDRINUSE/iu,
   VITE_IMPORT: /failed to load config from|Failed to resolve import|failed to resolve entry for package/iu,
-  BROWSER_TOOL_LOOKUP: /Command "playwright" not found|corepack.*(?:not found|network|download)/iu,
+  BROWSER_TOOL_LOOKUP: /Command "playwright" not found|corepack.*(?:not found|network|download)|Cannot find module '[^'\r\n]*@playwright\/test\/cli\.js'/iu,
   BROWSER_TEST_TIMEOUT: /Test timeout of \d+ms exceeded|Timeout \d+ms exceeded/iu
 };
 
