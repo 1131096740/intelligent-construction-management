@@ -48,8 +48,10 @@ async function main(){
   const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
   assert.equal(hash(root+'/contract-ci.cjs'),expenseWitness&&lane==='draft'?plan.draft346RunnerSha256:plan.runnerSha256);
   if(historical) assert.equal(hash(root+'/installer.cjs'),(expenseWitness??historical).installerSha256);
-  for(const file of ['task12-owned-280.test-support.ts',...profile.specs])
-    assert.equal(hash(root+'/workspace/services/api/src/database/'+file),plan.fixtures[file]);
+  for(const file of ['task12-owned-280.test-support.ts',...profile.specs]){
+    const fixtureHash=expenseWitness&&lane==='draft'&&file===profile.specs[0]?plan.draft346FixtureSha256:plan.fixtures[file];
+    assert.equal(hash(root+'/workspace/services/api/src/database/'+file),fixtureHash);
+  }
   const baselineModule=require('./workspace/services/api/prisma/migration-baseline.cjs');
   if(expenseWitness) {
     expenseWitness.assertRuntimeBaseline(baselineModule);

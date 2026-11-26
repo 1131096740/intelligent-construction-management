@@ -42,8 +42,8 @@ require(plan+'/expense-witness-346-profile.cjs').assertRuntimeBaseline(
 JS
 fi
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-contract-adjacent-$lane.XXXXXXXX")
-node - "$plan/contract-adjacent-profiles.json" "$prior" "$lane" "$prepared" "${6:-}" > "$work/fixture-mounts.tsv" <<'JS'
-const [profiles,prior,lane,prepared,mode]=process.argv.slice(2),pins=require(profiles);
+node - "$plan/contract-adjacent-profiles.json" "$prior" "$lane" "$prepared" "${6:-}" "$work" > "$work/fixture-mounts.tsv" <<'JS'
+const [profiles,prior,lane,prepared,mode,work]=process.argv.slice(2),pins=require(profiles);
 const fs=require('node:fs'),{createHash}=require('node:crypto'),assert=require('node:assert/strict');
 const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 assert.equal(hash(prior+'/contract-ci.cjs'),pins.runnerSha256);
@@ -53,7 +53,16 @@ for(const name of ['task12-owned-280.test-support.ts',...pins.profiles[lane].spe
   if(['--historical-settlement-334','--expense-witness-346'].includes(mode) && name!=='task12-owned-280.test-support.ts'){
     assert.equal(hash(prepared+'/prepared/context/workspace/services/api/src/database/'+name),pins.candidateFixtures334[name],name);
   }
-  console.log(file+'\t'+'src/database/'+name);
+  let mounted=file;
+  if(mode==='--expense-witness-346' && lane==='draft' && name===pins.profiles.draft.specs[0]){
+    mounted=work+'/'+name;
+    fs.copyFileSync(file,mounted,fs.constants.COPYFILE_EXCL);
+    fs.chmodSync(mounted,0o644);
+    const patch=require('node:path').join(require('node:path').dirname(profiles),'contract-adjacent-draft-346.fixture.patch');
+    require('node:child_process').execFileSync('git',['apply','--unidiff-zero',patch],{cwd:work,stdio:'inherit'});
+    assert.equal(hash(mounted),pins.draft346FixtureSha256);
+  }
+  console.log(mounted+'\t'+'src/database/'+name);
 }
 JS
 
