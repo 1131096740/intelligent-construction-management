@@ -2,7 +2,7 @@
 
 const assert=require('node:assert/strict');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement}=require('./installer.cjs');
 const {final,digest}=require('./multi-witness.cjs');
 const plan=require('./finance-adjacent-profiles.json');
 const {readFileSync}=require('node:fs');
@@ -13,11 +13,12 @@ const source=require('./contract-finance-source.json');
 const root='/qualification';
 const lane=process.argv[2];
 const mode=process.argv[3];
+const historicalSettlement=mode==='--historical-settlement-334';
 const upwardArchive=mode==='--upward-archive-332';
 const paymentRemainder=mode==='--payment-remainder-331';
 const textDirect=mode==='--text-direct-330';
-const current320=upwardArchive||paymentRemainder||textDirect||mode==='--current-320';
-const count=upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
+const current320=historicalSettlement||upwardArchive||paymentRemainder||textDirect||mode==='--current-320';
+const count=historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
 const receipt={schemaVersion:1,purpose:'ORIGINAL_FINANCE_ADJACENT_EXACT_'+count,lane,sourceSha:source.sourceSha,
   migrationSha256:current320?source.tails.at(-1).sha256:digest,business:'NOT_ENTERED',stages:['INPUTS'],status:'STOPPED'};
 
@@ -27,7 +28,11 @@ async function main(){
   assert.equal(process.env.DATABASE_URL,undefined);
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
   assert.equal(source.migrationCount,count);
-  if(upwardArchive){
+  const historicalProfile=historicalSettlement?require('./historical-settlement-334-profile.cjs'):undefined;
+  if(historicalProfile){
+    historicalProfile.assertSource(source,final);
+    assert.equal(createHash('sha256').update(readFileSync(root+'/installer.cjs')).digest('hex'),historicalProfile.installerSha256);
+  } else if(upwardArchive){
     require('./upward-archive-332-profile.cjs').assertSource(source,source.sourceSha,final);
   } else if(current320){
     assert.equal(source.mode,mode.slice(2));
@@ -73,7 +78,7 @@ async function main(){
     else await run(context,receipt,runCommand,need,isDeepStrictEqual);
   };
   if(current320){
-    const installCurrent=upwardArchive?withCombined332UpwardArchive:
+    const installCurrent=historicalSettlement?withCombined334HistoricalSettlement:upwardArchive?withCombined332UpwardArchive:
       paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
     await installCurrent(receipt,consume,{
       sourceTree:source.sourceTree,migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails
@@ -83,6 +88,11 @@ async function main(){
     assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
     assert.equal(receipt.forward320.sameBaseB7,true);
     assert.equal(receipt.combinedAfterBusiness.count,count);
+    if(historicalProfile) {
+      historicalProfile.assertFinanceInstallation(receipt,source);
+      assert.equal(receipt.historicalTakeoverCatalogAfterBusiness,true);
+      assert.equal(receipt.historicalSettlementCatalogAfterBusiness,true);
+    }
     if(upwardArchive) require('./upward-archive-332-profile.cjs').assertInstallation(receipt,source);
     if(paymentRemainder){
       assert.deepEqual(receipt.paymentRemainderPredecessor,{
