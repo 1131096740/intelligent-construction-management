@@ -18,7 +18,8 @@ source = json.loads((prepared / 'source.json').read_bytes())
 ref = source['sourceSha']
 count = source['migrationCount']
 source_mode = source.get('mode')
-historical_settlement = source_mode == 'historical-settlement-334'
+expense_witness = source_mode == 'expense-witness-346'
+historical_settlement = source_mode == 'historical-settlement-334' or expense_witness
 upward_archive = source_mode == 'upward-archive-332' or historical_settlement
 payment_remainder = upward_archive or source_mode == 'payment-remainder-331'
 text_direct = payment_remainder or source_mode == 'text-direct-330'
@@ -28,7 +29,7 @@ ledger329 = '3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2'
 previous = source['predecessor'] if current320 else source
 assert previous['migrationCount'] == 295 and len(previous['tails']) == 3
 if current320:
-    expected_count = {'current-320': 329, 'text-direct-330': 330, 'payment-remainder-331': 331, 'upward-archive-332': 332, 'historical-settlement-334': 334}
+    expected_count = {'current-320': 329, 'text-direct-330': 330, 'payment-remainder-331': 331, 'upward-archive-332': 332, 'historical-settlement-334': 334, 'expense-witness-346': 346}
     assert count == expected_count[source_mode] and len(source['tails']) == count - 295
 assert subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip() == ref
 admission = subprocess.check_output(['node',str(common.parent/'check-ledger.cjs'),str(repo),ref,*mode])
@@ -98,6 +99,12 @@ if historical_settlement:
     new_installer = patch(new_installer,historical_patch)
     assert digest(new_installer) == '6bf3a87b1630e1d36afeba0f56e29c9941f3468ec49a7ac96976b8df14c95002'
     for profile in ('historical-takeover-333-profile.cjs', 'historical-settlement-334-profile.cjs'):
+        write(context/profile,(common.parent/profile).read_bytes())
+if expense_witness:
+    expense_patch = read_pinned(plan/'installer-named346.patch','f188638f0107ee0ecce941f46e5253272b17c24a81fbf847cc86b3cf8c26a3d6')
+    new_installer = patch(new_installer,expense_patch)
+    assert digest(new_installer) == 'f37863078cddb9ef0577e2fa43c69a320d4a0a0c4f4d1eb0f4495a51ee8fe488'
+    for profile in ('expense-witness-345-profile.cjs', 'expense-witness-346-profile.cjs', 'expense-witness-prefixes.json'):
         write(context/profile,(common.parent/profile).read_bytes())
 write(context/'installer.cjs',new_installer)
 for name, pin in pins['runtime'].items():
@@ -198,6 +205,28 @@ for name, pin in pins['runtime'].items():
                     repetitions = 5 if old == b'receipt.forward332' else 2 if old in (b'withNamedPol113Pol114332',b'EXACT_332') else 1
                     assert material.count(old) == repetitions, old
                     material = material.replace(old,new)
+            if expense_witness:
+                expense_replacements = {
+                    b'withNamedPol113Pol114334': b'withNamedPol113Pol114346',
+                    b"NAMED_POL113_POL114_EXACT_334',mode": b"NAMED_POL113_POL114_EXACT_346',mode",
+                    b'receipt.orderedTails.slice(-12).map(({size})=>size),[290,291,292,293,294,295,329,330,331,332,333,334]':
+                        b'receipt.orderedTails.slice(-24).map(({size})=>size),[290,291,292,293,294,295,329,330,331,332,333,334,...Array.from({length:12},(_,i)=>335+i)]',
+                    b'receipt.orderedTails.slice(-4),[': b'receipt.orderedTails.slice(-16,-12),[',
+                    b'receipt.postBehavior334,{exactB7:true,sameIdentity:true,count:334,ledgerSha256:admission.ledger334}':
+                        b'receipt.postBehavior346,{exactB7:true,sameIdentity:true,count:346,ledgerSha256:admission.ledger346}',
+                    b"  receipt.status='POL113_POL114_NAMED_EXACT_334_PASSED';": b"""  const expense=require('./expense-witness-346-profile.cjs');
+  for (const {size,ledgerSha256} of receipt.orderedTails.slice(-13)) expense.assertPrefix(size,ledgerSha256);
+  assert.equal(receipt.forward346?.sourceTree,admission.sourceTree);
+  assert.equal(receipt.forward346?.count,346);
+  assert.equal(receipt.forward346?.ledgerSha256,admission.ledger346);
+  assert.equal(receipt.forward346?.sameIdentity,true);
+  assert.equal(receipt.forward346?.exactB7,true);
+  assert.equal(receipt.expenseWitnessCatalogAfterBusiness,true);
+  receipt.status='POL113_POL114_NAMED_EXACT_346_PASSED';""",
+                }
+                for old,new in expense_replacements.items():
+                    assert material.count(old) == (2 if old == b'withNamedPol113Pol114334' else 1), old
+                    material = material.replace(old,new)
             diagnostic_anchor = b'        ...bootSummary(traces),\n'
             diagnostic = br"""        statuses:traces.flatMap(value=>{
           if(typeof value!=="string")return [];
@@ -257,8 +286,9 @@ for name,pin in pins['workspace'].items():
         # overlay replaced only these three scalars, independently of installation ledger.
         before = json.loads(material)
         keys = ('expectedDirectoryCount','terminalMigration','terminalMigrationChecksum')
-        last = source['tails'][-1]
-        assert tuple(before['migrationBaseline'][key] for key in keys) == (count,last['name'],last['sha256'])
+        manifest_count = 334 if expense_witness else count
+        last = source['tails'][38] if expense_witness else source['tails'][-1]
+        assert tuple(before['migrationBaseline'][key] for key in keys) == (manifest_count,last['name'],last['sha256'])
         historical_base = subprocess.check_output(['git','-C',str(repo),'show',
             f'233e0d6808352e4b169ec0a82909afc0d3b8f8fa:{name}'])
         original = json.loads(overlay(historical_base,pin))
@@ -291,7 +321,9 @@ write(context/'candidate-admission.json',(json.dumps({
         'sourceTree':source['sourceTree'],'tails':source['tails']} if upward_archive else {}),
     **({'sourceTree':source['sourceTree'],'ledger320':source['ledgerSha256'],'tails':source['tails']}
        if current320 and not upward_archive else {}),
-    **({'ledger333':source['predecessor333']['ledgerSha256'],'ledger334':source['ledgerSha256']} if historical_settlement else {}),
+    **({'ledger333':source['predecessor333']['ledgerSha256'],
+        'ledger334':source['predecessor334']['ledgerSha256'] if expense_witness else source['ledgerSha256']} if historical_settlement else {}),
+    **({'ledger346':source['ledgerSha256']} if expense_witness else {}),
 })+'\n').encode())
 docker = read_pinned(donor/'Dockerfile.in','456025c143f993973d1947343c7636565406c74c5a0456addc1e1ff3dcffc24e').decode()
 copy = read_pinned(donor/'runtime-copy.txt','de9a7b69c406aa307423a7231ec086b8c6995bd435bfc1fae0bb0dab5d4b40e6').decode().strip()
@@ -299,6 +331,10 @@ docker = docker.replace('@RUNTIME_COPY@',copy+'\nCOPY --chmod=0644 named295-tail
 if historical_settlement:
     docker=docker.replace('WORKDIR /qualification/workspace\nCOPY workspace/package.json',
         'COPY --chmod=0644 historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs /qualification/\n'
+        'WORKDIR /qualification/workspace\nCOPY workspace/package.json',1)
+if expense_witness:
+    docker=docker.replace('WORKDIR /qualification/workspace\nCOPY workspace/package.json',
+        'COPY --chmod=0644 expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json /qualification/\n'
         'WORKDIR /qualification/workspace\nCOPY workspace/package.json',1)
 write(context/'Dockerfile',docker.encode())
 for file in context.glob('*.cjs'):
