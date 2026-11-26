@@ -86,6 +86,20 @@ for (const row of cases[scope]) {
     adapted = once(adapted, exit[0],
       'child.on("exit", (code, signal) => code === 0 ? done() : reject(pol115BrowserExitError(code, signal)))');
   }
+  if (name === 'expense-claim-entry.http.pg.spec.ts') {
+    // The historical loan balance belongs to the existing repayment projects.
+    // It must not reserve an offset against the independent approval-round case.
+    adapted = once(adapted, 'await seedDisbursedLoan(projectId);',
+      'await seedDisbursedLoan(browserRepaymentProjectIds.desktop);');
+    adapted = once(adapted, [
+      '    for (const viewport of ["desktop", "mobile"] as const) {',
+      '      browserRepaymentClaimIds[viewport] = (await seedDisbursedLoan(browserRepaymentProjectIds[viewport])).claim.id;',
+      '    }'
+    ].join('\n'), [
+      '    browserRepaymentClaimIds.desktop = claim.id;',
+      '    browserRepaymentClaimIds.mobile = (await seedDisbursedLoan(browserRepaymentProjectIds.mobile)).claim.id;'
+    ].join('\n'));
+  }
   write(file, adapted);
   fixtureHashes[file] = hash(adapted);
 }
