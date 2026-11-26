@@ -292,7 +292,7 @@ test("CI fans out independent static and database gates behind one stable summar
   const tests = jobBlock(workflow, "unit-test-gates");
   const build = jobBlock(workflow, "build-manifest-gates");
   const dynamic = jobBlock(workflow, "postgresql16-dynamic-gates");
-  assert.ok(dynamic.includes("timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || matrix.group == 'remaining_dynamic_postgresql16' && 45 || 20 }}"));
+  assert.ok(dynamic.includes("timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || matrix.group == 'remaining_dynamic_postgresql16' && 60 || 20 }}"));
   for (const group of ["operating_projection_pol108", "operating_projection_pol108_facts", "operating_projection_pol108_impacts"]) {
     assert.ok(dynamic.includes(`          - ${group}\n`));
   }
@@ -334,8 +334,8 @@ test("CI fans out independent static and database gates behind one stable summar
   assert.equal(manualGroups[0].executionStatus, "NOT_EXECUTED");
   const ciGroups = manifest.coveredGroups.filter(group => group.ciExecution !== "manual-only");
   assert.equal(ciGroups.length, 45);
-  assert.equal(ciGroups.reduce((n, group) => n + group.testFiles.length, 0), 105);
-  assert.equal(ciGroups.reduce((n, group) => n + group.pendingTests, 0), 634);
+  assert.equal(ciGroups.reduce((n, group) => n + group.testFiles.length, 0), 110);
+  assert.equal(ciGroups.reduce((n, group) => n + group.pendingTests, 0), 635);
   assert.doesNotMatch(workflow, /enterprise_task01_entry|run-enterprise-task01-local|--task01-(?:packet|inputs|confirm)/u);
   assert.deepEqual(
     configuredGroups,

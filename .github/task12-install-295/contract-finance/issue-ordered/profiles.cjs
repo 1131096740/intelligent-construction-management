@@ -396,4 +396,9 @@ function profileFor(scope) {
   return profiles[scope];
 }
 
-module.exports = { profileFor };
+const issue418OperatingScopes = Object.freeze([
+  'issue418_recognized_dedup', 'issue418_signed_operating', 'issue418_paired_funds',
+  'issue418_cash_attribution', 'issue418_source_unique', 'issue418_guard', 'issue418_contract_drilldown'
+]);
+
+module.exports = { profileFor, issue418OperatingScopes };

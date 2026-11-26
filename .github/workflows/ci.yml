@@ -232,7 +232,7 @@ jobs:
     name: PostgreSQL 16 dynamic gate (${{ matrix.shard && format('{0}/{1}', matrix.group, matrix.shard) || matrix.group }})
     runs-on: ${{ matrix.group == 'pol113_pol115_business_entries' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     # POL-108 builds 20,001 facts and 100,001 impacts through the public writer.
-    timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || matrix.group == 'remaining_dynamic_postgresql16' && 45 || 20 }}
+    timeout-minutes: ${{ startsWith(matrix.group, 'operating_projection_pol108') && 90 || matrix.group == 'remaining_dynamic_postgresql16' && 60 || 20 }}
     strategy:
       fail-fast: false
       matrix:

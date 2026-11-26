@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 106,
-    "fullyPendingSuites": 85,
+    "pendingFiles": 111,
+    "fullyPendingSuites": 90,
     "partiallyPendingSuites": 21,
-    "pendingTests": 635,
-    "coveredFiles": 106,
-    "coveredTests": 635,
+    "pendingTests": 636,
+    "coveredFiles": 111,
+    "coveredTests": 636,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -1059,18 +1059,42 @@
     },
     {
       "id": "issue418_operating_dedup",
-      "pendingTests": 9,
+      "pendingTests": 10,
       "testFiles": [
         {
-          "path": "services/api/src/database/issue418-operating-dedup.pg.spec.ts",
-          "pendingTests": 9,
+          "path": "services/api/src/database/issue418-recognized-dedup.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/issue418-signed-operating.pg.spec.ts",
+          "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/issue418-paired-funds.pg.spec.ts",
+          "pendingTests": 2,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/issue418-cash-attribution.pg.spec.ts",
+          "pendingTests": 3,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/issue418-settlement-guard.pg.spec.ts",
+          "pendingTests": 1,
+          "suiteStatus": "fully_pending"
+        },
+        {
+          "path": "services/api/src/database/issue418-contract-drilldown.pg.spec.ts",
+          "pendingTests": 1,
           "suiteStatus": "fully_pending"
         }
       ],
       "runner": {
-        "kind": "workspaceScript",
-        "script": "verify:issue418-operating-dedup:local",
-        "path": "services/api/prisma/run-issue418-operating-dedup-local.cjs"
+        "kind": "exactLedgerShell",
+        "path": ".github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh"
       },
       "state": "executable_local_runner"
     },
@@ -1133,8 +1157,8 @@
   "executionInventory": {
     "ciEligible": {
       "groups": 45,
-      "files": 105,
-      "tests": 634
+      "files": 110,
+      "tests": 635
     },
     "manualOnly": {
       "groups": 1,

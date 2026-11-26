@@ -128,9 +128,18 @@ function assertRunGatedPgSpecsRegistered(registeredPaths) {
   }
 }
 
-function validateRunner(runner, groupId, rootPackage, apiPackage) {
+function validateRunner(runner, groupId, rootPackage, apiPackage, migrationCount) {
   if (!runner || !RUNNER_KINDS.has(runner.kind)) {
     fail(`coveredGroups.${groupId}.runner.kind 不受支持`);
+  }
+  if (migrationCount === 346 && groupId === "issue418_operating_dedup") {
+    const [expected] = gate346.commandFor346(groupId);
+    if (runner.kind !== "exactLedgerShell" || runner.path !== expected ||
+        Object.keys(runner).sort().join(",") !== "kind,path" ||
+        !statSync(resolveRepositoryPath(expected, "346 PostgreSQL 隔离入口"), { throwIfNoEntry: false })?.isFile()) {
+      fail("#418 只允许固定的 346 PostgreSQL 隔离入口");
+    }
+    return;
   }
   if (groupId === gate334.historicalTakeoverGroup || runner.kind === "exactLedgerShell") {
     if (groupId !== gate334.historicalTakeoverGroup || runner.kind !== "exactLedgerShell" ||
@@ -276,7 +285,14 @@ function validateManifest(manifest) {
       fail(`coveredGroups.${group.id} pendingTests 与文件小计不一致`);
     }
     if (group.id === POL113_POL115_GROUP) assertPol113Pol115Coverage(group);
-    validateRunner(group.runner, group.id, rootPackage, apiPackage);
+    if (migrationBaseline.expectedDirectoryCount === 346 && group.id === "issue418_operating_dedup") {
+      const expected = gate346.issue418Tests346();
+      if (group.testFiles.length !== expected.length || expected.some(({ path, pendingTests, suiteStatus }) =>
+        !group.testFiles.some(file => file.path === path && file.pendingTests === pendingTests && file.suiteStatus === suiteStatus))) {
+        fail("#418 的 346 测试清单与实际执行分片不一致");
+      }
+    }
+    validateRunner(group.runner, group.id, rootPackage, apiPackage, migrationBaseline.expectedDirectoryCount);
     coveredTests += group.pendingTests;
   }
 
@@ -891,8 +907,13 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       migrationCount: manifest.migrationBaseline.expectedDirectoryCount,
       terminalMigration: manifest.migrationBaseline.terminalMigration,
       terminalMigrationChecksum: manifest.migrationBaseline.terminalMigrationChecksum,
-      containerImage: manifest.migrationBaseline.containerImage,
-      containerImageId: dockerReceipt.imageId,
+      ...(migrationCount === 346 ? {
+        preflightContainerImage: manifest.migrationBaseline.containerImage,
+        preflightContainerImageId: dockerReceipt.imageId
+      } : {
+        containerImage: manifest.migrationBaseline.containerImage,
+        containerImageId: dockerReceipt.imageId
+      }),
       coveredTests: coverage.coveredTests,
       coveredFiles: coverage.coveredFiles,
       executionInventory: executionInventory(coveredGroups),

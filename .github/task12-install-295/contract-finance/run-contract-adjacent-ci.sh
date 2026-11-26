@@ -107,8 +107,9 @@ if [[ $issue_lane == true ]]; then
       ;;
     issue418-operating)
       # Each profile runs on a fresh database; guarded writers preserve the release ACL.
-      for scope in issue418_recognized_dedup issue418_signed_operating issue418_paired_funds \
-        issue418_cash_attribution issue418_source_unique issue418_guard issue418_contract_drilldown; do
+      scopes=$(node -p 'require(process.argv[1]).issue418OperatingScopes.join(" ")' "$plan/issue-ordered/profiles.cjs")
+      read -r -a profiles <<< "$scopes"
+      for scope in "${profiles[@]}"; do
         bash "$plan/issue-ordered/run.sh" "$root" "$work/source" "$sha" "$work/browser" "$scope"
       done
       ;;

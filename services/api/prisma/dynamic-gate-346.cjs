@@ -2,6 +2,7 @@
 
 const base = require("./dynamic-gate-334.cjs");
 const { count, terminal } = require("../../../.github/task12-install-295/contract-finance/expense-witness-346-profile.cjs");
+const { profileFor, issue418OperatingScopes } = require("../../../.github/task12-install-295/contract-finance/issue-ordered/profiles.cjs");
 const mode = "--expense-witness-346";
 const namedRunner = ".github/task12-install-295/named-pol113-pol114/run-matrix346.sh";
 const issueLanes = Object.freeze({
@@ -45,4 +46,15 @@ function matchesBaseline346(baseline) {
     baseline.terminalMigrationChecksum === terminal.sha256;
 }
 
-module.exports = { commandFor346, unadmittedGroups346, matchesBaseline346 };
+function issue418Tests346() {
+  const counts = new Map();
+  for (const scope of issue418OperatingScopes) {
+    const { file, titles } = profileFor(scope);
+    counts.set(file, (counts.get(file) ?? 0) + titles.length);
+  }
+  return Array.from(counts, ([file, pendingTests]) => ({
+    path: "services/api/" + file, pendingTests, suiteStatus: "fully_pending"
+  }));
+}
+
+module.exports = { commandFor346, unadmittedGroups346, matchesBaseline346, issue418Tests346 };
