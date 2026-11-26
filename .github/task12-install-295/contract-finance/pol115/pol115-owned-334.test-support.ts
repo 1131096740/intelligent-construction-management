@@ -1,4 +1,4 @@
-export function isPol115Owned334(url: URL, scope: "pol115" | "spot"): boolean {
+export function isPol115Owned334(url: URL, scope: "pol115-main" | "notification" | "spot"): boolean {
   const runId = process.env.JG_POL115_334_RUN_ID;
   return process.env.NODE_ENV === "test" && process.env.JG_POL115_334_SCOPE === scope
     && /^[a-f0-9]{32}$/u.test(runId ?? "")
