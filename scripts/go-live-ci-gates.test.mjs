@@ -435,6 +435,7 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
     ["line_a_real_db", "", 0, "line-a"],
     ["historical_takeover_a28", "", 0, "historical-takeover-a28"],
     ["contract_finance_acceptance", "", 0, "contract-finance"],
+    ["remaining_dynamic_postgresql16", "", 0, "remaining"],
     ["payment_execution", "", 65],
     ["pol113_pol115_business_entries", "pol113_pol114", 65],
     ["issue403_actual_purchase_batch", "", 65],
@@ -447,6 +448,7 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
     if (lane === "contract-finance") assert.deepEqual(result.stdout.trim().split("\n"), [
       plan + "run.sh", sha, "--historical-settlement-334", "a187dc73a133114e1cfbbc891a4aec923abe2545"
     ]);
+    else if (lane === "remaining") assert.deepEqual(result.stdout.trim().split("\n"), [plan + "run-remaining.sh", sha, "--historical-settlement-334"]);
     else if (status === 0) assert.deepEqual(result.stdout.trim().split("\n"), [
       plan + "run-contract-adjacent-ci.sh", sha, lane, "--historical-settlement-334"
     ]);
