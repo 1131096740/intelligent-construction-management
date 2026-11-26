@@ -31,7 +31,7 @@ type ActiveRequest = Pick<Command, "path" | "cashPhase"> & { method: string };
 type Packet = {
   candidate: string; database: string; ownerUrl: string; applicationOid: string; observerUrl: string; observerOid: string;
 };
-type CaseScope = { projectId: string; claimId: string; factId: string; costImpactId: string; accountId: string };
+type CaseScope = { projectId: string; claimId: string; factId: string; costImpactId: string; accountId: string; balanceAfter: string };
 const cashSnapshotStages = ["OPENING", "VOUCHER_AUTHORITY_ROLLBACK", "INSUFFICIENT_SOURCE_ROLLBACK", "KEEPER_PAYMENT_COMMITTED",
   "FOREIGN_REPLAY_UNCHANGED", "EXACT_REPLAY_UNCHANGED", "ATTRIBUTION_COMMITTED"] as const;
 type CashSnapshotStage = typeof cashSnapshotStages[number];
@@ -96,6 +96,8 @@ it("records and confirms only an exact A24 public cash slice with separate datab
   let cashSnapshotStage: CashSnapshotStage | undefined;
   let cashSnapshotRead: CashSnapshotRead | undefined;
   let observedCashSnapshot: ReturnType<typeof projectA24CashSnapshot> | undefined;
+  let keeperReceipt: { id: string; expenseClaimId: unknown; paidAmountCents: unknown } | undefined;
+  let cashCommitVisibility: Record<string, boolean | "READ_FAILED"> | undefined;
   const captureDatabaseFailure = (error: unknown, operation?: Parameters<typeof projectA24SubmissionFailure>[1]) => {
     if (activeRequest?.cashPhase && activeRequest === cashRequests.getStore()) {
       cashFailure ??= projectA24CashFailure(error, operation);
@@ -263,7 +265,12 @@ it("records and confirms only an exact A24 public cash slice with separate datab
           body: command.form ?? (body ? JSON.stringify(body) : undefined)
         });
         httpStatus = response.status;
-        return { status: response.status, body: await response.json() };
+        const payload = await response.json();
+        if (cashPhase === "KEEPER_PUBLIC_CASH_PAYMENT" && response.status === 201 &&
+          typeof payload.id === "string" && /^[0-9a-f-]{36}$/u.test(payload.id)) {
+          keeperReceipt = { id: payload.id, expenseClaimId: payload.expenseClaimId, paidAmountCents: payload.paidAmountCents };
+        }
+        return { status: response.status, body: payload };
       } finally {
         activeRequest = undefined;
       }
@@ -423,6 +430,36 @@ it("records and confirms only an exact A24 public cash slice with separate datab
           paymentExecutions: ownerPayment.length, paidCents: ownerPayment.reduce((sum, row) => sum + row.amountCents, 0n).toString(),
           cashDebits, cashBalanceYuan: balance.balanceYuan?.toFixed(4), acceptedAttributions };
         observedCashSnapshot = projectA24CashSnapshot(result);
+        if (snapshotStage === "KEEPER_PAYMENT_COMMITTED" &&
+          (result.paymentExecutions !== 1 || result.cashDebits !== 1 || result.cashBalanceYuan !== scope.balanceAfter)) {
+          const readRole = async (client: PrismaClient) => {
+            const claim = await client.expenseClaim.findUnique({
+              where: { id: scope.claimId }, select: { status: true, fundedAmountCents: true }
+            });
+            const execution = keeperReceipt && await client.expenseClaimPaymentExecution.findUnique({
+              where: { id: keeperReceipt.id }, select: { expenseClaimId: true, amountCents: true }
+            });
+            return {
+              claimPaid: claim?.status === "paid" && claim.fundedAmountCents === 800n,
+              matchingExecution: execution?.expenseClaimId === scope.claimId && execution.amountCents === 800n
+            };
+          };
+          const roleReads = await Promise.allSettled([readRole(application), readRole(owner),
+            owner.fundAccountBalanceRegistration.findFirst({
+              where: { accountId: scope.accountId, status: "confirmed" }, orderBy: { version: "desc" },
+              select: { balanceYuan: true }
+            })]);
+          const [applicationRead, ownerRead, ownerBalance] = roleReads;
+          cashCommitVisibility = {
+            receiptMatchesClaim: keeperReceipt?.expenseClaimId === scope.claimId && keeperReceipt.paidAmountCents === "800",
+            applicationClaimPaid: applicationRead.status === "fulfilled" ? applicationRead.value.claimPaid : "READ_FAILED",
+            applicationExecution: applicationRead.status === "fulfilled" ? applicationRead.value.matchingExecution : "READ_FAILED",
+            ownerClaimPaid: ownerRead.status === "fulfilled" ? ownerRead.value.claimPaid : "READ_FAILED",
+            ownerExecution: ownerRead.status === "fulfilled" ? ownerRead.value.matchingExecution : "READ_FAILED",
+            ownerBalanceDebited: ownerBalance.status === "fulfilled"
+              ? ownerBalance.value?.balanceYuan?.toFixed(4) === scope.balanceAfter : "READ_FAILED"
+          };
+        }
         return result;
       }
     });
@@ -448,6 +485,7 @@ it("records and confirms only an exact A24 public cash slice with separate datab
       ...(cashFailure ? { cashFailure } : {}),
       ...(cashSnapshotStage ? { cashSnapshotStage, cashSnapshotRead,
         ...(observedCashSnapshot ? { observedCashSnapshot } : {}),
+        ...(cashCommitVisibility ? { cashCommitVisibility } : {}),
         ...(cashSnapshotRead !== "TALLIES" ? { snapshotReadFailure: projectA24CashFailure(error) } : {}),
         ...(message === "A24_ONE_COST_ONE_CASH_DEBIT" && assertion?.code === "ERR_ASSERTION"
           ? { expectedCashSnapshot: projectA24CashSnapshot(assertion.expected) } : {})
