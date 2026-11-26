@@ -16,6 +16,19 @@ const profiles = {
       'registers, approves, splits, refunds and corrects a no-contract project payment with one cost'
     ]
   },
+  issue411: {
+    file: 'src/database/issue411-third-company-repayment.pg.spec.ts',
+    sourceDigest: '46f2bf46d6b1de968da67fd60fea9d90e249870db283210c330c9f59e4c4d86e',
+    fixtureDigest: 'aaa48d5b3a6d64dc8a79140d7ec1c854096c534720dada45544cb84ddc77b738',
+    orderedDatabaseKey: 'JG_ISSUE411_ORDERED_DATABASE',
+    enableKey: 'RUN_ISSUE411_THIRD_COMPANY_REPAYMENT',
+    stage: 'ORIGINAL_THIRD_COMPANY_REPAYMENT_JEST',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: [
+      'moves A-B debt to A-C with one payment, rejects a duplicate, and keeps the corrected net',
+      're-points a settled third-party repayment to the correct original debt and keeps the A-C debt'
+    ]
+  },
   issue413: {
     file: 'src/database/issue413-construction-enterprise-paid.pg.spec.ts',
     sourceDigest: '313c9fc331c53eb9912d4f52584d208c414a4953e39518f4627e27892c7aa40f',
