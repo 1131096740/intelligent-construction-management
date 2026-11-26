@@ -1,0 +1,29 @@
+--- predecessor/fixture
++++ forward/fixture
+@@ -504 +504 @@
+- const modes=new Map([["cash-handover-334",["--cash-handover-real"]],["principal-return-334",["--principal-return-real"]],["cash-handover-332",["--cash-handover-real"]],["principal-return-332",["--principal-return-real"]],["cash-handover-331",["--cash-handover-real"]],["principal-return-331",["--principal-return-real"]],["cash-handover-330",["--cash-handover-real"]],["principal-return-330",["--principal-return-real"]],["cash-handover-329",["--cash-handover-real"]],["principal-return-329",["--principal-return-real"]],["cash-handover-295",["--cash-handover-real"]],["principal-return-295",["--principal-return-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["cash-handover-346",["--cash-handover-real"]],["principal-return-346",["--principal-return-real"]],["cash-handover-334",["--cash-handover-real"]],["principal-return-334",["--principal-return-real"]],["cash-handover-332",["--cash-handover-real"]],["principal-return-332",["--principal-return-real"]],["cash-handover-331",["--cash-handover-real"]],["principal-return-331",["--principal-return-real"]],["cash-handover-330",["--cash-handover-real"]],["principal-return-330",["--principal-return-real"]],["cash-handover-329",["--cash-handover-real"]],["principal-return-329",["--principal-return-real"]],["cash-handover-295",["--cash-handover-real"]],["principal-return-295",["--principal-return-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+@@ -510 +510,2 @@
+- const exact334=mode==="cash-handover-334"||mode==="principal-return-334";
++ const exact346=mode==="cash-handover-346"||mode==="principal-return-346";
++ const exact334=exact346||mode==="cash-handover-334"||mode==="principal-return-334";
+@@ -512 +513,2 @@
+- const count=exact334?334:exact332?332:exact331?331:exact330?330:329;
++ const prefixCount=exact334?334:exact332?332:exact331?331:exact330?330:329;
++ const count=exact346?346:prefixCount;
+@@ -515 +517 @@
+-  ||forward?.count!==count||forward.sameIdentity!==true||forward.sameBaseB7!==true
++  ||forward?.count!==prefixCount||forward.sameIdentity!==true||forward.sameBaseB7!==true
+@@ -517 +519 @@
+-  ||forward.tails?.length!==count-295
++  ||forward.tails?.length!==prefixCount-295
+@@ -524,0 +527,6 @@
++ const expense=exact346?receipt?.expenseWitnessForward:undefined;
++ if(exact346&&(expense?.count!==346||expense.sameIdentity!==true||expense.sourceTree!==forward.sourceTree
++   ||expense.ledgerSha256!=="bdddd170728d7c28c1b5a4f4a4b2b8981aa1ba2d041590475d695427502d8225"
++   ||expense.tails?.length!==12||expense.tails.at(-1)?.name!=="20261129015000_expense_public_cash_operating_source"
++   ||expense.tails.at(-1)?.sha256!=="d2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a"))
++  throw Error("TASK398_CASH_PRINCIPAL_346_SCOPE");
+@@ -593 +601 @@
+-  expectedDirectoryCount:count,terminalMigration:forward.tails.at(-1).name,terminalMigrationChecksum:forward.tails.at(-1).sha256
++  expectedDirectoryCount:count,terminalMigration:(expense??forward).tails.at(-1).name,terminalMigrationChecksum:(expense??forward).tails.at(-1).sha256
