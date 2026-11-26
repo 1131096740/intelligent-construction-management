@@ -1,3 +1,4 @@
+import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { projectTask16RegistrationError } from "./task16-registration-error-diagnostic";
 
@@ -123,6 +124,14 @@ export const projectA24SubmissionFailure = (error: unknown, operation?: Operatio
 export const projectA24ApprovalFailure = (error: unknown, operation?: Operation) => projectFailure(error, approvalOperations, operation);
 export function projectA24CashFailure(error: unknown, operation?: Operation) {
   const detail = projectFailure(error, cashOperations, operation);
+  if (error instanceof ServiceUnavailableException) {
+    if (error.message === "已签变更与结算文件绑定暂不可核验，请稍后重试") {
+      return { ...detail, node: "CASH_SIGNED_FILE_CATALOG" };
+    }
+    if (error.message === "付款凭证文件绑定暂不可核验，请稍后重试") {
+      return { ...detail, node: "CASH_REGISTERED_VOUCHER_CATALOG" };
+    }
+  }
   if (detail.node !== "CASH_TRANSACTION_QUERY") return detail;
 
   // Prisma middleware receives a prepared Sql object or the tagged template's literal segments.

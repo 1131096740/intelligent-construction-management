@@ -1,3 +1,4 @@
+import { ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { projectA24ApprovalFailure, projectA24CashFailure, projectA24SignatureFailure,
   projectA24SubmissionFailure } from "./task426-a24-signature-diagnostic.test-support";
@@ -88,4 +89,17 @@ it("projects the known raw voucher-collision shape without returning SQL or bind
   });
   expect(projectA24CashFailure(failure, { ...operation, args: [["SELECT ", ""], prefix] }))
     .toHaveProperty("node", "CASH_TRANSACTION_QUERY");
+});
+
+it("distinguishes fixed catalog refusals from unrelated 503 errors without returning error text", () => {
+  const project = (message: string) => projectA24CashFailure(new ServiceUnavailableException(message));
+  expect(project("已签变更与结算文件绑定暂不可核验，请稍后重试")).toEqual({
+    serverErrorKind: "OTHER_NATIVE_ERROR", node: "CASH_SIGNED_FILE_CATALOG"
+  });
+  expect(project("付款凭证文件绑定暂不可核验，请稍后重试")).toEqual({
+    serverErrorKind: "OTHER_NATIVE_ERROR", node: "CASH_REGISTERED_VOUCHER_CATALOG"
+  });
+  expect(project("付款凭证文件绑定暂不可核验，请稍后重试 private-value")).toEqual({
+    serverErrorKind: "OTHER_NATIVE_ERROR"
+  });
 });
