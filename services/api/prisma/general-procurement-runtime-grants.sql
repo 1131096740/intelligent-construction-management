@@ -47,6 +47,21 @@ BEGIN
     EXECUTE format('GRANT EXECUTE ON FUNCTION public.jg_append_text_payment_allocation_v1(text) TO %I', runtime_role);
   END IF;
 
+  routine := 'public.jg_record_expense_public_cash_voucher(text,text,bigint,timestamp,text,text,text,text,text)';
+  IF pg_catalog.to_regprocedure(routine) IS NOT NULL THEN
+    EXECUTE format('REVOKE ALL ON TABLE public.jg_expense_public_cash_voucher_witness FROM %I', runtime_role);
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %I', routine, runtime_role);
+    IF NOT pg_catalog.has_function_privilege(runtime_role, routine, 'EXECUTE')
+      OR pg_catalog.has_function_privilege(runtime_role, routine, 'EXECUTE WITH GRANT OPTION')
+      OR pg_catalog.has_function_privilege(runtime_role, 'public.jg_finish_expense_public_cash_voucher()', 'EXECUTE')
+      OR pg_catalog.has_table_privilege(runtime_role, 'public.jg_expense_public_cash_voucher_witness',
+        'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+      OR pg_catalog.has_any_column_privilege(runtime_role, 'public.jg_expense_public_cash_voucher_witness',
+        'SELECT, INSERT, UPDATE, REFERENCES') THEN
+      RAISE EXCEPTION 'expense cash voucher runtime privileges must be limited to the controlled writer';
+    END IF;
+  END IF;
+
   FOR routine IN
     SELECT signature FROM unnest(ARRAY[
       'public.jg_read_payment_detail_activity_v1(text,text,text)',

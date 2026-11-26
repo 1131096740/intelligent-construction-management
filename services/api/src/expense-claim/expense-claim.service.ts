@@ -56,6 +56,7 @@ import { assertEmployeeAdvanceBatchSource } from "./expense-claim-batch-source";
 import { DEFAULT_EXPENSE_CATEGORIES, expenseCategoryKey, mergeExpenseCategories, resolveExpenseCategoryName } from "./expense-claim-category";
 import { parseExpenseQuantity } from "./expense-claim-quantity";
 import { projectClaimPaymentCapacity } from "./other-project-payment";
+import { recordExpensePublicCashVoucher } from "./expense-public-cash-voucher";
 import { EXPENSE_CLAIM_ENTRY_DEFINITION } from "./expense-claim-entry.definition";
 import type { CreateExpenseClaimDto, ExpenseClaimLineDto } from "./dto/create-expense-claim.dto";
 import type { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
@@ -1779,8 +1780,10 @@ export class ExpenseClaimService {
       const voucher = await tx.fileObject.findUnique({ where: { id: voucherFileId }, select: { id: true, uploadedByUserId: true } });
       if (!voucher) throw new NotFoundException("补付凭证不存在");
       if (voucher.uploadedByUserId !== actorUserId) throw new BadRequestException("补付凭证必须由登记人本人上传");
-      if (this.files) {
-        if (!input.registeredFunding && claim.claimType === "incidental_expense" && claim.generalProcurementId && claim.projectId) {
+      const funding = input.registeredFunding;
+      const isPublicCash = funding?.scopeKey === "public_cash";
+      if (this.files && !isPublicCash) {
+        if (!funding && claim.claimType === "incidental_expense" && claim.generalProcurementId && claim.projectId) {
           await this.files.assertFileHasNoBusinessBinding(tx, voucherFileId, undefined, {
             claimId: claim.id, projectId: claim.projectId, actorUserId
           });
@@ -1788,13 +1791,15 @@ export class ExpenseClaimService {
           await this.files.assertFileHasNoBusinessBinding(tx, voucherFileId);
         }
       }
-      const funding = input.registeredFunding;
       if (funding && (!claim.projectId || !claim.companyEntityId || !claim.companyEntityNameSnapshot?.trim())) {
         throw new ConflictException("原报销债务公司或项目归属待核对，不能登记资金实付");
       }
-      const execution = await tx.expenseClaimPaymentExecution.create({
-        data: { expenseClaimId: claim.id, amountCents, paidAt, paymentMethod, voucherFileId, recordedByUserId: actorUserId, note }
-      });
+      const execution = isPublicCash
+        ? await recordExpensePublicCashVoucher(tx, { claimId: claim.id, actorUserId, amountCents, paidAt,
+            paymentMethod, voucherFileId, note, previousRegistrationId: funding.expectedRegistrationId })
+        : await tx.expenseClaimPaymentExecution.create({
+            data: { expenseClaimId: claim.id, amountCents, paidAt, paymentMethod, voucherFileId, recordedByUserId: actorUserId, note }
+          });
       const registered = funding
         ? await appendRegisteredOperationalPayment(tx, { ...registeredSource(execution.id), funding })
         : null;
