@@ -1,6 +1,6 @@
 'use strict';
 
-const {createHash,randomBytes}=require('node:crypto');
+const {createHash,randomBytes,randomUUID}=require('node:crypto');
 const {isDeepStrictEqual:equal,types}=require('node:util');
 const {isCurrent259FirstQ2Fixture}=require('./task12-current259-q2-fixture.cjs');
 
@@ -95,14 +95,15 @@ BEGIN
  IF affected<>1 THEN RAISE EXCEPTION 'FIRST_Q2_SEED_ACTIVATION'; END IF;
 END $first_q2_activate$;`;
 }
-function seedRows(fixture,name) {
+function seedRows(fixture,name,outsider) {
+  if(name==='User' && outsider)return [fixture.seed.User,outsider];
   const extra=name==='BusinessParty'?fixture.counterparty?.party:name==='BusinessPartyVersion'?fixture.counterparty?.version:null;
   return extra?[fixture.seed[name],extra]:[fixture.seed[name]];
 }
-function seeded(fixture,xmin) {
+function seeded(fixture,xmin,outsider) {
   return Object.keys(fixture.seed).map(name=>{
     const activation=name==='Project'?fixture.projectActivation:null;
-    const rows=seedRows(fixture,name).map(row=>activation?
+    const rows=seedRows(fixture,name,outsider).map(row=>activation?
       {...row,operatingLedgerEffectiveDate:activation.data.operatingLedgerEffectiveDate.slice(0,10)}:row);
     const columns=seedColumns[name].map(ident).map(column=>'r.'+column+' IS NOT DISTINCT FROM e.'+column);
     if(updatedAt.includes(name))columns.push('r."updatedAt" IS NOT NULL');
@@ -175,12 +176,58 @@ END $first_q2_seed_post$;`;
 
 function createCurrent259FirstQ2Seed(fixture,identity) {
   need(arguments.length===2 && isCurrent259FirstQ2Fixture(fixture),'INPUT');
-  const owner=qualifyIdentity(identity), names=Object.keys(seedColumns);
+  return firstQ2Seed(fixture,qualifyIdentity(identity));
+}
+
+const nativeA08SeededArchives=new WeakSet();
+function createNativeA08Seed(fixture,archiveMaterial,source,sourceSha,observedLedger) {
+  need(arguments.length===5 && isCurrent259FirstQ2Fixture(fixture) && fixture.projectActivation===null &&
+    [undefined,'outside'].includes(fixture.relationship),'INPUT');
+  const {readOwnedNativeArchiveIdentity}=require('./seal-retirement-329-archive.cjs');
+  const {assertA08Source}=require('../test-support/task426-a08-upward-pin-332-profile.cjs');
+  assertA08Source(source,sourceSha);
+  const {owner:identity,application}=readOwnedNativeArchiveIdentity(archiveMaterial);
+  const {serverPort}=identity;
+  need(Number.isInteger(serverPort) && serverPort>1024 && serverPort<=65535 && serverPort!==5432 &&
+    !nativeA08SeededArchives.has(archiveMaterial) && /^jg_fixture_app_[a-f0-9]{24}$/u.test(application.name) &&
+    application.login===true && oid(application.oid) && application.oid!=='10','INPUT');
+  const owner=qualifyIdentity(identity,serverPort);
+  need(Array.isArray(observedLedger) && observedLedger.length===source.migrationCount,'INPUT');
+  const ledger=observedLedger.map(({name,sha256,finished,rolledBack})=>({name,sha256,finished,rolledBack}));
+  need(createHash('sha256').update(JSON.stringify(ledger)).digest('hex')===source.ledgerSha256,'INPUT');
+  const nativeScope=`(${json(ledger)} IS NOT DISTINCT FROM (
+    SELECT jsonb_agg(jsonb_build_object('name',migration_name,'sha256',checksum,'finished',finished_at IS NOT NULL,
+      'rolledBack',rolled_back_at IS NOT NULL) ORDER BY migration_name COLLATE "C") FROM public._prisma_migrations))
+    AND EXISTS(SELECT FROM pg_roles r WHERE r.oid=${application.oid}::oid AND r.rolname=${quote(application.name)}
+      AND r.rolcanlogin AND NOT(r.rolsuper OR r.rolinherit OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls)
+      AND NOT EXISTS(SELECT FROM pg_auth_members m WHERE r.oid IN (m.roleid,m.member)))
+    AND NOT EXISTS(SELECT FROM public.jg_a08_outside_original_pair_v1)
+    AND NOT EXISTS(SELECT FROM public.jg_a08_direct_original_voucher_binding_v1)`;
+  let outsiderPassword=randomBytes(32).toString('hex');
+  const outsider=Object.freeze({
+    id:randomUUID(),phone:'1990001'+fixture.seed.User.phone.slice(-4),name:'A08 无项目权限核验',
+    passwordHash:require('bcryptjs').hashSync(outsiderPassword,10),mustChangePassword:false,isActive:true
+  });
+  const plan=firstQ2Seed(fixture,owner,nativeScope,outsider);
+  nativeA08SeededArchives.add(archiveMaterial);
+  return Object.freeze({...plan,outsiderId:outsider.id,outsiderLoginRequest() {
+    need(outsiderPassword,'OUTSIDER_LOGIN');
+    const request={method:'POST',path:'/auth/login',json:{phone:outsider.phone,password:outsiderPassword}};
+    outsiderPassword=undefined;
+    return request;
+  }});
+}
+
+function firstQ2Seed(fixture,owner,nativeScope,outsider) {
+  const names=Object.keys(seedColumns);
   need(equal(Object.keys(fixture.seed),names),'INPUT');
-  const locked=[...names,...emptyBusiness];
-  return createSeedProtocol(owner,locked,absent(locked),
-    [...names.flatMap(name=>seedRows(fixture,name).map(row=>insert(name,row))),activationSql(fixture.projectActivation)],
-    at=>seeded(fixture,at),names.reduce((count,name)=>count+seedRows(fixture,name).length,0),Boolean(fixture.projectActivation));
+  const emptyTables=[...names,...emptyBusiness];
+  const locked=nativeScope?[...emptyTables,'_prisma_migrations','jg_a08_outside_original_pair_v1',
+    'jg_a08_direct_original_voucher_binding_v1']:emptyTables;
+  const nativeCheck=nativeScope?' AND ('+nativeScope+')':'';
+  return createSeedProtocol(owner,locked,absent(emptyTables)+nativeCheck,
+    [...names.flatMap(name=>seedRows(fixture,name,outsider).map(row=>insert(name,row))),activationSql(fixture.projectActivation)],
+    at=>seeded(fixture,at,outsider)+nativeCheck,names.reduce((count,name)=>count+seedRows(fixture,name,outsider).length,0),Boolean(fixture.projectActivation));
 }
 
 function createCurrent259GeneratedDraftSeed(fixture,identity,passwordHash) {
@@ -457,4 +504,4 @@ function createCurrent259FirstQ2ArchiveReadback(fixture,identity,input) {
   }});
 }
 
-module.exports=Object.freeze({createNativeCurrent261EquipmentSeed,createCurrent261LocalLifecycleSeed,createCurrent259FirstQ2Seed,createCurrent259GeneratedDraftSeed,createCurrent259GeneratedDocumentSeed,createCurrent259FirstQ2UploadReadback,createCurrent259FirstQ2ArchiveReadback});
+module.exports=Object.freeze({createNativeA08Seed,createNativeCurrent261EquipmentSeed,createCurrent261LocalLifecycleSeed,createCurrent259FirstQ2Seed,createCurrent259GeneratedDraftSeed,createCurrent259GeneratedDocumentSeed,createCurrent259FirstQ2UploadReadback,createCurrent259FirstQ2ArchiveReadback});
