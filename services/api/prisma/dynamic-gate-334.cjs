@@ -2,9 +2,12 @@
 
 const mode = "--historical-settlement-334";
 const runner = ".github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh";
+const financeRunner = ".github/task12-install-295/contract-finance/run.sh";
+const restorePredecessor = "a187dc73a133114e1cfbbc891a4aec923abe2545";
 const historicalTakeoverGroup = "historical_takeover_a28";
 const lanes = Object.freeze({
   line_a_real_db: "line-a",
+  contract_finance_acceptance: "contract-finance",
   [historicalTakeoverGroup]: "historical-takeover-a28"
 });
 
@@ -17,4 +20,12 @@ function unadmittedGroups334(groups) {
     .map(group => group.id);
 }
 
-module.exports = { mode, runner, historicalTakeoverGroup, laneFor334, unadmittedGroups334 };
+function commandFor334(groupId, candidateSha) {
+  const lane = laneFor334(groupId);
+  if (!lane) return undefined;
+  return lane === "contract-finance"
+    ? [financeRunner, candidateSha, mode, restorePredecessor]
+    : [runner, candidateSha, lane, mode];
+}
+
+module.exports = { runner, historicalTakeoverGroup, commandFor334, unadmittedGroups334 };

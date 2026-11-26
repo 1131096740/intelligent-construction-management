@@ -208,7 +208,7 @@ test("the 330 gate dispatches application and finance through the exact isolated
   }
 });
 
-test("334 runs the original Line A and A28 through distinct exact lanes and rejects other groups before tooling", () => {
+test("334 routes Line A, A28 and the finance combination and rejects other groups before tooling", () => {
   const manifest = loadManifest();
   const sha = "e".repeat(40);
   const original = manifest.coveredGroups.find(group => group.id === "line_a_real_db");
@@ -223,6 +223,11 @@ test("334 runs the original Line A and A28 through distinct exact lanes and reje
     assert.deepEqual(resolved.args.slice(1), [sha, lane, "--historical-settlement-334"]);
     assert.throws(() => resolveGroupCommand(group, { migrationCount: 334 }), /完整候选 SHA/u);
   }
+  const finance = manifest.coveredGroups.find(group => group.id === "contract_finance_acceptance");
+  const resolved = resolveGroupCommand(finance, { candidateSha: sha, migrationCount: 334 });
+  assert.equal(resolved.command, "bash");
+  assert.match(resolved.args[0], /contract-finance\/run[.]sh$/u);
+  assert.deepEqual(resolved.args.slice(1), [sha, "--historical-settlement-334", "a187dc73a133114e1cfbbc891a4aec923abe2545"]);
   assert.throws(() => resolveGroupCommand(historical, { candidateSha: sha, migrationCount: 332 }), /A28.*334/u);
   const drift = structuredClone(manifest);
   drift.coveredGroups.find(group => group.id === historical.id).runner.path = original.runner.path;

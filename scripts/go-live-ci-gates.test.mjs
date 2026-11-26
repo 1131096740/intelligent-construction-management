@@ -422,18 +422,19 @@ test("CI binds PR head, main push and manual target to verified checkouts", asyn
 });
 
 
-test("the hosted 334 step routes both exact groups and rejects unadmitted original groups", async () => {
+test("the hosted 334 step routes only prepared exact groups and rejects unadmitted original groups", async () => {
   const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
   const dynamic = jobBlock(workflow, "postgresql16-dynamic-gates");
   const step = /      - name: Run exact-SHA PostgreSQL dynamic gate shard\n[\s\S]*?        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(dynamic);
   assert.ok(step);
   const source = step[1].replace(/^          /gmu, "");
-  const executable = source.replace(/exec bash .*run-contract-adjacent-ci[.]sh ("\$CI_SOURCE_SHA" "\$lane" --historical-settlement-334)/u,
-    "printf '%s\\n' $1; exit 0");
+  const executable = source.replace('exec bash "${exact_args[@]}"',
+    'printf "%s\\n" "${exact_args[@]}"; exit 0');
   const sha = "d".repeat(40);
   for (const [group, shard, status, lane] of [
     ["line_a_real_db", "", 0, "line-a"],
     ["historical_takeover_a28", "", 0, "historical-takeover-a28"],
+    ["contract_finance_acceptance", "", 0, "contract-finance"],
     ["payment_execution", "", 65],
     ["pol113_pol115_business_entries", "pol113_pol114", 65],
     ["issue403_actual_purchase_batch", "", 65],
@@ -442,7 +443,13 @@ test("the hosted 334 step routes both exact groups and rejects unadmitted origin
     const result = spawnSync("bash", ["-c", executable], { cwd: root, encoding: "utf8",
       env: { ...process.env, CI_SOURCE_SHA: sha, DYNAMIC_GROUP: group, DYNAMIC_SHARD: shard } });
     assert.equal(result.status, status, result.stderr);
-    if (status === 0) assert.deepEqual(result.stdout.trim().split("\n"), [sha, lane, "--historical-settlement-334"]);
+    const plan = ".github/task12-install-295/contract-finance/";
+    if (lane === "contract-finance") assert.deepEqual(result.stdout.trim().split("\n"), [
+      plan + "run.sh", sha, "--historical-settlement-334", "a187dc73a133114e1cfbbc891a4aec923abe2545"
+    ]);
+    else if (status === 0) assert.deepEqual(result.stdout.trim().split("\n"), [
+      plan + "run-contract-adjacent-ci.sh", sha, lane, "--historical-settlement-334"
+    ]);
     else assert.match(result.stdout, /334 PostgreSQL gate has no admitted runner/u);
   }
 });

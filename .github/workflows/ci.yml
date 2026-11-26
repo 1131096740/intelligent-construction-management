@@ -412,9 +412,10 @@ jobs:
           count=$(node -p "require('./services/api/prisma/database-dynamic-gate-manifest.json').migrationBaseline.expectedDirectoryCount")
           if [[ "$count" == 334 ]]; then
             if [[ -z "$DYNAMIC_SHARD" ]]; then
-              lane=$(node -p "require('./services/api/prisma/dynamic-gate-334.cjs').laneFor334(process.env.DYNAMIC_GROUP) || ''")
-              if [[ -n "$lane" ]]; then
-                exec bash .github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh "$CI_SOURCE_SHA" "$lane" --historical-settlement-334
+              dispatch=$(node -e "const gate=require('./services/api/prisma/dynamic-gate-334.cjs'); console.log((gate.commandFor334(process.env.DYNAMIC_GROUP, process.env.CI_SOURCE_SHA) || []).join(' '))")
+              if [[ -n "$dispatch" ]]; then
+                read -r -a exact_args <<< "$dispatch"
+                exec bash "${exact_args[@]}"
               fi
             fi
             echo "::error::334 PostgreSQL gate has no admitted runner for $DYNAMIC_GROUP${DYNAMIC_SHARD:+/$DYNAMIC_SHARD}"

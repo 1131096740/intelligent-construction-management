@@ -671,13 +671,11 @@ const current330Lanes = Object.freeze({
 
 function resolveGroupCommand(group, options = {}) {
   if (options.migrationCount === 334) {
-    const lane = gate334.laneFor334(group.id);
-    if (!lane) fail(`334 PostgreSQL 动态组未接入：${group.id}`);
+    const dispatch = gate334.commandFor334(group.id, options.candidateSha);
+    if (!dispatch) fail(`334 PostgreSQL 动态组未接入：${group.id}`);
     if (!/^[a-f0-9]{40}$/u.test(options.candidateSha ?? "")) fail("334 运行必须提供完整候选 SHA");
-    return {
-      command: "bash",
-      args: [resolveRepositoryPath(gate334.runner, "334 PostgreSQL 隔离入口"), options.candidateSha, lane, gate334.mode]
-    };
+    const [runner, ...args] = dispatch;
+    return { command: "bash", args: [resolveRepositoryPath(runner, "334 PostgreSQL 隔离入口"), ...args] };
   }
   if (group.id === gate334.historicalTakeoverGroup) fail("A28 需要准确的 334 迁移基线");
   if (options.migrationCount === 330 && Object.hasOwn(current330Lanes, group.id)) {
