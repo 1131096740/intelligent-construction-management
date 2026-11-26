@@ -1,0 +1,12 @@
+--- installer.cjs
++++ installer.cjs
+@@ -316,6 +316,7 @@
+   const pol275Mode=({ORIGINAL_POL275_WARM_EXACT_295:"warm",ORIGINAL_POL275_WARM_EXACT_329:"warm",
+     ORIGINAL_POL275_WARM_EXACT_330:"warm",ORIGINAL_POL275_WARM_EXACT_331:"warm",
+-    ORIGINAL_POL275_WARM_EXACT_332:"warm",ORIGINAL_POL275_COLLISION_EXACT_295:"collision"})[receipt.purpose];
+-  const pol275ForwardCount=forward320?.upwardArchive?332:forward320?.paymentRemainder?331:forward320?.textDirect?330:329;
++    ORIGINAL_POL275_WARM_EXACT_332:"warm",ORIGINAL_POL275_WARM_EXACT_334:"warm",
++    ORIGINAL_POL275_COLLISION_EXACT_295:"collision"})[receipt.purpose];
++  const pol275ForwardCount=forward320?.historicalSettlement?334:forward320?.upwardArchive?332:forward320?.paymentRemainder?331:forward320?.textDirect?330:329;
+   if (pol275Mode) need((!forward320 && receipt.purpose.endsWith('_295')) ||
+     (forward320 && receipt.purpose==='ORIGINAL_POL275_WARM_EXACT_'+pol275ForwardCount),

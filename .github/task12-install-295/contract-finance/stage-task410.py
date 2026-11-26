@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 archive_name, workspace_name, work_name, *options = sys.argv[1:]
-if options not in ([], ['--current-320'], ['--text-direct-330'], ['--payment-remainder-331'], ['--upward-archive-332']):
+if options not in ([], ['--current-320'], ['--text-direct-330'], ['--payment-remainder-331'], ['--upward-archive-332'], ['--historical-settlement-334']):
     raise SystemExit('TASK410_STAGE_MODE')
 archive, workspace, work = map(Path, (archive_name, workspace_name, work_name))
 pins = json.loads((archive / 'fixed-overlay-pins.json').read_text())
@@ -87,7 +87,7 @@ if options:
     ]:
         subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                         str(work / relative), str(Path(__file__).with_name(delta))], check=True)
-if options in (['--text-direct-330'], ['--payment-remainder-331'], ['--upward-archive-332']):
+if options in (['--text-direct-330'], ['--payment-remainder-331'], ['--upward-archive-332'], ['--historical-settlement-334']):
     spec = work / 'services/api/src/database/company-proxy-repayment.http.pg.spec.ts'
     verify(spec.read_bytes(), '54740e4a9fcef9c331eaf2943b850d29a6438bdb06a47a854511effc7c8db6cc', spec.name)
     subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent', str(spec),
@@ -106,7 +106,7 @@ if options in (['--text-direct-330'], ['--payment-remainder-331'], ['--upward-ar
         subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                         str(target), str(Path(__file__).with_name(delta))], check=True)
         verify(target.read_bytes(), final, relative)
-if options in (['--payment-remainder-331'], ['--upward-archive-332']):
+if options in (['--payment-remainder-331'], ['--upward-archive-332'], ['--historical-settlement-334']):
     subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent', str(spec),
                     str(Path(__file__).with_name('task410-signed-competition-331.patch'))], check=True)
     verify(spec.read_bytes(), 'a847c18dfa554fe0349b9e1cb57a7ace558c312f158c5f77a78b2689e7dd0f6a', spec.name)
@@ -121,12 +121,24 @@ if options in (['--payment-remainder-331'], ['--upward-archive-332']):
         subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                         str(target), str(Path(__file__).with_name(delta))], check=True)
         verify(target.read_bytes(), final, relative)
-if options == ['--upward-archive-332']:
+if options in (['--upward-archive-332'], ['--historical-settlement-334']):
     for relative, delta, earlier, final in [
         ('services/api/prisma/run-task398-shared-standard-local.cjs', 'task410-runner-332.patch',
          '4d7db1204623533024ab0fef51cc8541645a953be9c4654b8cd19bda658ed5e0', '682658ecf59908e842e0642e418769b90a3e2febe8fdfecd22df9766629d34c5'),
         ('services/api/src/database/task410-owned-test-database.ts', 'task410-support-332.patch',
          '1bc51e247679b9f86649eaf1d7c88479e0168a0f02c563a4c3f5ba3876197563', '9675c13273644d8ecdc5c020f6be3faaa56804860d7a8bce82a2be2477fd98c6'),
+    ]:
+        target = work / relative
+        verify(target.read_bytes(), earlier, relative)
+        subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
+                        str(target), str(Path(__file__).with_name(delta))], check=True)
+        verify(target.read_bytes(), final, relative)
+if options == ['--historical-settlement-334']:
+    for relative, delta, earlier, final in [
+        ('services/api/prisma/run-task398-shared-standard-local.cjs', 'task410-runner-334.patch',
+         '682658ecf59908e842e0642e418769b90a3e2febe8fdfecd22df9766629d34c5', 'f7876b907c236fcb6ea3d9e304bd225644cff6cd9e76d10e9b339a714781559e'),
+        ('services/api/src/database/task410-owned-test-database.ts', 'task410-support-334.patch',
+         '9675c13273644d8ecdc5c020f6be3faaa56804860d7a8bce82a2be2477fd98c6', '8f3015d75dba27c95452ada37fe5d8709ba0e0d72af89c3784bf8c380b46195b'),
     ]:
         target = work / relative
         verify(target.read_bytes(), earlier, relative)

@@ -5,7 +5,9 @@ import shutil
 import subprocess
 import sys
 
-historical, archive, common, out = map(Path,sys.argv[1:])
+if len(sys.argv) not in (5, 6) or (len(sys.argv) == 6 and sys.argv[5] != '--historical-settlement-334'):
+    raise SystemExit('PFQ_STAGING_MODE')
+historical, archive, common, out = map(Path,sys.argv[1:5])
 plan=Path(__file__).parent
 pins=json.loads((archive/'profile.json').read_text())['pfqAssembly']
 old=historical/'pfq'
@@ -44,5 +46,14 @@ subprocess.run(['git','apply','--unidiff-zero','-p0',str((plan/'pfq-installer-29
 if sha(installer)!='c2dbd11c7861f6c7cfac5dd47362a19b879e95f94ebe60197a0663696b029691':
     raise SystemExit('PFQ_COMBINED_INSTALLER_POSTIMAGE')
 patch(entry,plan/'pfq-entry-modes.patch')
+if len(sys.argv) == 6:
+    if sha(entry) != '424ab1d10b2803ad70ac2fdcc201af97ae6e91ad060f70e2197ca988b52ba628':
+        raise SystemExit('PFQ_334_ENTRY_PREIMAGE')
+    subprocess.run(['git','apply','--unidiff-zero',str((plan/'pfq-installer-334.patch').resolve())],cwd=out,check=True)
+    patch(entry,plan/'pfq-entry-334.patch')
+    if sha(installer) != 'f58e1b29b35bbfb869676f83e9f24b1b6081e8050b6c787c4e5aa9432aa61430':
+        raise SystemExit('PFQ_334_INSTALLER_POSTIMAGE')
+    if sha(entry) != '5b34c78754a353d92dd23dea6680e7b548193fa1054e9b8e95b15487f1bcf1ce':
+        raise SystemExit('PFQ_334_ENTRY_POSTIMAGE')
 for file in out.iterdir():
     file.chmod(0o644)
