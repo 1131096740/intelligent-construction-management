@@ -37,8 +37,9 @@ fi
     $2 == settlement || $2 == template || $2 == draft || $2 == v7 || $2 == invoice || $2 == pol279 || $2 == pol280 ||
     $2 == expense-execution || $2 == expense-finance || $2 == expense-receipt || $2 == cash-handover || $2 == principal-return || $2 == company-proxy ||
     $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts || $2 == pol109 ||
-    $2 == pfq || $2 == task398-standard || $ordered_issue == true ) && $3 == --expense-witness-346 ) ||
-  ( $# == 4 && ( $2 == payment-execution || $2 == task398-competition || $2 == pol109 ) && $3 == --expense-witness-346 && $4 == --host-only ) ||
+    $2 == pfq || $2 == task398-standard || $2 == cash-transfer || $2 == project-advance || $ordered_issue == true ) && $3 == --expense-witness-346 ) ||
+  ( $# == 4 && ( $2 == payment-execution || $2 == task398-competition || $2 == pol109 || $2 == cash-transfer || $2 == project-advance ) &&
+    $3 == --expense-witness-346 && $4 == --host-only ) ||
   ( $# == 4 && $2 == pol275 && ( $3 == --historical-settlement-334 || $3 == --expense-witness-346 ) && $4 == a187dc73a133114e1cfbbc891a4aec923abe2545 ) ||
   ( $# == 4 && $2 == pol275 && ( $3 == --current-320 || $3 == --text-direct-330 || $3 == --payment-remainder-331 || $3 == --upward-archive-332 ) && $4 =~ ^[a-f0-9]{40}$ ) ]] || exit 64
 sha=$1
@@ -61,7 +62,7 @@ fi
 if [[ $lane == historical-takeover-a28 && ${3:-} != --historical-settlement-334 && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
 if [[ $lane == historical-takeover-a29 && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
 if [[ $lane == pol115-full && ${3:-} != --historical-settlement-334 && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
-if [[ ( $lane == cash-transfer || $lane == project-advance ) && ${3:-} != --upward-archive-332 ]]; then exit 64; fi
+if [[ ( $lane == cash-transfer || $lane == project-advance ) && ${3:-} != --upward-archive-332 && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
 if [[ $lane == task398-ledger-loss && ${3:-} != --text-direct-330 && ${3:-} != --payment-remainder-331 && ${3:-} != --upward-archive-332 && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
 if [[ $lane == task398-competition && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
 root=$(git rev-parse --show-toplevel)
@@ -72,6 +73,8 @@ if [[ ${4-} == --host-only ]]; then
     bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work" competition-346 --host-only
   elif [[ $lane == pol109 ]]; then
     bash "$plan/run-pol109.sh" "$root" "$work/source" "$sha" "$work" --expense-witness-346 --host-only
+  elif [[ $lane == cash-transfer || $lane == project-advance ]]; then
+    bash "$plan/run-task398-cash-principal.sh" "$root" "$work/source" "$sha" "$work" "$lane" --host-only
   else
     bash "$plan/run-payment-execution.sh" "$root" "$work/source" "$sha" "$work" --host-only
   fi

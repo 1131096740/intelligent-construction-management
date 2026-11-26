@@ -18,7 +18,7 @@ const receipt = {schemaVersion:1,sourceSha:source.sourceSha,lane,purpose,busines
 async function main(){
   assert.equal(source.migrationCount,count);
   const extended=lane==='cash-transfer'||lane==='project-advance';
-  if(extended) assert.equal(count,332);
+  if(extended) assert.ok(count===332||count===346);
   assert.equal((current320?source.predecessor:source).ledgerSha256,require('./multi-witness.cjs').final);
   if(expense){
     const {readFileSync}=require('node:fs'),{createHash}=require('node:crypto');

@@ -23,7 +23,7 @@ count=$(node -e '
 ' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan/expense-witness-346-profile.cjs")
 extended=false
 if [[ $scope == cash-transfer || $scope == project-advance ]]; then
-  [[ $count == 332 ]] || exit 64
+  [[ $count == 332 || $count == 346 ]] || exit 64
   extended=true
 fi
 if [[ $count == 346 ]]; then
@@ -74,8 +74,13 @@ if [[ $count == 346 ]]; then
   [[ $(runner_sha) == e9c1bcbd831e1a2d29ce2a9d13fe577238bf95549efbd968febb2b20547b757c ]] || exit 65
 fi
 if [[ $extended == true ]]; then
-  patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-transfer-advance-332.patch"
-  [[ $(runner_sha) == 660f0f60e2bf7bcd83f453d35fc1aa78cfa5f84bee827c39bbe42188783a4947 ]] || exit 65
+  if [[ $count == 346 ]]; then
+    patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-transfer-advance-346.patch"
+    [[ $(runner_sha) == 5ed0e497c9f2559f82fac84a8b6ff9ac800e7398a8032a556c8a8d2c6b30dc59 ]] || exit 65
+  else
+    patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-transfer-advance-332.patch"
+    [[ $(runner_sha) == 660f0f60e2bf7bcd83f453d35fc1aa78cfa5f84bee827c39bbe42188783a4947 ]] || exit 65
+  fi
 fi
 
 installer="$common/installer.cjs"
