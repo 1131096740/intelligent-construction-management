@@ -2,25 +2,34 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 ) ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 || $6 == --expense-witness-346 ) ) ||
+  ( $# == 7 && ( $6 == --historical-settlement-334 || $6 == --expense-witness-346 ) && $7 == --host-only ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
-build=$(cd "$4" && pwd -P)
 lane=$5
 mode_args=()
-if [[ $# == 6 ]]; then mode_args=("$6"); fi
+if (( $# >= 6 )); then mode_args=("$6"); fi
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 prior="$root/.github/task12-install-289"
 finance="$root/.github/task12-install-295/contract-finance"
 common="$finance/common"
 workspace="$prepared/prepared/context/workspace"
-node - "$prepared/source.json" "$sha" "$plan/finance-adjacent-profiles.json" "$lane" "$common/multi-witness.cjs" "$plan/upward-archive-332-profile.cjs" "$plan/historical-settlement-334-profile.cjs" ${mode_args[@]+"${mode_args[@]}"} <<'JS'
-const [sourceFile,sha,profilesFile,lane,terminalFile,archiveProfile,historicalProfile,mode]=process.argv.slice(2);
+source_tree=
+if [[ ${6:-} == --expense-witness-346 ]]; then
+  dirty=$(git -C "$root" status --porcelain --untracked-files=all -- "$plan" "$prior")
+  [[ -z $dirty ]] || exit 65
+  source_tree=$(git -C "$root" rev-parse "$sha^{tree}")
+fi
+node - "$prepared/source.json" "$sha" "$plan/finance-adjacent-profiles.json" "$lane" "$common/multi-witness.cjs" "$plan/upward-archive-332-profile.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan/expense-witness-346-profile.cjs" "$source_tree" ${mode_args[@]+"${mode_args[@]}"} <<'JS'
+const [sourceFile,sha,profilesFile,lane,terminalFile,archiveProfile,historicalProfile,expenseProfile,tree,mode]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||!Object.hasOwn(require(profilesFile),lane))process.exit(65);
-if(mode==='--historical-settlement-334') {
+if(mode==='--expense-witness-346') {
+  require('node:assert/strict').equal(source.sourceTree,tree);
+  require(expenseProfile).assertSource(source,terminal.final);
+} else if(mode==='--historical-settlement-334') {
   require(historicalProfile).assertSource(source,terminal.final);
 } else if(mode==='--upward-archive-332') {
   require(archiveProfile).assertSource(source,sha,terminal.final);
@@ -30,10 +39,6 @@ if(mode==='--historical-settlement-334') {
      source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==count-295) process.exit(65);
 } else if(source.migrationCount!==295||source.ledgerSha256!==terminal.final) process.exit(65);
 JS
-image=$(cat "$build/image.id")
-fingerprint=$(cat "$build/context.sha256")
-[[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
-[[ $(node "$finance/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-adjacent-$lane.XXXXXXXX")
 node - "$plan/finance-adjacent-profiles.json" "$prior" "$workspace" "$lane" "$root" "$sha" "$work" ${mode_args[@]+"${mode_args[@]}"} > "$work/mounts.tsv" <<'JS'
 const [pins,prior,workspace,lane,repo,sha,work,mode]=process.argv.slice(2),profile=require(pins)[lane];
@@ -64,10 +69,25 @@ if (mode!==undefined && profile.legacySeed) {
 JS
 
 installer="$common/installer.cjs"
-if [[ ${6:-} == --historical-settlement-334 ]]; then
+if [[ ${6:-} == --historical-settlement-334 || ${6:-} == --expense-witness-346 ]]; then
   node "$plan/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
   installer="$work/installer.cjs"
 fi
+if [[ ${6:-} == --expense-witness-346 ]]; then
+  git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer.patch"
+  expected=$(node -e 'console.log(require(process.argv[1]).installerSha256)' "$plan/expense-witness-346-profile.cjs")
+  [[ $(sha256sum "$installer" | cut -d' ' -f1) == "$expected" ]] || exit 65
+fi
+if [[ ${7-} == --host-only ]]; then
+  printf '%s\n' "$work"
+  exit 0
+fi
+
+build=$(cd "$4" && pwd -P)
+image=$(cat "$build/image.id")
+fingerprint=$(cat "$build/context.sha256")
+[[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
+[[ $(node "$finance/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
   --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory 4g
@@ -82,11 +102,16 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$installer,dst=/qualification/installer.cjs,readonly"
   --mount "type=bind,src=$plan/finance-adjacent-entry.cjs,dst=/qualification/finance-adjacent-entry.cjs,readonly"
   --mount "type=bind,src=$plan/finance-adjacent-profiles.json,dst=/qualification/finance-adjacent-profiles.json,readonly")
-if [[ ${6:-} == --upward-archive-332 || ${6:-} == --historical-settlement-334 ]]; then
+if [[ ${6:-} == --upward-archive-332 || ${6:-} == --historical-settlement-334 || ${6:-} == --expense-witness-346 ]]; then
   args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 fi
-if [[ ${6:-} == --historical-settlement-334 ]]; then
+if [[ ${6:-} == --historical-settlement-334 || ${6:-} == --expense-witness-346 ]]; then
   for file in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
+    args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
+  done
+fi
+if [[ ${6:-} == --expense-witness-346 ]]; then
+  for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
 fi
@@ -101,7 +126,7 @@ done < "$work/mounts.tsv"
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 count=295
-case "${6:-}" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; --upward-archive-332) count=332;; --historical-settlement-334) count=334;; esac
+case "${6:-}" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; --upward-archive-332) count=332;; --historical-settlement-334) count=334;; --expense-witness-346) count=346;; esac
 printf '%s\n' "假设原 $lane 业务断言、角色及并发行为可在同一 $count 隔离库保持。观察原用例统计、combinedAfterBusiness 和 cleanup。" > "$work/hypothesis.txt"
 printf '%s\n' "$work"
 status=0
