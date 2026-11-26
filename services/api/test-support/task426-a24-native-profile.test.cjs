@@ -47,12 +47,23 @@ test("requires the combined 334 predecessor and individual exact rows through 34
 
 test("requires the exact 341 successor and refuses cross-profile admission", () => {
   const qualify = (ledger, terminal) => combined.qualifyA24Source("a".repeat(40), "b".repeat(40), ledger, terminal);
-  const source = qualify(rows, 341);
+  const combined341 = rows.slice(0, 341);
+  const source = qualify(combined341, 341);
   assert.equal(source.a24Prefixes.at(-1), 341);
-  assert.equal(combined.verifyA24Prefix(341, rows).ledgerSha256, source.ledgerDigest);
-  assert.throws(() => qualify(rows, 340), /NATIVE_A24_340_COUNT/u);
+  assert.equal(combined.verifyA24Prefix(341, combined341).ledgerSha256, source.ledgerDigest);
+  assert.throws(() => qualify(combined341, 340), /NATIVE_A24_340_COUNT/u);
   assert.throws(() => qualify(rows.slice(0, 340), 341), /NATIVE_A24_341_COUNT/u);
   assert.throws(() => qualify([...rows.slice(0, 340), { ...rows[340], rolledBack: true }], 341), /NATIVE_A24_340_PINNED_LEDGER/u);
+});
+
+test("qualifies the 342 fact successor only after the exact 341 prefix", () => {
+  const qualify = (ledger, terminal) => combined.qualifyA24Source("a".repeat(40), "b".repeat(40), ledger, terminal);
+  const source = qualify(rows, 342);
+  assert.equal(source.a24Prefixes.at(-1), 342);
+  assert.equal(combined.verifyA24Prefix(342, rows).ledgerSha256, source.ledgerDigest);
+  assert.throws(() => qualify(rows, 341), /NATIVE_A24_341_COUNT/u);
+  assert.throws(() => qualify(rows.slice(0, 341), 342), /NATIVE_A24_342_COUNT/u);
+  assert.throws(() => qualify([...rows.slice(0, 340), rows[341], rows[340]], 342), /NATIVE_A24_340_PINNED_LEDGER/u);
 });
 
 test("refuses missing historical catalog evidence at the 340 boundary", () => {

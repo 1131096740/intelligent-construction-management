@@ -30,7 +30,7 @@ function file(pathname, expected) {
   return bytes;
 }
 
-function captureSource(candidate, paymentRemainder, a24Profile, expenseAssignment341) {
+function captureSource(candidate, paymentRemainder, a24Profile, expenseTerminal) {
   assert.match(candidate, /^[a-f0-9]{40}$/u);
   assert.equal(git(["rev-parse", "HEAD"]).toString().trim(), candidate);
   assert.equal(tracked(), "");
@@ -38,7 +38,7 @@ function captureSource(candidate, paymentRemainder, a24Profile, expenseAssignmen
     .filter(name => name.endsWith("/migration.sql"))
     .map(name => ({ name: path.basename(path.dirname(name)), sha256: hash(fs.readFileSync(path.join(root, name))), finished: true, rolledBack: false }));
   if (a24Profile) return a24Profile.qualifyA24Source(
-    candidate, git(["rev-parse", candidate + "^{tree}"]).toString().trim(), ledger, expenseAssignment341 ? 341 : undefined
+    candidate, git(["rev-parse", candidate + "^{tree}"]).toString().trim(), ledger, expenseTerminal
   );
   assert.ok(paymentRemainder ? ledger.length === 331 : ledger.length === 329 || ledger.length === 330);
   const mode = paymentRemainder ? "--payment-remainder-331" : ledger.length === 330 ? "--text-direct-330" : "--current-320";
@@ -130,7 +130,7 @@ function migrationPrefixes(directory, source) {
   }));
 }
 
-async function migrate({ source, archive, database, directory, sql, url, run, stage, runId, port, a24Profile }) {
+async function migrate({ source, archive, database, directory, sql, url, run, stage, runId, port, a24Profile, pendingExpense }) {
   const prefixes = migrationPrefixes(directory, source);
   const deploy = (size, target = url) => {
     stage("MIGRATE_" + size);
@@ -193,6 +193,7 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
   const archiveMaterial = installArchive(archive, sql, runId, port, { name: plan.appName, oid: setup.appOid, nonce: plan.nonce }, stage);
   let paymentRemainderPredecessor;
   const a24Installation = [];
+  const expenseFactCatalog = {};
   const historicalCatalog = a24Profile?.createHistoricalCatalogCheck?.(statement => JSON.parse(
     sql("BEGIN READ ONLY; SET LOCAL search_path=pg_catalog,pg_temp;" + statement + "ROLLBACK;")
   ));
@@ -202,10 +203,16 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
     verify(installed, size);
     if (source.a24Prefixes?.includes(size)) {
       a24Installation.push(a24Profile.verifyA24Prefix(size, installed.ledger));
-      if (historicalCatalog && [332, 333, 334, 340, 341].includes(size)) {
+      if (historicalCatalog && [332, 333, 334, 340, 341, 342].includes(size)) {
         stage("A24_HISTORICAL_CATALOG_" + size);
         historicalCatalog.atPrefix(size);
       }
+    }
+    if (pendingExpense && (size === 341 || size === 342)) {
+      stage("A24_PENDING_COST_FACT_CATALOG_" + size);
+      expenseFactCatalog[size] = pendingExpense.verifyOperatingFactValidator(
+        JSON.parse(sql(pendingExpense.readOperatingFactValidator(plan.appName))), expenseFactCatalog[341]
+      );
     }
     if (size === 330 && source.predecessor330) {
       const ledgerSha256 = hash(JSON.stringify(installed.ledger));
@@ -219,7 +226,7 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
     return { count: final.ledger.length, ledgerSha256: hash(JSON.stringify(final.ledger)), sameIdentity: true };
   };
   return { appOid: setup.appOid, app: plan.appName, tailMaterials, archiveMaterial,
-    paymentRemainderPredecessor, a24Installation, historicalCatalog, verifyAfterBusiness };
+    paymentRemainderPredecessor, a24Installation, historicalCatalog, expenseFactCatalog, verifyAfterBusiness };
 }
 
 function grantApplication(sql, database, app, appPassword) {
@@ -316,7 +323,8 @@ async function main(args) {
   const expenseApproval = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1) === "--approval-round-a04";
   const issue430ApprovalSms = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1) === "--issue430-approval-sms";
   const expenseCashA24Mode = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1);
-  const expenseAssignment341 = expenseCashA24Mode === "--expense-cash-a24-combined-341";
+  const expensePending342 = expenseCashA24Mode === "--expense-cash-a24-combined-342";
+  const expenseAssignment341 = expensePending342 || expenseCashA24Mode === "--expense-cash-a24-combined-341";
   const a24Profile = expenseCashA24Mode === "--expense-cash-a24"
     ? require("../test-support/task426-a24-native-profile.cjs")
     : expenseCashA24Mode === "--expense-cash-a24-combined-340" || expenseAssignment341
@@ -327,7 +335,7 @@ async function main(args) {
   assert.ok(args.length === 10 || paymentRemainder);
   const [mode, sha, pgManifest, pgSha, docManifest, docSha, office, officeSha, archiveAdmission, archiveSha] = args;
   assert.ok(["verify", "run"].includes(mode));
-  const source = captureSource(sha, paymentRemainder, a24Profile, expenseAssignment341);
+  const source = captureSource(sha, paymentRemainder, a24Profile, expensePending342 ? 342 : expenseAssignment341 ? 341 : undefined);
   const normalArchiveRecipeSha = "90b698f5230ae172518e285bf8c4e197eb1d552518c55670c2b3794eb82f1b75";
   file(path.join(__dirname, "task12-normal274-archive-binding.cjs"), normalArchiveRecipeSha);
   const approvalLockRecipeSha = "5d565dc516cd26c64e3fda295b97968be7912abc62f47ab47ffd93be29fd6c2f";
@@ -340,6 +348,7 @@ async function main(args) {
     status: "HOST_MATERIAL_VERIFIED", stages: [], cleanup: "NOT_NEEDED" };
   const a24Acl = expenseCashA24 && require("../test-support/task426-a24-native-acl.cjs");
   const a24Assignment = expenseAssignment341 && require("../test-support/task426-a24-native341-assignment.cjs");
+  const pendingExpense = expensePending342 && require("../test-support/task426-a24-native342-fact.cjs");
   const a24Plan = a24Acl && a24Acl.a24ColumnPlan(require("@prisma/client").Prisma.dmmf.datamodel.models);
   if (a24Plan) receipt.a24AclSha256 = hash(JSON.stringify(a24Plan));
   if (expenseCashA24) receipt.a24ExpectedPrefixes = source.a24Prefixes.map(size => {
@@ -450,8 +459,9 @@ async function main(args) {
       });
       assert.equal(negative.status, 2);
     }
-    const { appOid, app, tailMaterials, archiveMaterial, paymentRemainderPredecessor, a24Installation, historicalCatalog, verifyAfterBusiness } =
-      await migrate({ source, archive, database, directory, sql, url: ownerUrl, run, stage, runId, port, a24Profile });
+    const { appOid, app, tailMaterials, archiveMaterial, paymentRemainderPredecessor,
+      a24Installation, historicalCatalog, expenseFactCatalog, verifyAfterBusiness } =
+      await migrate({ source, archive, database, directory, sql, url: ownerUrl, run, stage, runId, port, a24Profile, pendingExpense });
     receipt.tailMaterials = tailMaterials;
     receipt.archiveInstallation = archiveMaterial;
     if (expenseCashA24) {
@@ -459,6 +469,7 @@ async function main(args) {
       assert.deepEqual(a24Installation, receipt.a24ExpectedPrefixes.map(prefix => ({ ...prefix, sameIdentity: true })));
     }
     if (historicalCatalog) receipt.a24HistoricalCatalog = historicalCatalog.snapshots;
+    if (pendingExpense) receipt.a24ExpenseFactCatalog = expenseFactCatalog;
     if (paymentRemainder) {
       assert.ok(paymentRemainderPredecessor);
       receipt.paymentRemainderPredecessor = paymentRemainderPredecessor;
@@ -639,6 +650,13 @@ async function main(args) {
       const result = a24Assignment.verifyExpenseAssignmentLock(JSON.parse(sql(a24Assignment.readExpenseAssignmentLock(app))));
       assert.deepEqual(result, receipt.a24AssignmentLockBefore, "NATIVE_A24_341_ASSIGNMENT_CATALOG_DRIFT");
       receipt.a24AssignmentLockAfter = result;
+    }
+    if (pendingExpense) {
+      stage("A24_PENDING_COST_FACT_CATALOG_AFTER_BUSINESS");
+      const result = pendingExpense.verifyOperatingFactValidator(JSON.parse(sql(pendingExpense.readOperatingFactValidator(app))),
+        expenseFactCatalog[341]);
+      assert.deepEqual(result, expenseFactCatalog[342], "NATIVE_A24_342_CATALOG_AFTER_BUSINESS");
+      expenseFactCatalog.afterBusiness = result;
     }
     assert.equal(tracked(), "");
     file(runtime.document, runtime.documentSha);

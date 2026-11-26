@@ -17,9 +17,10 @@ const prefixDigests = Object.freeze({
   338: "7bc5a865850aad7699646704b3dfc0112244af05912bc117d83540132b1ef155",
   339: "5d1613031f4e89f5effadf215cc2003fa22864aa3f5e24ce0fda9627a49c9e4f",
   340: "926f3247bb8404665c50706296ee12b0abb809ab70c7d7ce203701ce1bc354a1",
-  341: "30da81d2089c941e912b0149969a508d6df8ccab1d501b78b1aedc6ff8f2832f"
+  341: "30da81d2089c941e912b0149969a508d6df8ccab1d501b78b1aedc6ff8f2832f",
+  342: "cc8faf235b6432117447b596a0d9fc2fc01e55da17b4bf95e565436b4c2d4be0"
 });
-const prefixes = [332, 333, 334, 335, 336, 337, 338, 339, 340, 341];
+const prefixes = [332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342];
 const digest = rows => createHash("sha256").update(JSON.stringify(rows)).digest("hex");
 
 function verifyA24Prefix(size, ledger) {
@@ -30,7 +31,7 @@ function verifyA24Prefix(size, ledger) {
 }
 
 function qualifyA24Source(candidate, sourceTree, ledger, terminal = 340) {
-  assert.ok(terminal === 340 || terminal === 341);
+  assert.ok([340, 341, 342].includes(terminal));
   assert.match(candidate, /^[a-f0-9]{40}$/u);
   assert.match(sourceTree, /^[a-f0-9]{40}$/u);
   assert.equal(ledger.length, terminal, "NATIVE_A24_" + terminal + "_COUNT");
@@ -67,14 +68,14 @@ function createHistoricalCatalogCheck(read) {
       settlement.assertCatalog(result.settlement, snapshots.predecessor333.settlement);
       snapshots.predecessor334 = result;
     }
-    if (size === 340 || size === 341) {
+    if ([340, 341, 342].includes(size)) {
       const result = observe();
       assert.deepEqual(result, snapshots.predecessor334, "NATIVE_A24_340_HISTORICAL_CATALOG");
       snapshots["beforeBusiness" + size] = result;
     }
   }
   function verifyAfterBusiness() {
-    const beforeBusiness = snapshots.beforeBusiness341 ?? snapshots.beforeBusiness340;
+    const beforeBusiness = snapshots.beforeBusiness342 ?? snapshots.beforeBusiness341 ?? snapshots.beforeBusiness340;
     assert.ok(beforeBusiness, "NATIVE_A24_340_HISTORICAL_CATALOG_MISSING");
     const result = observe();
     assert.deepEqual(result, beforeBusiness, "NATIVE_A24_340_HISTORICAL_CATALOG_AFTER_BUSINESS");
