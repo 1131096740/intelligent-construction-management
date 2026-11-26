@@ -1660,11 +1660,17 @@ it.each(["reimbursement", "incidental_expense"])(
       $executeRaw: jest.fn()
     });
     tx.fileObject.findUnique.mockResolvedValue({ id: voucherFileId, uploadedByUserId: keeper.id });
-    tx.expenseClaimPaymentExecution.create.mockImplementation(async ({ data }) => {
-      const execution = { id: "cash-execution", ...data };
+    const controlledVoucher = jest.fn(async (query: Prisma.Sql) => {
+      const execution = {
+        id: "cash-execution", expenseClaimId: query.values[0], recordedByUserId: query.values[1],
+        amountCents: query.values[2], paidAt: query.values[3], paymentMethod: query.values[4],
+        voucherFileId: query.values[5], note: query.values[6]
+      };
       tx.expenseClaimPaymentExecution.findUnique.mockResolvedValue(execution);
-      return execution;
+      return [{ id: execution.id }];
     });
+    tx.$queryRaw.mockImplementation(async (query: Prisma.Sql) =>
+      query.sql.includes("jg_record_expense_public_cash_voucher") ? controlledVoucher(query) : [claim]);
     tx.expenseClaim.update.mockImplementation(async ({ data }) => {
       Object.assign(claim, data);
       return claim;
@@ -1691,6 +1697,9 @@ it.each(["reimbursement", "incidental_expense"])(
       sourceAllocations: [{ sourceBatchId, amountCents: "800" }],
       costAllocations: [{ costImpactId, amountCents: "300" }]
     };
+    const previousSecret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+    const testSecret = "isolated-expense-cash-write-authority";
+    process.env.OPERATING_LEDGER_DB_WRITE_SECRET = testSecret;
     try {
       await app.listen(0, "127.0.0.1");
       const url = `${await app.getUrl()}/expense-claims/cash-claim/payments`;
@@ -1711,6 +1720,14 @@ it.each(["reimbursement", "incidental_expense"])(
       })).rejects.toThrow(ForbiddenException);
       expect(writeRevision).not.toHaveBeenCalled();
       expect(createPayment).not.toHaveBeenCalled();
+      controlledVoucher.mockRejectedValueOnce(new Prisma.PrismaClientKnownRequestError("collision", {
+        code: "P2010", clientVersion: "test",
+        meta: { code: "P0A24", message: "EXPENSE_PUBLIC_CASH_VOUCHER_COLLISION" }
+      }));
+      expect((await post()).status).toBe(409);
+      expect(writeRevision).not.toHaveBeenCalled();
+      expect(createPayment).not.toHaveBeenCalled();
+
       const receipt = await post();
       expect({ status: receipt.status, body: await receipt.json() }).toMatchObject({
         status: 201,
@@ -1724,6 +1741,10 @@ it.each(["reimbursement", "incidental_expense"])(
       expect((await post({ ...registeredFunding, costAllocations: [{ costImpactId, amountCents: "301" }] })).status).toBe(409);
       expect((await post({ ...registeredFunding, expectedRegistrationId: "00000000-0000-4000-8000-000000000003" })).status).toBe(409);
       expect(writeRevision).toHaveBeenCalledTimes(1);
+      expect(controlledVoucher).toHaveBeenCalledTimes(2);
+      expect(controlledVoucher.mock.calls[1][0].values)
+        .toEqual([claim.id, keeper.id, 800n, new Date("2026-11-05"), "现金", voucherFileId, null, previousId, testSecret]);
+      expect(tx.expenseClaimPaymentExecution.create).not.toHaveBeenCalled();
       expect(createRegistration.mock.calls[0][0].data.balanceYuan.toFixed(4)).toBe("92.0000");
       expect(createSources.mock.calls[0][0].data).toMatchObject([
         { previousSourceBatchId: sourceBatchId, sourceStatus: "pending", sourceName: null }
@@ -1749,6 +1770,8 @@ it.each(["reimbursement", "incidental_expense"])(
       );
       expect(payments).toHaveLength(1);
     } finally {
+      if (previousSecret === undefined) delete process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+      else process.env.OPERATING_LEDGER_DB_WRITE_SECRET = previousSecret;
       jest.mocked(appendRegisteredOperationalPayment).mockReset();
       jest.mocked(readRegisteredOperationalPayment).mockReset().mockResolvedValue(null);
       await app.close();
