@@ -32,8 +32,10 @@ test("公司财务可选各项目，为本人申请零星费用时必须明确�
   await selectIncidentalExpense(page);
   await expect(field(page, "项目")).toHaveValue("");
   await field(page, "项目").click();
-  await expect(page.locator(".t-select-option")).toHaveCount(3);
-  await page.locator(".t-select-option").filter({ hasText: "入口合成项目" }).click();
+  const projectOptions = page.locator(".t-select__dropdown:visible .t-select-option");
+  const expectedProjects = JSON.parse(process.env.POL115_FINANCE_PROJECT_LABELS!) as string[];
+  await expect(projectOptions).toHaveText(expectedProjects);
+  await projectOptions.filter({ hasText: "入口合成项目" }).click();
   await expect(field(page, "项目")).toHaveValue(/入口合成项目/);
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   const form = page.getByRole("region", { name: "费用申请单条业务表单" });
