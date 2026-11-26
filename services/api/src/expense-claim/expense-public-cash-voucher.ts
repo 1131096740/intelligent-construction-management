@@ -25,9 +25,12 @@ export async function recordExpensePublicCashVoucher(tx: Prisma.TransactionClien
       ) AS id
     `);
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2010") {
-      const code = error.meta?.code;
-      const text = error.meta?.message;
+    const failure = error !== null && typeof error === "object"
+      ? error as { code?: unknown; meta?: { code?: unknown; message?: unknown } }
+      : undefined;
+    if (failure?.code === "P2010") {
+      const code = failure.meta?.code;
+      const text = failure.meta?.message;
       const message = typeof text === "string" ? text.replace(/^ERROR: /u, "") : undefined;
       if ((code === "P0A24" && message === "EXPENSE_PUBLIC_CASH_VOUCHER_COLLISION") ||
           (code === "23505" && (message === "该文件已绑定其他业务记录，不能重复使用" ||

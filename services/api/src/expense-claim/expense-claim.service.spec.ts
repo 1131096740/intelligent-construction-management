@@ -1741,8 +1741,8 @@ it.each(["reimbursement", "incidental_expense"])(
       })).rejects.toThrow(ForbiddenException);
       expect(writeRevision).not.toHaveBeenCalled();
       expect(createPayment).not.toHaveBeenCalled();
-      controlledVoucher.mockRejectedValueOnce(new Prisma.PrismaClientKnownRequestError("collision", {
-        code: "P2010", clientVersion: "test",
+      controlledVoucher.mockRejectedValueOnce(Object.assign(new Error("collision"), {
+        code: "P2010",
         meta: { code: "P0A24", message: "EXPENSE_PUBLIC_CASH_VOUCHER_COLLISION" }
       }));
       expect((await post()).status).toBe(409);
