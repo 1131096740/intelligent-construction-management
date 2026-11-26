@@ -54,6 +54,10 @@ work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-remaining-$lane.XXXXXXXX")
 git -C "$root" show "$sha:.github/task12-install-295/contract-finance/common/installer.cjs" |
   cmp -s - "$common/installer.cjs" || exit 65
 
+upward_mount=()
+if [[ ${5-} != --expense-witness-346 ]]; then
+  upward_mount=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
+fi
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
   --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory 4g
   --tmpfs /tmp:rw,noexec,nosuid,nodev,size=512m
@@ -65,7 +69,7 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
   --mount "type=bind,src=$plan/profile-entry.cjs,dst=/qualification/profile-entry.cjs,readonly"
-  --mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly"
+  ${upward_mount[@]+"${upward_mount[@]}"}
   --mount "type=bind,src=$plan/profile-history.cjs,dst=/qualification/profile-history.cjs,readonly")
 for file in remaining-retained.cjs fixtures.json project-profile-original-seed.sql; do
   args+=(--mount "type=bind,src=$historical/$file,dst=/qualification/$file,readonly")
