@@ -62,22 +62,22 @@
   {
     "path": "services/api/src/contract-takeover/contract-takeover-activation.service.spec.ts",
     "expected": "d34eac922add83f83ab9f2e27696141874c86dd187d36b319705d786dc8abe7b",
-    "candidate": "fdd586d3d7ec8162e0e47c85fe497268f5ac8dcdd46e2e2729d7d5aec1fca53d"
+    "candidate": "6886429b22d9171804eb10ac868fa58e6c3c7572d3618beceb96cce1a5250bc2"
   },
   {
     "path": "services/api/src/contract-takeover/contract-takeover-activation.service.ts",
     "expected": "914b92132d3ea07755bdd832d8062d0883ae34e09083c257f1d2e1eee69112a4",
-    "candidate": "86af9949d7442abd48df87697ce5c65d9fbf1228a744b73e555e10216b08d1a1"
+    "candidate": "a852eb903f8c04aa006722675a69ed49f5d811acff3d4ba6f2e386b46d4142e5"
   },
   {
     "path": "services/api/src/contract-takeover/contract-takeover-operating-source.adapter.spec.ts",
     "expected": "1ad2abafe525951a17b900455d1a6ffcaac6b256ac92bb81fd1bcca9b9edda67",
-    "candidate": "752f78d672625ca463535e5d15b6d24df4937d9b629dfb5103be0a4c5f0ba1ef"
+    "candidate": "a4b4d42fe7fa040f3ee0eb6e10cba63000c4fd936bbd0a3307cfdb6d500a1d26"
   },
   {
     "path": "services/api/src/contract-takeover/contract-takeover-operating-source.adapter.ts",
     "expected": "abb753a80254ff5f6974a5b5be8cb12adc2553353c18b1f7e147d3d339d50b2e",
-    "candidate": "97a4c8d8070c7f37249c4235143e1631816f0a1da535864dbdfb416c9a6f50ab"
+    "candidate": "862d4b330efebbfaef8c3dc8fd3b4d6b3e823a0dd2c31f7cc77cbb25beb047ce"
   },
   {
     "path": "services/api/src/contract-takeover/contract-takeover.controller.spec.ts",
