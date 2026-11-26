@@ -69,8 +69,13 @@ fingerprint=$(cat "$build/context.sha256")
 [[ $(node "$base/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
 [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
 
+pids=256
+if [[ $scope == pol115-main ]]; then
+  # The full browser shard reached the 256-task cgroup limit during WebKit runs.
+  pids=512
+fi
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
-  --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory 4g
+  --security-opt no-new-privileges --user postgres --init --pids-limit "$pids" --memory 4g
   --tmpfs /tmp:rw,noexec,nosuid,nodev,size=1024m --env HOME=/tmp
   --mount "type=bind,src=$prepared/prepared/product/predecessor,dst=/qualification/product289,readonly"
   --mount "type=bind,src=$prepared/prepared/product/intermediate,dst=/qualification/product,readonly"
