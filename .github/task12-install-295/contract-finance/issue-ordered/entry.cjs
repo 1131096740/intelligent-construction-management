@@ -25,7 +25,7 @@ const receipt = { schemaVersion: 1, purpose, sourceSha: source.sourceSha,
   stages: ['INPUTS'], status: 'STOPPED' };
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 
-function summarizeFirstFailure(file, test) {
+function summarizeFirstFailure(file, test, detailed = false) {
   const diagnostic = stripVTControlCharacters((test.failureMessages ?? []).join('\n'));
   const codes = [...diagnostic.matchAll(
     /\b(P\d{4})\b|\b(?:SQLSTATE|[Cc]ode:)\s*[`"']?([0-9][0-9A-Z]{4})\b/gu
@@ -33,7 +33,7 @@ function summarizeFirstFailure(file, test) {
   const statusPair = diagnostic.match(/Expected:\s*([1-5]\d{2})\s+Received:\s*([1-5]\d{2})\b/u);
   const location = diagnostic.split('\n').find(line => line.includes(file + ':') && line.trimStart().startsWith('at '));
   const line = location?.split(file + ':')[1]?.match(/^\d{1,5}(?=:)/u)?.[0];
-  const kind = /ISOLATED_DATABASE_REQUIRED/u.test(diagnostic) ? 'ISOLATED_DATABASE_REQUIRED' :
+  let kind = /ISOLATED_DATABASE_REQUIRED/u.test(diagnostic) ? 'ISOLATED_DATABASE_REQUIRED' :
     /PrismaClientInitializationError/u.test(diagnostic) ? 'PRISMA_INITIALIZATION' :
     /PrismaClientKnownRequestError/u.test(diagnostic) ? 'PRISMA_REQUEST' :
     /PrismaClientUnknownRequestError/u.test(diagnostic) ? 'PRISMA_UNKNOWN_REQUEST' :
@@ -41,8 +41,20 @@ function summarizeFirstFailure(file, test) {
   const constraint = diagnostic.match(/\bconstraint\s+\\?"([A-Za-z_][A-Za-z0-9_]{0,80})\\?"/u)?.[1];
   const postgres = diagnostic.match(/PostgresError \{ code: "([A-Z0-9]{5})", message: ("(?:[^"\\\n]|\\.){1,600}"), severity:/u);
   const serverMessageSha256 = postgres && sha256(postgres[2]);
+  const timeout = detailed && diagnostic.match(/^Error: thrown: "Exceeded timeout of (\d{1,6}) ms for a test\./u)?.[1];
+  if (detailed && !kind) {
+    kind = timeout ? 'JEST_TIMEOUT' :
+      /^Error: expect\(/u.test(diagnostic) ? 'JEST_ASSERTION' :
+      /^BadRequestException:/u.test(diagnostic) ? 'NEST_BAD_REQUEST' :
+      /^ConflictException:/u.test(diagnostic) ? 'NEST_CONFLICT' :
+      /^ForbiddenException:/u.test(diagnostic) ? 'NEST_FORBIDDEN' :
+      /^NotFoundException:/u.test(diagnostic) ? 'NEST_NOT_FOUND' :
+      'UNCLASSIFIED';
+  }
   return { codes: [...new Set(codes)].slice(0, 6),
     ...(kind && { kind }), ...(line && { line: Number(line) }),
+    ...(timeout && { timeoutMilliseconds: Number(timeout) }),
+    ...(detailed && Number.isSafeInteger(test.duration) && test.duration >= 0 && { durationMilliseconds: test.duration }),
     ...(constraint && { constraint }),
     ...(serverMessageSha256 && { serverMessageSha256 }),
     ...(statusPair && { expectedStatus: Number(statusPair[1]), receivedStatus: Number(statusPair[2]) }) };
@@ -102,6 +114,11 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
       rows.length === titles.length && rows.every((row, index) => row.title === titles[index] && row.status === 'passed') };
   const firstFailed = rows.find(row => row.status === 'failed');
   if (firstFailed) receipt.suite.firstFailure = summarizeFirstFailure(file, firstFailed);
+  if (scope === 'issue404') {
+    const failedCases = rows.slice(0, titles.length).flatMap((row, index) =>
+      row.status === 'failed' ? [{ index, ...summarizeFirstFailure(file, row, true) }] : []);
+    if (failedCases.length) receipt.suite.failedCases = failedCases;
+  }
 }
 
 async function main() {
