@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 ) ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 ) ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -12,7 +12,7 @@ mode_args=()
 count=295
 if [[ $# == 6 ]]; then
   mode_args=("$6")
-  case "$6" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; --upward-archive-332) count=332;; esac
+  case "$6" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; --upward-archive-332) count=332;; --historical-settlement-334) count=334;; esac
 fi
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -21,15 +21,16 @@ owner="$prior/remaining-owner.cjs"
 finance="$root/.github/task12-install-295/contract-finance"
 common="$finance/common"
 workspace="$prepared/prepared/context/workspace"
-node - "$prepared/source.json" "$sha" "$prior/remaining-owner-modes.json" "$lane" "$common/multi-witness.cjs" "$plan/upward-archive-332-profile.cjs" ${mode_args[@]+"${mode_args[@]}"} <<'JS'
-const [sourceFile,sha,profilesFile,lane,terminalFile,upwardProfile,mode]=process.argv.slice(2);
+node - "$prepared/source.json" "$sha" "$prior/remaining-owner-modes.json" "$lane" "$common/multi-witness.cjs" "$plan/upward-archive-332-profile.cjs" "$plan/historical-settlement-334-profile.cjs" ${mode_args[@]+"${mode_args[@]}"} <<'JS'
+const [sourceFile,sha,profilesFile,lane,terminalFile,upwardProfile,historicalProfile,mode]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||!Object.hasOwn(require(profilesFile),lane))process.exit(65);
 if(mode!==undefined) {
-  const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331,'--upward-archive-332':332}[mode];
+  const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331,'--upward-archive-332':332,'--historical-settlement-334':334}[mode];
   if(source.mode!==mode.slice(2)||source.migrationCount!==count||source.predecessor?.migrationCount!==295||
      source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==count-295) process.exit(65);
   if(count===332) require(upwardProfile).assertSource(source,sha,terminal.final);
+  if(count===334) require(historicalProfile).assertSource(source,terminal.final);
 } else if(source.migrationCount!==295||source.ledgerSha256!==terminal.final) process.exit(65);
 JS
 image=$(cat "$build/image.id")
@@ -106,12 +107,15 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$plan/remaining-owner-entry.cjs,dst=/qualification/remaining-owner-entry.cjs,readonly"
   --mount "type=bind,src=$owner,dst=/qualification/remaining-owner.cjs,readonly"
   --mount "type=bind,src=$profiles,dst=/qualification/remaining-owner-modes.json,readonly")
-if [[ $count == 332 ]]; then
+if [[ $count == 332 || $count == 334 ]]; then
   args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 fi
-for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
+for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
+source "$plan/remaining-installer-mounts.sh"
+source_mode=$(node -p 'require(process.argv[1]).mode ?? ""' "$prepared/source.json")
+append_remaining_installer "$source_mode"
 while IFS=$'\t' read -r source relative; do
   args+=(--mount "type=bind,src=$source,dst=/qualification/workspace/services/api/$relative,readonly")
 done < "$work/fixture-mounts.tsv"

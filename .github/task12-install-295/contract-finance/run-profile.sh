@@ -15,13 +15,14 @@ historical="$prior/remaining-special/profile"
 finance="$root/.github/task12-install-295/contract-finance"
 common="$finance/common"
 workspace="$prepared/prepared/context/workspace"
-node - "$prepared/source.json" "$sha" "$prior/remaining-special.json" "$historical" "$workspace" "$common/multi-witness.cjs" "$plan/upward-archive-332-profile.cjs" <<'JS'
-const [sourceFile,sha,profilesFile,prior,workspace,terminalFile,upwardProfile]=process.argv.slice(2);
+node - "$prepared/source.json" "$sha" "$prior/remaining-special.json" "$historical" "$workspace" "$common/multi-witness.cjs" "$plan/upward-archive-332-profile.cjs" "$plan/historical-settlement-334-profile.cjs" <<'JS'
+const [sourceFile,sha,profilesFile,prior,workspace,terminalFile,upwardProfile,historicalProfile]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
-const count=source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
+const count=source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
 if(source.sourceSha!==sha||source.migrationCount!==count||
   (count!==295?source.predecessor.ledgerSha256:source.ledgerSha256)!==terminal.final)process.exit(65);
 if(count===332) require(upwardProfile).assertSource(source,sha,terminal.final);
+if(count===334) require(historicalProfile).assertSource(source,terminal.final);
 const pins=require(profilesFile).profile.mounts;
 const fs=require('node:fs'),assert=require('node:assert/strict'),{createHash}=require('node:crypto');
 const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -51,14 +52,16 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
   --mount "type=bind,src=$plan/profile-entry.cjs,dst=/qualification/profile-entry.cjs,readonly"
   --mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly"
-  --mount "type=bind,src=$plan/profile-history.cjs,dst=/qualification/profile-history.cjs,readonly"
-  --mount "type=bind,src=$common/installer.cjs,dst=/qualification/installer.cjs,readonly")
+  --mount "type=bind,src=$plan/profile-history.cjs,dst=/qualification/profile-history.cjs,readonly")
 for file in remaining-retained.cjs fixtures.json project-profile-original-seed.sql; do
   args+=(--mount "type=bind,src=$historical/$file,dst=/qualification/$file,readonly")
 done
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
+source "$plan/remaining-installer-mounts.sh"
+source_mode=$(node -p 'require(process.argv[1]).mode ?? ""' "$prepared/source.json")
+append_remaining_installer "$source_mode" retained
 
 [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
 [[ -z $(docker ps -q) ]] || exit 65

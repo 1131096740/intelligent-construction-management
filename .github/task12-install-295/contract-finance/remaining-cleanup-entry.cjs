@@ -2,17 +2,19 @@
 
 const assert = require('node:assert/strict');
 const {admitSource} = require('./install-only292.cjs');
-const {withCombined295RetainedCleanup,withCombined320RetainedCleanup,withCombined330RetainedCleanup,withCombined331RetainedCleanup,withCombined332RetainedCleanup} = require('./installer.cjs');
+const {withCombined295RetainedCleanup,withCombined320RetainedCleanup,withCombined330RetainedCleanup,withCombined331RetainedCleanup,withCombined332RetainedCleanup,withCombined334RetainedCleanup} = require('./installer.cjs');
 const {final, digest} = require('./multi-witness.cjs');
 const {runRetained} = require('./remaining-retained.cjs');
 
 const root = '/qualification';
 const source = require('./contract-finance-source.json');
+const historicalSettlement=source.mode==='historical-settlement-334';
+const historical=historicalSettlement?require('./historical-settlement-334-profile.cjs'):undefined;
 const upwardArchive=source.mode==='upward-archive-332';
 const paymentRemainder=source.mode==='payment-remainder-331';
 const textDirect=source.mode==='text-direct-330';
-const current=upwardArchive||paymentRemainder||textDirect||source.mode==='current-320';
-const count=upwardArchive?332:paymentRemainder?331:textDirect?330:current?329:295;
+const current=historicalSettlement||upwardArchive||paymentRemainder||textDirect||source.mode==='current-320';
+const count=historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current?329:295;
 const receipt = {schemaVersion:1,purpose:'REMAINING_RETAINED_CLEANUP_'+count,
   sourceSha:source.sourceSha,stages:['INPUTS'],status:'STOPPED'};
 
@@ -32,10 +34,11 @@ async function main() {
     assert.equal(baseline.terminalMigrationChecksum,source.tails.at(-1).sha256);
   }
   if(upwardArchive) require('./upward-archive-332-profile.cjs').assertSource(source,source.sourceSha,final);
+  historical?.assertSource(source,final);
   receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   const consume=context=>runRetained(context,receipt,'cleanup');
   if(current){
-    const installCurrent=upwardArchive?withCombined332RetainedCleanup:paymentRemainder?withCombined331RetainedCleanup:textDirect?withCombined330RetainedCleanup:withCombined320RetainedCleanup;
+    const installCurrent=historicalSettlement?withCombined334RetainedCleanup:upwardArchive?withCombined332RetainedCleanup:paymentRemainder?withCombined331RetainedCleanup:textDirect?withCombined330RetainedCleanup:withCombined320RetainedCleanup;
     await installCurrent(receipt,consume,{sourceTree:source.sourceTree,
       migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails});
     assert.equal(receipt.forward320.count,count);
@@ -44,6 +47,7 @@ async function main() {
     assert.equal(receipt.forward320.sameIdentity,true);
     assert.equal(receipt.forward320.sameBaseB7,true);
     if(upwardArchive) require('./upward-archive-332-profile.cjs').assertInstallation(receipt,source);
+    historical?.assertFinanceInstallation(receipt,source);
     if(paymentRemainder){
       assert.deepEqual(receipt.paymentRemainderPredecessor,{
         count:330,ledgerSha256:source.predecessor330.ledgerSha256,sameIdentity:true,sameBaseB7:true
@@ -59,6 +63,10 @@ async function main() {
   assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
   assert.equal(receipt.combinedAfterBusiness.exactB7,true);
   assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);
+  if(historicalSettlement) {
+    assert.equal(receipt.historicalTakeoverCatalogAfterBusiness,true);
+    assert.equal(receipt.historicalSettlementCatalogAfterBusiness,true);
+  }
   assert.deepEqual(receipt.cleanupLegacy,{count:205,exactTerminal:true,distinctDatabase:true,samePostmaster:true,postconsume:true});
   assert.deepEqual(receipt.cleanupLegacyAcl,{primaryUnchanged:true,legacyOwnerAndQualifiedAppOnly:true,publicDenied:true,
     unrelatedLoginDenied:true,postconsume:true});
