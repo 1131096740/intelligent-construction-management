@@ -125,8 +125,8 @@ const profiles = {
   },
   issue418: {
     file: 'src/database/issue418-operating-dedup.pg.spec.ts',
-    sourceDigest: 'f9876f2541db34bdd70be1e0e8543cc4c3eb942d7ce3dee2dd044539dcc8e28d',
-    fixtureDigest: '0ee201f76bb34da9eff97fa3839abc47cdadf7f6ff2d9eabf860e30798e18939',
+    sourceDigest: 'ed5cd06cf4f69134d85c2af09e9922175fe60e67abf74eed3d41e81f44b33ad8',
+    fixtureDigest: 'c14f6c17a3f1aa07dda5bc99f422bf59476629dc2152564199c1e9c53923ddee',
     orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
     databaseUrlKey: 'ISSUE418_OPERATING_DEDUP_DATABASE_URL',
     enableKey: 'ISSUE418_OPERATING_DEDUP_RUN',
@@ -203,7 +203,7 @@ const profiles = {
   },
   issue418_contract_drilldown: {
     file: 'src/database/issue418-contract-drilldown.pg.spec.ts',
-    sourceDigest: '3939f35243d0587188ad80b1f7de4b0a138936bcec94631aa90a78521483af54',
+    sourceDigest: '79f45daa1bf996e9e9ceb5529d139ca819ff855a6e42e63c2072065f14e728a3',
     orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
     databaseUrlKey: 'ISSUE418_CONTRACT_DRILLDOWN_DATABASE_URL',
     enableKey: 'ISSUE418_CONTRACT_DRILLDOWN_RUN',
