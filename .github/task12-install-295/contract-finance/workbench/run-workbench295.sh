@@ -69,6 +69,7 @@ require(join(plan,"workbench-inputs.cjs")).verifyInputs(name=>readFileSync(
 ));
 console.log(JSON.stringify({status:"POL115_WORKBENCH_346_HOST_READY",sourceSha:source.sourceSha,sourceTree:source.sourceTree,ledgerSha256:source.ledgerSha256,installerSha256}));
 JS
+  chmod 0644 "$installer"
   if [[ ${6-} == --host-only ]]; then printf '%s\n' "$work"; exit 0; fi
 fi
 image=$(cat "$build/image.id")

@@ -44,12 +44,15 @@ if [[ -n $fixture_digest ]]; then
   install -m 0644 "$source_spec" "$work/fixture.ts"
   git -C "$work" apply --unidiff-zero "$plan/$fixture_patch"
   [[ $(sha256sum "$work/fixture.ts" | cut -d' ' -f1) == "$fixture_digest" ]] || exit 65
+  if [[ $mode == expense-witness-346 ]]; then chmod 0644 "$work/fixture.ts"; fi
 fi
 node "$base/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
 if [[ $mode == expense-witness-346 ]]; then
   git -C "$work" apply --unidiff-zero "$base/expense-witness/installer.patch"
   expected=$(node -e 'console.log(require(process.argv[1]).installerSha256)' "$base/expense-witness-346-profile.cjs")
   [[ $(sha256sum "$work/installer.cjs" | cut -d' ' -f1) == "$expected" ]] || exit 65
+  # git apply recreates the bind source under umask 077.
+  chmod 0644 "$work/installer.cjs"
 fi
 printf '%s\n' "$work"
 if [[ ${6-} == --host-only ]]; then exit 0; fi
@@ -93,6 +96,9 @@ if pgrep -x postgres >/dev/null; then exit 65; fi
 status=0
 docker run "${args[@]}" --entrypoint node "$image" /qualification/issue-ordered-entry.cjs "$scope" >"$work/receipt.json" 2>"$work/private.stderr" || status=$?
 [[ ! -s "$work/receipt.json" ]] || cat "$work/receipt.json"
+if [[ $mode == expense-witness-346 && $status != 0 && ! -s "$work/receipt.json" ]]; then
+  printf 'ISSUE_ORDERED_346_NO_RECEIPT scope=%s exit=%s\n' "$scope" "$status" >&2
+fi
 (( status == 0 )) || exit "$status"
 node - "$work/receipt.json" "$sha" "$scope" "$prepared/source.json" <<'JS'
 const assert=require('node:assert/strict'),[file,sha,scope,sourcePath]=process.argv.slice(2);

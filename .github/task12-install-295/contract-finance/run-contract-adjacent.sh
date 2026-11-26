@@ -57,10 +57,10 @@ for(const name of ['task12-owned-280.test-support.ts',...pins.profiles[lane].spe
   if(mode==='--expense-witness-346' && lane==='draft' && name===pins.profiles.draft.specs[0]){
     mounted=work+'/'+name;
     fs.copyFileSync(file,mounted,fs.constants.COPYFILE_EXCL);
-    fs.chmodSync(mounted,0o644);
     const patch=require('node:path').join(require('node:path').dirname(profiles),'contract-adjacent-draft-346.fixture.patch');
     require('node:child_process').execFileSync('git',['apply','--unidiff-zero',patch],{cwd:work,stdio:'inherit'});
     assert.equal(hash(mounted),pins.draft346FixtureSha256);
+    fs.chmodSync(mounted,0o644);
   }
   console.log(mounted+'\t'+'src/database/'+name);
 }
@@ -73,6 +73,7 @@ if [[ $lane == draft && ${6:-} == --expense-witness-346 ]]; then
   git -C "$work" apply --unidiff-zero "$plan/contract-adjacent-draft-346.runner.patch"
   draft_runner_digest=$(node -e 'console.log(require(process.argv[1]).draft346RunnerSha256)' "$plan/contract-adjacent-profiles.json")
   [[ $(sha256sum "$contract_runner" | cut -d' ' -f1) == "$draft_runner_digest" ]] || exit 65
+  chmod 0644 "$contract_runner"
 fi
 
 installer="$common/installer.cjs"
@@ -90,6 +91,7 @@ const [installer,plan]=process.argv.slice(2);
 assert.equal(createHash('sha256').update(readFileSync(installer)).digest('hex'),
   require(plan+'/expense-witness-346-profile.cjs').installerSha256);
 JS
+  chmod 0644 "$installer"
 fi
 if [[ ${7-} == --host-only ]]; then
   for file in "$installer" "$plan/contract-adjacent-entry.cjs" "$contract_runner"; do

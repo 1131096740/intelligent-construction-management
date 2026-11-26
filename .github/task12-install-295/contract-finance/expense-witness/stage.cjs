@@ -29,13 +29,17 @@ for (const [name, contents] of [[file, adapted], [helper, helperBytes]]) {
   const staged = path.join(output, 'fixtures', name);
   fs.mkdirSync(path.dirname(staged), { recursive: true });
   fs.writeFileSync(staged, contents, { flag: 'wx' });
+  if (profile.count === 346) fs.chmodSync(staged, 0o644);
 }
 execFileSync(process.execPath, [path.join(__dirname, '../stage-historical-takeover-333.cjs'), output, 'historical-settlement-334']);
 execFileSync('git', ['apply', '--unidiff-zero', path.join(__dirname, 'installer.patch')], { cwd: output });
 const installerSha256 = hash(fs.readFileSync(path.join(output, 'installer.cjs')));
 assert.equal(installerSha256, '50208a12c5ac61b396655807e87f8c86ea92db83aa2a3297c38f253735ce155d');
+if (profile.count === 346) fs.chmodSync(path.join(output, 'installer.cjs'), 0o644);
 const input = { sourceSha: sha, sourceTree: source.sourceTree, ledgerSha256: source.ledgerSha256, installerSha256,
   fixtures: { [file]: hash(adapted), [helper]: hash(helperBytes) },
   recipe: { registered: recipe.reported, namesSha256: recipe.namesSha256 } };
-fs.writeFileSync(path.join(output, 'expense-witness-inputs.json'), JSON.stringify(input) + '\n', { flag: 'wx' });
+const inputFile = path.join(output, 'expense-witness-inputs.json');
+fs.writeFileSync(inputFile, JSON.stringify(input) + '\n', { flag: 'wx' });
+if (profile.count === 346) fs.chmodSync(inputFile, 0o644);
 process.stdout.write(JSON.stringify({ status: 'EXPENSE_WITNESS_' + profile.count + '_HOST_READY', ...input }) + '\n');

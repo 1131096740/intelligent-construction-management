@@ -80,6 +80,7 @@ assert.equal(installerSha256,profile.installerSha256);
 profile.assertRuntimeBaseline(require(join(prepared,"prepared/context/workspace/services/api/prisma/migration-baseline.cjs")));
 console.log(JSON.stringify({status:"TASK398_BROWSER_COMPLETION_346_HOST_READY",sourceSha:source.sourceSha,sourceTree:source.sourceTree,ledgerSha256:source.ledgerSha256,installerSha256}));
 JS
+  chmod 0644 "$installer"
   if [[ ${6-} == --host-only ]]; then printf '%s\n' "$work"; exit 0; fi
 fi
 mkdir -m 0777 "$work/owned"

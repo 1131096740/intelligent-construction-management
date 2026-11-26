@@ -16,3 +16,4 @@ if [[ $lane == warm ]]; then
   [[ $(shasum -a 256 "$work/installer.cjs" | cut -d ' ' -f1) == "$expected" ]] || exit 65
 fi
 node --check "$work/installer.cjs"
+chmod 0644 "$work/installer.cjs"

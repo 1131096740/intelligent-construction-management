@@ -64,6 +64,7 @@ const [installer,plan]=process.argv.slice(2);
 assert.equal(createHash('sha256').update(readFileSync(installer)).digest('hex'),
   require(plan+'/expense-witness-346-profile.cjs').installerSha256);
 JS
+  chmod 0644 "$installer"
 fi
 if [[ ${6-} == --host-only ]]; then
   for file in "$installer" "$plan/pol109-295-entry.cjs" "$material"/*.cjs; do

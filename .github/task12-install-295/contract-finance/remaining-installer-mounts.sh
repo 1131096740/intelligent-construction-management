@@ -17,6 +17,7 @@ append_remaining_installer() {
       expected=56f967b52054cf6d756997316a700324f2a8ac83bda6063f6fde20cd5ca0bb22
       [[ $(shasum -a 256 "$installer" | cut -d ' ' -f1) == "$expected" ]] || return 65
     fi
+    chmod 0644 "$installer"
     local profile
     for profile in upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
       args+=(--mount "type=bind,src=$plan/$profile,dst=/qualification/$profile,readonly")

@@ -77,6 +77,7 @@ if [[ ${6:-} == --expense-witness-346 ]]; then
   git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer.patch"
   expected=$(node -e 'console.log(require(process.argv[1]).installerSha256)' "$plan/expense-witness-346-profile.cjs")
   [[ $(sha256sum "$installer" | cut -d' ' -f1) == "$expected" ]] || exit 65
+  chmod 0644 "$installer"
 fi
 if [[ ${7-} == --host-only ]]; then
   printf '%s\n' "$work"
