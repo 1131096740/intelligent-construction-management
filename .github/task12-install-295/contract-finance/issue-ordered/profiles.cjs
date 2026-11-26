@@ -184,6 +184,19 @@ const profiles = {
     requiresOperatingLedgerWriteSecret: true,
     titles: ['施工企业已付八十元、项目对外支付七十元，资金流水使用同一分录']
   },
+  issue418_contract_drilldown: {
+    file: 'src/database/issue418-contract-drilldown.pg.spec.ts',
+    sourceDigest: '3939f35243d0587188ad80b1f7de4b0a138936bcec94631aa90a78521483af54',
+    orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
+    databaseUrlKey: 'ISSUE418_CONTRACT_DRILLDOWN_DATABASE_URL',
+    enableKey: 'ISSUE418_CONTRACT_DRILLDOWN_RUN',
+    stage: 'ORDERED_CONTRACT_DRILLDOWN_JEST',
+    requiredMigrationCount: 346,
+    requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+    requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: ['审批中与已批待付分列，合同超付不抵扣另一合同未付']
+  },
   issue420: {
     file: 'src/database/issue420-approval-center.http.pg.spec.ts',
     sourceDigest: 'd4effcfb32e745737be3278c0556f903c2ae6c55c631016a59a3c0c79588d5a3',
