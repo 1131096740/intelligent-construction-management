@@ -33,8 +33,8 @@ fi
   ( $# == 3 && ( $2 == historical-takeover-a28 || $2 == line-a || $2 == onboarding || $2 == procurement || $2 == pol115-workbench || $2 == pol115-full || $ordered_issue == true ) && $3 == --historical-settlement-334 ) ||
   ( $# == 3 && ( $2 == line-a || $2 == onboarding || $2 == pol115-workbench || $2 == pol115-full || $2 == payment-execution ||
     $2 == task398-ledger-loss || $2 == task398-competition || $2 == historical-takeover-a28 || $2 == historical-takeover-a29 ||
-    $2 == browser-partial || $2 == browser-completion || $2 == procurement || $ordered_issue == true ) && $3 == --expense-witness-346 ) ||
-  ( $# == 4 && ( $2 == payment-execution || $2 == task398-competition ) && $3 == --expense-witness-346 && $4 == --host-only ) ||
+    $2 == browser-partial || $2 == browser-completion || $2 == procurement || $2 == pol109 || $ordered_issue == true ) && $3 == --expense-witness-346 ) ||
+  ( $# == 4 && ( $2 == payment-execution || $2 == task398-competition || $2 == pol109 ) && $3 == --expense-witness-346 && $4 == --host-only ) ||
   ( $# == 4 && $2 == pol275 && $3 == --historical-settlement-334 && $4 == a187dc73a133114e1cfbbc891a4aec923abe2545 ) ||
   ( $# == 4 && $2 == pol275 && ( $3 == --current-320 || $3 == --text-direct-330 || $3 == --payment-remainder-331 || $3 == --upward-archive-332 ) && $4 =~ ^[a-f0-9]{40}$ ) ]] || exit 64
 sha=$1
@@ -66,6 +66,8 @@ if [[ ${4-} == --host-only ]]; then
   bash "$plan/prepare.sh" "$root" "$sha" "$work/source" "$3"
   if [[ $lane == task398-competition ]]; then
     bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work" competition-346 --host-only
+  elif [[ $lane == pol109 ]]; then
+    bash "$plan/run-pol109.sh" "$root" "$work/source" "$sha" "$work" --expense-witness-346 --host-only
   else
     bash "$plan/run-payment-execution.sh" "$root" "$work/source" "$sha" "$work" --host-only
   fi
