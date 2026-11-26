@@ -52,12 +52,12 @@
   {
     "path": "services/api/prisma/run-database-dynamic-gate-local.cjs",
     "expected": "ec39311717c5e8a4bc93910fe5a0443c3fdb45a1b40477ce39222a79effe8a89",
-    "candidate": "fcadb724fd7104837aade32e65f0d1f45eb2e85739174cb0cce123feba75af6a"
+    "candidate": "0ac97548f7ffe486e0e33acf69bddd179bd8864b67ef3a8a575a3c088e71d020"
   },
   {
     "path": "services/api/prisma/run-database-dynamic-gate-local.test.cjs",
     "expected": "78a8d474a9bef166001372b1e096b4f9b190d1d6fce3988bee01ad7f9b6eb09d",
-    "candidate": "dd7df731ad7c203b2fd76d6d421a757178bc8531cd427af99818b3075ff49643"
+    "candidate": "f5872f8c422c188998ba00f7a441177bf2473e64e76d53f599532ed3638792d1"
   },
   {
     "path": "services/api/src/contract-takeover/contract-takeover-activation.service.spec.ts",

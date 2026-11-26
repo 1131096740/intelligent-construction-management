@@ -3,11 +3,15 @@
 const mode = "--historical-settlement-334";
 const runner = ".github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh";
 const remainingRunner = ".github/task12-install-295/contract-finance/run-remaining.sh";
+const namedRunner = ".github/task12-install-295/named-pol113-pol114/run-matrix334.sh";
 const financeRunner = ".github/task12-install-295/contract-finance/run.sh";
 const restorePredecessor = "a187dc73a133114e1cfbbc891a4aec923abe2545";
 const historicalTakeoverGroup = "historical_takeover_a28";
 const lanes = Object.freeze({
   line_a_real_db: "line-a",
+  employee_onboarding: "onboarding",
+  general_procurement: "procurement",
+  pol113_pol115_business_entries: "named",
   contract_finance_acceptance: "contract-finance",
   remaining_dynamic_postgresql16: "remaining",
   [historicalTakeoverGroup]: "historical-takeover-a28"
@@ -18,13 +22,20 @@ function laneFor334(groupId) {
 }
 
 function unadmittedGroups334(groups) {
-  return groups.filter(group => group.ciExecution !== "manual-only" && !laneFor334(group.id))
+  return groups.filter(group => group.ciExecution !== "manual-only" && !commandFor334(group.id, undefined, group.pol113Pol115Shard))
     .map(group => group.id);
 }
 
-function commandFor334(groupId, candidateSha) {
+function commandFor334(groupId, candidateSha, shard) {
   const lane = laneFor334(groupId);
   if (!lane) return undefined;
+  if (lane === "named") {
+    if (shard === "pol113_pol114") return [namedRunner, candidateSha, shard];
+    // The original POL115 shard also owns spot and public entry suites.
+    // The 334 workbench's 9 cases and five separate SMS cases do not cover them.
+    return undefined;
+  }
+  if (shard) return undefined;
   if (lane === "contract-finance") return [financeRunner, candidateSha, mode, restorePredecessor];
   if (lane === "remaining") return [remainingRunner, candidateSha, mode];
   return [runner, candidateSha, lane, mode];
