@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 3 || ( $# == 4 && ( $4 == original || $4 == --a29-opening || $4 == --a28-unknown-overpay ) ) ||
-  ( $# == 5 && $4 == original && $5 == --host-only ) ]] || exit 64
+[[ $# == 3 || ( $# == 4 && ( $4 == original || $4 == --a28-continuation || $4 == --a29-opening || $4 == --a28-unknown-overpay ) ) ||
+  ( $# == 5 && ( $4 == original || $4 == --a28-continuation || $4 == --a29-opening ) && $5 == --host-only ) ]] || exit 64
 prepared=$(cd "$1" && pwd -P)
 sha=$2
 build=$(cd "$3" && pwd -P)
@@ -19,30 +19,41 @@ node -e '
 ' "$source" "$sha"
 entry=line-a-entry.cjs
 mode=$(node -p 'require(process.argv[1]).mode' "$source")
-if [[ "$mode" == expense-witness-346 ]]; then
-  [[ ${4:-} == original ]] || exit 64
-elif [[ -n ${5:-} || ( -n ${4:-} && "$mode" != historical-settlement-334 ) ]]; then
-  exit 64
-fi
-if [[ ( "$mode" == historical-takeover-333 || "$mode" == historical-settlement-334 ) && ${4:-} != original ]]; then
-  entry=historical-takeover-333-entry.cjs
-fi
+case "$mode:${4:-}:${5:-}" in
+  expense-witness-346:original:|expense-witness-346:original:--host-only|historical-settlement-334:original:) ;;
+  expense-witness-346:--a28-continuation:|expense-witness-346:--a28-continuation:--host-only|\
+  expense-witness-346:--a29-opening:|expense-witness-346:--a29-opening:--host-only|\
+  historical-settlement-334::|historical-settlement-334:--a29-opening:|historical-settlement-334:--a28-unknown-overpay:|\
+  historical-takeover-333::)
+    entry=historical-takeover-333-entry.cjs ;;
+  expense-witness-346:*|historical-settlement-334:*|historical-takeover-333:*) exit 64 ;;
+  *::) ;;
+  *) exit 64 ;;
+esac
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-line-a.XXXXXXXX")
 installer="$common/installer.cjs"
 if [[ "$mode" == expense-witness-346 ]]; then
-  node - "$plan" "$source" "$prepared" "$work" <<'JS'
+  node - "$plan" "$source" "$prepared" "$work" "$4" <<'JS'
 const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const [plan, sourceFile, prepared, work] = process.argv.slice(2);
+const [plan, sourceFile, prepared, work, lane] = process.argv.slice(2);
 const profile = require(path.join(plan, 'expense-witness-346-profile.cjs'));
 const historical = require(path.join(plan, 'historical-settlement-334-profile.cjs'));
 const { final } = require(path.join(plan, 'common/multi-witness.cjs'));
 profile.assertSource(require(sourceFile), final);
 
+const workspace = path.join(prepared, 'prepared/context/workspace');
+if (lane !== 'original') {
+  const api = path.join(workspace, 'services/api');
+  profile.assertRuntimeBaseline(require(path.join(api, 'prisma/migration-baseline.cjs')));
+  assert.ok(fs.statSync(path.join(api, 'src/contract-takeover/contract-takeover-a28.http.pg.spec.ts')).isFile());
+  process.exit(0);
+}
+
 const spec = 'services/api/src/database/line-a-real-db.http.pg.spec.ts';
-const original = fs.readFileSync(path.join(prepared, 'prepared/context/workspace', spec), 'utf8');
+const original = fs.readFileSync(path.join(workspace, spec), 'utf8');
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 assert.equal(sha256(original), '2b6ce431862fe986dce8aee61f68b8509510977e117faafe3e8be73e193f5e1f', 'LINE_A_334_ORIGINAL_FIXTURE');
 const before = '{ count: 334n, terminal: "' + historical.terminal.name + '" }';
@@ -102,12 +113,14 @@ if [[ "$mode" == expense-witness-346 ]]; then
   for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
-  args+=(--mount "type=bind,src=$work/line-a-real-db.http.pg.spec.ts,dst=/qualification/workspace/services/api/src/database/line-a-real-db.http.pg.spec.ts,readonly")
+  if [[ $4 == original ]]; then
+    args+=(--mount "type=bind,src=$work/line-a-real-db.http.pg.spec.ts,dst=/qualification/workspace/services/api/src/database/line-a-real-db.http.pg.spec.ts,readonly")
+  fi
   printf '%s\n' "$work"
 fi
 
 case ${4:-} in
-  --a29-opening|--a28-unknown-overpay) args+=(--env "JG_HISTORICAL_ACCEPTANCE_SCENARIO=${4#--}");;
+  --a28-continuation|--a29-opening|--a28-unknown-overpay) args+=(--env "JG_HISTORICAL_ACCEPTANCE_SCENARIO=${4#--}");;
 esac
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
@@ -122,7 +135,8 @@ node -e '
     "payment-remainder-331":"LINE_A_PAYMENT_REMAINDER_331_PASSED",
     "upward-archive-332":"LINE_A_UPWARD_ARCHIVE_332_PASSED","historical-takeover-333":"HISTORICAL_TAKEOVER_A28_333_PASSED","historical-settlement-334":"HISTORICAL_TAKEOVER_A28_334_PASSED"})[source.mode];
   const required=({"original":source.mode==="expense-witness-346"?"LINE_A_EXPENSE_WITNESS_346_PASSED":"LINE_A_HISTORICAL_SETTLEMENT_334_PASSED",
-    "--a29-opening":"HISTORICAL_TAKEOVER_A29_OPENING_334_PASSED",
+    "--a28-continuation":"HISTORICAL_TAKEOVER_A28_346_PASSED",
+    "--a29-opening":"HISTORICAL_TAKEOVER_A29_OPENING_"+source.migrationCount+"_PASSED",
     "--a28-unknown-overpay":"HISTORICAL_TAKEOVER_A28_UNKNOWN_OVERPAY_334_PASSED"})[process.argv[4]]??expected;
   if(proof.status!==required||proof.sourceSha!==process.argv[2])process.exit(65);
 ' "$work/receipt.json" "$sha" "$source" "${4:-}"

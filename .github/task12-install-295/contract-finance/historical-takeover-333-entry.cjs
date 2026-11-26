@@ -13,16 +13,18 @@ const source = require('./contract-finance-source.json');
 const root = '/qualification';
 const api = path.join(root, 'workspace/services/api');
 const spec = 'src/contract-takeover/contract-takeover-a28.http.pg.spec.ts';
-const historicalSettlement = source.mode === 'historical-settlement-334';
-const count = historicalSettlement ? 334 : 333;
-const profile = historicalSettlement
-  ? require('./historical-settlement-334-profile.cjs') : require('./historical-takeover-333-profile.cjs');
+const expenseWitness = source.mode === 'expense-witness-346';
+const historicalSettlement = expenseWitness || source.mode === 'historical-settlement-334';
+const profile = expenseWitness ? require('./expense-witness-346-profile.cjs')
+  : historicalSettlement ? require('./historical-settlement-334-profile.cjs') : require('./historical-takeover-333-profile.cjs');
+const count = source.migrationCount;
 const scenario = process.env.JG_HISTORICAL_ACCEPTANCE_SCENARIO ?? '';
 const opening = scenario === 'a29-opening';
-const purpose = 'HISTORICAL_TAKEOVER_' + (opening ? 'A29_OPENING' : scenario ? 'A28_UNKNOWN_OVERPAY' : 'A28') + '_' + count;
-const expectedCases = scenario ? 1 : 3;
+const unknownOverpay = scenario === 'a28-unknown-overpay';
+const purpose = 'HISTORICAL_TAKEOVER_' + (opening ? 'A29_OPENING' : unknownOverpay ? 'A28_UNKNOWN_OVERPAY' : 'A28') + '_' + count;
+const expectedCases = opening || unknownOverpay ? 1 : 3;
 const businessStage = opening ? 'A29_HISTORICAL_OPENING_AND_NEW_PAYMENT_HTTP'
-  : scenario ? 'A28_DOWNSTREAM_HISTORICAL_OVERPAY_PENDING_HTTP' : 'A28_HISTORICAL_CONTRACT_TAKEOVER_HTTP';
+  : unknownOverpay ? 'A28_DOWNSTREAM_HISTORICAL_OVERPAY_PENDING_HTTP' : 'A28_HISTORICAL_CONTRACT_TAKEOVER_HTTP';
 const receipt = { schemaVersion: 1, purpose, sourceSha: source.sourceSha, stages: ['INPUTS'], status: 'STOPPED' };
 const openingCheckpoints = [
   'ACTORS_READY', 'OPENING_REGISTERED', 'FINANCE_CONFIRMED', 'TAKEOVER_ACTIVATED',
@@ -67,7 +69,7 @@ async function consume({ ownerUrl, database, workDir, candidateTree }) {
   receipt.a28 = {
     databaseRole: 'isolated_fixture_owner',
     httpAuthorization: 'application_business_roles',
-    enabledOperatingLedgerRelationships: opening ? ['inside'] : scenario ? [] : ['upward'],
+    enabledOperatingLedgerRelationships: opening ? ['inside'] : unknownOverpay ? [] : ['upward'],
     passed: report?.numPassedTests ?? 0,
     skipped: report?.numPendingTests ?? 0,
     registered: report?.numTotalTests ?? 0,
@@ -104,24 +106,42 @@ async function consume({ ownerUrl, database, workDir, candidateTree }) {
 
 async function main() {
   assert.equal(process.argv.length, 2);
-  assert.ok(!scenario || (historicalSettlement && ['a29-opening', 'a28-unknown-overpay'].includes(scenario)));
+  assert.ok(expenseWitness ? ['a28-continuation', 'a29-opening'].includes(scenario)
+    : !scenario || (historicalSettlement && (opening || unknownOverpay)));
   assert.notEqual(process.getuid(), 0);
   assert.equal(process.env.DATABASE_URL, undefined);
   profile.assertSource(source, final);
   const installerSha256 = createHash('sha256').update(fs.readFileSync(path.join(root, 'installer.cjs'))).digest('hex');
   assert.equal(installerSha256, profile.installerSha256, 'A28_INSTALLER_RUNTIME_FINGERPRINT');
   receipt.installerSha256 = installerSha256;
-  const baseline = require(path.join(api, 'prisma/migration-baseline.cjs')).loadCanonicalMigrationBaseline();
-  assert.equal(baseline.expectedDirectoryCount, count);
-  assert.equal(baseline.terminalMigration, profile.terminal.name);
-  assert.equal(baseline.terminalMigrationChecksum, profile.terminal.sha256);
+  const baselineModule = require(path.join(api, 'prisma/migration-baseline.cjs'));
+  if (expenseWitness) {
+    profile.assertRuntimeBaseline(baselineModule);
+  } else {
+    const baseline = baselineModule.loadCanonicalMigrationBaseline();
+    assert.equal(baseline.expectedDirectoryCount, count);
+    assert.equal(baseline.terminalMigration, profile.terminal.name);
+    assert.equal(baseline.terminalMigrationChecksum, profile.terminal.sha256);
+  }
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
-  const install = historicalSettlement ? installer.withCombined334HistoricalSettlement : installer.withCombined333HistoricalTakeover;
-  await install(receipt, consume, {
-    sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails
-  });
-  assert.equal(receipt.historicalTakeoverPredecessor.ledgerSha256, profile.predecessor332);
-  assert.equal(receipt.forward320.ledgerSha256, profile.ledgerSha256);
+  const material = { sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails };
+  if (expenseWitness) {
+    await installer.withCombinedExpenseWitness(receipt, consume, material, profile.count);
+    const historical = require('./historical-settlement-334-profile.cjs');
+    historical.assertFinanceInstallation(receipt, { ...source, tails: source.tails.slice(0, 39) });
+    const forward = receipt.expenseWitnessForward;
+    assert.equal(forward.count, count);
+    assert.equal(forward.sourceTree, source.sourceTree);
+    assert.equal(forward.ledgerSha256, profile.ledgerSha256);
+    assert.equal(forward.sameIdentity, true);
+    assert.deepEqual(forward.tails, source.tails.slice(39).map(({ name, sha256 }) => ({ name, sha256 })));
+    assert.equal(receipt.expenseWitnessCatalogAfterBusiness, true);
+  } else {
+    const install = historicalSettlement ? installer.withCombined334HistoricalSettlement : installer.withCombined333HistoricalTakeover;
+    await install(receipt, consume, material);
+    assert.equal(receipt.historicalTakeoverPredecessor.ledgerSha256, profile.predecessor332);
+    assert.equal(receipt.forward320.ledgerSha256, profile.ledgerSha256);
+  }
   assert.equal(receipt.combinedAfterBusiness.ledgerSha256, profile.ledgerSha256);
   assert.equal(receipt.combinedAfterBusiness.count, count);
   assert.equal(receipt.combinedAfterBusiness.sameIdentity, true);
@@ -130,14 +150,14 @@ async function main() {
   assert.equal(receipt.multiWitnessCatalogAfterBusiness, true);
   if (historicalSettlement) assert.equal(receipt.historicalSettlementCatalogAfterBusiness, true);
   assert.equal(receipt.cleanup, 'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
-  assert.ok(receipt.a28.complete, 'A28_333_HTTP_COVERAGE');
+  assert.ok(receipt.a28.complete, expenseWitness ? purpose + '_HTTP_COVERAGE' : 'A28_333_HTTP_COVERAGE');
   receipt.status = purpose + '_PASSED';
 }
 
 main().catch(error => {
   receipt.status = 'STOPPED';
   const code = error.code ?? error.message;
-  receipt.failure = { stage: receipt.stages.at(-1), code: /^[A-Z0-9_]+$/u.test(code) ? code : 'A28_333_FAILED',
+  receipt.failure = { stage: receipt.stages.at(-1), code: /^[A-Z0-9_]+$/u.test(code) ? code : expenseWitness ? purpose + '_FAILED' : 'A28_333_FAILED',
     sqlstate: error.sqlstate, prismaCode: error.prismaCode };
   process.exitCode = 1;
 }).finally(() => process.stdout.write(JSON.stringify(receipt) + '\n'));
