@@ -473,6 +473,15 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
     ]);
     else assert.match(result.stdout, /334 PostgreSQL gate has no admitted runner/u);
   }
+  for (const count of [335, 346]) {
+    const repinned = executable.replace(/^count=.*$/mu, `count=${count}`);
+    const result = spawnSync("bash", ["-c", `exec () { exit 99; }\n${repinned}`], {
+      cwd: root, encoding: "utf8",
+      env: { ...process.env, CI_SOURCE_SHA: sha, DYNAMIC_GROUP: "contract_finance_acceptance", DYNAMIC_SHARD: "" }
+    });
+    assert.equal(result.status, 65, result.stdout + result.stderr);
+    assert.match(result.stdout, new RegExp(`${count} PostgreSQL gate has no admitted baseline`, "u"));
+  }
 });
 
 test("personnel feedback runs after its real PostgreSQL shard with both browsers and original budgets", async () => {

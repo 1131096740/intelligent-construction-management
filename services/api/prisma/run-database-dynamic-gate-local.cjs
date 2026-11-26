@@ -669,7 +669,12 @@ const current330Lanes = Object.freeze({
   task398_shared_standard: "task398-standard"
 });
 
+function assertAutomaticBaselineAdmitted(migrationCount) {
+  if (migrationCount > 334) fail(`${migrationCount} PostgreSQL 动态基线未准入`);
+}
+
 function resolveGroupCommand(group, options = {}) {
+  if (group.id !== TASK01_GROUP) assertAutomaticBaselineAdmitted(options.migrationCount);
   if (options.migrationCount === 334) {
     const dispatch = gate334.commandFor334(group.id, options.candidateSha, group.pol113Pol115Shard);
     if (!dispatch) fail(`334 PostgreSQL 动态组未接入：${group.id}`);
@@ -795,6 +800,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       coveredTests: 1, fullDynamicGate: false, executionInventory: executionInventory(coveredGroups), ciExecution: "manual-only" };
   }
   const migrationCount = manifest.migrationBaseline.expectedDirectoryCount;
+  assertAutomaticBaselineAdmitted(migrationCount);
   if (migrationCount === 334) {
     const unadmitted = gate334.unadmittedGroups334(coveredGroups);
     if (unadmitted.length) fail(`334 PostgreSQL 动态组未接入：${unadmitted.join(", ")}`);

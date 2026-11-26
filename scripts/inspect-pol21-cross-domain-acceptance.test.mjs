@@ -180,6 +180,18 @@ test("repository POL-21 require-ready blocks partial 334 matrix admission", asyn
   });
 });
 
+test("POL-21 blocks an unadmitted forward baseline even with complete evidence inventory", () => {
+  for (const expectedDirectoryCount of [335, 346]) {
+    const fixture = readyFixture();
+    fixture.dynamicGateManifest.migrationBaseline = { expectedDirectoryCount };
+
+    const report = inspectPol21CrossDomainAcceptance(fixture);
+
+    assert.equal(report.status, "blocked");
+    assert.deepEqual(report.blockers, ["POL21_DYNAMIC_FORWARD_ADMISSION_INCOMPLETE"]);
+  }
+});
+
 test("the fail-closed POL-21 checker is itself mandatory in CI orchestration", async () => {
   const packageJson = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 

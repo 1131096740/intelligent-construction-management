@@ -271,6 +271,30 @@ test("334 routes Line A, A28, finance and Remaining and rejects other groups bef
   assert.doesNotMatch(result.stderr, /ENOENT|spawn|Docker/u);
 });
 
+test("unadmitted forward baselines reject automatic execution before temporary resources", async () => {
+  const Module = require("node:module");
+  const fixture = new Module(runnerPath, module);
+  fixture.filename = runnerPath;
+  fixture.paths = Module._nodeModulePaths(path.dirname(runnerPath));
+  const load = fixture.require.bind(fixture);
+  fixture.require = id => id === "node:fs/promises" ? {
+    ...load(id), mkdtemp: () => assert.fail("must reject before creating a temporary resource")
+  } : load(id);
+  fixture._compile(readFileSync(runnerPath, "utf8").replace(/^#!.*\n/u, ""), runnerPath);
+
+  const manifest = loadManifest();
+  const group = manifest.coveredGroups.find(item => item.id === "contract_finance_acceptance");
+  const candidateSha = "e".repeat(40);
+  const options = parseArguments(["--execute", "--group", group.id,
+    "--candidate-sha", candidateSha, "--confirm", "LOCAL_PG16_DYNAMIC_GATE"]);
+  for (const count of [335, 346]) {
+    manifest.migrationBaseline.expectedDirectoryCount = count;
+    const expected = new RegExp(`${count} PostgreSQL 动态基线未准入`, "u");
+    await assert.rejects(fixture.exports.executeGate({ manifest, options, sourceEnv: { PATH: "", NODE_ENV: "test" } }), expected);
+    assert.throws(() => resolveGroupCommand(group, { candidateSha, migrationCount: count }), expected);
+  }
+});
+
 test("334 routes standalone payment execution without substituting Core Payment", () => {
   const group = loadManifest().coveredGroups.find(item => item.id === "payment_execution");
   assert.equal(group.pendingTests, 2);

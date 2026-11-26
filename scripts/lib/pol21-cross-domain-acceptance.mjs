@@ -163,7 +163,10 @@ export function inspectPol21CrossDomainAcceptance({
   ) {
     blockers.push("POL21_DYNAMIC_INVENTORY_INCOMPLETE");
   }
-  if (dynamicGateManifest?.migrationBaseline?.expectedDirectoryCount === 334) {
+  const migrationCount = dynamicGateManifest?.migrationBaseline?.expectedDirectoryCount;
+  if (migrationCount > 334) {
+    blockers.push("POL21_DYNAMIC_FORWARD_ADMISSION_INCOMPLETE");
+  } else if (migrationCount === 334) {
     const unadmitted = gate334.unadmittedGroups334(dynamicGateManifest.coveredGroups ?? []);
     if (unadmitted.length || !knownGroups.has(gate334.historicalTakeoverGroup) ||
         !knownGroups.has("line_a_real_db")) {
