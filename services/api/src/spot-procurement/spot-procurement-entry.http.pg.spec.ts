@@ -1042,5 +1042,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
         child.on("exit", (code) => code === 0 ? done() : reject(new Error("零采真实浏览器验证失败")));
       });
     }
-  }, 180_000);
+    // Allow the four original journeys and all 20 independent cold starts
+    // to finish without tearing down Nest during the second browser run.
+  }, 240_000);
 });
