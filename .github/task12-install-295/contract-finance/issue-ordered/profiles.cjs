@@ -25,6 +25,22 @@ const profiles = {
       '办理中可下载当前轮审批单：已签显示签字、未签留空、带水印并记下载审计',
       '驳回后重提只保留最新轮审批单，旧轮签字不进入新PDF'
     ]
+  },
+  issue421: {
+    file: 'src/database/issue421-signed-settlement-ledger.http.pg.spec.ts',
+    sourceDigest: '2580650f2a96dac37a6f9b9e2720aec8985f9cac8144bf4f08e0cce7859d8e9e',
+    fixtureDigest: 'e2362782b0762891701e100c0804f73b923a97c9bb80b77eb4f1951245866c7a',
+    orderedDatabaseKey: 'JG_ISSUE421_ORDERED_DATABASE',
+    enableKey: 'ISSUE421_LEDGER_RUN',
+    stage: 'ORIGINAL_SIGNED_LEDGER_JEST',
+    titles: [
+      'only puts confirmed signed settlements into the formal ledger',
+      'merges visible projects and enforces row-level visibility',
+      'filters the whole visible ledger by project, date, status and keyword',
+      'exports the same filtered rows with numeric amount, date and escaped text',
+      'does not let exports bypass row-level visibility',
+      'exports contracts with the current filter, numeric/date cells and unknown amounts kept'
+    ]
   }
 };
 
