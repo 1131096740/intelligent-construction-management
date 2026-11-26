@@ -91,7 +91,7 @@ const profiles = {
   issue420: {
     file: 'src/database/issue420-approval-center.http.pg.spec.ts',
     sourceDigest: 'd4effcfb32e745737be3278c0556f903c2ae6c55c631016a59a3c0c79588d5a3',
-    fixtureDigest: 'fe8b03de2fec47e42152497301ab0100a1e9cc4424195b7d901d5bc27fd23a12',
+    fixtureDigest: 'a14c4c822d5346c63ef7cda1b498e36957e6969709c20c4d2caea2cb2ca41fde',
     orderedDatabaseKey: 'JG_ISSUE420_ORDERED_DATABASE',
     enableKey: 'RUN_ISSUE420_REAL_DB',
     stage: 'ORIGINAL_HTTP_PDF_JEST',
@@ -135,7 +135,7 @@ const profiles = {
   issue422: {
     file: 'src/database/issue422-archives.http.pg.spec.ts',
     sourceDigest: 'e1b07c48aabe8ce197cb2d26cdd93a065434c7ef5cb3a1ae51547638ad02f826',
-    fixtureDigest: 'e5d23d40b28d09b7054621db4f183dfe5492822483379b365c37774f732f1020',
+    fixtureDigest: 'bd414e6b5fdc738f0c44c4c439c4cbe75dcdebd5539080564a75c990354c81bf',
     orderedDatabaseKey: 'JG_ISSUE422_ORDERED_DATABASE',
     enableKey: 'RUN_ISSUE422_REAL_DB',
     stage: 'ORIGINAL_ARCHIVE_HTTP_JEST',
