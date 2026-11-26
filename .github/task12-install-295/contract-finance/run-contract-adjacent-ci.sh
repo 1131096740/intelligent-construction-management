@@ -22,7 +22,7 @@ fi
     $2 == settlement || $2 == template || $2 == draft || $2 == v7 || $2 == invoice || $2 == pol279 || $2 == pol280 || $2 == company-proxy || $2 == expense-execution || $2 == expense-finance || $2 == expense-receipt || $2 == payment-execution ||
     $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts || $2 == pol109 || $2 == task398-standard || $2 == task398-ledger-loss || $2 == browser-partial || $2 == browser-completion || $2 == pfq || $2 == cash-transfer || $2 == project-advance ) ) ||
   ( $# == 3 && ( $2 == historical-takeover-a28 || $2 == line-a || $2 == onboarding || $2 == procurement || $2 == pol115-workbench || $2 == pol115-full || $ordered_issue == true ) && $3 == --historical-settlement-334 ) ||
-  ( $# == 3 && $2 == pol115-workbench && $3 == --expense-witness-346 ) ||
+  ( $# == 3 && ( $2 == pol115-workbench || $2 == pol115-full ) && $3 == --expense-witness-346 ) ||
   ( $# == 4 && $2 == pol275 && $3 == --historical-settlement-334 && $4 == a187dc73a133114e1cfbbc891a4aec923abe2545 ) ||
   ( $# == 4 && $2 == pol275 && ( $3 == --current-320 || $3 == --text-direct-330 || $3 == --payment-remainder-331 || $3 == --upward-archive-332 ) && $4 =~ ^[a-f0-9]{40}$ ) ]] || exit 64
 sha=$1
@@ -42,7 +42,8 @@ if [[ ${3:-} == --payment-remainder-331 ]]; then
     *) exit 64 ;;
   esac
 fi
-if [[ ( $lane == historical-takeover-a28 || $lane == pol115-full ) && ${3:-} != --historical-settlement-334 ]]; then exit 64; fi
+if [[ $lane == historical-takeover-a28 && ${3:-} != --historical-settlement-334 ]]; then exit 64; fi
+if [[ $lane == pol115-full && ${3:-} != --historical-settlement-334 && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
 if [[ ( $lane == cash-transfer || $lane == project-advance ) && ${3:-} != --upward-archive-332 ]]; then exit 64; fi
 if [[ $lane == task398-ledger-loss && ${3:-} != --text-direct-330 && ${3:-} != --payment-remainder-331 && ${3:-} != --upward-archive-332 ]]; then exit 64; fi
 root=$(git rev-parse --show-toplevel)
@@ -108,7 +109,7 @@ case "$lane" in
     for scope in pol115 spot; do
       bash "$plan/pol115/run-pol115-334.sh" "$root" "$work/source" "$sha" "$work/browser" "$scope"
     done
-    bash "$plan/workbench/run-workbench295.sh" "$root" "$work/source" "$sha" "$work/browser" --historical-settlement-334
+    bash "$plan/workbench/run-workbench295.sh" "$root" "$work/source" "$sha" "$work/browser" "${mode_args[@]}"
     ;;
   pol115-workbench) bash "$plan/workbench/run-workbench295.sh" "$root" "$work/source" "$sha" "$work/browser" ${mode_args[@]+"${mode_args[@]}"} ;;
   pfq) bash "$plan/run-pfq.sh" "$root" "$work/source" "$sha" "$work/browser" ${mode_args[@]+"${mode_args[@]}"} ;;
