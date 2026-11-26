@@ -339,8 +339,7 @@ async function recordExpenseClaimPaymentWithCapability(
   claimId: string,
   body: Parameters<typeof recordExpenseClaimPayment>[1]
 ) {
-  const scopeKey = body.registeredFunding?.scopeKey;
-  const capability = await fetchExpenseClaimActionCapability(claimId, scopeKey);
+  const capability = await fetchExpenseClaimActionCapability(claimId, body.registeredFunding);
   const matchesRequestedClaim = capability.claimId === claimId;
   if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
   const operationAllowed = capability.availableActions.includes("record_expense_claim_payment");
@@ -372,7 +371,7 @@ async function uploadExpenseClaimAppendAttachmentWithCapability(claimId: string,
   return uploadExpenseClaimAppendAttachmentFile(claimId, file, file.name);
 }
 async function uploadExpenseClaimPaymentVoucherWithCapability(claimId: string, file: File, scopeKey?: string) {
-  const capability = await fetchExpenseClaimActionCapability(claimId, scopeKey);
+  const capability = await fetchExpenseClaimActionCapability(claimId, { scopeKey });
   const matchesRequestedClaim = capability.claimId === claimId;
   if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
   const operationAllowed = capability.availableActions.includes("record_expense_claim_payment");

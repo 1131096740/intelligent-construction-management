@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, createExpenseClaim, editReturnedExpenseClaimDraft, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaimExpenseCategories, fetchExpenseClaimSelectablePurchaseBatches, generateExpenseClaimFinalPaymentPdf, recordExpenseClaimPayment, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, withdrawExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
+import { adjustExpenseClaimPaymentSubject, appendExpenseClaimAttachment, attachExpenseClaimAttachment, createExpenseClaim, editReturnedExpenseClaimDraft, fetchExpenseClaimActionCapability, fetchExpenseClaimCreateOptions, fetchExpenseClaimDetail, fetchExpenseClaimExpenseCategories, fetchExpenseClaimSelectablePurchaseBatches, generateExpenseClaimFinalPaymentPdf, recordExpenseClaimPayment, removeExpenseClaimAttachment, reviewExpenseClaim, submitExpenseClaim, withdrawExpenseClaim, type CreateExpenseClaimPayload } from "./expense-claim.api";
 
 vi.mock("./api-fetch", () => ({ apiFetch: vi.fn() }));
 
@@ -18,6 +18,16 @@ describe("expense claim API", () => {
     await expect(fetchExpenseClaimDetail("claim/1")).resolves.toMatchObject({ id: "claim-1", lines: [] });
 
     expect(mockApiFetch).toHaveBeenCalledWith("/expense-claims/claim%2F1");
+  });
+
+  it.each([
+    [undefined, "/expense-claims/claim%2F1/capability"],
+    [{ scopeKey: "public_cash" }, "/expense-claims/claim%2F1/capability?scopeKey=public_cash"]
+  ] as const)("loads capabilities for the requested payment scope", async (funding, resource) => {
+    mockApiFetch.mockResolvedValue(new Response(JSON.stringify({ claimId: "claim/1", availableActions: [] })));
+
+    await expect(fetchExpenseClaimActionCapability("claim/1", funding)).resolves.toMatchObject({ claimId: "claim/1" });
+    expect(mockApiFetch).toHaveBeenCalledWith(resource);
   });
 
   it("loads authorized creation options and posts canonical cents payloads", async () => {

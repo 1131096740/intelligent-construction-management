@@ -511,8 +511,8 @@ export async function fetchExpenseClaimDetail(claimId: string) {
   return response.json() as Promise<ExpenseClaimDetailReadModel>;
 }
 
-export async function fetchExpenseClaimActionCapability(claimId: string, scopeKey?: string) {
-  const scopeQuery = scopeKey === "public_cash" ? "?scopeKey=public_cash" : "";
+export async function fetchExpenseClaimActionCapability(claimId: string, funding?: { scopeKey?: string }) {
+  const scopeQuery = funding?.scopeKey === "public_cash" ? "?scopeKey=public_cash" : "";
   const response = await apiFetch(
     `/expense-claims/${encodeURIComponent(claimId)}/capability${scopeQuery}`
   );
