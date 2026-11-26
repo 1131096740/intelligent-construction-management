@@ -1,5 +1,6 @@
 import {
   OperatingProjectionStreamAccumulator,
+  SettlementProjectionCandidates,
   ProjectionResourceBudgetExceededError,
   reduceOperatingProjection,
   toOperatingProjectionAggregate,
@@ -1472,18 +1473,43 @@ describe("跨来源结算去重：同一合同版本同一期次只计一次成�
     expect(result.integrity.notices.join("\n")).toContain("同一合同期次「第1期」存在多来源结算");
   });
 
-  it("直读与分页去重结果一致", () => {
-    reduceOperatingProjection({ ...context, facts: [legacy, signed] });
-    const stream = new OperatingProjectionStreamAccumulator(context);
-    for (const row of [legacy, signed]) {
+  const repeated = {
+    ...signed,
+    id: "signed-settlement-repeat",
+    sourceBusinessId: "signed-settlement-repeat",
+    impacts: signed.impacts.map(impact => ({ ...impact, id: `${impact.id}-repeat` }))
+  };
+
+  it.each([
+    { scenario: "两来源各一笔", rows: [legacy, signed], cost: "6000", suppressed: 1, complete: true },
+    { scenario: "多笔跨来源", rows: [legacy, signed, repeated], cost: "18000", suppressed: 0, complete: false },
+    { scenario: "多笔跨来源顺序调换", rows: [repeated, signed, legacy], cost: "18000", suppressed: 0, complete: false }
+  ])("直读与分页去重结果一致：$scenario", ({ rows, cost, suppressed, complete }) => {
+    const direct = reduceOperatingProjection({ ...context, facts: rows });
+    const candidates = new SettlementProjectionCandidates();
+    for (const row of rows) candidates.add(row);
+    const stream = new OperatingProjectionStreamAccumulator({
+      ...context, settlementDeduplication: candidates.resolve()
+    });
+    for (const row of rows) {
       stream.startFacts([{ ...row, impacts: [] }]);
       stream.addImpacts(row.impacts.map(impact => ({ ...impact, factId: row.id })));
       stream.finishFacts();
     }
     const paged = reduceOperatingProjection({ ...context, facts: [], ...stream.result() });
-    expect(paged.operating.confirmedCostCents).toBe("6000");
-    expect(paged.asOf.crossSourceDedupedFactCount).toBe(1);
-    expect(paged.integrity.notices.join("\n")).toContain("多来源结算");
+    for (const result of [direct, paged]) {
+      expect(result.operating.confirmedCostCents).toBe(cost);
+      expect(result.asOf.crossSourceDedupedFactCount).toBe(suppressed);
+      expect(result.integrity.moneyComplete).toBe(complete);
+      expect(result.integrity.notices.join("\n")).toContain("多来源");
+    }
+  });
+
+  it("同一来源允许同合同同编号确认两笔同金额结算", () => {
+    const result = reduceOperatingProjection({ ...context, facts: [signed, repeated] });
+    expect(result.operating.confirmedCostCents).toBe("12000");
+    expect(result.asOf.crossSourceDedupedFactCount).toBe(0);
+    expect(result.integrity.moneyComplete).toBe(true);
   });
 
   it("不同期次不去重", () => {

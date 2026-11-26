@@ -109,7 +109,7 @@ describe("OperatingProjectionService", () => {
       { record: jest.fn() } as never, { confirmPassword: jest.fn() } as never
     );
     const prepareScan = () => {
-      tx.operatingFact.findMany.mockResolvedValueOnce([costFact]);
+      tx.operatingFact.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([costFact]);
       tx.operatingImpactEntry.findMany.mockResolvedValueOnce([originalImpact]);
     };
     prepareScan();
@@ -301,7 +301,34 @@ describe("OperatingProjectionService", () => {
     expect(detailQuery?.select).not.toHaveProperty("description");
   });
 
-  it("pages and exports only the settlement sources selected by the aggregate", async () => {
+  it.each([
+    {
+      scenario: "明确两来源匹配",
+      mixedHistory: true,
+      repeatSigned: false,
+      expectedCodes: ["SETTLEMENT-B", "SETTLEMENT-A"],
+      amount: "200",
+      suppressed: 1
+    },
+    {
+      scenario: "同一来源重复编号及负向冲减",
+      mixedHistory: false,
+      repeatSigned: true,
+      expectedCodes: ["SIGNED-CORRECTION", "SIGNED-REPEAT", "SIGNED-DUPLICATE", "SETTLEMENT-B"],
+      amount: "250",
+      suppressed: 0
+    },
+    {
+      scenario: "多来源且存在多笔同编号结算",
+      mixedHistory: true,
+      repeatSigned: true,
+      expectedCodes: ["SIGNED-CORRECTION", "SIGNED-REPEAT", "SIGNED-DUPLICATE", "SETTLEMENT-B", "SETTLEMENT-A"],
+      amount: "350",
+      suppressed: 0
+    }
+  ])("明细分页和导出保留经营结算记录：$scenario", async ({
+    mixedHistory, repeatSigned, expectedCodes, amount, suppressed
+  }) => {
     const tx = emptyProjectionTx(new Date("2026-09-11T01:02:03Z"), [project]);
     const settlement = {
       id: "fact-a", projectId: project.id, sourceType: "settlement",
@@ -324,15 +351,43 @@ describe("OperatingProjectionService", () => {
       occurredAt: new Date("2026-09-05"), confirmedAt: new Date("2026-09-05"),
       sourceSnapshot: { contractVersionId: "contract-v1", contractKind: "downstream", settlementNumber: "第１期" }
     };
-    const facts = [settlement, otherPeriod, duplicate];
+    const repeated = {
+      ...duplicate, id: "fact-d", sourceBusinessId: "signed-settlement-d",
+      sourceBusinessCode: "SIGNED-REPEAT",
+      occurredAt: new Date("2026-09-06"), confirmedAt: new Date("2026-09-06")
+    };
+    const correction = {
+      ...duplicate, id: "fact-e", sourceBusinessId: "signed-settlement-e",
+      sourceBusinessCode: "SIGNED-CORRECTION", amountCents: 50n,
+      occurredAt: new Date("2026-09-07"), confirmedAt: new Date("2026-09-07")
+    };
+    const facts = [
+      ...(mixedHistory ? [settlement] : []), otherPeriod, duplicate,
+      ...(repeatSigned ? [repeated, correction] : [])
+    ];
+    const ambiguous = mixedHistory && repeatSigned;
+    // Fill the first fact page so its apparent match precedes the two later signed facts.
+    const olderPageRows = ambiguous ? Array.from({ length: 497 }, (_, index) => ({
+      ...duplicate,
+      id: `fact-c-filler-${String(index).padStart(3, "0")}`,
+      sourceBusinessId: `signed-settlement-filler-${index}`,
+      sourceSnapshot: { ...duplicate.sourceSnapshot, settlementNumber: `其他期次-${index}` }
+    })) : [];
+    const aggregateRows = [...facts, ...olderPageRows].sort((left, right) => left.id.localeCompare(right.id));
     const impacts = facts.map((fact) => ({
       id: `impact-${fact.id}`, factId: fact.id, fact, impactKind: "confirmed_cost",
-      amountCents: fact.amountCents, numericProtocolVersion: 1, direction: "increase",
+      amountCents: fact.amountCents, numericProtocolVersion: 1, direction: fact.id === correction.id ? "decrease" : "increase",
       subjectKind: null, subjectId: null, costCategoryCode: "material", fundPurpose: null
     }));
-    tx.operatingFact.findMany.mockResolvedValue(facts);
+    tx.operatingFact.findMany.mockImplementation(async (query) => {
+      const eligible = query.where.sourceType
+        ? aggregateRows.filter((row) => query.where.sourceType.in.includes(row.sourceType))
+        : aggregateRows;
+      const first = eligible.findIndex(({ id }) => id === query.cursor?.id) + 1;
+      return eligible.slice(first, first + query.take);
+    });
     tx.operatingImpactEntry.findMany.mockImplementation(async (query) => {
-      if (!query.select?.fact) return impacts;
+      if (!query.select?.fact) return impacts.filter(({ factId }) => query.where.factId.in.includes(factId));
       const detailOrder = [...impacts].reverse();
       const cursorImpactId = query.where.OR?.[1].id.gt;
       return detailOrder.slice(detailOrder.findIndex(({ id }) => id === cursorImpactId) + 1);
@@ -347,20 +402,47 @@ describe("OperatingProjectionService", () => {
 
     const request = { projectId: project.id, pageSize: 1 };
     const first = await service.getProjectDetailPage("finance", request);
-    expect(first.projection.asOf.crossSourceDedupedFactCount).toBe(1);
-    expect(first.items.map((item) => item.sourceBusinessCode)).toEqual(["SETTLEMENT-B"]);
-    expect(first.page.nextCursor).toEqual(expect.any(String));
-    const second = await service.getProjectDetailPage("finance", { ...request, cursor: first.page.nextCursor! });
-    expect(second.items.map((item) => item.sourceBusinessCode)).toEqual(["SETTLEMENT-A"]);
+    expect(first.projection.operating.confirmedCostCents).toBe(amount);
+    expect(first.projection.integrity.moneyComplete).toBe(!ambiguous);
+    if (ambiguous) {
+      expect(first.projection.integrity.notices).toEqual(expect.arrayContaining([
+        expect.stringContaining("无法确定对应关系")
+      ]));
+      expect(first.projection.distribution.currentDistributableProfitCents).toBeNull();
+    }
+    expect(first.projection.asOf.crossSourceDedupedFactCount).toBe(suppressed);
+    const pagedCodes = first.items.map((item) => item.sourceBusinessCode);
+    if (repeatSigned) {
+      expect(first.items[0]).toMatchObject({ sourceBusinessCode: "SIGNED-CORRECTION", signedImpactCents: "-50" });
+    }
+    let cursor = first.page.nextCursor;
+    for (const expectedCode of expectedCodes.slice(1)) {
+      expect(cursor).toEqual(expect.any(String));
+      const page = await service.getProjectDetailPage("finance", { ...request, cursor: cursor! });
+      expect(page.items.map((item) => item.sourceBusinessCode)).toEqual([expectedCode]);
+      pagedCodes.push(...page.items.map((item) => item.sourceBusinessCode));
+      cursor = page.page.nextCursor;
+    }
+    expect(pagedCodes).toEqual(expectedCodes);
+    if (cursor) {
+      const terminalPage = await service.getProjectDetailPage("finance", { ...request, cursor });
+      expect(terminalPage.items).toEqual([]);
+      expect(terminalPage.page.nextCursor).toBeNull();
+    }
 
     const exported = await service.exportView("finance", { scopeKind: "project", projectId: project.id },
       "current-password", "project_operating_ledger_detail");
     const csv = await readUtf8Stream(exported.stream);
-    expect(csv).toContain('"SETTLEMENT-A"');
-    expect(csv).toContain('"SETTLEMENT-B"');
-    expect(csv).not.toContain('"SIGNED-DUPLICATE"');
+    for (const row of facts) {
+      if (expectedCodes.includes(row.sourceBusinessCode)) expect(csv).toContain(`"${row.sourceBusinessCode}"`);
+      else expect(csv).not.toContain(`"${row.sourceBusinessCode}"`);
+    }
+    if (repeatSigned) {
+      const correctionRow = csv.split("\n").find((line) => line.includes('"SIGNED-CORRECTION"'));
+      expect(correctionRow).toContain(`"'-0.50"`);
+    }
     expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      action: "operating_projection.export", metadata: expect.objectContaining({ rowCount: 2 })
+      action: "operating_projection.export", metadata: expect.objectContaining({ rowCount: expectedCodes.length })
     }));
   });
 
@@ -972,7 +1054,7 @@ describe("OperatingProjectionService", () => {
       scope: { label: "多项目汇总口径", projectCount: 101 }
     }));
     expect(tx.project.findMany).toHaveBeenCalledTimes(3); // Two scoped batches plus transfer project labels.
-    expect(tx.operatingFact.findMany).toHaveBeenCalledTimes(2);
+    expect(tx.operatingFact.findMany.mock.calls.filter(([query]) => !query.select)).toHaveLength(2);
   });
 
   it("resolves company membership across internal project batches", async () => {
@@ -1339,11 +1421,12 @@ describe("OperatingProjectionService", () => {
       costBearingCompanySubjectKind: null,
       costBearingCompanySubjectId: null
     });
-    const firstPage = Array.from({ length: 10_000 }, (_, index) => storedFact(index));
-    const finalPage = [storedFact(10_000)];
-    const findMany = jest.fn()
-      .mockResolvedValueOnce(firstPage)
-      .mockResolvedValueOnce(finalPage);
+    const rows = Array.from({ length: 10_001 }, (_, index) => storedFact(index));
+    const findMany = jest.fn().mockImplementation(async (query) => {
+      if (query.where.sourceType) return [];
+      const first = rows.findIndex(({ id }) => id === query.cursor?.id) + 1;
+      return rows.slice(first, first + query.take);
+    });
     const tx = {
       $executeRawUnsafe: jest.fn().mockResolvedValue(0),
       $queryRaw: jest.fn().mockResolvedValue([{ readAt, workFactCount: 0n, workImpactCount: 0n, workBytes: 0n, targetCount: 0n }]),
@@ -1387,7 +1470,7 @@ describe("OperatingProjectionService", () => {
       }));
     expect(tx.operatingFact.count).not.toHaveBeenCalled();
     expect(tx.operatingImpactEntry.count).not.toHaveBeenCalled();
-    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(findMany.mock.calls.filter(([query]) => !query.select)).toHaveLength(21);
   });
 
   it("does not let a narrowed holder filter bypass the total aggregate work budget", async () => {
