@@ -2,17 +2,18 @@
 const assert = require('node:assert/strict');
 const {randomBytes} = require('node:crypto');
 const source = require('./contract-finance-source.json');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement} = require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness} = require('./installer.cjs');
 const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run-task398-shared-standard-local.cjs');
 
 const [lane] = process.argv.slice(2);
 assert.ok(process.argv.length===3&&lane==='company-proxy-repayment');
 const textDirect=source.mode==='text-direct-330';
+const expense=source.mode==='expense-witness-346'?require('./expense-witness-346-profile.cjs'):undefined;
 const historicalSettlement=source.mode==='historical-settlement-334';
 const upwardArchive=source.mode==='upward-archive-332';
 const paymentRemainder=source.mode==='payment-remainder-331';
-const current320=historicalSettlement||upwardArchive||paymentRemainder||textDirect||source.mode==='current-320';
-const count=historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
+const current320=Boolean(expense)||historicalSettlement||upwardArchive||paymentRemainder||textDirect||source.mode==='current-320';
+const count=expense?expense.count:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
 const purpose='TASK410_COMPANY_PROXY_EXACT_'+count;
 const receipt = {schemaVersion:1,sourceSha:source.sourceSha,lane,purpose,business:'NOT_ENTERED',stages:[]};
 async function withGuardedReplay(context, consume) {
@@ -60,27 +61,47 @@ async function withGuardedReplay(context, consume) {
 async function main(){
   assert.equal(source.migrationCount,count);
   assert.equal((current320?source.predecessor:source).ledgerSha256,require('./multi-witness.cjs').final);
-  const validate334=historicalSettlement?require('./historical-settlement-334-profile.cjs'):undefined;
-  validate334?.assertSource(source,require('./multi-witness.cjs').final);
+  if(expense){
+    const {readFileSync}=require('node:fs'),{createHash}=require('node:crypto');
+    assert.equal(createHash('sha256').update(readFileSync('/qualification/installer.cjs')).digest('hex'),expense.installerSha256);
+    expense.assertSource(source,require('./multi-witness.cjs').final);
+    expense.assertRuntimeBaseline(require('./workspace/services/api/prisma/migration-baseline.cjs'));
+  }
+  const validate334=(expense||historicalSettlement)?require('./historical-settlement-334-profile.cjs'):undefined;
+  if(historicalSettlement) validate334.assertSource(source,require('./multi-witness.cjs').final);
   const validate332=upwardArchive?require('./upward-archive-332-profile.cjs'):undefined;
   validate332?.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
   const consume=context=>runTask398Owned282Voucher(context,lane+'-'+count,receipt);
+  const consumeCurrent=context=>{
+    validate334?.assertFinanceInstallation(receipt,expense?{...source,tails:source.tails.slice(0,39)}:source);
+    if(expense){
+      assert.equal(context.candidateTree,source.sourceTree);
+      assert.deepEqual(receipt.expenseWitnessForward,{
+        count,ledgerSha256:expense.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
+        tails:source.tails.slice(39).map(({name,sha256})=>({name,sha256}))
+      });
+    }
+    return withGuardedReplay(context,consume);
+  };
   if(current320){
     const install=historicalSettlement?withCombined334HistoricalSettlement:upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
-    await install(receipt,context=>{
-      validate334?.assertFinanceInstallation(receipt,source);
-      return withGuardedReplay(context,consume);
-    },{sourceTree:source.sourceTree,
-      migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails});
+    const material={sourceTree:source.sourceTree,
+      migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails};
+    if(expense){
+      await withCombinedExpenseWitness(receipt,consumeCurrent,material,count);
+      assert.equal(receipt.expenseWitnessCatalogAfterBusiness,true);
+    } else {
+      await install(receipt,consumeCurrent,material);
+    }
     assert.equal(receipt.forward320.sourceTree,source.sourceTree);
-    assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
+    if(!expense) assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
     assert.equal(receipt.forward320.sameBaseB7,true);
   } else {
     await withCombined295MultiWitness(receipt,consume);
   }
   validate332?.assertInstallation(receipt,source);
-  if(historicalSettlement){
-    validate334.assertFinanceInstallation(receipt,source);
+  if(validate334){
+    if(historicalSettlement) validate334.assertFinanceInstallation(receipt,source);
     assert.equal(receipt.historicalTakeoverCatalogAfterBusiness,true);
     assert.equal(receipt.historicalSettlementCatalogAfterBusiness,true);
     assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);

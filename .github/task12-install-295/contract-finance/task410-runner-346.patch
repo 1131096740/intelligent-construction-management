@@ -1,0 +1,32 @@
+--- predecessor/fixture
++++ forward/fixture
+@@ -315 +315 @@
+- if(companyProxyScenario){env.RUN_COMPANY_PROXY_REPAYMENT_HTTP="1";env.RUN_EXPENSE_REGISTERED_PAYMENT_PG16="1";env.TASK410_ISOLATED_RUN_ID=short;if(standard290)env.TASK410_OWNED_290="1";if([329,330,331,332,334].includes(ownedMigrationBaseline?.expectedDirectoryCount))env.TASK410_OWNED_320="1";if(ownedMigrationBaseline?.expectedDirectoryCount===330)env.TASK410_OWNED_TEXT_DIRECT_330="1";if(ownedMigrationBaseline?.expectedDirectoryCount===331)env.TASK410_OWNED_PAYMENT_REMAINDER_331="1";if(ownedMigrationBaseline?.expectedDirectoryCount===332)env.TASK410_OWNED_UPWARD_ARCHIVE_332="1";if(ownedMigrationBaseline?.expectedDirectoryCount===334)env.TASK410_OWNED_HISTORICAL_SETTLEMENT_334="1";}
++ if(companyProxyScenario){env.RUN_COMPANY_PROXY_REPAYMENT_HTTP="1";env.RUN_EXPENSE_REGISTERED_PAYMENT_PG16="1";env.TASK410_ISOLATED_RUN_ID=short;if(standard290)env.TASK410_OWNED_290="1";if([329,330,331,332,334,346].includes(ownedMigrationBaseline?.expectedDirectoryCount))env.TASK410_OWNED_320="1";if(ownedMigrationBaseline?.expectedDirectoryCount===330)env.TASK410_OWNED_TEXT_DIRECT_330="1";if(ownedMigrationBaseline?.expectedDirectoryCount===331)env.TASK410_OWNED_PAYMENT_REMAINDER_331="1";if(ownedMigrationBaseline?.expectedDirectoryCount===332)env.TASK410_OWNED_UPWARD_ARCHIVE_332="1";if(ownedMigrationBaseline?.expectedDirectoryCount===334)env.TASK410_OWNED_HISTORICAL_SETTLEMENT_334="1";if(ownedMigrationBaseline?.expectedDirectoryCount===346)env.TASK410_OWNED_EXPENSE_WITNESS_346="1";}
+@@ -324 +324 @@
+- if(companyProxyScenario&&[329,330,331,332,334].includes(ownedMigrationBaseline?.expectedDirectoryCount)){
++ if(companyProxyScenario&&[329,330,331,332,334,346].includes(ownedMigrationBaseline?.expectedDirectoryCount)){
+@@ -550 +550 @@
+- const modes=new Map([["company-proxy-repayment-334",["--company-proxy-repayment-real"]],["company-proxy-repayment-332",["--company-proxy-repayment-real"]],["company-proxy-repayment-331",["--company-proxy-repayment-real"]],["company-proxy-repayment-330",["--company-proxy-repayment-real"]],["company-proxy-repayment-329",["--company-proxy-repayment-real"]],["company-proxy-repayment-295",["--company-proxy-repayment-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["company-proxy-repayment-290",["--company-proxy-repayment-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["company-proxy-repayment-346",["--company-proxy-repayment-real"]],["company-proxy-repayment-334",["--company-proxy-repayment-real"]],["company-proxy-repayment-332",["--company-proxy-repayment-real"]],["company-proxy-repayment-331",["--company-proxy-repayment-real"]],["company-proxy-repayment-330",["--company-proxy-repayment-real"]],["company-proxy-repayment-329",["--company-proxy-repayment-real"]],["company-proxy-repayment-295",["--company-proxy-repayment-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["company-proxy-repayment-290",["--company-proxy-repayment-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+@@ -553 +553,2 @@
+- const exact334=mode==="company-proxy-repayment-334";
++ const exact346=mode==="company-proxy-repayment-346";
++ const exact334=exact346||mode==="company-proxy-repayment-334";
+@@ -558 +559,2 @@
+- const count=exact334?334:exact332?332:exact331?331:exact330?330:329;
++ const prefixCount=exact334?334:exact332?332:exact331?331:exact330?330:329;
++ const count=exact346?346:prefixCount;
+@@ -561 +563 @@
+-  ||forward?.count!==count||!forward.sameIdentity||!forward.sameBaseB7||forward.tails?.length!==count-295
++  ||forward?.count!==prefixCount||!forward.sameIdentity||!forward.sameBaseB7||forward.tails?.length!==prefixCount-295
+@@ -571,0 +574,6 @@
++ const expense=exact346?receipt?.expenseWitnessForward:undefined;
++ if(exact346&&(expense?.count!==346||expense.sameIdentity!==true||expense.sourceTree!==forward.sourceTree
++   ||expense.ledgerSha256!=="bdddd170728d7c28c1b5a4f4a4b2b8981aa1ba2d041590475d695427502d8225"
++   ||expense.tails?.length!==12||expense.tails.at(-1)?.name!=="20261129015000_expense_public_cash_operating_source"
++   ||expense.tails.at(-1)?.sha256!=="d2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a"))
++  throw Error("TASK410_COMPANY_PROXY_346_SCOPE");
+@@ -649 +657 @@
+-  expectedDirectoryCount:count,terminalMigration:forward.tails.at(-1).name,terminalMigrationChecksum:forward.tails.at(-1).sha256
++  expectedDirectoryCount:count,terminalMigration:(expense??forward).tails.at(-1).name,terminalMigrationChecksum:(expense??forward).tails.at(-1).sha256
