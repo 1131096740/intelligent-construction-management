@@ -946,7 +946,7 @@ export class ExpenseClaimService {
     };
   }
 
-  async getActionCapability(claimId: string, actorUserId: string) {
+  async getActionCapability(claimId: string, actorUserId: string, paymentScope?: "public_cash") {
     const detail = await this.getMine(claimId, actorUserId);
     const availableActions: string[] = [];
     const isHandler = detail.handledByUserId === actorUserId;
@@ -969,7 +969,9 @@ export class ExpenseClaimService {
     if (detail.paymentSubjectPermissions.canAdjust) {
       availableActions.push("adjust_expense_claim_payment_subject");
     }
-    if (detail.fundsPermissions.canRecordPayment) {
+    if (paymentScope === "public_cash"
+      ? detail.fundsPermissions.canRecordPublicCashPayment
+      : detail.fundsPermissions.canRecordPayment) {
       availableActions.push("record_expense_claim_payment");
     }
     if (detail.fundsPermissions.canRecordPublicCashPayment) {

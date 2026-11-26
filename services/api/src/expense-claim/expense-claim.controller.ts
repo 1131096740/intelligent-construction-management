@@ -99,9 +99,12 @@ export class ExpenseClaimController {
   @Get(":claimId/capability")
   actionCapability(
     @Param("claimId") claimId: string,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Query("scopeKey") scopeKey?: string
   ) {
-    return this.claims.getActionCapability(claimId, user.id);
+    return scopeKey === "public_cash"
+      ? this.claims.getActionCapability(claimId, user.id, "public_cash")
+      : this.claims.getActionCapability(claimId, user.id);
   }
 
   @Get(":claimId/repayments/:repaymentId/capability")

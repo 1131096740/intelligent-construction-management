@@ -21,6 +21,7 @@ describe("ExpenseClaimController capability and upload wiring", () => {
     const controller = new ExpenseClaimController(claims as never);
 
     await controller.actionCapability("claim-1", { id: "user-1" } as never);
+    await controller.actionCapability("claim-1", { id: "user-1" } as never, "public_cash");
     await controller.repaymentActionCapability(
       "claim-1",
       "repayment-1",
@@ -28,6 +29,7 @@ describe("ExpenseClaimController capability and upload wiring", () => {
     );
 
     expect(claims.getActionCapability).toHaveBeenCalledWith("claim-1", "user-1");
+    expect(claims.getActionCapability).toHaveBeenCalledWith("claim-1", "user-1", "public_cash");
     expect(claims.getRepaymentActionCapability).toHaveBeenCalledWith(
       "claim-1",
       "repayment-1",

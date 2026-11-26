@@ -339,15 +339,12 @@ async function recordExpenseClaimPaymentWithCapability(
   claimId: string,
   body: Parameters<typeof recordExpenseClaimPayment>[1]
 ) {
-  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const scopeKey = body.registeredFunding?.scopeKey;
+  const capability = await fetchExpenseClaimActionCapability(claimId, scopeKey);
   const matchesRequestedClaim = capability.claimId === claimId;
   if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
-  const operation = body.registeredFunding?.scopeKey === "public_cash"
-    ? "record_expense_claim_public_cash_payment" : "record_expense_claim_payment";
-  const operationAllowed = capability.availableActions.includes(operation);
-  const recoveringCashReceipt = body.registeredFunding?.scopeKey === "public_cash" &&
-    frozenPayment.value?.voucherFileId === body.voucherFileId;
-  if (!operationAllowed && !recoveringCashReceipt) throw new Error("当前费用申请不能登记该笔付款");
+  const operationAllowed = capability.availableActions.includes("record_expense_claim_payment");
+  if (!operationAllowed) throw new Error("当前费用申请不能登记该笔付款");
   return recordExpenseClaimPayment(claimId, body);
 }
 async function generateExpenseClaimFinalPaymentPdfWithCapability(claimId: string) {
@@ -375,12 +372,10 @@ async function uploadExpenseClaimAppendAttachmentWithCapability(claimId: string,
   return uploadExpenseClaimAppendAttachmentFile(claimId, file, file.name);
 }
 async function uploadExpenseClaimPaymentVoucherWithCapability(claimId: string, file: File, scopeKey?: string) {
-  const capability = await fetchExpenseClaimActionCapability(claimId);
+  const capability = await fetchExpenseClaimActionCapability(claimId, scopeKey);
   const matchesRequestedClaim = capability.claimId === claimId;
   if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
-  const operation = scopeKey === "public_cash"
-    ? "record_expense_claim_public_cash_payment" : "record_expense_claim_payment";
-  const operationAllowed = capability.availableActions.includes(operation);
+  const operationAllowed = capability.availableActions.includes("record_expense_claim_payment");
   if (!operationAllowed) throw new Error("当前费用申请不能上传付款凭证");
   return uploadExpenseClaimPaymentVoucherFile(claimId, file, file.name, undefined, scopeKey);
 }
@@ -635,7 +630,23 @@ async function recordPayment() {
         frozenPayment.value = frozen;
       }
     }
-    await recordExpenseClaimPaymentWithCapability(claimId, { ...request, confirmationPassword });
+    let existingCashPayment = false;
+    if (replaying && request.registeredFunding?.scopeKey === "public_cash") {
+      const current = await fetchExpenseClaimDetail(claimId);
+      if (scope !== paymentScope.value) return;
+      existingCashPayment = current.id === claimId && current.paymentExecutions.some(execution =>
+        execution.voucherFileId === request.voucherFileId &&
+        execution.recordedByUserId === auth.user?.id &&
+        execution.registeredFunding?.actualPayerKind === "public_cash" &&
+        execution.amountCents === request.amountCents &&
+        chinaDateOnly(new Date(execution.paidAt)) === request.paidAt &&
+        execution.paymentMethod === request.paymentMethod.trim() &&
+        execution.note === (request.note?.trim() || null)
+      );
+    }
+    if (!existingCashPayment) {
+      await recordExpenseClaimPaymentWithCapability(claimId, { ...request, confirmationPassword });
+    }
     if (scope !== paymentScope.value) return;
     if (frozenPayment.value) sessionStorage.removeItem(scope);
     frozenPayment.value = null;

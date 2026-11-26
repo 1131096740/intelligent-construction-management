@@ -368,6 +368,27 @@ describe("ExpenseClaimService", () => {
     });
   });
 
+  it.each([
+    [true, false],
+    [false, true]
+  ])("authorizes payment only for the requested funding scope", async (companyAvailable, cashAvailable) => {
+    const { service } = createHarness();
+    jest.spyOn(service, "getMine").mockResolvedValue({
+      id: "claim-1",
+      status: "approved_pending_payment",
+      attachmentPermissions: { canAppendEvidence: false },
+      paymentSubjectPermissions: { canAdjust: false },
+      fundsPermissions: {
+        canRecordPayment: companyAvailable,
+        canRecordPublicCashPayment: cashAvailable
+      }
+    } as never);
+    const company = await service.getActionCapability("claim-1", "finance-1");
+    const publicCash = await service.getActionCapability("claim-1", "finance-1", "public_cash");
+    expect(company.availableActions.includes("record_expense_claim_payment")).toBe(companyAvailable);
+    expect(publicCash.availableActions.includes("record_expense_claim_payment")).toBe(cashAvailable);
+  });
+
   it("retains read access to exact repayments without advertising retired money actions", async () => {
     const { service, tx } = createHarness();
     jest.spyOn(service, "getMine").mockResolvedValue({
