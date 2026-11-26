@@ -264,5 +264,52 @@ run("issue #418 identifiable settlement dedup on the ordered operating ledger", 
     expect(extendedCsv).toContain(`"${survivingCode}"`);
     expect(extendedCsv).not.toContain(`"${suppressedCode}"`);
     expectNoInternalIds(extendedDetail, extendedCsv, extendedFacts);
+
+    // Reconstruct another independently confirmed historical source in the first period.
+    const ambiguousSigned = await seedSigned("第1期", "12.34", 5n, new Date("2026-11-06T00:00:00Z"));
+    await appendSource(SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE, ambiguousSigned.id);
+    const ambiguousFacts = await readStoredFacts();
+    expect(ambiguousFacts).toHaveLength(6);
+    expect(ambiguousFacts.find(fact => fact.sourceBusinessId === ambiguousSigned.id))
+      .toMatchObject({ sourceVersion: 5, amountCents: 1234n });
+
+    const ambiguousView = await projection.getProjectView(reader.id, { projectId: project.id });
+    expect(ambiguousView.asOf.crossSourceDedupedFactCount).toBe(0);
+    expect(ambiguousView.integrity.moneyComplete).toBe(false);
+    expect(ambiguousView.operating).toMatchObject({
+      confirmedIncomeCents: "0", confirmedCostCents: null, payableCents: null
+    });
+    expect(ambiguousView.profitAndLoss).toMatchObject({
+      currentOperatingProfitCents: null, finalConfirmedProfitCents: null, finalConfirmable: false
+    });
+    expect(ambiguousView.actualFunds).toMatchObject({
+      confirmedProjectInflowsCents: "0", confirmedProjectOutflowsCents: "0"
+    });
+    const ambiguousV2View = await projection.getProjectView(reader.id, {
+      projectId: project.id, numericProtocolVersion: 2
+    });
+    expect(ambiguousV2View.operating).toMatchObject({
+      confirmedIncomeYuan: "0.0000", confirmedCostYuan: null, payableCents: null
+    });
+    expect(ambiguousV2View.profitAndLoss.currentOperatingProfitYuan).toBeNull();
+
+    const ambiguousDetail = await readAllDetail(12);
+    const ambiguousCsv = await readExport();
+    const [, ...ambiguousCsvRows] = ambiguousCsv.trimEnd().split("\n");
+    expect(ambiguousCsvRows).toHaveLength(12);
+    for (const [code, amountsCents, amountsYuan] of [
+      [legacy.code, ["6000", "6000"], ["60.00", "60.00"]],
+      [duplicate.number, ["6000", "6000"], ["60.00", "60.00"]],
+      [ambiguousSigned.number, ["1234", "1234"], ["12.34", "12.34"]],
+      [nextPeriod.number, ["-900", "-900", "1500", "1500", "2500", "2500"],
+        ["'-9.00", "'-9.00", "15.00", "15.00", "25.00", "25.00"]]
+    ] as const) {
+      expect(ambiguousDetail.filter(item => item.sourceBusinessCode === code)
+        .map(item => item.signedImpactCents).sort()).toEqual(amountsCents);
+      expect(ambiguousCsvRows.map(row => row.split('\",\"'))
+        .filter(cells => cells[codeColumn] === code)
+        .map(cells => cells[amountColumn]).sort()).toEqual(amountsYuan);
+    }
+    expectNoInternalIds(ambiguousDetail, ambiguousCsv, ambiguousFacts);
   });
 });
