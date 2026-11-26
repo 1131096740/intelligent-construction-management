@@ -8,7 +8,7 @@ const {restoreBusinessDatabase} = require('./restore.cjs');
 const {ledgerSha256: ledger294} = require('./combined294-source.json');
 const {final:finalLedger}=require('./multi-witness.cjs');
 const notice = require('./terminal.cjs');
-const {legacy,successor,textDirect}=require('./restore-profile.cjs');
+const {legacy,successor,textDirect,expense346}=require('./restore-profile.cjs');
 const {paymentRowsSql,paymentRows}=require('./text-direct-330.cjs');
 const forwardInventory=require('./forward-320-inventory.json');
 
@@ -38,6 +38,7 @@ async function verifyLease(context,forward320,textDirectSource) {
     const digest=textDirectSource?.ledgerSha256??forwardInventory.ledgerSha256;
     assert.equal(sha(JSON.stringify(ledger.slice(0,329))),forwardInventory.ledgerSha256,'BACKUP320_LIVE_LEDGER');
     assert.equal(sha(JSON.stringify(ledger)),digest,'BACKUP_FORWARD_LIVE_LEDGER');
+    if(count===346) require('./exact-346.cjs').assertLedger(ledger,textDirectSource);
     assert.equal(forward320.ledgerSha256,digest,'BACKUP320_FORWARD_LEDGER');
     assert.equal(forward320.count,count,'BACKUP320_FORWARD_COUNT');
     assert.equal(forward320.sameIdentity,true,'BACKUP320_FORWARD_INSTANCE');
@@ -80,7 +81,7 @@ async function runNamedBackup(context,receipt,namedRoles,forward320,textDirectSo
   assert.equal(typeof namedRoles,'function');
   assert.ok(receipt.settlementFixture,'BACKUP_ORIGINAL_FIXTURE_REQUIRED');
   assert.deepEqual(receipt.businessOracle,expectedCorrection);
-  const profile=textDirectSource?textDirect:forward320?successor:legacy;
+  const profile=textDirectSource?.migrationCount===346?expense346:textDirectSource?textDirect:forward320?successor:legacy;
   const enter=stage=>receipt.stages.push(stage);
   await verifyLease(context,forward320,textDirectSource);
   enter(textDirectSource?'BACKUP'+textDirectSource.migrationCount+'_NAMED_EXPORT_IMPORT':
@@ -89,7 +90,8 @@ async function runNamedBackup(context,receipt,namedRoles,forward320,textDirectSo
   try {
     receipt.restore=await restoreBusinessDatabase(context,named.credentials,enter,forward320,
       textDirectSource?{historical:receipt.historicalPayment295,
-        terminal:textDirectSource.tails[34],paymentRemainder:textDirectSource.migrationCount>=331}:undefined);
+        terminal:textDirectSource.tails[34],paymentRemainder:textDirectSource.migrationCount>=331,
+        ...(textDirectSource.migrationCount===346?{expenseSource:textDirectSource}:{})}:undefined);
     assert.equal(receipt.restore.businessTables,profile.businessCount);
     assert.equal(receipt.restore.restoredDataPayloads,profile.businessCount);
     assert.equal(receipt.restore.protectedTables,profile.technical.length);
@@ -112,10 +114,10 @@ async function runBackup295(context,receipt,admission,{correction,loan,namedRole
   return runNamedBackup(context,receipt,namedRoles);
 }
 
-async function runBackup320(context,receipt,{namedRoles,textDirectSource}) {
-  assert.ok(receipt.forward320,'BACKUP320_FORWARD_RECEIPT_REQUIRED');
+async function runBackup320(context,receipt,{namedRoles,textDirectSource,forward320=receipt.forward320}) {
+  assert.ok(forward320,'BACKUP320_FORWARD_RECEIPT_REQUIRED');
   if (textDirectSource) assert.ok(receipt.historicalPayment295,'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
-  return runNamedBackup(context,receipt,namedRoles,receipt.forward320,textDirectSource);
+  return runNamedBackup(context,receipt,namedRoles,forward320,textDirectSource);
 }
 
 module.exports={runBackup295,prepareBackup295,runBackup320,verifyLease};

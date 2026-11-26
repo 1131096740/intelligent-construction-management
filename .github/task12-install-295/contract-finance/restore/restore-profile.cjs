@@ -14,5 +14,7 @@ const successor=profile(329,forward.businessTables,forward.businessAdditions.map
 
 // The 330 terminal changes payment columns, constraints and routines only.
 const textDirect=Object.freeze({...successor,count:330});
+const expense346=profile(346,successor.businessCount+1,[...successor.addedBusiness,'ExpensePublicCashCostLink'],
+  [...forward.ownerSchemaOnlyEmptyAdditions.map(([,name])=>name),'jg_expense_public_cash_voucher_witness']);
 
-module.exports={legacy,successor,textDirect};
+module.exports={legacy,successor,textDirect,expense346};
