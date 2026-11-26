@@ -12,7 +12,7 @@ import { AppModule } from "../app.module";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { PrismaService } from "./prisma.service";
 import { projectTask16RegistrationError } from "./task16-registration-error-diagnostic";
-import { projectA24SignatureFailure } from "./task426-a24-signature-diagnostic.test-support";
+import { projectA24SignatureFailure, projectA24SubmissionFailure } from "./task426-a24-signature-diagnostic.test-support";
 import { createApiValidationPipe } from "../validation/api-validation";
 
 const { proveA24CashAttribution } = require("../../test-support/task426-a24-native-business.cjs") as {
@@ -80,6 +80,15 @@ it("records and confirms only an exact A24 public cash slice with separate datab
   let httpStatus: number | undefined;
   let httpError: ReturnType<typeof projectTask16RegistrationError> | undefined;
   let signatureFailure: ReturnType<typeof projectA24SignatureFailure> | undefined;
+  let submissionFailure: ReturnType<typeof projectA24SubmissionFailure> | undefined;
+  const captureDatabaseFailure = (error: unknown, operation?: Parameters<typeof projectA24SubmissionFailure>[1]) => {
+    if (activeRequest?.method !== "POST") return;
+    if (activeRequest.path === signaturePath) {
+      signatureFailure ??= projectA24SignatureFailure(error, operation);
+    } else if (stage === "PUBLIC_APPROVAL_SUBMIT" && /^\/expense-claims\/[0-9a-f-]{36}\/submission$/u.test(activeRequest.path)) {
+      submissionFailure ??= projectA24SubmissionFailure(error, operation);
+    }
+  };
   try {
     await assertBoundRestrictedRole(observer, packet, packet.observerOid);
     const [observerReadOnly] = await observer.$queryRaw<Array<{ readonly: boolean }>>`
@@ -177,9 +186,7 @@ it("records and confirms only an exact A24 public cash slice with separate datab
           const request = host.switchToHttp().getRequest<{ method: string; originalUrl: string }>();
           if (activeRequest?.method === request.method && activeRequest.path === request.originalUrl) {
             httpError ??= projectTask16RegistrationError(exception);
-            if (request.method === "POST" && request.originalUrl === signaturePath) {
-              signatureFailure ??= projectA24SignatureFailure(exception);
-            }
+            captureDatabaseFailure(exception);
           }
         } catch { /* Diagnostics never replace the original HTTP response. */ }
         super.catch(exception, host);
@@ -190,9 +197,7 @@ it("records and confirms only an exact A24 public cash slice with separate datab
       try {
         return await next(params);
       } catch (error) {
-        if (activeRequest?.method === "POST" && activeRequest.path === signaturePath) {
-          signatureFailure ??= projectA24SignatureFailure(error, params);
-        }
+        captureDatabaseFailure(error, params);
         throw error;
       }
     });
@@ -207,6 +212,7 @@ it("records and confirms only an exact A24 public cash slice with separate datab
       httpStatus = undefined;
       httpError = undefined;
       signatureFailure = undefined;
+      submissionFailure = undefined;
       const method = command.method ?? "GET";
       activeRequest = { method, path: command.path };
       try {
@@ -333,7 +339,8 @@ it("records and confirms only an exact A24 public cash slice with separate datab
         isHttpStatus(assertion.expected) ? { expectedHttpStatus: assertion.expected } : {}),
       ...projectTask16RegistrationError(error),
       ...(httpError ? { httpError } : {}),
-      ...(signatureFailure ? { signatureFailure } : {})
+      ...(signatureFailure ? { signatureFailure } : {}),
+      ...(submissionFailure ? { submissionFailure } : {})
     }) + "\n");
     throw new Error(stage + " " + message);
   } finally {

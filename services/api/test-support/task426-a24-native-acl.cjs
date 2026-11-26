@@ -100,6 +100,7 @@ function a24ColumnPlan(models) {
     RefreshToken: ["revokedAt"],
     BusinessDailySequence: ["nextSequence", "updatedAt"],
     ExpenseClaim: claimUpdate,
+    ExpenseClaimAttachment: ["stage", "frozenAt"],
     RegisteredFundAccount: ["writeRevision"],
     OperatingCostAttributionConfirmation: attributionUpdate
   };

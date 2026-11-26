@@ -36,6 +36,16 @@ test("covers the login audit create RETURNING columns without granting audit rea
   assert.equal(plan.observer.AuditLog, undefined);
 });
 
+test("allows only the two attachment freeze UPDATE columns and retains its WHERE reads", () => {
+  const plan = a24ColumnPlan(Prisma.dmmf.datamodel.models);
+  assert.deepEqual(plan.update.ExpenseClaimAttachment, ["stage", "frozenAt"]);
+  for (const column of ["expenseClaimId", "stage", "removedAt"]) {
+    assert.ok(plan.read.ExpenseClaimAttachment.includes(column));
+  }
+  assert.equal(plan.insert.ExpenseClaimAttachment, undefined);
+  assert.equal(plan.observer.ExpenseClaimAttachment, undefined);
+});
+
 test("signature creation can read its guarded coordinates without broadening fixture writes", () => {
   const plan = a24ColumnPlan(Prisma.dmmf.datamodel.models);
   const coordinates = {

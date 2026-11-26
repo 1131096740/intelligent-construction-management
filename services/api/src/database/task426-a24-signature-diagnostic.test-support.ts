@@ -8,6 +8,27 @@ const operations = {
   "User.update": "USER_SIGNATURE",
   "AuditLog.create": "AUDIT"
 } as const;
+const submissionOperations = {
+  "undefined.queryRaw": "SUBMISSION_LOCK_OR_SCOPE",
+  "ExpenseClaim.findUnique": "SUBMISSION_CLAIM_READ",
+  "ExpenseClaim.update": "SUBMISSION_CLAIM_UPDATE",
+  "Project.findFirst": "SUBMISSION_PROJECT_READ",
+  "Project.findUnique": "SUBMISSION_PROJECT_READ",
+  "User.findUnique": "SUBMISSION_ACTOR_READ",
+  "User.findMany": "SUBMISSION_APPROVER_READ",
+  "UserPosition.findMany": "SUBMISSION_ROLE_READ",
+  "Position.findMany": "SUBMISSION_ROLE_READ",
+  "ProjectMember.findMany": "SUBMISSION_ROLE_READ",
+  "ProjectRosterMember.findMany": "SUBMISSION_ROLE_READ",
+  "ApprovalInstance.create": "SUBMISSION_ROUND_CREATE",
+  "ExpenseClaimAttachment.updateMany": "SUBMISSION_ATTACHMENT_FREEZE",
+  "ExpenseClaimAttachment.findMany": "SUBMISSION_ATTACHMENT_READ",
+  "ExpenseClaimLine.findMany": "SUBMISSION_LINE_READ",
+  "ExpenseClaimEntrySnapshot.create": "SUBMISSION_SNAPSHOT_CREATE",
+  "AuditLog.create": "SUBMISSION_AUDIT",
+  "AuditLog.createMany": "SUBMISSION_DUTY_INTENTS"
+} as const;
+type Operation = Pick<Prisma.MiddlewareParams, "model" | "action">;
 const sqlStates = new Set(["42501", "23502", "23503", "23505", "23514", "42P01", "42703", "42883", "55000",
   "25006", "25P02", "40001", "40P01", "55P03", "57014"]);
 const routines = new Set([
@@ -19,16 +40,15 @@ const routines = new Set([
   "jg_file_business_collision_columns",
   "jg_file_business_binding_columns",
   "jg_file_business_binding_columns_before_signed_settlement",
-  "jg_file_business_binding_columns_before_owner_settlement"
+  "jg_file_business_binding_columns_before_owner_settlement",
+  "jg_guard_generated_upward_seal_completion_v1",
+  "jg_validate_fund_balance_correction_round"
 ]);
 
-/** Project engine output onto fixed diagnostic labels. Do not return message, stack or query metadata. */
-export function projectA24SignatureFailure(error: unknown, operation?: Pick<Prisma.MiddlewareParams, "model" | "action">) {
+function projectFailure(error: unknown, nodes: Readonly<Record<string, string>>, operation?: Operation) {
   const detail = projectTask16RegistrationError(error);
   const operationKey = operation && operation.model + "." + operation.action;
-  const node = operationKey && Object.hasOwn(operations, operationKey)
-    ? operations[operationKey as keyof typeof operations]
-    : undefined;
+  const node = operationKey && Object.hasOwn(nodes, operationKey) ? nodes[operationKey] : undefined;
   const metadata = detail.serverErrorKind === "KNOWN_REQUEST_ERROR" && error instanceof Prisma.PrismaClientKnownRequestError
     ? error.meta
     : undefined;
@@ -44,3 +64,7 @@ export function projectA24SignatureFailure(error: unknown, operation?: Pick<Pris
   return { ...detail, ...(node ? { node } : {}), ...(state && sqlStates.has(state) ? { serverSqlState: state } : {}),
     ...(relation ? { relation } : {}), ...(routine ? { routine } : {}) };
 }
+
+/** Project onto fixed labels without returning any engine text or request values. */
+export const projectA24SignatureFailure = (error: unknown, operation?: Operation) => projectFailure(error, operations, operation);
+export const projectA24SubmissionFailure = (error: unknown, operation?: Operation) => projectFailure(error, submissionOperations, operation);

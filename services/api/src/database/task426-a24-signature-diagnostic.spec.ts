@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { projectA24SignatureFailure } from "./task426-a24-signature-diagnostic.test-support";
+import { projectA24SignatureFailure, projectA24SubmissionFailure } from "./task426-a24-signature-diagnostic.test-support";
 
 const clientVersion = "test";
 
@@ -32,4 +32,17 @@ it("drops arbitrary error strings and unrelated Prisma operations", () => {
   expect(projectA24SignatureFailure(failure, { model: "RefreshToken", action: "create" })).toEqual({
     serverErrorKind: "UNKNOWN_REQUEST_ERROR"
   });
+});
+
+it("isolates a submission permission failure to the attachment freeze node", () => {
+  const failure = new Prisma.PrismaClientUnknownRequestError(
+    'PostgresError { code: "42501", message: "permission denied for table ExpenseClaimAttachment" }',
+    { clientVersion }
+  );
+  const operation = { model: "ExpenseClaimAttachment", action: "updateMany" } as const;
+  expect(projectA24SubmissionFailure(failure, operation)).toEqual({
+    serverErrorKind: "UNKNOWN_REQUEST_ERROR", serverSqlState: "42501", node: "SUBMISSION_ATTACHMENT_FREEZE",
+    relation: "ExpenseClaimAttachment"
+  });
+  expect(projectA24SignatureFailure(failure, operation)).not.toHaveProperty("node");
 });
