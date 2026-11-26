@@ -31,17 +31,18 @@ console.log(source.mode);
 JS
 )
 profile=$(node -e '
-const { file, sourceDigest, fixtureDigest } = require(process.argv[1]).profileFor(process.argv[2]);
-console.log([file, sourceDigest, fixtureDigest].filter(Boolean).join(" "));
+const scope = process.argv[2];
+const { file, sourceDigest, fixtureDigest, fixturePatch = scope + ".fixture.patch" } = require(process.argv[1]).profileFor(scope);
+console.log([file, sourceDigest, ...(fixtureDigest ? [fixtureDigest, fixturePatch] : [])].join(" "));
 ' "$plan/profiles.cjs" "$scope") || exit 64
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-$scope-334.XXXXXXXX")
-read -r file source_digest fixture_digest <<< "$profile"
+read -r file source_digest fixture_digest fixture_patch <<< "$profile"
 spec=services/api/$file
 source_spec="$prepared/prepared/context/workspace/$spec"
 [[ $(sha256sum "$source_spec" | cut -d' ' -f1) == "$source_digest" ]] || exit 65
 if [[ -n $fixture_digest ]]; then
   install -m 0644 "$source_spec" "$work/fixture.ts"
-  git -C "$work" apply --unidiff-zero "$plan/$scope.fixture.patch"
+  git -C "$work" apply --unidiff-zero "$plan/$fixture_patch"
   [[ $(sha256sum "$work/fixture.ts" | cut -d' ' -f1) == "$fixture_digest" ]] || exit 65
 fi
 node "$base/stage-historical-takeover-333.cjs" "$work" historical-settlement-334

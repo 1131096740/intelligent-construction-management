@@ -5,8 +5,13 @@ umask 077
 plan=$(cd "$(dirname "$0")" && pwd -P)
 ordered_issue=false
 if [[ ${2:-} == issue* ]]; then
-  [[ $# == 3 && $3 == --historical-settlement-334 ]] || exit 64
-  node -e 'const p=require(process.argv[1]).profileFor(process.argv[2]); if(p.requiredMigrationCount) process.exit(65)' "$plan/issue-ordered/profiles.cjs" "$2" >/dev/null 2>&1 || exit 64
+  [[ $# == 3 ]] || exit 64
+  case "$2:$3" in
+    issue416_handover_346:--expense-witness-346|issue416_his_346:--expense-witness-346) ;;
+    *:--historical-settlement-334)
+      node -e 'const p=require(process.argv[1]).profileFor(process.argv[2]); if(p.requiredMigrationCount) process.exit(65)' "$plan/issue-ordered/profiles.cjs" "$2" >/dev/null 2>&1 || exit 64 ;;
+    *) exit 64 ;;
+  esac
   ordered_issue=true
 fi
 
@@ -24,7 +29,7 @@ fi
   ( $# == 3 && ( $2 == historical-takeover-a28 || $2 == line-a || $2 == onboarding || $2 == procurement || $2 == pol115-workbench || $2 == pol115-full || $ordered_issue == true ) && $3 == --historical-settlement-334 ) ||
   ( $# == 3 && ( $2 == line-a || $2 == pol115-workbench || $2 == pol115-full || $2 == payment-execution ||
     $2 == task398-ledger-loss || $2 == historical-takeover-a28 || $2 == historical-takeover-a29 ||
-    $2 == browser-partial || $2 == browser-completion ) && $3 == --expense-witness-346 ) ||
+    $2 == browser-partial || $2 == browser-completion || $ordered_issue == true ) && $3 == --expense-witness-346 ) ||
   ( $# == 4 && $2 == payment-execution && $3 == --expense-witness-346 && $4 == --host-only ) ||
   ( $# == 4 && $2 == pol275 && $3 == --historical-settlement-334 && $4 == a187dc73a133114e1cfbbc891a4aec923abe2545 ) ||
   ( $# == 4 && $2 == pol275 && ( $3 == --current-320 || $3 == --text-direct-330 || $3 == --payment-remainder-331 || $3 == --upward-archive-332 ) && $4 =~ ^[a-f0-9]{40}$ ) ]] || exit 64
