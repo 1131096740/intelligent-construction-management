@@ -250,6 +250,16 @@
     "candidate": "613b74c8b21ee2a37511a455046b45eb712f9e26f3551ed94171a737aa3638bf"
   },
   {
+    "path": "services/api/src/project/project-affiliate-business.service.spec.ts",
+    "expected": "1094d1c646ead00b8d6117800e03fc580dd00f11527b62bbbc877c3785c6c686",
+    "candidate": "3ec6016a625af35f6878c462814130893c226ad2577ae07ce8e03597f64a1529"
+  },
+  {
+    "path": "services/api/src/project/project-affiliate-business.service.ts",
+    "expected": "0ef68b3dc7bd38f1c7011d5b403141ea339fc341bc2f40c99905dfe110af5d31",
+    "candidate": "2961df8bac85b896181752bf2d28b9ce9c09cb9b646d2660b62f93a9ac192c48"
+  },
+  {
     "path": "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
     "expected": "bf0e8aed897ef6d0442d40e6726176cc1457b499b874cecbfca7164f2a218524",
     "candidate": "643acf7185e0c1d3e3c6fea5b8f4ee1cbd211a6db02de0bc30792f2a06e60aca"

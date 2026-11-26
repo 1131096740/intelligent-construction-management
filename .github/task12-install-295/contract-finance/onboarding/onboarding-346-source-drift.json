@@ -49,6 +49,8 @@
   "services/api/src/operating-projection/operating-projection.service.spec.ts": "4ebde74c525f5323234a54db0de72d182ba89dc9530a49b5edd9ccc520b0a2ee",
   "services/api/src/operating-projection/operating-projection.service.ts": "c0609036dc27460a24cce924e3c946eb7e84faa5cd982979d3fad2a8db122f2c",
   "services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts": "613b74c8b21ee2a37511a455046b45eb712f9e26f3551ed94171a737aa3638bf",
+  "services/api/src/project/project-affiliate-business.service.spec.ts": "3ec6016a625af35f6878c462814130893c226ad2577ae07ce8e03597f64a1529",
+  "services/api/src/project/project-affiliate-business.service.ts": "2961df8bac85b896181752bf2d28b9ce9c09cb9b646d2660b62f93a9ac192c48",
   "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts": "643acf7185e0c1d3e3c6fea5b8f4ee1cbd211a6db02de0bc30792f2a06e60aca",
   "services/api/src/spot-procurement/spot-procurement-operating-source.adapter.ts": "91b4f342923ae645966da9159bd318a7d3e1a8cdfc9362918fca1bb507eef1f8"
 }

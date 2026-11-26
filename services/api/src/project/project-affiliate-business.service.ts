@@ -815,6 +815,9 @@ export class ProjectAffiliateBusinessService {
             await loadActorRoleKeys(tx, actorUserId, projectId)
           );
         }
+        if (entryKind === "original" && paymentKind === "advance") {
+          throw new BadRequestException("施工企业预付款已停止新增登记");
+        }
         await this.requireActiveProject(tx, projectId, true);
         const projectClient = (tx as unknown as {
           project?: {
