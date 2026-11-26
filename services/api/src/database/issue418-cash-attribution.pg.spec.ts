@@ -51,9 +51,10 @@ run("issue #418 public cash attribution and fund flow on the ordered ledger", ()
     const view = await projections.getProjectView(directorId, { projectId });
     expect(view.costAttribution.unattributedCostCents).toBe("8700");
     expect(view.costAttribution.publicCashCostCents).toBe("1700");
+    // An approved expense uses the entity ID; G4 review below uses the confirmed version ID.
     expect(view.costAttribution.byBearingCompany).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: companyA.versionId, name: "甲公司", costCents: "3000" }),
-      expect.objectContaining({ id: companyB.versionId, name: "乙公司", costCents: "1000" })
+      expect.objectContaining({ kind: "participating_company", id: companyA.id, name: "甲公司", costCents: "3000" }),
+      expect.objectContaining({ kind: "participating_company", id: companyB.id, name: "乙公司", costCents: "1000" })
     ]));
   });
 

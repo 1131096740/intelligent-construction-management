@@ -186,7 +186,7 @@ const profiles = {
   },
   issue418_cash_attribution: {
     file: 'src/database/issue418-cash-attribution.pg.spec.ts',
-    sourceDigest: '64ab782f28fbafd5d80542d89283b80b6d4ef88025d534d2d99962552d9d2872',
+    sourceDigest: 'f0d48bf6551b3eefd8cc13126bebf161f44976f7044f1717171fc1a11eb07586',
     orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
     databaseUrlKey: 'ISSUE418_CASH_ATTRIBUTION_DATABASE_URL',
     enableKey: 'ISSUE418_CASH_ATTRIBUTION_RUN',
