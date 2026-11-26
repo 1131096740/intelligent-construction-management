@@ -114,6 +114,41 @@ function addCashVoucherAcl(plan) {
   };
 }
 
+const capacity = "public.jg_registered_fund_transfer_capacity(text)";
+
+function grantCapacityCheck(app) {
+  assert.match(app, /^jg_fixture_app_[a-f0-9]{24}$/u);
+  return `
+DO $cash_capacity$
+BEGIN
+  IF current_user <> 'jg_task01_owner' OR session_user <> current_user
+    OR NOT EXISTS(
+      SELECT FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang
+      WHERE p.oid='${capacity}'::regprocedure AND p.proowner=10 AND l.lanname='plpgsql'
+        AND NOT p.prosecdef AND p.prokind='f' AND p.prorettype='pg_catalog.void'::regtype
+        AND NOT p.proisstrict AND NOT p.proretset
+        AND p.proconfig=ARRAY['search_path=pg_catalog, public']
+        AND encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')='faa5f2b28c48673f14e1d58d17cbd373e70af822e9bafebf6f4e9a9ca41d550a'
+        AND (SELECT count(*)=1 AND bool_and(grantee=10 AND grantor=10 AND privilege_type='EXECUTE' AND NOT is_grantable)
+          FROM aclexplode(coalesce(p.proacl,acldefault('f',10))))
+    ) THEN RAISE EXCEPTION 'A24_CASH_CAPACITY_CHECK_PREIMAGE'; END IF;
+  GRANT EXECUTE ON FUNCTION ${capacity} TO "${app}";
+END;
+$cash_capacity$;`;
+}
+
+function readCapacityAcl(app, observer) {
+  assert.match(app, /^jg_fixture_app_[a-f0-9]{24}$/u);
+  assert.match(observer, /^jg_[a-z0-9_]+$/u);
+  return `SELECT (
+    has_function_privilege('${app}','${capacity}','EXECUTE')
+    AND NOT has_function_privilege('${app}','${capacity}','EXECUTE WITH GRANT OPTION')
+    AND NOT has_function_privilege('${observer}','${capacity}','EXECUTE')
+    AND NOT EXISTS(SELECT FROM pg_proc p, LATERAL aclexplode(p.proacl) a
+      WHERE p.oid='${capacity}'::regprocedure AND a.grantee=0)
+  )::text;`;
+}
+
 function readAcl(app, observer) {
   for (const role of [app, observer]) assert.match(role, /^jg_[a-z0-9_]+$/u);
   const relations = cashWitnessRelations.map(name => `('public."${name}"'::regclass)`).join(", ");
@@ -152,4 +187,4 @@ function projectMigrationError(text) {
   return scope ? { ...result, guard: "VOUCHER_INSTALL_SCOPE" } : result;
 }
 
-module.exports = { command, readCatalog, verifyCatalog, addCashVoucherAcl, readAcl, projectMigrationError };
+module.exports = { command, readCatalog, verifyCatalog, addCashVoucherAcl, readAcl, projectMigrationError, grantCapacityCheck, readCapacityAcl };

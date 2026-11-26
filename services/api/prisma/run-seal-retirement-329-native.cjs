@@ -557,6 +557,7 @@ async function main(args) {
         GRANT CONNECT ON DATABASE ${db} TO ${appRole}, ${observerRole};
         GRANT USAGE ON SCHEMA public TO ${appRole}, ${observerRole};
         ${a24Acl.renderA24FixtureAcl(a24Plan, app, observationRole)}
+        ${expenseOperatingCash346 ? cashVoucher.grantCapacityCheck(app) : ""}
         INSERT INTO public."OperatingLedgerWriteSecret" ("id","secretHash") VALUES (1,public.crypt('${operatingWriteSecret}',public.gen_salt('bf')));
         COMMIT;`);
       const scope = JSON.parse(sql(`
@@ -592,6 +593,10 @@ async function main(args) {
           const observed = JSON.parse(sql(cashVoucher.readAcl(app, observationRole)));
           assert.deepEqual(observed, { writerRestricted: true, private: true, cashWriteWitnessReadsExact: true,
             historicalWriteDenied: true }, "A24_CASH_VOUCHER_ACL");
+          if (expenseOperatingCash346) {
+            assert.equal(sql(cashVoucher.readCapacityAcl(app, observationRole)).trim(), "true", "A24_CASH_CAPACITY_CHECK_ACL");
+            observed.capacityCheckRestricted = true;
+          }
           return observed;
         };
         receipt.a24CashVoucherAcl = checkCashVoucherAcl();
