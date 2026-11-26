@@ -3,6 +3,19 @@
 const assert = require('node:assert/strict');
 
 const profiles = {
+  issue405: {
+    file: 'src/database/issue405-other-project-payment.pg.spec.ts',
+    sourceDigest: 'cc7b5d5bbdfba6c73f47a808a5c3ce3ebf33b75675c8dc8a253b696c261d0c8e',
+    fixtureDigest: '80708330292b60faa092f8fd9a5c16719b016990d27f6e9dbfc807fbbd8b30c3',
+    orderedDatabaseKey: 'JG_ISSUE405_ORDERED_DATABASE',
+    databaseUrlKey: 'ISSUE405_OTHER_PROJECT_PAYMENT_DATABASE_URL',
+    enableKey: 'ISSUE405_OTHER_PROJECT_PAYMENT_RUN',
+    stage: 'ORIGINAL_OTHER_PROJECT_PAYMENT_JEST',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: [
+      'registers, approves, splits, refunds and corrects a no-contract project payment with one cost'
+    ]
+  },
   issue413: {
     file: 'src/database/issue413-construction-enterprise-paid.pg.spec.ts',
     sourceDigest: '313c9fc331c53eb9912d4f52584d208c414a4953e39518f4627e27892c7aa40f',

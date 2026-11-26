@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ ( $# == 5 || ( $# == 6 && $6 == --host-only ) ) && ( $5 == issue413 || $5 == issue414 || $5 == issue416_handover || $5 == issue416_his || $5 == issue420 || $5 == issue421 || $5 == issue421b ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && $6 == --host-only ) ]] || exit 64
 scope=$5
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
@@ -19,11 +19,11 @@ assert.equal(source.sourceSha,sha);
 assert.equal(source.sourceTree,tree);
 require(base+'/historical-settlement-334-profile.cjs').assertSource(source,require(base+'/common/multi-witness.cjs').final);
 JS
-work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-$scope-334.XXXXXXXX")
 profile=$(node -e '
 const { file, sourceDigest, fixtureDigest } = require(process.argv[1]).profileFor(process.argv[2]);
 console.log([file, sourceDigest, fixtureDigest].filter(Boolean).join(" "));
-' "$plan/profiles.cjs" "$scope")
+' "$plan/profiles.cjs" "$scope") || exit 64
+work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-$scope-334.XXXXXXXX")
 read -r file source_digest fixture_digest <<< "$profile"
 spec=services/api/$file
 source_spec="$prepared/prepared/context/workspace/$spec"
