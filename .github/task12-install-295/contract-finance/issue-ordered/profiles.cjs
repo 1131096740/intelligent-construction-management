@@ -197,6 +197,19 @@ const profiles = {
     requiresOperatingLedgerWriteSecret: true,
     titles: ['审批中与已批待付分列，合同超付不抵扣另一合同未付']
   },
+  issue418_recognized_dedup: {
+    file: 'src/database/issue418-recognized-dedup.pg.spec.ts',
+    sourceDigest: '9ca9c91603d66b2b1e3783011cda401e9ce100250226eec92743c14062a03b87',
+    orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
+    databaseUrlKey: 'ISSUE418_RECOGNIZED_DEDUP_DATABASE_URL',
+    enableKey: 'ISSUE418_RECOGNIZED_DEDUP_RUN',
+    stage: 'ORDERED_RECOGNIZED_SETTLEMENT_DEDUP_JEST',
+    requiredMigrationCount: 346,
+    requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+    requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: ['可识别的跨来源结算在总览、明细分页和导出只计一期，保留下一期']
+  },
   issue418_source_unique: {
     file: 'src/database/issue418-signed-operating.pg.spec.ts',
     sourceDigest: '86491dd5c87593b600dffa75760b65ae12b741f27a68ef191c17fe03a69d9582',
