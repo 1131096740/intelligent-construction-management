@@ -18,7 +18,7 @@ const prefixDigests = Object.freeze({
   339: "5d1613031f4e89f5effadf215cc2003fa22864aa3f5e24ce0fda9627a49c9e4f",
   340: "926f3247bb8404665c50706296ee12b0abb809ab70c7d7ce203701ce1bc354a1",
   341: "30da81d2089c941e912b0149969a508d6df8ccab1d501b78b1aedc6ff8f2832f",
-  342: "cc8faf235b6432117447b596a0d9fc2fc01e55da17b4bf95e565436b4c2d4be0"
+  342: "0c2efc93da4e924216f7282cf573065cc8688171f83559ea5fd3ad5973070f23"
 });
 const prefixes = [332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342];
 const digest = rows => createHash("sha256").update(JSON.stringify(rows)).digest("hex");

@@ -8,6 +8,7 @@ function readOperatingFactValidator(app) {
   assert.match(app, /^jg_fixture_app_[a-f0-9]{24}$/u);
   return `SELECT jsonb_build_object(
     'factBody', encode(sha256(convert_to(fact.prosrc, 'UTF8')), 'hex'),
+    'factConfig', fact.proconfig,
     'factMetadata', encode(sha256(convert_to((to_jsonb(fact) - 'prosrc')::text, 'UTF8')), 'hex'),
     'factTrigger', encode(sha256(convert_to(to_jsonb(fact_trigger)::text, 'UTF8')), 'hex'),
     'impact', encode(sha256(convert_to(jsonb_build_array(to_jsonb(impact), to_jsonb(impact_trigger))::text, 'UTF8')), 'hex'),
@@ -38,6 +39,7 @@ function verifyOperatingFactValidator(row, before) {
   assert.equal(row.safe, true, "NATIVE_A24_342_WRITE_FENCE");
   const { factBody, ...catalog } = row;
   assert.equal(factBody, before ? afterBody : beforeBody, "NATIVE_A24_342_FACT_BODY");
+  assert.deepEqual(catalog.factConfig, ["search_path=pg_catalog, public, pg_temp"], "NATIVE_A24_342_FACT_CONFIG");
   for (const key of ["factMetadata", "factTrigger", "impact", "writer"]) {
     assert.match(catalog[key], /^[a-f0-9]{64}$/u);
   }

@@ -26,6 +26,9 @@ test("recognizes only the approved original expense and preserves the old permis
   assert.doesNotMatch(successor, /FOR (?:UPDATE|SHARE|KEY SHARE)|\bGRANT\b/u);
   assert.match(migration, /to_jsonb\(p\) - 'prosrc'\) = prior\.metadata/u);
   assert.match(migration, /trigger_before IS DISTINCT FROM prior\.wiring/u);
+  assert.match(migration, /bodies\.proconfig IS NOT DISTINCT FROM prior\.proconfig/u);
+  assert.equal([...migration.matchAll(/NULL::text\[\]/gu)].length, 2);
+  assert.match(migration, /a59d505c[\s\S]+ARRAY\['search_path=pg_catalog, public, pg_temp'\]/u);
 });
 
 test("retains both product archive validator tuples and admits only their exact successors", () => {
@@ -46,13 +49,15 @@ test("refuses a change to the native facts metadata, impact validator or write f
   const sql = readOperatingFactValidator("jg_fixture_app_" + "a".repeat(24));
   assert.match(sql, /NOT has_any_column_privilege.+"OperatingFact".+'INSERT,UPDATE,REFERENCES'/u);
   assert.match(sql, /NOT has_table_privilege.+"OperatingImpactEntry".+'DELETE,TRUNCATE,TRIGGER'/u);
-  const before = { factBody: beforeBody, factMetadata: "b".repeat(64), factTrigger: "c".repeat(64),
+  const before = { factBody: beforeBody, factConfig: ["search_path=pg_catalog, public, pg_temp"],
+    factMetadata: "b".repeat(64), factTrigger: "c".repeat(64),
     impact: "d".repeat(64), writer: "e".repeat(64), safe: true };
   const after = { ...before, factBody: afterBody };
   verifyOperatingFactValidator(before);
   verifyOperatingFactValidator(after, before);
   assert.throws(() => verifyOperatingFactValidator({ ...after, safe: false }, before), /WRITE_FENCE/u);
   assert.throws(() => verifyOperatingFactValidator({ ...after, impact: "f".repeat(64) }, before), /CATALOG_DRIFT/u);
+  assert.throws(() => verifyOperatingFactValidator({ ...after, factConfig: null }, before), /FACT_CONFIG/u);
   assert.throws(() => verifyOperatingFactValidator(before, before), /FACT_BODY/u);
 });
 
