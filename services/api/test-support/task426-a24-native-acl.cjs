@@ -3,7 +3,7 @@
 const assert = require("node:assert/strict");
 const { createHash } = require("node:crypto");
 const nativeOrdinary = require("../prisma/task16-current259-ordinary-archive-acl.requirements.json");
-const { CASH_RUNTIME_READS } = require("../prisma/task16-current261-cash-profile.cjs");
+const { CASH_RUNTIME_READS, CASH_WRITER_FUNCTIONS } = require("../prisma/task16-current261-cash-profile.cjs");
 
 const identifier = word => '"' + word + '"';
 const relation = table => "public." + identifier(table);
@@ -59,7 +59,7 @@ const functions = [
   'public."appendOperatingImpactThroughService"(public."OperatingLedgerImpactWritePayloadV2",text,text)'
 ];
 
-function a24ColumnPlan(models) {
+function a24ColumnPlan(models, legacyOperatingWriters = false) {
   const full = table => {
     const model = models.find(row => row.name === table);
     assert.ok(model, "NATIVE_A24_REQUIRED_MODEL_" + table);
@@ -132,7 +132,8 @@ function a24ColumnPlan(models) {
     const existing = full(table);
     for (const column of columns) assert.ok(existing.includes(column), "NATIVE_A24_REQUIRED_COLUMN_" + table + "_" + column);
   }
-  return { read, insert, update, observer, functions };
+  return { read, insert, update, observer,
+    functions: legacyOperatingWriters ? [...functions, ...CASH_WRITER_FUNCTIONS] : functions };
 }
 
 function renderA24FixtureAcl(plan, app, observer) {
@@ -166,4 +167,26 @@ function verifySignatureExclusiveClosure(rows) {
   return { count: rows.length, sha256, allSelectGranted: true };
 }
 
-module.exports = { a24ColumnPlan, renderA24FixtureAcl, readSignatureExclusiveClosure, verifySignatureExclusiveClosure };
+function readA24LegacyWriterAcl(app, observer) {
+  for (const role of [app, observer]) assert.match(role, /^jg_[a-zA-Z0-9_]+$/u);
+  assert.notEqual(app, observer);
+  const signatures = CASH_WRITER_FUNCTIONS.map(signature => "('" + signature + "')").join(", ");
+  return `SELECT jsonb_build_object('routines', count(*), 'restricted', coalesce(bool_and(
+    routine.prosecdef AND routine.proowner = (SELECT datdba FROM pg_database WHERE datname = current_database())
+    AND routine.proconfig = ARRAY['search_path=pg_catalog, public']
+    AND has_function_privilege('${app}', routine.oid, 'EXECUTE')
+    AND NOT has_function_privilege('${app}', routine.oid, 'EXECUTE WITH GRANT OPTION')
+    AND NOT has_function_privilege('${observer}', routine.oid, 'EXECUTE')
+    AND NOT EXISTS (
+      SELECT FROM aclexplode(COALESCE(routine.proacl, acldefault('f', routine.proowner))) acl WHERE acl.grantee = 0
+    )), false),
+    'directWritesDenied',
+      NOT has_any_column_privilege('${app}', 'public."OperatingFact"'::regclass, 'INSERT,UPDATE,REFERENCES')
+      AND NOT has_any_column_privilege('${app}', 'public."OperatingImpactEntry"'::regclass, 'INSERT,UPDATE,REFERENCES')
+      AND NOT has_table_privilege('${app}', 'public."OperatingFact"'::regclass, 'DELETE,TRUNCATE,TRIGGER')
+      AND NOT has_table_privilege('${app}', 'public."OperatingImpactEntry"'::regclass, 'DELETE,TRUNCATE,TRIGGER'))
+  FROM (VALUES ${signatures}) expected(signature)
+  JOIN pg_proc routine ON routine.oid = to_regprocedure(expected.signature);`;
+}
+
+module.exports = { a24ColumnPlan, renderA24FixtureAcl, readSignatureExclusiveClosure, verifySignatureExclusiveClosure, readA24LegacyWriterAcl };

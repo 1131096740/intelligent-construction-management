@@ -357,7 +357,7 @@ async function main(args) {
   const a24Acl = expenseCashA24 && require("../test-support/task426-a24-native-acl.cjs");
   const a24Assignment = expenseAssignment341 && require("../test-support/task426-a24-native341-assignment.cjs");
   const pendingExpense = expensePending342 && require("../test-support/task426-a24-native342-fact.cjs");
-  const a24Plan = a24Acl && a24Acl.a24ColumnPlan(require("@prisma/client").Prisma.dmmf.datamodel.models);
+  const a24Plan = a24Acl && a24Acl.a24ColumnPlan(require("@prisma/client").Prisma.dmmf.datamodel.models, expensePending342);
   if (a24Plan) receipt.a24AclSha256 = hash(JSON.stringify(a24Plan));
   if (expenseCashA24) receipt.a24ExpectedPrefixes = source.a24Prefixes.map(size => {
     const { ledgerSha256 } = a24Profile.verifyA24Prefix(size, source.ledger.slice(0, size));
@@ -496,6 +496,7 @@ async function main(args) {
     fs.writeFileSync(packet, JSON.stringify({ ownerUrl: ownerUrl.toString(), psql: bin("psql"), applicationOid: appOid, database, candidate: sha }), { mode: 0o600, flag: "wx" });
     const files = path.join(directory, "files");
     fs.mkdirSync(files, { mode: 0o700 });
+    let checkLegacyWriterAcl;
     if (expenseCashA24) {
       stage("A24_SCOPED_ROLES");
       const observationRole = "jg_a24_observer_" + runId.replaceAll("-", "");
@@ -531,6 +532,15 @@ async function main(args) {
         FROM pg_catalog.pg_roles observer WHERE observer.rolname = '${observationRole}';
       `));
       assert.equal(scope.safe, true, "A24_SCOPED_ROLES");
+      if (expensePending342) {
+        checkLegacyWriterAcl = () => {
+          const observed = JSON.parse(sql(a24Acl.readA24LegacyWriterAcl(app, observationRole)));
+          assert.deepEqual(observed, { routines: 2, restricted: true, directWritesDenied: true }, "A24_V1_WRITER_ACL");
+          return observed;
+        };
+        stage("A24_V1_WRITER_ACL");
+        receipt.a24LegacyWriterAcl = checkLegacyWriterAcl();
+      }
       if (historicalCatalog) {
         stage("A24_SIGNATURE_EXCLUSIVE_ACL");
         const closure = JSON.parse(sql("BEGIN READ ONLY; SET LOCAL search_path=pg_catalog,public,pg_temp;"
@@ -669,6 +679,8 @@ async function main(args) {
         expenseFactCatalog[341]);
       assert.deepEqual(result, expenseFactCatalog[342], "NATIVE_A24_342_CATALOG_AFTER_BUSINESS");
       expenseFactCatalog.afterBusiness = result;
+      stage("A24_V1_WRITER_ACL_AFTER_BUSINESS");
+      receipt.a24LegacyWriterAclAfterBusiness = checkLegacyWriterAcl();
     }
     assert.equal(tracked(), "");
     file(runtime.document, runtime.documentSha);

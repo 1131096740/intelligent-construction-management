@@ -5,8 +5,9 @@ const { readFileSync, readdirSync } = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
 const { Prisma } = require("@prisma/client");
-const { CASH_RUNTIME_READS } = require("../prisma/task16-current261-cash-profile.cjs");
-const { a24ColumnPlan, renderA24FixtureAcl, readSignatureExclusiveClosure, verifySignatureExclusiveClosure } = require("./task426-a24-native-acl.cjs");
+const { CASH_RUNTIME_READS, CASH_WRITER_FUNCTIONS } = require("../prisma/task16-current261-cash-profile.cjs");
+const { a24ColumnPlan, renderA24FixtureAcl, readSignatureExclusiveClosure, verifySignatureExclusiveClosure,
+  readA24LegacyWriterAcl } = require("./task426-a24-native-acl.cjs");
 
 test("uses column privileges on the exact shape without granting financial ledger writes or observer writes", () => {
   const plan = a24ColumnPlan(Prisma.dmmf.datamodel.models);
@@ -61,6 +62,22 @@ test("uses the proven project-close projection and narrow reference locks at fin
   assert.deepEqual(plan.update.UserPosition, ["createdAt"]);
   assert.deepEqual(plan.update.Position, ["updatedAt"]);
   for (const table of ["ProjectMember", "UserPosition", "Position"]) assert.equal(plan.insert[table], undefined);
+});
+
+test("grants only the sealed V1 writer calls while leaving the ledger write fences unchanged", () => {
+  const models = Prisma.dmmf.datamodel.models;
+  const original = a24ColumnPlan(models);
+  const revised = a24ColumnPlan(models, true);
+  assert.deepEqual(revised, { ...original, functions: [...original.functions, ...CASH_WRITER_FUNCTIONS] });
+  const grant = plan => renderA24FixtureAcl(plan, "jg_a24_application", "jg_a24_observer").split("\n");
+  const oldGrants = grant(original);
+  assert.deepEqual(grant(revised).filter(line => !oldGrants.includes(line)),
+    CASH_WRITER_FUNCTIONS.map(signature => `GRANT EXECUTE ON FUNCTION ${signature} TO "jg_a24_application";`));
+  const scope = readA24LegacyWriterAcl("jg_a24_application", "jg_a24_observer");
+  assert.match(scope, /NOT has_function_privilege\('jg_a24_observer', routine\.oid, 'EXECUTE'\)/u);
+  assert.match(scope, /NOT has_function_privilege\('jg_a24_application', routine\.oid, 'EXECUTE WITH GRANT OPTION'\)/u);
+  assert.match(scope, /NOT has_any_column_privilege\('jg_a24_application', 'public\."OperatingFact"'::regclass, 'INSERT,UPDATE,REFERENCES'\)/u);
+  assert.match(scope, /NOT has_any_column_privilege\('jg_a24_application', 'public\."OperatingImpactEntry"'::regclass, 'INSERT,UPDATE,REFERENCES'\)/u);
 });
 
 test("signature creation can read its guarded coordinates without broadening fixture writes", () => {
