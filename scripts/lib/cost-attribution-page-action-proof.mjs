@@ -21,6 +21,7 @@ const PAGE = `${WEB}/pages/projects/ProjectOperatingOverviewPage.vue`;
 const API = `${WEB}/api/cost-attribution.api.ts`;
 const CONTROLLER = "services/api/src/operating-ledger/operating-cost-attribution.controller.ts";
 const SERVICE = "services/api/src/operating-ledger/operating-cost-attribution.service.ts";
+const EVIDENCE = "services/api/src/operating-ledger/expense-cash-cost-attribution.ts";
 const PERMISSIONS = "packages/shared-domain/src/permissions.ts";
 const ROUTE = "/项目经营";
 
@@ -33,6 +34,12 @@ const LOAD = {
 
 const DIALOG_CONFIRM = 'costAttributionReview ? submitCostAttributionReview() : submitCostAttribution()';
 
+const CONTROLLER_POSITIONS = '@RequirePositions( "comprehensive_director", "finance_staff", "finance_director" )';
+const CANDIDATE_REVIEW_GATE = "candidate.activeStatus === 'pending_review' && canReviewCostAttribution";
+const CANDIDATE_REVIEW_ROW =
+  "(costAttribution?.confirmations ?? []).find((row) => row.id === candidate.activeConfirmationId)!";
+const VISIBLE_PIN = "costAttributionDialogVisible.value = true;";
+
 const ACTIONS = {
   "cost-attribution.request": {
     page: PAGE,
@@ -40,14 +47,18 @@ const ACTIONS = {
     handler: "submitCostAttribution",
     capability: "canRequestCostAttribution",
     opener: {
-      gate: "!candidate.activeConfirmationId && canRequestCostAttribution",
       handlerName: "openCostAttributionDialog",
-      visiblePin: "costAttributionDialogVisible.value = true;"
+      pins: ["costAttributionCandidate.value = candidate;"],
+      buttons: [{
+        call: "openCostAttributionDialog(candidate)",
+        gates: ["!candidate.activeConfirmationId && canRequestCostAttribution"]
+      }]
     },
     call: `await requestCostAttribution(projectId, candidate.factId, {
       companyEntityId: costAttributionCompanyId.value,
       reason: costAttributionReason.value.trim(),
-      idempotencyKey: crypto.randomUUID()
+      idempotencyKey: crypto.randomUUID(),
+      ...(candidate.expenseCashCostLinkId ? { expenseCashCostLinkId: candidate.expenseCashCostLinkId } : {})
     });`,
     capabilityPins: [
       [PAGE, "canRequestCostAttribution = computed("],
@@ -55,8 +66,14 @@ const ACTIONS = {
       [PAGE, "!candidate.activeConfirmationId && canRequestCostAttribution"]
     ],
     serverPins: [
-      [CONTROLLER, "@RequirePositions("],
+      [CONTROLLER, CONTROLLER_POSITIONS],
+      [CONTROLLER, "return this.attributions.request(projectId, factId, body, user.id);"],
+      [SERVICE, "const roles = await this.requireProject(tx, projectId, actor);"],
       [SERVICE, "canPerform(ROLE_KEYS.request, roles)"],
+      [SERVICE, "await lockExpenseCashCostEvidence(tx, projectId, factId, input.expenseCashCostLinkId)"],
+      [SERVICE, 'expenseCashCostLinkId: evidence.id, attributedAmountCents: amount, status: "pending_review"'],
+      [EVIDENCE, 'WHERE link.id = ${linkId} AND claim."projectId" = ${projectId} FOR UPDATE OF claim'],
+      [EVIDENCE, "costImpact: { ...expenseCashCostImpactEligibility(projectId), factId }"],
       [PERMISSIONS, '"operating_cost_attribution.request": ["comprehensive_director", "finance_staff", "finance_director"]']
     ],
     wrappers: [{ apiFile: API, name: "requestCostAttribution" }]
@@ -67,9 +84,26 @@ const ACTIONS = {
     handler: "submitCostAttributionReview",
     capability: "canReviewCostAttribution",
     opener: {
-      gate: "candidate.activeStatus === 'pending_review' && canReviewCostAttribution",
       handlerName: "openCostAttributionReview",
-      visiblePin: "costAttributionDialogVisible.value = true;"
+      pins: [
+        "costAttributionReview.value = row;",
+        "costAttributionReviewDecision.value = decision;"
+      ],
+      buttons: [
+        {
+          call: `openCostAttributionReview(${CANDIDATE_REVIEW_ROW}, 'confirm')`,
+          gates: ["!candidate.cashEvidenceChanged", CANDIDATE_REVIEW_GATE]
+        },
+        {
+          call: `openCostAttributionReview(${CANDIDATE_REVIEW_ROW}, 'return')`,
+          gates: [CANDIDATE_REVIEW_GATE]
+        },
+        {
+          call: "openCostAttributionReview(row, 'return')",
+          gates: [`row.expenseCashCostLinkId && row.status === 'pending_review' && canReviewCostAttribution &&
+            !costAttribution?.candidates.some(candidate => candidate.activeConfirmationId === row.id)`]
+        }
+      ]
     },
     call: `await reviewCostAttribution(projectId, row.id, {
       decision: costAttributionReviewDecision.value,
@@ -87,8 +121,14 @@ const ACTIONS = {
       [PAGE, "candidate.activeStatus === 'pending_review' && canReviewCostAttribution"]
     ],
     serverPins: [
-      [CONTROLLER, "@RequirePositions("],
+      [CONTROLLER, CONTROLLER_POSITIONS],
+      [CONTROLLER, "return this.attributions.review(projectId, id, body, user.id);"],
+      [SERVICE, "const roles = await this.requireProject(tx, projectId, actor);"],
       [SERVICE, "canPerform(ROLE_KEYS.review, roles)"],
+      [SERVICE, 'where: { id: confirmationId, projectId }'],
+      [SERVICE, 'if (input.decision === "return")'],
+      [SERVICE, 'status: "returned", activeKey: null,'],
+      [SERVICE, 'action: "operating_cost_attribution.returned"'],
       [PERMISSIONS, '"operating_cost_attribution.review": ["finance_director"]']
     ],
     wrappers: [{ apiFile: API, name: "reviewCostAttribution" }]
@@ -169,32 +209,34 @@ function expressionRootName(node) {
 function openerMatches({ action, context, spec, syntax }) {
   const ast = context.asts?.get(action.sourceFile);
   if (!ast) return false;
-  let opener = null;
+  const matched = new Set();
+  let invalid = false;
   syntax.walkEstree(ast, (node) => {
-    if (opener || node?.type !== "VElement") return;
+    if (invalid || node?.type !== "VElement") return;
     const name = node.rawName ?? node.name;
     if (!["button", "t-button"].includes(name)) return;
-    const clickDirective = syntax.elementDirective(node, "on", "click");
-    if (!clickDirective?.value?.expression) return;
-    if (expressionRootName(clickDirective.value.expression) === spec.opener.handlerName) {
-      opener = node;
+    const expression = syntax.elementDirective(node, "on", "click")?.value?.expression;
+    if (expressionRootName(expression) !== spec.opener.handlerName) return;
+    const button = spec.opener.buttons.find(item => expressionMatches(expression, item.call, syntax));
+    if (!button || matched.has(button)) {
+      invalid = true;
+      return;
+    }
+    const gates = [];
+    for (let current = node; current?.type === "VElement"; current = current.parent) {
+      const directive = syntax.elementDirective(current, "if") ?? syntax.elementDirective(current, "else-if");
+      if (directive?.value?.expression) gates.push(directive.value.expression);
+    }
+    if (button.gates.every(gate => gates.some(node => expressionMatches(node, gate, syntax)))) {
+      matched.add(button);
+    } else {
+      invalid = true;
     }
   });
-  if (!opener) return false;
-  let current = opener;
-  let gateMatched = false;
-  while (current?.type === "VElement") {
-    const directive = syntax.elementDirective(current, "if") ?? syntax.elementDirective(current, "else-if");
-    const expression = directive?.value?.expression;
-    if (expression && expressionMatches(expression, spec.opener.gate, syntax)) {
-      gateMatched = true;
-      break;
-    }
-    current = current.parent?.type === "VElement" ? current.parent : null;
-  }
-  if (!gateMatched) return false;
+  if (invalid || matched.size !== spec.opener.buttons.length) return false;
   const openerHandler = localDefinition(context, spec.opener.handlerName, syntax);
-  return Boolean(openerHandler) && containsPin(openerHandler, spec.opener.visiblePin, syntax);
+  return Boolean(openerHandler) && [VISIBLE_PIN, ...spec.opener.pins]
+    .every(pin => containsPin(openerHandler, pin, syntax));
 }
 
 function capabilityPinsAreProven({ context, spec }) {

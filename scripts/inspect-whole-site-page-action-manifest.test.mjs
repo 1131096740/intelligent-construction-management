@@ -11053,6 +11053,59 @@ for (const [label, before, after] of [
   assert.ok(result.blockers.unresolvedWrappers.some(item => item.actionId.startsWith("public-cash-handover.")));
 });
 
+async function actualCostAttributionFixture(t, change = source => source) {
+  const pagePath = "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue";
+  const apiFile = "apps/web-admin/src/api/cost-attribution.api.ts";
+  const read = file => readFile(new URL("../" + file, import.meta.url), "utf8");
+  const [registry, web, nest, source, api] = await Promise.all([
+    read("docs/product/manifests/web-page-actions.registry.json").then(JSON.parse),
+    read("docs/product/manifests/web-api-wrappers.json").then(JSON.parse),
+    read("docs/product/manifests/nest-business-routes.json").then(JSON.parse),
+    read(pagePath),
+    read(apiFile)
+  ]);
+  const root = await fixture({
+    pagePath,
+    page: change(source),
+    routeRecords: 'export const webAdminRoutes = [{ path: "/项目经营", component: () => import("../pages/projects/ProjectOperatingOverviewPage.vue") }];',
+    actions: registry.actions.filter(entry => entry.id.startsWith("cost-attribution.")),
+    wrappers: web.wrappers.filter(entry => entry.apiFile === apiFile),
+    routes: nest.routes.filter(entry => entry.controller === "OperatingCostAttributionController"),
+    extraFiles: { [apiFile]: api }
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  return root;
+}
+
+for (const [label, actionId, before, after] of [
+  ["proves the request and all review buttons", null],
+  ["rejects dropping the cash split coordinate", "cost-attribution.request",
+    "expenseCashCostLinkId: candidate.expenseCashCostLinkId", "expenseCashCostLinkId: candidate.factId"],
+  ["rejects removing the history return role gate", "cost-attribution.review",
+    "row.status === 'pending_review' && canReviewCostAttribution &&",
+    "row.status === 'pending_review' &&"],
+  ["rejects using confirm from the history return button", "cost-attribution.review",
+    "openCostAttributionReview(row, 'return')", "openCostAttributionReview(row, 'confirm')"]
+]) test(`cost attribution proof ${label}`, async t => {
+  const root = await actualCostAttributionFixture(t, source => {
+    if (!actionId) return source;
+    const changed = source.replace(before, after);
+    assert.notEqual(changed, source);
+    return changed;
+  });
+  const manifest = await inspectWholeSitePageActionManifest({ root });
+  const actions = manifest.actions.filter(action => action.id.startsWith("cost-attribution."));
+  assert.equal(actions.length, 2);
+  for (const action of actions) {
+    assert.equal(action.bindings.length, 1);
+    assert.equal(action.bindings[0].causalVerified, action.id !== actionId);
+  }
+  assert.deepEqual(manifest.blockers.unresolvedWrappers.filter(item => item.actionId.startsWith("cost-attribution."))
+    .map(item => item.actionId), actionId ? [actionId] : []);
+  assert.deepEqual(manifest.blockers.writeWithoutServerCapability.filter(item => item.actionId.startsWith("cost-attribution."))
+    .map(item => item.actionId), actionId ? [actionId] : []);
+});
+
 async function actualFundAdvanceFixture(t, change = source => source) {
   const base = "apps/web-admin/src";
   const pagePath = `${base}/pages/funds/FundAccountAdvanceReceipt.vue`;
