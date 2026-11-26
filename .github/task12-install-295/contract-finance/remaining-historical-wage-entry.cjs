@@ -10,12 +10,13 @@ const root='/qualification';
 const source=require('./contract-finance-source.json');
 const requestedMode=process.argv[2];
 const historicalSettlement=requestedMode==='--historical-settlement-334';
+const expense=requestedMode==='--expense-witness-346'?require('./remaining-history-346.cjs'):undefined;
 const historical=historicalSettlement?require('./historical-settlement-334-profile.cjs'):undefined;
 const upwardArchive=requestedMode==='--upward-archive-332';
 const paymentRemainder=requestedMode==='--payment-remainder-331';
 const textDirect=requestedMode==='--text-direct-330';
-const current=historicalSettlement||upwardArchive||paymentRemainder||textDirect||requestedMode==='--current-320';
-const count=historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current?329:295;
+const current=expense||historicalSettlement||upwardArchive||paymentRemainder||textDirect||requestedMode==='--current-320';
+const count=expense?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current?329:295;
 const receipt={schemaVersion:1,purpose:'REMAINING_HISTORICAL_WAGE_'+count,
   sourceSha:source.sourceSha,stages:['INPUTS'],status:'STOPPED'};
 
@@ -31,10 +32,13 @@ async function main(){
     assert.equal(source.predecessor.migrationCount,295);
     assert.equal(source.predecessor.ledgerSha256,final);
     assert.equal(source.tails.length,count-295);
-    const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
-    assert.equal(baseline.expectedDirectoryCount,count);
-    assert.equal(baseline.terminalMigration,source.tails.at(-1).name);
-    assert.equal(baseline.terminalMigrationChecksum,source.tails.at(-1).sha256);
+    if(expense) expense.assertInputs(source);
+    else {
+      const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
+      assert.equal(baseline.expectedDirectoryCount,count);
+      assert.equal(baseline.terminalMigration,source.tails.at(-1).name);
+      assert.equal(baseline.terminalMigrationChecksum,source.tails.at(-1).sha256);
+    }
   } else {
     assert.equal(source.ledgerSha256,final);
     assert.equal(source.tails.at(-1).sha256,digest);
@@ -43,7 +47,9 @@ async function main(){
   historical?.assertSource(source,final);
   receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   const consume=context=>runHistoricalWage(context,receipt,source);
-  if(current){
+  if(expense) {
+    await expense.install(receipt,source,consume);
+  } else if(current){
     const installCurrent=historicalSettlement?withCombined334HistoricalSettlement:upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
     await installCurrent(receipt,async context=>{
       assert.equal(context.candidateTree,source.sourceTree);

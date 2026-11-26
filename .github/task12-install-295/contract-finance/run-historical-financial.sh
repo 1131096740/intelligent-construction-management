@@ -2,11 +2,11 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 ) ) ||
+  ( $# == 6 && $5 == --expense-witness-346 && $6 == --host-only ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
-build=$(cd "$4" && pwd -P)
 plan=$(cd "$(dirname "$0")" && pwd -P)
 count=$(node -e '
   const source=require(process.argv[1]);
@@ -22,12 +22,13 @@ count=$(node -e '
     require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
     console.log(332);
   }
+  else if(source.mode==="expense-witness-346"&&source.migrationCount===346)console.log(346);
   else if(source.mode===undefined&&source.migrationCount===295)console.log(295);
   else process.exit(65);
 ' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$plan/common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs")
 mode_args=()
-case "$count" in 329) mode_args=(--current-320);; 330) mode_args=(--text-direct-330);; 331) mode_args=(--payment-remainder-331);; 332) mode_args=(--upward-archive-332);; 334) mode_args=(--historical-settlement-334);; esac
-if [[ $# == 5 && ${mode_args[0]:-} != "$5" ]]; then exit 65; fi
+case "$count" in 329) mode_args=(--current-320);; 330) mode_args=(--text-direct-330);; 331) mode_args=(--payment-remainder-331);; 332) mode_args=(--upward-archive-332);; 334) mode_args=(--historical-settlement-334);; 346) mode_args=(--expense-witness-346);; esac
+if [[ $# -ge 5 && ${mode_args[0]:-} != "$5" ]]; then exit 65; fi
 lane=historical-financial
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 finance="$root/.github/task12-install-295/contract-finance"
@@ -38,17 +39,26 @@ const [sourceFile,sha,terminalFile,profileFile,workspace,count]=process.argv.sli
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||source.migrationCount!==Number(count))process.exit(65);
 if(count!=='295'){
-  const mode={329:'current-320',330:'text-direct-330',331:'payment-remainder-331',332:'upward-archive-332',334:'historical-settlement-334'}[count];
+  const mode={329:'current-320',330:'text-direct-330',331:'payment-remainder-331',332:'upward-archive-332',334:'historical-settlement-334',346:'expense-witness-346'}[count];
   if(source.mode!==mode||source.predecessor.ledgerSha256!==terminal.final)process.exit(65);
 } else if(source.ledgerSha256!==terminal.final)process.exit(65);
 const {spec,sha:digest}=require(profileFile).financial;
 const bytes=require('node:fs').readFileSync(workspace+'/services/api/'+spec);
 if(require('node:crypto').createHash('sha256').update(bytes).digest('hex')!==digest)process.exit(65);
 JS
-image=$(cat "$build/image.id")
-fingerprint=$(cat "$build/context.sha256")
-[[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
-[[ $(node "$finance/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
+if [[ $count == 346 ]]; then
+  [[ ${5-} == --expense-witness-346 ]] || exit 65
+  source "$plan/remaining-history-346.sh"
+  verify_history_346 "$root" "$prepared" "$sha" "$plan"
+fi
+if [[ ${6-} != --host-only ]]; then
+  build=$(cd "$4" && pwd -P)
+  image=$(cat "$build/image.id")
+  fingerprint=$(cat "$build/context.sha256")
+  [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
+  [[ $(node "$finance/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
+fi
+
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-remaining-$lane.XXXXXXXX")
 git_tree=$(git -C "$root" rev-parse "$sha^{tree}")
 [[ $git_tree =~ ^[a-f0-9]{40}$ ]] || exit 65
@@ -66,7 +76,6 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
   --mount "type=bind,src=$plan/historical-financial-entry.cjs,dst=/qualification/historical-financial-entry.cjs,readonly"
-  --mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly"
   --mount "type=bind,src=$plan/historical-financial-runner.cjs,dst=/qualification/historical-financial-runner.cjs,readonly"
   --mount "type=bind,src=$plan/historical-financial-profile.json,dst=/qualification/historical-financial-profile.json,readonly"
   --mount "type=bind,src=$work/candidate.json,dst=/qualification/historical-financial-candidate.json,readonly")
@@ -75,7 +84,16 @@ for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof
 done
 source "$plan/remaining-installer-mounts.sh"
 source_mode=$(node -p 'require(process.argv[1]).mode ?? ""' "$prepared/source.json")
+if [[ $count != 346 ]]; then
+  args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
+fi
 append_remaining_installer "$source_mode"
+if [[ $count == 346 ]]; then append_history_346; fi
+if [[ ${6-} == --host-only ]]; then
+  spec=$(node -p 'require(process.argv[1]).financial.spec' "$plan/historical-financial-profile.json")
+  receipt_history_346 "$lane" "$work/candidate.json" "$workspace/services/api/$spec" "$plan/historical-financial-profile.json"
+  exit 0
+fi
 [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
