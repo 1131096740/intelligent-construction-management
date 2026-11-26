@@ -2,6 +2,7 @@ jest.mock("../contract-ledger/contract-proxy-capacity", () => ({ contractProxyPa
 // 该套件验证原审批/归档职责；履约范围事务守卫由 contract-economic-* 与 PostgreSQL 套件独立覆盖。
 jest.mock("../contract-ledger/contract-economic-coverage", () => ({ ...jest.requireActual("../contract-ledger/contract-economic-coverage"), assertEconomicContractReady: jest.fn().mockResolvedValue(undefined) }));
 import { BadRequestException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { ProjectAffiliateBusinessService } from "./project-affiliate-business.service";
 
 function roleTables(roleKey: string) {
@@ -1400,4 +1401,32 @@ describe("ProjectAffiliateBusinessService", () => {
       })
     });
   });
+});
+
+it("maps only the enterprise bank event duplicate to the payment conflict", async () => {
+  const findUnique = jest.fn().mockResolvedValue(null);
+  const transaction = jest.fn();
+  const service = new ProjectAffiliateBusinessService({
+    $transaction: transaction, projectAffiliatePaymentFact: { findUnique }
+  } as never);
+  const record = () => service.recordPaymentFact("project-1", "finance-1", {
+    contractLedgerId: "contract-ledger-1", settlementLedgerId: "settlement-ledger-1",
+    counterpartyName: "材料供应商", paidAt: "2026-08-02", amountCents: "5000", paymentKind: "normal",
+    externalPaymentReference: "BANK-DUPLICATE-001", basisType: "oral", idempotencyKey: "bank-duplicate-001"
+  });
+  const databaseError = (code: string, message: string) => new Prisma.PrismaClientUnknownRequestError(
+    `PostgresError { code: "${code}", message: "${message}", severity: "ERROR" }`, { clientVersion: "5.22.0" }
+  );
+  const duplicate = "施工企业该银行流水已登记，不得跨入口重复付款";
+  for (const other of [databaseError("P0001", "another constraint"), databaseError("42501", duplicate)]) {
+    transaction.mockRejectedValueOnce(other);
+    await expect(record()).rejects.toBe(other);
+  }
+  expect(findUnique).not.toHaveBeenCalled();
+
+  transaction.mockRejectedValueOnce(databaseError("P0001", duplicate));
+  await expect(record()).rejects.toMatchObject({
+    status: 409, message: "同一外部付款已登记，不能跨项目或跨业务重复绑定"
+  });
+  expect(findUnique).toHaveBeenCalledWith({ where: { idempotencyKey: "bank-duplicate-001" } });
 });

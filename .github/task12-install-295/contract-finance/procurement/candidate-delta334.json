@@ -57,7 +57,7 @@
   {
     "path": "services/api/prisma/run-database-dynamic-gate-local.test.cjs",
     "expected": "78a8d474a9bef166001372b1e096b4f9b190d1d6fce3988bee01ad7f9b6eb09d",
-    "candidate": "92666880b56e4ca1ce359fcc1ed00f6eff042a8e41633848813e870e5fcd88dc"
+    "candidate": "51f54ad35da2c27bd8b4415ff71edd8d6d3f3b351c41426c1518114d03a5665f"
   },
   {
     "path": "services/api/src/contract-takeover/contract-takeover-activation.service.spec.ts",
@@ -128,6 +128,16 @@
     "path": "services/api/src/payment/contract-takeover-balance.ts",
     "expected": "3f7cf828d4502daadcd5396f9054bc7e7855f3f8b898ce85442dab8bcb02a8fc",
     "candidate": "91a765cbd7ee193fe8798a26f3a762f876567071a5014d49bfa10a37c770cd08"
+  },
+  {
+    "path": "services/api/src/project/project-affiliate-business.service.spec.ts",
+    "expected": "1094d1c646ead00b8d6117800e03fc580dd00f11527b62bbbc877c3785c6c686",
+    "candidate": "bd7f7f84a027dcf6d35a7aba1664e7a9e0e46ffa887644ad7aeed936892f79b1"
+  },
+  {
+    "path": "services/api/src/project/project-affiliate-business.service.ts",
+    "expected": "0ef68b3dc7bd38f1c7011d5b403141ea339fc341bc2f40c99905dfe110af5d31",
+    "candidate": "cb3f26dcefe8ac2975ead25608415255cf055bdef481c75a14b56d4307913a11"
   },
   {
     "path": "services/api/src/settlement/settlement-operating-source.adapter.ts",

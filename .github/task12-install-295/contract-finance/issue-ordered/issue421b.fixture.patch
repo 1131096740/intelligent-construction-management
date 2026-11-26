@@ -15,10 +15,13 @@
 @@ -118 +128 @@
 -      !target.pathname.endsWith("_issue421b_ledger")
 +      (!target.pathname.endsWith("_issue421b_ledger") && !ordered)
-@@ -169,0 +180,15 @@
-+
-+    await owner.companyEntity.create({ data: {
-+      id: "i421b-company", name: "四川建工智管建筑工程有限公司"
+@@ -170,0 +181,19 @@
++    const signingCompany = await owner.companyEntity.create({ data: {
++      id: "i421b-company", name: "四川建工智管建筑工程有限公司", isActive: true, currentVersionNo: 1
++    } });
++    const signingVersion = await owner.companyEntityVersion.create({ data: {
++      companyEntityId: signingCompany.id, versionNo: 1, name: signingCompany.name,
++      isActive: signingCompany.isActive, action: "create", actorUserId: ids.director
 +    } });
 +    const enterprise = await owner.businessParty.create({ data: {
 +      name: "隔离四类台账施工企业", normalizedName: "issue421b-enterprise", createdByUserId: ids.director
@@ -31,7 +34,34 @@
 +      affiliateNameSnapshot: enterprise.name, effectiveFrom: new Date("2020-01-01"),
 +      changeReason: "隔离验收施工企业", assignedByUserId: ids.director
 +    })) });
-@@ -225,0 +251,18 @@
++
+@@ -178,0 +208 @@
++        companyEntityId: "i421b-company",
+@@ -187 +217 @@
+-        changeType: "initial",
++        changeType: "original",
+@@ -188,0 +219,2 @@
++        effectiveAt: new Date("2026-01-01"),
++        numericProtocolVersion: 1,
+@@ -191,0 +224 @@
++        companyEntityVersionId: signingVersion.id,
+@@ -195 +228 @@
+-        clauseSnapshot: {}
++        clauseSnapshot: []
+@@ -205,0 +239 @@
++        companyEntityId: "i421b-company",
+@@ -214 +248 @@
+-        changeType: "initial",
++        changeType: "original",
+@@ -215,0 +250,2 @@
++        effectiveAt: new Date("2026-01-01"),
++        numericProtocolVersion: 1,
+@@ -218,0 +255 @@
++        companyEntityVersionId: signingVersion.id,
+@@ -222 +259 @@
+-        clauseSnapshot: {}
++        clauseSnapshot: []
+@@ -225,0 +263,18 @@
 +    await owner.paymentTermsVersion.createMany({
 +      data: [
 +        { id: ids.termsA, contractId: ids.contractA, contractVersionId: ids.versionA,
@@ -50,37 +80,37 @@
 +          status: "paid", amountCents: 250_000n, payableAmountCents: 250_000n, paidAmountCents: 250_000n }
 +      ]
 +    });
-@@ -233 +276,3 @@
+@@ -233 +288,3 @@
 -          paymentTermsVersionId: ids.versionA,
 +          paymentTermsVersionId: ids.termsA,
 +          settlementId: ids.settlementA,
 +          sourceType: "settlement",
-@@ -236,0 +282 @@
+@@ -236,0 +294 @@
 +          approvedAmountCents: 100_000n,
-@@ -245 +291,3 @@
+@@ -245 +303,3 @@
 -          paymentTermsVersionId: ids.versionB,
 +          paymentTermsVersionId: ids.termsB,
 +          settlementId: ids.settlementB,
 +          sourceType: "settlement",
-@@ -248,0 +297 @@
+@@ -248,0 +309 @@
 +          approvedAmountCents: 250_000n,
-@@ -263 +311,0 @@
+@@ -263 +323,0 @@
 -          currentVersionId: ids.spotVersionA,
-@@ -272 +319,0 @@
+@@ -272 +331,0 @@
 -          currentVersionId: ids.spotVersionB,
-@@ -311,0 +359,4 @@
+@@ -311,0 +371,4 @@
 +    for (const [id, currentVersionId] of [[ids.spotA, ids.spotVersionA], [ids.spotB, ids.spotVersionB]]) {
 +      await owner.spotProcurement.update({ where: { id }, data: { currentVersionId } });
 +    }
 +
-@@ -332,0 +384,4 @@
+@@ -332,0 +396,4 @@
 +    const generalLine = (id: string, name: string, estimatedAmount: string) => ({
 +      id, name, specification: null, unit: "项", quantity: "1.0000", unitPrice: estimatedAmount,
 +      estimatedAmount, requiredOn: null, note: null
 +    });
-@@ -349 +404 @@
+@@ -349 +416 @@
 -          lines: [],
 +          lines: [generalLine("00000000-0000-4000-8000-000000000001", "办公用品", "500.0000")],
-@@ -367 +422 @@
+@@ -367 +434 @@
 -          lines: [],
 +          lines: [generalLine("00000000-0000-4000-8000-000000000002", "设备", "800.0000")],

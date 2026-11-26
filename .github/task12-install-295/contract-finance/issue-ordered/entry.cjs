@@ -38,10 +38,13 @@ function summarizeFirstFailure(file, test) {
     /PrismaClientKnownRequestError/u.test(diagnostic) ? 'PRISMA_REQUEST' :
     /PrismaClientUnknownRequestError/u.test(diagnostic) ? 'PRISMA_UNKNOWN_REQUEST' :
     /Cannot find module/u.test(diagnostic) ? 'MODULE_NOT_FOUND' : undefined;
-  const constraint = diagnostic.match(/\bconstraint\s+"([A-Za-z_][A-Za-z0-9_]{0,80})"/u)?.[1];
+  const constraint = diagnostic.match(/\bconstraint\s+\\?"([A-Za-z_][A-Za-z0-9_]{0,80})\\?"/u)?.[1];
+  const postgres = diagnostic.match(/PostgresError \{ code: "([A-Z0-9]{5})", message: ("(?:[^"\\\n]|\\.){1,600}"), severity:/u);
+  const serverMessageSha256 = postgres && sha256(postgres[2]);
   return { codes: [...new Set(codes)].slice(0, 6),
     ...(kind && { kind }), ...(line && { line: Number(line) }),
     ...(constraint && { constraint }),
+    ...(serverMessageSha256 && { serverMessageSha256 }),
     ...(statusPair && { expectedStatus: Number(statusPair[1]), receivedStatus: Number(statusPair[2]) }) };
 }
 
