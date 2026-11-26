@@ -8,13 +8,14 @@ const {consume}=require('./remaining-direct-capacity.cjs');
 
 const root='/qualification';
 const source=require('./contract-finance-source.json');
+const expense=source.mode==='expense-witness-346'?require('./payment-execution-346.cjs'):undefined;
 const historicalSettlement=source.mode==='historical-settlement-334';
 const historical=historicalSettlement?require('./historical-settlement-334-profile.cjs'):undefined;
 const upwardArchive=source.mode==='upward-archive-332';
 const paymentRemainder=source.mode==='payment-remainder-331';
 const textDirect=source.mode==='text-direct-330';
-const current=historicalSettlement||upwardArchive||paymentRemainder||textDirect||source.mode==='current-320';
-const count=historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current?329:295;
+const current=expense||historicalSettlement||upwardArchive||paymentRemainder||textDirect||source.mode==='current-320';
+const count=expense?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current?329:295;
 const receipt={schemaVersion:1,purpose:'REMAINING_DIRECT_CAPACITY_'+count,
   sourceSha:source.sourceSha,stages:['INPUTS'],status:'STOPPED'};
 
@@ -32,7 +33,23 @@ async function main(){
   historical?.assertSource(source,final);
   receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   const verify=context=>consume(context,receipt);
-  if(current){
+  if(expense){
+    const readAcl=async context=>{
+      const result=await context.sql("SELECT jsonb_build_object('database',d.datacl,'publicSchema',n.nspacl) " +
+        "FROM pg_catalog.pg_database d CROSS JOIN pg_catalog.pg_namespace n " +
+        "WHERE d.datname=current_database() AND n.nspname='public'");
+      const acl=JSON.parse(result.stdout);
+      assert.deepEqual(Object.keys(acl).sort(),['database','publicSchema']);
+      return acl;
+    };
+    await expense.install(receipt,async context=>{
+      const before=await readAcl(context);
+      await verify(context);
+      assert.deepEqual(await readAcl(context),before,'REMAINING_DIRECT_346_ACL_CHANGED');
+      receipt.directCapacityAcl={databaseAndPublicSchemaUnchanged:true};
+    },source);
+    expense.assertInstallation(receipt,source);
+  } else if(current){
     const installCurrent=historicalSettlement?withCombined334HistoricalSettlement:upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
     await installCurrent(receipt,verify,{
       sourceTree:source.sourceTree,migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails
@@ -51,6 +68,7 @@ async function main(){
     await withCombined295MultiWitness(receipt,verify);
   }
   assert.deepEqual(receipt.directCapacity,{passed:1,skipped:0,bootstrapOid:10,tls:true});
+  if(expense)assert.deepEqual(receipt.directCapacityAcl,{databaseAndPublicSchemaUnchanged:true});
   assert.equal(receipt.installOnly295.ledgerSha256,final);
   assert.equal(receipt.installOnly295.nonOwnerDenied,true);
   assert.equal(receipt.combinedAfterBusiness.count,count);
