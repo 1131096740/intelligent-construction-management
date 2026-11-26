@@ -123,6 +123,29 @@ const profiles = {
       'keeps unknown historical facts in their original stage and only records an explicit zero'
     ]
   },
+  issue418: {
+    file: 'src/database/issue418-operating-dedup.pg.spec.ts',
+    sourceDigest: 'f9876f2541db34bdd70be1e0e8543cc4c3eb942d7ce3dee2dd044539dcc8e28d',
+    fixtureDigest: '0ee201f76bb34da9eff97fa3839abc47cdadf7f6ff2d9eabf860e30798e18939',
+    orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
+    databaseUrlKey: 'ISSUE418_OPERATING_DEDUP_DATABASE_URL',
+    enableKey: 'ISSUE418_OPERATING_DEDUP_RUN',
+    stage: 'ORIGINAL_OPERATING_DEDUP_JEST',
+    requiredMigrationCount: 346,
+    requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+    requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
+    titles: [
+      '同合同双入口只计一次成本，upward 不进成本，outside 进入成本',
+      '施工企业已付80、项目对外支付70，两指标成对且不可相加',
+      '成本归属读侧分列承担公司、待归属与公共现金来源',
+      '明细可追溯到事实、影响、来源类型和源业务 ID',
+      '数据库来源唯一键阻止同一来源重复入账',
+      '跨来源写入守卫在真实 Settlement/SignedContractSettlement 行上拒绝同期次重复登记',
+      'G4 公共现金待归属确认后转正、幂等且不新增成本',
+      'G5 资金流水与经营事实一致，支持类型过滤与导出',
+      'G9 总览按合同钻取：审批中与已批待付分列，跨合同不抵扣'
+    ]
+  },
   issue420: {
     file: 'src/database/issue420-approval-center.http.pg.spec.ts',
     sourceDigest: 'd4effcfb32e745737be3278c0556f903c2ae6c55c631016a59a3c0c79588d5a3',

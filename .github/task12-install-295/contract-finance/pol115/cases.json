@@ -21,7 +21,7 @@
       "declared": 61,
       "reported": 63,
       "skipped": [],
-      "candidateSha256": "197895045e62eef3f351e5bdbe625a4a4542f1d7c6ae1bc75b1599039e430b27",
+      "candidateSha256": "ae645f7bbc66e486b22fc1e01023f6590b9245c0017cda5f0d4ece62ef3933e2",
       "namesSha256": "cc7765488bc5249555c907ac306de05f1cefc71122b9316d734c274ca9b5e7fd"
     },
     {
@@ -65,7 +65,7 @@
       "skipped": [
         "#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16 登记账户零采异公司实付并按原键只扣一次"
       ],
-      "candidateSha256": "bf0e8aed897ef6d0442d40e6726176cc1457b499b874cecbfca7164f2a218524",
+      "candidateSha256": "8a846a7f8aa79fadf79cba4e3b81a94cd1e0c7491201b0bcb7604cbdf74c8ec0",
       "namesSha256": "dc9041cf7b7fa8c8cd4d478160bc8e5e6e85e13fad8787dcbed2fd754ddd7a13"
     }
   ]

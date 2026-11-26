@@ -34,7 +34,7 @@ const browserFailurePatterns = {
   BROWSER_LAUNCH_FAILED: /browserType\.launch:|Failed to launch (?:the )?browser process/iu,
   BROWSER_SANDBOX: /No usable sandbox|SUID sandbox|Failed to move to new namespace/iu,
   VITE_WEBSERVER_STARTUP: /Process from config\.webServer (?:was not able to start|exited)|waiting for config\.webServer/iu,
-  VITE_BIND: /port 4215 is already in use|listen EADDRINUSE/iu,
+  VITE_BIND: /port 421[5-7] is already in use|127\.0\.0\.1:421[5-7] is already used|listen EADDRINUSE/iu,
   VITE_IMPORT: /failed to load config from|Failed to resolve import|failed to resolve entry for package/iu,
   BROWSER_TOOL_LOOKUP: /Command "playwright" not found|corepack.*(?:not found|network|download)|Cannot find module '[^'\r\n]*@playwright\/test\/cli\.js'/iu,
   BROWSER_TEST_TIMEOUT: /Test timeout of \d+ms exceeded|Timeout \d+ms exceeded/iu
@@ -59,9 +59,15 @@ function browserProcessFailure(messages) {
 
 function summarizeFailedAssertion(file, test) {
   const messages = stripVTControlCharacters((test.failureMessages ?? []).join('\n'));
-  const statusPair = messages.match(/Expected:\s*([1-5]\d{2})\s+Received:\s*([1-5]\d{2})\b/u);
-  const location = messages.split('\n').find(line => line.includes(file + ':') && line.trimStart().startsWith('at '));
-  const line = location?.split(file + ':')[1]?.match(/^\d{1,5}(?=:)/u)?.[0];
+  const spot = file === 'src/spot-procurement/spot-procurement-entry.http.pg.spec.ts';
+  const statusPair = messages.match(/Expected:\s*([1-5]\d{2})\s+Received:\s*([1-5]\d{2})\b/u) ??
+    (spot && messages.match(/^SPOT_HTTP_STATUS ([1-5]\d{2}) ([1-5]\d{2})$/mu));
+  const locations = messages.split('\n').filter(line => line.includes(file + ':') && line.trimStart().startsWith('at '));
+  const [line, callerLine] = locations.slice(0, 2).map(location => location.split(file + ':')[1]?.match(/^\d{1,5}(?=:)/u)?.[0]);
+  const spotDraftError = spot && messages.match(/^SPOT_PAYMENT_DRAFT_ERROR (\{[^\r\n]{1,350}\})$/mu)?.[1];
+  const spotPaymentDraft = spotDraftError && Object.fromEntries([...spotDraftError.matchAll(
+    /"(serverErrorKind|serverPrismaCode|serverSqlState|model|column)":"([A-Za-z0-9_.]{1,150})"/gu
+  )].map(([, key, value]) => [key, value]));
   const browser = browserProcessFailure(messages);
   const jestTimeout = messages.match(/Exceeded timeout of (\d{1,6}) ms for a test\b/u)?.[1];
   return {
@@ -69,6 +75,8 @@ function summarizeFailedAssertion(file, test) {
     codes: [...new Set(messages.match(/\bP[0-9]{4}\b/gu) ?? [])].slice(0, 4),
     ...(statusPair && { expectedStatus: Number(statusPair[1]), receivedStatus: Number(statusPair[2]) }),
     ...(line && { line: Number(line) }),
+    ...(spot && statusPair && callerLine && { callerLine: Number(callerLine) }),
+    ...(spotPaymentDraft && { spotPaymentDraft }),
     ...(jestTimeout && { jestTimeoutMs: Number(jestTimeout) }),
     ...(browser && { browser })
   };

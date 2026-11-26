@@ -62,19 +62,30 @@ test("桌面费用明细从粘贴事件批量录入两行并准确保存", async
   const grid = page.locator("revo-grid");
   await grid.locator('[data-rgrow="0"][data-rgcol="0"]').click();
   await expect(grid.locator("revogr-clipboard")).toBeAttached();
+  const headers = (await grid.getByRole("columnheader").allTextContents()).map(header => header.trim());
+  const categoryColumn = headers.indexOf("费用类别 *");
+  expect(categoryColumn).toBeGreaterThanOrEqual(0);
+  const pasteRows: Record<string, string>[] = [
+    { "费用类别 *": "办公费", "发生日期 *": "2026-09-17", "用途说明 *": "纸张", "数量": "1", "单据张数 *": "1", "费用金额 *": "0.01", "证据类型 *": "发票", "备注": "第一行" },
+    { "费用类别 *": "交通费", "发生日期 *": "2026-09-17", "用途说明 *": "公交", "数量": "1", "单据张数 *": "1", "费用金额 *": "0.02", "证据类型 *": "发票", "备注": "第二行" }
+  ];
+  const clipboardText = pasteRows.map(row => headers.map(header => row[header] ?? "").join("\t")).join("\n");
   // Exercise the browser paste boundary without changing the user's OS clipboard.
-  await page.evaluate(() => {
+  await page.evaluate((text) => {
     const data = new DataTransfer();
-    data.setData("text/plain", "办公费\t2026-09-17\t纸张\t1\t0.01\t发票\t\t第一行\n交通费\t2026-09-17\t公交\t1\t0.02\t发票\t\t第二行");
+    data.setData("text/plain", text);
     document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
-  });
-  await expect(grid.locator('[data-rgrow="0"][data-rgcol="0"]')).toHaveText("办公费");
-  await expect(grid.locator('[data-rgrow="1"][data-rgcol="0"]')).toHaveText("交通费");
+  }, clipboardText);
+  await expect(grid.locator(`[data-rgrow="0"][data-rgcol="${categoryColumn}"]`)).toHaveText("办公费");
+  await expect(grid.locator(`[data-rgrow="1"][data-rgcol="${categoryColumn}"]`)).toHaveText("交通费");
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
-  const saved = page.waitForResponse((response) => response.url().endsWith("/expense-claims") && response.request().method() === "POST");
-  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
-  const response = await saved;
+  const saveDraft = page.getByRole("button", { name: "保存草稿", exact: true });
+  await expect(saveDraft).toBeVisible();
+  const [response] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/expense-claims") && response.request().method() === "POST"),
+    saveDraft.click()
+  ]);
   expect(response.status()).toBe(201);
   const claim = await response.json();
   const detail = await request.get(`${process.env.POL115_API_URL}/expense-claims/${claim.id}`, { headers: { authorization: `Bearer ${session.tokens.accessToken}` } });
@@ -105,7 +116,11 @@ test("报销表格或移动卡片保存一分钱明细并经真实接口回读",
     expect(await cards.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   } else {
     const grid = page.locator("revo-grid");
-    for (const [column, value] of [[0, "办公费"], [2, "购买文具"], [4, "0.01"]] as const) {
+    await expect(grid.getByRole("columnheader", { name: "费用金额 *", exact: true })).toBeAttached();
+    const headers = (await grid.getByRole("columnheader").allTextContents()).map(header => header.trim());
+    for (const [field, value] of [["费用类别 *", "办公费"], ["用途说明 *", "购买文具"], ["费用金额 *", "0.01"]] as const) {
+      const column = headers.indexOf(field);
+      expect(column, field).toBeGreaterThanOrEqual(0);
       const cell = grid.locator(`[data-rgrow="0"][data-rgcol="${column}"]`);
       await cell.dblclick();
       const editor = grid.locator("revogr-edit input");
@@ -117,9 +132,12 @@ test("报销表格或移动卡片保存一分钱明细并经真实接口回读",
   }
   await page.getByRole("button", { name: "下一步", exact: true }).click();
   await page.getByRole("button", { name: "下一步", exact: true }).click();
-  const saved = page.waitForResponse((response) => response.url().endsWith("/expense-claims") && response.request().method() === "POST");
-  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
-  const response = await saved;
+  const saveDraft = page.getByRole("button", { name: "保存草稿", exact: true });
+  await expect(saveDraft).toBeVisible();
+  const [response] = await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/expense-claims") && response.request().method() === "POST"),
+    saveDraft.click()
+  ]);
   expect(response.status()).toBe(201);
   const claim = await response.json();
   const detail = await request.get(`${process.env.POL115_API_URL}/expense-claims/${claim.id}`, { headers: { authorization: `Bearer ${session.tokens.accessToken}` } });

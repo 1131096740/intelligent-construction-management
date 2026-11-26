@@ -7,7 +7,11 @@ import { runPreparedParallelPgHttpCases, runPreparedParallelNotificationClaimPgC
 import { verifyApprovedPdf } from "../database/approval-pdf-acceptance.test-support";
 import { BUSINESS_ENTRY_DEFINITION_REGISTRY } from "../business-entry-definition/business-entry-definition.scene-registry";
 import "reflect-metadata";
-import { ConflictException, type INestApplication } from "@nestjs/common";
+import { Catch, ConflictException, type ArgumentsHost, type INestApplication } from "@nestjs/common";
+import { HttpAdapterHost } from "@nestjs/core";
+import { Prisma } from "@prisma/client";
+import { projectTask16RegistrationError } from "../database/task16-registration-error-diagnostic";
+import { ProjectOperatingConstraintFilter } from "../project/project-operating-constraint.filter";
 import { AuditService } from "../audit/audit.service";
 import { Test } from "@nestjs/testing";
 import { hash } from "bcryptjs";
@@ -89,6 +93,36 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
   let payerCompanyEntityId = "";
   const projectIds = { api: randomUUID(), desktop: randomUUID(), mobile: randomUUID() };
   const previousPilot = process.env.SPOT_PROCUREMENT_PILOT_PROJECT_IDS;
+  const paymentDraftReads = new Map<string, string | null>();
+
+  @Catch()
+  class PaymentDraftReadDiagnosticFilter extends ProjectOperatingConstraintFilter {
+    override catch(exception: unknown, host: ArgumentsHost) {
+      const request = host.switchToHttp().getRequest<{
+        method: string;
+        route?: { path?: string };
+        params?: { paymentId?: string };
+      }>();
+      const id = request.params?.paymentId;
+      if (request.method === "GET" && request.route?.path === "/spot-procurement-payments/:paymentId" &&
+        id && paymentDraftReads.has(id)) {
+        const diagnostic = projectTask16RegistrationError(exception);
+        const unknownState = exception instanceof Prisma.PrismaClientUnknownRequestError
+          ? exception.message.match(/\bcode: "([0-9A-Z]{5})", message:/u)?.[1]
+          : undefined;
+        const model = exception instanceof Prisma.PrismaClientKnownRequestError ? exception.meta?.modelName : undefined;
+        const column = exception instanceof Prisma.PrismaClientKnownRequestError && exception.code === "P2022"
+          ? exception.meta?.column : undefined;
+        paymentDraftReads.set(id, JSON.stringify({
+          ...diagnostic,
+          serverSqlState: diagnostic.serverSqlState ?? unknownState,
+          ...(typeof model === "string" && /^(?:SpotProcurement[A-Za-z]+|RegisteredOperationalPayment)$/u.test(model) && { model }),
+          ...(typeof column === "string" && /^public\.[A-Z][A-Za-z]{1,62}\.[a-z][A-Za-z0-9]{1,62}$/u.test(column) && { column })
+        }));
+      }
+      super.catch(exception, host);
+    }
+  }
 
   beforeAll(async () => {
     if (!enabled) return;
@@ -106,6 +140,9 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     app = module.createNestApplication({ logger: false });
     app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
     app.useGlobalPipes(createApiValidationPipe());
+    if (process.env.JG_POL115_334_SCOPE === "spot") {
+      app.useGlobalFilters(new PaymentDraftReadDiagnosticFilter(app.get(HttpAdapterHost)));
+    }
     await app.listen(0, "127.0.0.1");
     baseUrl = await app.getUrl();
 
@@ -203,9 +240,23 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
 
   function expectHttpStatus<T extends { status: number; body: unknown }>(label: string, response: T, expected: number) {
     if (response.status !== expected) {
-      throw new Error(`${label}失败: ${response.status} ${safeResponseBody(response.body)}`);
+      throw new Error(`${label}失败: ${response.status} ${safeResponseBody(response.body)}\nSPOT_HTTP_STATUS ${expected} ${response.status}`);
     }
     return response;
+  }
+
+  async function readPaymentDraft(paymentId: string, label: string) {
+    paymentDraftReads.set(paymentId, null);
+    try {
+      const response = await json(`/spot-procurement-payments/${paymentId}`, applicant);
+      const diagnostic = paymentDraftReads.get(paymentId);
+      if (response.status !== 200 && diagnostic) {
+        throw new Error(`${label}失败: ${response.status}\nSPOT_HTTP_STATUS 200 ${response.status}\nSPOT_PAYMENT_DRAFT_ERROR ${diagnostic}`);
+      }
+      return response;
+    } finally {
+      paymentDraftReads.delete(paymentId);
+    }
   }
 
   function safeResponseBody(value: unknown): string {
@@ -307,7 +358,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     }
     const approved = expectHttpStatus(`${label}申请结果`, await json(`/spot-procurements/${id}`, applicant), 200).body as Detail;
     const paymentId = approved.payments[0]!.id;
-    const paymentDraft = expectHttpStatus(`${label}付款草稿`, await json(`/spot-procurement-payments/${paymentId}`, applicant), 200).body as unknown as { procurementMaterials: Array<{ id: string }> };
+    const paymentDraft = expectHttpStatus(`${label}付款草稿`, await readPaymentDraft(paymentId, `${label}付款草稿`), 200).body as unknown as { procurementMaterials: Array<{ id: string }> };
     expectHttpStatus(`${label}付款补全`, await json(`/spot-procurement-payments/${paymentId}/draft`, applicant, "PATCH", {
       paymentType: "company_direct", merchantName: "合成商户", payeeName: "合成商户",
       paymentLines: [{ procurementLineId: paymentDraft.procurementMaterials[0]!.id, paymentQuantity: "10", unitPrice: "100", expectedInvoiceCondition: "no_invoice" }],
@@ -685,7 +736,7 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
       businessType: "spot_procurement_version", businessId: applicationInstance.businessId,
       roles: ["material_director", "project_manager"], label: "零星材料采购" });
     const paymentId = approved.payments[0]!.id;
-    const paymentDraft = await json(`/spot-procurement-payments/${paymentId}`, applicant);
+    const paymentDraft = await readPaymentDraft(paymentId, "退款链付款草稿");
     expect(paymentDraft.status).toBe(200);
     const paymentFacts = paymentDraft.body as unknown as { procurementMaterials: Array<{ id: string; approvedQuantity: string }> };
     expectHttpStatus("付款草稿补全", await json(`/spot-procurement-payments/${paymentId}/draft`, applicant, "PATCH", {
