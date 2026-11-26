@@ -184,6 +184,22 @@ const profiles = {
     requiresOperatingLedgerWriteSecret: true,
     titles: ['施工企业已付八十元、项目对外支付七十元，资金流水使用同一分录']
   },
+  issue418_cash_attribution: {
+    file: 'src/database/issue418-cash-attribution.pg.spec.ts',
+    sourceDigest: '9bf976085cc8a160586bb947c4221388651e2bb135e766d321a324a521f0d345',
+    orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
+    databaseUrlKey: 'ISSUE418_CASH_ATTRIBUTION_DATABASE_URL',
+    enableKey: 'ISSUE418_CASH_ATTRIBUTION_RUN',
+    stage: 'ORDERED_CASH_ATTRIBUTION_AND_FLOW_JEST',
+    requiredMigrationCount: 346,
+    requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+    requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: [
+      'G4 公共现金待归属确认后转正、幂等且不新增成本',
+      'G5 资金流水与经营事实一致，支持类型过滤与导出'
+    ]
+  },
   issue418_contract_drilldown: {
     file: 'src/database/issue418-contract-drilldown.pg.spec.ts',
     sourceDigest: '3939f35243d0587188ad80b1f7de4b0a138936bcec94631aa90a78521483af54',
