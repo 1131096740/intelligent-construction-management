@@ -728,8 +728,10 @@ async function main(args) {
   } catch (error) {
     receipt.status = "FAILED";
     const tail = localTailFailureDiagnostic(error);
+    const catalogReason = phase.startsWith("A24_CASH_VOUCHER_CATALOG_")
+      ? /^NATIVE_A24_34[34]_[A-Z_]{1,45}$/mu.exec(error.message)?.[0] : undefined;
     receipt.firstFailure = firstFailure ?? { stage: phase, code: typeof error.code === "string" && /^[A-Z0-9_]{1,50}$/u.test(error.code) ? error.code : "CHECK_FAILED",
-      ...(tail ? { tail } : {}) };
+      ...(catalogReason ? { catalogReason } : {}), ...(tail ? { tail } : {}) };
   } finally {
     try {
       if (startAttempted && fs.existsSync(path.join(data, "postmaster.pid"))) {

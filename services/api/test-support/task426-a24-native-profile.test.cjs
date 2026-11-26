@@ -95,3 +95,29 @@ test("reads the 343 mixed OLD and NEW trigger condition through the trigger depa
   assert.match(installed, /CASE WHEN t\.tgqual IS NULL THEN '' ELSE pg_get_triggerdef\(t\.oid\) END/u);
   assert.doesNotMatch(installed, /pg_get_expr\(t\.tgqual/u);
 });
+
+test("pins the 343 batch scene as JSON and its row scene as text", () => {
+  const sql = readFileSync(path.join(root, rows[342].name, "migration.sql"), "utf8");
+  const routines = {};
+  for (const [, name, body] of sql.matchAll(/CREATE FUNCTION public\.(\w+)\(\)[\s\S]*? AS \$\$([\s\S]*?)\$\$;/gu)) {
+    routines[name] = { oid: 1, body: createHash("sha256").update(body).digest("hex"), owner: true, definer: false };
+  }
+  const trigger = (relation, routine, type, condition) =>
+    ({ oid: 1, relation, routine, type, enabled: true, deferred: false, condition });
+  const good = {
+    oldBinding: {}, ownerLookup: {}, debitConservation: {}, routines,
+    triggers: {
+      OperatingTakeoverActivation_partial_history_expense_check: trigger("OperatingTakeoverActivation",
+        "jg_issue417_check_partial_activation", 23, "WHEN (new.status = 'partially_activated')"),
+      OperatingTakeoverBatch_partial_history_expense_scene_check: trigger("OperatingTakeoverBatch",
+        "jg_issue417_preserve_partial_activation_scene", 19, `WHEN (old."sceneKeys" = '["historical_expense"]'::jsonb)`)
+    },
+    constraints: {}
+  };
+  for (const [, relation, name, definition] of sql.matchAll(
+    /ALTER TABLE public\."(\w+)"[\s\S]*?ADD CONSTRAINT "(\w+)" (CHECK \([\s\S]*?\));/gu
+  )) good.constraints[name] = { oid: 1, relation, validated: true, definition };
+  assert.deepEqual(cashVoucher.verifyCatalog(343, good, good), good);
+  good.constraints.OperatingTakeoverBatch_status_check.definition = "CHECK ('historical_expense' <> 'partially_activated')";
+  assert.throws(() => cashVoucher.verifyCatalog(343, good, good), /NATIVE_A24_343_CONSTRAINT/u);
+});

@@ -20,7 +20,7 @@ const triggers = [
 ];
 const states = [
   ["OperatingTakeoverRow_status_check", '"OperatingTakeoverRow"', ["historical_expense", "verified", "not_occurred"]],
-  ["OperatingTakeoverBatch_status_check", '"OperatingTakeoverBatch"', ["historical_expense", "partially_activated"]],
+  ["OperatingTakeoverBatch_status_check", '"OperatingTakeoverBatch"', ['["historical_expense"]', "partially_activated"]],
   ["OperatingTakeoverActivation_status_check", '"OperatingTakeoverActivation"', ["activated", "partially_activated"]]
 ];
 
@@ -76,15 +76,15 @@ function verifyCatalog(size, result, predecessor) {
   for (const [name, body, definer] of activeRoutines) {
     const routine = result.routines[name];
     assert.ok(routine?.oid, "NATIVE_A24_344_ROUTINE");
-    assert.deepEqual({ body: routine.body, owner: routine.owner, definer: routine.definer }, { body, owner: true, definer });
+    assert.deepEqual({ body: routine.body, owner: routine.owner, definer: routine.definer }, { body, owner: true, definer }, "NATIVE_A24_344_ROUTINE_SHAPE");
   }
   assert.equal(Object.keys(result.triggers).length, activeTriggers.length, "NATIVE_A24_344_TRIGGERS");
   for (const [name, relation, routine, type, deferred, condition] of activeTriggers) {
     const trigger = result.triggers[name];
-    assert.ok(trigger?.oid && (condition ? trigger.condition.includes(condition) : trigger.condition === ""));
+    assert.ok(trigger?.oid && (condition ? trigger.condition.includes(condition) : trigger.condition === ""), "NATIVE_A24_344_TRIGGER_CONDITION");
     assert.deepEqual({ relation: trigger.relation, routine: trigger.routine, type: trigger.type,
       enabled: trigger.enabled, deferred: trigger.deferred },
-    { relation: relation.replaceAll('"', ""), routine, type, enabled: true, deferred });
+    { relation: relation.replaceAll('"', ""), routine, type, enabled: true, deferred }, "NATIVE_A24_344_TRIGGER_SHAPE");
   }
   if (size > 342) {
     for (const [name, relation, terms] of states) {
