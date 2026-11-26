@@ -114,6 +114,7 @@ return this.prisma.$transaction(async tx => {
         const movement = await tx.fundMovementRelationshipEntry.findMany({ where: { status: "confirmed", direction: "increase", adjustsEntryId: null, ...(!finance ? { sourceProjectId: { in: proxyProjects }, beneficiaryProjectId: { in: proxyProjects } } : {}) }, select: { id: true, debtorCompanyEntityId: true, creditorCompanyEntityId: true } });
         const inter = await tx.interEntityRelationshipEntry.findMany({ where: { status: "confirmed", entryKind: "proxy_payment", direction: "increase", adjustsEntryId: null, projectId: finance ? { not: null } : { in: proxyProjects } }, select: { id: true, originalDebtorCompanyId: true, creditorCompanyId: true } });
         const operational = await tx.registeredOperationalPayment.findMany({ where: {
+          actualPayerCompanyId: { not: null },
           ...(!finance ? { projectId: { in: proxyProjects } } : {}),
           ...(query.projectId ? { projectId: query.projectId } : {}),
           ...(query.companyId ? { OR: [{ originalDebtorCompanyId: query.companyId }, { actualPayerCompanyId: query.companyId }] } : {}),

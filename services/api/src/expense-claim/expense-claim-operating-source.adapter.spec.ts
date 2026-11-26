@@ -58,6 +58,31 @@ describe("POL-06 expense operating source adapters", () => {
     );
   });
 
+  it.each([undefined, null, "bearing-company"])("confirms the cost once with the bearing decision %s", companyId => {
+    const mapped = new ExpenseClaimApprovalOperatingSourceAdapter().toOperatingFactInput(
+      snapshot("expense_claim_approval", "claim-bearing", {
+        companyEntityId: "original-company",
+        ...(companyId !== undefined ? { costBearingCompanyEntityId: companyId } : {}),
+        claimType: "incidental_expense",
+        incidentalExpenseCategory: "temporary_service",
+        payeeNameSnapshot: "服务方",
+        requestedAmountCents: "800",
+        companyPayableAmountCents: "800",
+        approvedAt: "2026-08-15T03:00:00.000Z",
+        confirmedAt: "2026-08-15T03:00:00.000Z",
+        confirmedByUserId: "approver"
+      })
+    );
+    const impacts = mapped.input.impacts.filter(impact => impact.impactKind === "confirmed_cost");
+    expect(impacts).toHaveLength(1);
+    expect(impacts[0].amountCents).toBe(800n);
+    const resolved = companyId === undefined ? "original-company" : companyId;
+    const expected = resolved === null ? undefined : { kind: "participating_company", id: resolved };
+    expect(mapped.input.subjects.costBearingCompany).toEqual(expected);
+    expect(impacts[0].subject).toEqual(expected);
+    expect(mapped.input.subjects.actualPayer).toBeUndefined();
+  });
+
   it("uses actual expense payment only to clear payable and project funds", () => {
     const mapped = new ExpenseClaimPaymentExecutionOperatingSourceAdapter().toOperatingFactInput(
       snapshot("expense_claim_payment_execution", "payment-1", {
@@ -92,6 +117,28 @@ describe("POL-06 expense operating source adapters", () => {
     expect(mapped.input.impacts).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ impactKind: "confirmed_cost" })])
     );
+  });
+
+  it("clears the payable and public cash once without adding an expense cost", () => {
+    const mapped = new ExpenseClaimPaymentExecutionOperatingSourceAdapter().toOperatingFactInput(
+      snapshot("expense_claim_payment_execution", "cash-execution", {
+        expenseClaimId: "claim-1",
+        claimType: "reimbursement",
+        registeredFunding: { actualPayerCompanyId: null, actualPayerName: "公共现金" },
+        applicantUserId: "employee-1",
+        applicantNameSnapshot: "张三",
+        applicantPhoneSnapshot: "13800000001",
+        amountCents: "3000",
+        paidAt: "2026-08-15T03:00:00.000Z",
+        confirmedAt: "2026-08-15T03:00:00.000Z",
+        recordedByUserId: "cash-keeper",
+        voucherFileId: "voucher-1"
+      })
+    );
+    expect(mapped.input.impacts).toMatchObject([
+      { impactKind: "payable_decrease", amountCents: 3000n },
+      { impactKind: "public_cash_funds_decrease", amountCents: 3000n, subject: { kind: "public_cash", id: "public_cash" } }
+    ]);
   });
 
   it("uses each frozen registered payer without creating a second cost impact", () => {

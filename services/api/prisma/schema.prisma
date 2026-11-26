@@ -393,6 +393,7 @@ model RegisteredFundTransferAction {
 }
 
 model CompanyEntity {
+  bearingExpenseClaims ExpenseClaim[] @relation("ExpenseCostBearingCompany")
   spotPaymentsAsOriginalDebtor        SpotProcurementPayment[]            @relation("SpotFirstApprovedDebtor")
   registeredOperationalDebts          RegisteredOperationalPayment[]      @relation("OperationalPaymentDebtor")
   registeredOperationalPayerFacts     RegisteredOperationalPayment[]      @relation("OperationalPaymentActualPayer")
@@ -993,6 +994,7 @@ model OperatingImpactEntry {
   executionAllocationLineId           String?
   createdAt                           DateTime                                    @default(now())
   fact                                OperatingFact                               @relation("OperatingFactImpacts", fields: [factId, projectId], references: [id, projectId], onDelete: Restrict)
+  expensePublicCashCostLinks          ExpensePublicCashCostLink[]
   clearingImpactLinks                 ClearingImpactLink[]                        @relation("ClearingImpactEntry")
   wageTakeoverImpactBridges           WageTakeoverLegacyImpactBridge[]
   necessaryExpenseReserveReplacements ProjectNecessaryExpenseReserveReplacement[]
@@ -5290,6 +5292,7 @@ model ProjectExpenseFinancingQuotaUsage {
 // 新费用与报销域与旧 ProjectExpenseRequest 严格隔离。旧表继续只读承载历史
 // 项目支出事实；新报销、借款、冲销和还款只写入以下账本模型。
 model ExpenseClaim {
+  costBearingCompany CompanyEntity? @relation("ExpenseCostBearingCompany", fields: [costBearingCompanyEntityId], references: [id], onDelete: Restrict)
   actualPurchaseBatchId           String?
   actualPurchaseBatch             ActualPurchaseBatch?        @relation(fields: [actualPurchaseBatchId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   generalProcurementId            String?
@@ -5302,6 +5305,8 @@ model ExpenseClaim {
   status                          String
   companyEntityId                 String
   companyEntityNameSnapshot       String
+  costBearingCompanySpecified     Boolean                     @default(false)
+  costBearingCompanyEntityId      String?
   projectId                       String?
   factWitnessUserId               String?
   factWitnessNameSnapshot         String?
@@ -7864,7 +7869,7 @@ model RegisteredOperationalPayment {
   previousRegistrationId  String
   projectId               String
   originalDebtorCompanyId String
-  actualPayerCompanyId    String
+  actualPayerCompanyId    String?
   actualPayerName         String
   actorUserId             String
   amountCents             BigInt
@@ -7878,10 +7883,11 @@ model RegisteredOperationalPayment {
   previousRegistration    FundAccountBalanceRegistration           @relation("OperationalPaymentPreviousRegistration", fields: [previousRegistrationId], references: [id], onDelete: Restrict)
   project                 Project                                  @relation(fields: [projectId], references: [id], onDelete: Restrict)
   originalDebtorCompany   CompanyEntity                            @relation("OperationalPaymentDebtor", fields: [originalDebtorCompanyId], references: [id], onDelete: Restrict)
-  actualPayerCompany      CompanyEntity                            @relation("OperationalPaymentActualPayer", fields: [actualPayerCompanyId], references: [id], onDelete: Restrict)
+  actualPayerCompany      CompanyEntity?                           @relation("OperationalPaymentActualPayer", fields: [actualPayerCompanyId], references: [id], onDelete: Restrict)
   actor                   User                                     @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
   allocations             RegisteredOperationalPaymentAllocation[]
   repayments              CompanyTransfer[]
+  expensePublicCashCosts  ExpensePublicCashCostLink[]
 
   @@index([projectId, originalDebtorCompanyId, actualPayerCompanyId], map: "RegisteredOperationalPayment_projectId_debtor_actualPayer_idx")
 }
@@ -7894,6 +7900,20 @@ model RegisteredOperationalPaymentAllocation {
   sourceBatch   FundAccountSourceBatch       @relation(fields: [sourceBatchId], references: [id], onDelete: Restrict)
 
   @@id([paymentId, sourceBatchId])
+}
+
+// Immutable link between one registered actual cash payment and its original expense cost line.
+model ExpensePublicCashCostLink {
+  id                   String                       @id @default(uuid())
+  operationalPaymentId String
+  costImpactId         String
+  amountCents          BigInt
+  operationalPayment   RegisteredOperationalPayment @relation(fields: [operationalPaymentId], references: [id], onDelete: Restrict)
+  confirmations        OperatingCostAttributionConfirmation[]
+  costImpact           OperatingImpactEntry         @relation(fields: [costImpactId], references: [id], onDelete: Restrict)
+
+  @@unique([operationalPaymentId, costImpactId])
+  @@index([costImpactId])
 }
 
 model CompanyTransferOriginalDebtCorrection {
@@ -7958,6 +7978,9 @@ model OperatingCostAttributionConfirmation {
   operatingFactId            String
   operatingFactProjectId     String
   sourceDedupKey             String?
+  expenseCashCostLinkId      String?
+  expenseCashCostLink        ExpensePublicCashCostLink? @relation(fields: [expenseCashCostLinkId], references: [id], onDelete: Restrict)
+  attributedAmountCents      BigInt?
   status                     String    @default("pending_review")
   activeKey                  String?
   companyEntityId            String
@@ -7977,5 +8000,6 @@ model OperatingCostAttributionConfirmation {
 
   @@unique([operatingFactId, activeKey], map: "OperatingCostAttributionConfirmation_active_key")
   @@index([projectId, status], map: "OperatingCostAttributionConfirmation_project_status_idx")
+  @@index([expenseCashCostLinkId])
   @@index([sourceDedupKey], map: "OperatingCostAttributionConfirmation_source_dedup_idx")
 }

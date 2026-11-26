@@ -6,6 +6,8 @@ import {
   IsArray,
   IsIn,
   IsOptional,
+  IsString,
+  MaxLength,
   IsUUID,
   ValidateIf,
   ValidateNested
@@ -89,6 +91,11 @@ export class CreateExpenseClaimDto {
 
   @IsRequiredText({ requiredMessage: "使用单位不能为空", typeMessage: "使用单位必须是文字", blankMessage: "使用单位不能为空白" })
   companyEntityId!: string;
+
+  @ValidateIf((_input, value) => value !== undefined && value !== null)
+  @IsString({ message: "请选择项目成本承担公司或待归属" })
+  @MaxLength(100)
+  costBearingCompanyEntityId?: string | null;
 
   @IsOptionalNonBlankText({ typeMessage: "项目编号必须是文字", blankMessage: "项目编号不能为空白" })
   projectId?: string;

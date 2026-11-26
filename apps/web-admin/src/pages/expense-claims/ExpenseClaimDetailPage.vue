@@ -60,7 +60,20 @@ const draftEditorVisible = ref(false);
 const draftWriteError = ref("");
 const withdrawalTarget = ref<{ claimId: string; actorId: string; approvalInstanceId: string } | null>(null);
 const draftEditTarget = ref<{ claimId: string; actorId: string; expectedUpdatedAt: string; originalLines: string } | null>(null);
-const draftForm = ref<{ reason: string; amountYuan: string; lines: ExpenseClaimLineDraft[] }>({ reason: "", amountYuan: "", lines: [] });
+const draftForm = ref<{ reason: string; costBearingCompany: string; amountYuan: string; lines: ExpenseClaimLineDraft[] }>({
+  reason: "", costBearingCompany: "organization", amountYuan: "", lines: []
+});
+const returnedBearingOptions = computed(() => {
+  const row = detail.value;
+  const choices = (row?.bearingCompanyOptions ?? []).map(option => ({ label: option.companyNameSnapshot, value: option.companyEntityId }));
+  if (row?.costBearingCompanyEntityId && !choices.some(option => option.value === row.costBearingCompanyEntityId)) {
+    choices.push({ label: row.costBearingCompanyName ?? "原承担公司（待核对）", value: row.costBearingCompanyEntityId });
+  }
+  return [
+    ...(!row?.costBearingCompanySpecified ? [{ label: "沿用使用单位", value: "organization" }] : []),
+    { label: "待归属", value: "pending" }, ...choices
+  ];
+});
 const reviewVisible = ref(false);
 const reviewConfirmVisible = ref(false);
 const reviewing = ref(false);
@@ -85,7 +98,7 @@ watch([() => route.params.claimId, () => auth.user?.id], () => {
   draftEditorVisible.value = false;
   withdrawalTarget.value = null;
   draftEditTarget.value = null;
-  draftForm.value = { reason: "", amountYuan: "", lines: [] };
+  draftForm.value = { reason: "", costBearingCompany: "organization", amountYuan: "", lines: [] };
   draftWriteError.value = "";
 });
 const reviewTarget = ref<{ claimId: string; actorId?: string; parallel: boolean; approvalInstanceId?: string } | null>(null);
@@ -105,6 +118,7 @@ const fundingLoading = ref(false);
 const fundingError = ref("");
 const fundingScopeKey = ref("");
 const fundingAllocations = ref<Record<string, string>>({});
+const cashCostAllocations = ref<Record<string, string>>({});
 type FrozenPayment = Omit<ExpenseClaimPaymentInput, "confirmationPassword"> & { registeredFunding: ExpenseRegisteredFundingInput };
 const frozenPayment = ref<FrozenPayment | null>(null);
 const paymentScope = computed(() => auth.user?.id && route.params.claimId
@@ -112,20 +126,28 @@ const paymentScope = computed(() => auth.user?.id && route.params.claimId
 const canReadFunding = computed(() => Boolean(detail.value?.projectId && detail.value.originalDebtorCompanyId && auth.user?.globalRoleKeys.some(role =>
   role === "finance_staff" || role === "finance_director" || role === "comprehensive_director"
 )));
+const cashOnly = computed(() =>
+  Boolean(detail.value?.fundsPermissions?.canRecordPublicCashPayment && !detail.value.fundsPermissions.canRecordPayment)
+);
 function eligibleFundingSources(account: FundAccount) {
   return account.sources.filter(source => {
-    if (!source.id || source.sourceStatus !== "known" || !source.amountYuan || BigInt(source.amountYuan.replace(".", "")) <= 0n) return false;
-    return (source.projectStatus === "project" && source.projectId === detail.value?.projectId) ||
-      (account.companyEntityId !== detail.value?.originalDebtorCompanyId && source.isCompanyOwnedUnadvanced === true);
+    if (!source.id || !source.amountYuan || BigInt(source.amountYuan.replace(".", "")) <= 0n) return false;
+    const sameProject = source.projectStatus === "project" && source.projectId === detail.value?.projectId;
+    if (account.kind === "public_cash") return sameProject || source.projectStatus === "pending";
+    return source.sourceStatus === "known" && (sameProject ||
+      (account.companyEntityId !== detail.value?.originalDebtorCompanyId && source.isCompanyOwnedUnadvanced === true));
   });
 }
-const payerAccounts = computed(() => fundingAccounts.value.filter(account =>
-  account.active && account.kind === "company" && account.companyEntityId && account.currentRegistrationId && account.balanceYuan !== null &&
-  account.asOfDate && account.asOfDate.slice(0, 10) < paymentForm.value.paidAt && eligibleFundingSources(account).length
-));
+const payerAccounts = computed(() => fundingAccounts.value.filter(account => {
+  const permission = account.kind === "public_cash"
+    ? detail.value?.fundsPermissions?.canRecordPublicCashPayment
+    : account.kind === "company" && account.companyEntityId && detail.value?.fundsPermissions?.canRecordPayment;
+  return permission && account.active && account.currentRegistrationId && account.balanceYuan !== null &&
+    account.asOfDate && account.asOfDate.slice(0, 10) < paymentForm.value.paidAt && eligibleFundingSources(account).length;
+}));
 const payer = computed(() => payerAccounts.value.find(account => account.scopeKey === fundingScopeKey.value));
 const fundingSources = computed(() => payer.value ? eligibleFundingSources(payer.value) : []);
-watch(fundingScopeKey, () => { fundingAllocations.value = {}; });
+watch(fundingScopeKey, () => { fundingAllocations.value = {}; cashCostAllocations.value = {}; });
 watch(paymentScope, (scope) => {
   frozenPayment.value = null;
   paymentVisible.value = false;
@@ -320,8 +342,12 @@ async function recordExpenseClaimPaymentWithCapability(
   const capability = await fetchExpenseClaimActionCapability(claimId);
   const matchesRequestedClaim = capability.claimId === claimId;
   if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
-  const operationAllowed = capability.availableActions.includes("record_expense_claim_payment");
-  if (!operationAllowed) throw new Error("当前费用申请不能登记公司补付");
+  const operation = body.registeredFunding?.scopeKey === "public_cash"
+    ? "record_expense_claim_public_cash_payment" : "record_expense_claim_payment";
+  const operationAllowed = capability.availableActions.includes(operation);
+  const recoveringCashReceipt = body.registeredFunding?.scopeKey === "public_cash" &&
+    frozenPayment.value?.voucherFileId === body.voucherFileId;
+  if (!operationAllowed && !recoveringCashReceipt) throw new Error("当前费用申请不能登记该笔付款");
   return recordExpenseClaimPayment(claimId, body);
 }
 async function generateExpenseClaimFinalPaymentPdfWithCapability(claimId: string) {
@@ -348,13 +374,15 @@ async function uploadExpenseClaimAppendAttachmentWithCapability(claimId: string,
   if (!operationAllowed) throw new Error("当前用户不能上传该追加资料");
   return uploadExpenseClaimAppendAttachmentFile(claimId, file, file.name);
 }
-async function uploadExpenseClaimPaymentVoucherWithCapability(claimId: string, file: File) {
+async function uploadExpenseClaimPaymentVoucherWithCapability(claimId: string, file: File, scopeKey?: string) {
   const capability = await fetchExpenseClaimActionCapability(claimId);
   const matchesRequestedClaim = capability.claimId === claimId;
   if (!matchesRequestedClaim) throw new Error("费用申请已变化，请刷新后重试");
-  const operationAllowed = capability.availableActions.includes("record_expense_claim_payment");
+  const operation = scopeKey === "public_cash"
+    ? "record_expense_claim_public_cash_payment" : "record_expense_claim_payment";
+  const operationAllowed = capability.availableActions.includes(operation);
   if (!operationAllowed) throw new Error("当前费用申请不能上传付款凭证");
-  return uploadExpenseClaimPaymentVoucherFile(claimId, file, file.name);
+  return uploadExpenseClaimPaymentVoucherFile(claimId, file, file.name, undefined, scopeKey);
 }
 async function deleteExpenseClaimDraftWithCapability(claimId: string, updatedAt: string) {
   const capability = await fetchExpenseClaimActionCapability(claimId);
@@ -431,6 +459,7 @@ function openReturnedDraftEditor() {
   draftEditTarget.value = { claimId: row.id, actorId, expectedUpdatedAt: row.updatedAt, originalLines: JSON.stringify(lines) };
   draftForm.value = {
     reason: row.reason,
+    costBearingCompany: row.costBearingCompanySpecified ? (row.costBearingCompanyEntityId ?? "pending") : "organization",
     amountYuan: centsTextToYuanText(row.requestedAmountCents).replaceAll(",", ""),
     lines
   };
@@ -444,9 +473,12 @@ async function saveReturnedDraft() {
   submitting.value = true;
   draftWriteError.value = "";
   try {
-    const { reason, amountYuan, lines } = draftForm.value;
+    const { reason, costBearingCompany, amountYuan, lines } = draftForm.value;
     if (!reason.trim()) throw new Error("请填写费用事由");
     const payload: EditReturnedExpenseClaimDraftInput = { expectedUpdatedAt: target.expectedUpdatedAt, reason: reason.trim() };
+    if (row.projectId && !row.actualPurchaseBatchId && !row.generalProcurement && costBearingCompany !== "organization") {
+      payload.costBearingCompanyEntityId = costBearingCompany === "pending" ? null : costBearingCompany;
+    }
     if (row.claimType === "incidental_expense") {
       const amountCents = yuanTextToCentsText(amountYuan.trim());
       if (BigInt(amountCents) <= 0n) throw new Error("申请金额必须大于 0");
@@ -512,14 +544,15 @@ function openPayment() {
     amountCents: pending?.amountCents ?? (detail.value.companyPayableAmountCents === detail.value.fundedAmountCents ? "" :
       String(BigInt(detail.value.companyPayableAmountCents) - BigInt(detail.value.fundedAmountCents))),
     paidAt: pending?.paidAt ?? chinaDateOnly(new Date()),
-    paymentMethod: pending?.paymentMethod ?? "银行转账",
+    paymentMethod: pending?.paymentMethod ?? (cashOnly.value ? "现金" : "银行转账"),
     confirmationPassword: "",
     note: pending?.note ?? "",
   };
   paymentVoucherFiles.value = [];
-  fundingScopeKey.value = "";
+  fundingScopeKey.value = cashOnly.value ? "public_cash" : "";
   fundingAllocations.value = {};
-  registeredFundingMode.value = Boolean(pending) || detail.value.claimType === "incidental_expense";
+  cashCostAllocations.value = {};
+  registeredFundingMode.value = Boolean(pending) || cashOnly.value || detail.value.claimType === "incidental_expense";
   actionError.value = "";
   paymentVisible.value = true;
   if (!pending && registeredFundingMode.value) void loadFundingAccounts();
@@ -541,7 +574,7 @@ async function loadFundingAccounts() {
 
 function selectedFunding(): ExpenseRegisteredFundingInput | undefined {
   if (!registeredFundingMode.value) return undefined;
-  if (!canReadFunding.value || !payer.value?.currentRegistrationId) throw new Error("请选择有权使用的已登记公司付款账户");
+  if (!canReadFunding.value || !payer.value?.currentRegistrationId) throw new Error("请选择有权使用的已登记付款账户");
   const sourceAllocations = fundingSources.value.flatMap(source => {
     const input = fundingAllocations.value[source.id!] ?? "";
     if (!input || BigInt(input) === 0n) return [];
@@ -552,8 +585,18 @@ function selectedFunding(): ExpenseRegisteredFundingInput | undefined {
   });
   const total = sourceAllocations.reduce((sum, allocation) => sum + BigInt(allocation.amountCents), 0n);
   if (total <= 0n || total !== BigInt(paymentForm.value.amountCents)) throw new Error("各来源使用金额的合计必须等于本次实付款");
+  const costAllocations = payer.value.kind === "public_cash" ? (detail.value?.cashCostAllocationOptions ?? []).flatMap(line => {
+    const amountCents = cashCostAllocations.value[line.costImpactId];
+    if (!amountCents || BigInt(amountCents) === 0n) return [];
+    if (BigInt(amountCents) > BigInt(line.availableAmountCents)) throw new Error("分摊金额超过原费用明细可分摊余额");
+    return [{ costImpactId: line.costImpactId, amountCents }];
+  }) : [];
+  if (costAllocations.reduce((sum, line) => sum + BigInt(line.amountCents), 0n) > total) {
+    throw new Error("费用分摊合计不能超过本次公共现金实付");
+  }
   return {
     scopeKey: payer.value.scopeKey, expectedRegistrationId: payer.value.currentRegistrationId, sourceAllocations,
+    ...(costAllocations.length ? { costAllocations } : {})
   };
 }
 
@@ -583,7 +626,7 @@ async function recordPayment() {
     } else {
       const registeredFunding = selectedFunding();
       const voucher = paymentVoucherFiles.value.map(file => file.raw).find((file): file is File => file instanceof File)!;
-      const uploaded = await uploadExpenseClaimPaymentVoucherWithCapability(claimId, voucher);
+      const uploaded = await uploadExpenseClaimPaymentVoucherWithCapability(claimId, voucher, registeredFunding?.scopeKey);
       if (scope !== paymentScope.value) return;
       request = { ...payment, voucherFileId: uploaded.id, ...(note.trim() ? { note: note.trim() } : {}), registeredFunding };
       if (registeredFunding) {
@@ -839,13 +882,13 @@ onMounted(() => void loadDetail());
               办理审批
             </t-button>
             <t-button
-              v-if="frozenPayment || detail.fundsPermissions?.canRecordReimbursementPayment ||
+              v-if="frozenPayment || detail.fundsPermissions?.canRecordPublicCashPayment || detail.fundsPermissions?.canRecordReimbursementPayment ||
                 (canReadFunding && detail.claimType === 'incidental_expense' && detail.fundsPermissions?.canRecordPayment)"
               theme="primary"
               variant="outline"
               @click="openPayment"
             >
-              {{ frozenPayment ? '核对原实际付款' : detail.claimType === 'incidental_expense' ? '登记实际付款' : '登记公司补付' }}
+              {{ frozenPayment ? '核对原实际付款' : detail.claimType === 'incidental_expense' ? '登记实际付款' : cashOnly ? '登记公共现金补付' : '登记公司补付' }}
             </t-button>
             <t-button
               v-if="detail.claimType === 'reimbursement' && detail.fundsPermissions?.canGenerateFinalPaymentPdf && !detail.finalPaymentPdf"
@@ -902,6 +945,9 @@ onMounted(() => void loadDetail());
                 placeholder="请填写费用事由"
                 :disabled="submitting"
               />
+            </t-form-item>
+            <t-form-item v-if="detail.projectId && !detail.actualPurchaseBatchId && !detail.generalProcurement" label="成本承担公司">
+              <t-select v-model="draftForm.costBearingCompany" :options="returnedBearingOptions" :disabled="submitting" />
             </t-form-item>
             <t-form-item
               v-if="detail.claimType === 'incidental_expense'"
@@ -1119,11 +1165,11 @@ onMounted(() => void loadDetail());
               placeholder="例如：银行转账"
             />
             <t-checkbox
-              v-if="canReadFunding && detail.claimType === 'reimbursement' && !frozenPayment"
+              v-if="canReadFunding && detail.claimType === 'reimbursement' && !frozenPayment && !cashOnly"
               v-model="registeredFundingMode"
               @change="registeredFundingMode && loadFundingAccounts()"
             >
-              确认使用已登记公司账户和资金来源
+              {{ detail.fundsPermissions?.canRecordPublicCashPayment ? "确认使用已登记账户和资金来源" : "确认使用已登记公司账户和资金来源" }}
             </t-checkbox>
             <template v-if="registeredFundingMode && !frozenPayment">
               <t-alert v-if="fundingError" theme="error" :message="fundingError" />
@@ -1131,20 +1177,27 @@ onMounted(() => void loadDetail());
                 v-model="fundingScopeKey"
                 :loading="fundingLoading"
                 :options="payerAccounts.map(account => ({ value: account.scopeKey, label: account.name }))"
-                label="实际付款公司账户"
+                label="实际付款账户"
                 placeholder="请选择实际付款的已登记账户"
-                aria-label="实际付款公司账户"
+                aria-label="实际付款账户"
               />
               <p v-if="!fundingLoading && !payerAccounts.length">
-                当前没有可用的已登记公司账户及资金来源。
+                当前没有可用的已登记账户及资金来源。
               </p>
               <label
                 v-for="source in fundingSources"
                 :key="source.id"
               >
-                {{ source.sourceName || '原登记来源' }} · 可用 ¥{{ source.amountYuan }}
+                {{ source.sourceName || (source.sourceStatus === 'pending' ? '出资来源待核对' : '原登记来源') }} · 可用 ¥{{ source.amountYuan }}
                 <YuanMoneyInput v-model="fundingAllocations[source.id!]" />
               </label>
+              <template v-if="payer?.kind === 'public_cash' && detail.cashCostAllocationOptions?.length">
+                <p>可填写本次实际支付对应的原费用，有待核对的金额可以留空。</p>
+                <label v-for="line in detail.cashCostAllocationOptions" :key="line.costImpactId">
+                  {{ line.lineNumber ? `第 ${line.lineNumber} 行 · ` : '' }}{{ line.description || '原确认费用' }} · 可分摊 ¥{{ centsTextToYuanText(line.availableAmountCents) }}
+                  <YuanMoneyInput v-model="cashCostAllocations[line.costImpactId]" />
+                </label>
+              </template>
             </template>
             <t-upload
               v-if="!frozenPayment"
@@ -1208,6 +1261,9 @@ onMounted(() => void loadDetail());
           >
             <t-descriptions-item label="使用单位">
               {{ detail.companyEntityNameSnapshot }}
+            </t-descriptions-item>
+            <t-descriptions-item v-if="detail.projectId && detail.claimType !== 'loan' && !detail.actualPurchaseBatchId && !detail.generalProcurement" label="成本承担公司">
+              {{ detail.costBearingCompanySpecified ? (detail.costBearingCompanyName ?? "待归属") : detail.companyEntityNameSnapshot }}
             </t-descriptions-item>
             <t-descriptions-item label="实际付款主体">
               <div class="expense-claim-detail__payment-subject">

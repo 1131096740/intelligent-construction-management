@@ -30,6 +30,12 @@ export interface ExpenseClaimListItemReadModel {
 }
 
 export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemReadModel, "handledByNameSnapshot"> {
+  costBearingCompanySpecified?: boolean;
+  costBearingCompanyEntityId?: string | null;
+  costBearingCompanyName?: string | null;
+  bearingCompanyOptions?: ExpenseBearingCompanyOption[];
+  actualPurchaseBatchId?: string | null;
+  cashCostAllocationOptions?: Array<{ costImpactId: string; lineNumber?: string; description: string | null; availableAmountCents: string }>;
   canDeleteDraft?: boolean;
   approvalInstanceId?: string | null;
   canWithdrawApproval?: boolean;
@@ -79,6 +85,7 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
   paymentSubjectCompanyEntities: Array<{ id: string; name: string }>;
   fundsPermissions: {
     canRecordPayment: boolean;
+    canRecordPublicCashPayment?: boolean;
     canRecordReimbursementPayment: boolean;
     canGenerateFinalPaymentPdf: boolean;
     canGenerateLoanFinalDisbursementPdf: boolean;
@@ -97,7 +104,8 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
     note: string | null;
     createdAt: string;
     registeredFunding?: {
-      actualPayerCompanyId: string;
+      actualPayerCompanyId: string | null;
+      actualPayerKind?: "public_cash";
       actualPayerName: string;
       originalDebtorCompanyId: string;
       relationshipEntryId: string | null;
@@ -167,11 +175,18 @@ export interface ExpenseClaimEntrySnapshotReadModel {
   valuesSnapshot: Record<string, unknown>;
 }
 
+export interface ExpenseBearingCompanyOption {
+  projectId: string;
+  companyEntityId: string;
+  companyNameSnapshot: string;
+}
+
 export interface ExpenseClaimCreateOptions {
   entryDefinition: BusinessEntrySceneDefinition;
   companyEntities: Array<{ id: string; name: string }>;
   projects: Array<{ id: string; code: string; name: string }>;
   selfProjectIds: string[];
+  bearingCompanyOptions?: ExpenseBearingCompanyOption[];
   selfApplicantUserId: string;
   canProxy: boolean;
   applicantUsers: Array<{ id: string; name: string }>;
@@ -207,6 +222,7 @@ export interface CreateExpenseClaimPayload {
     | "other_incidental"
     | GeneralProcurementPaymentCategory;
   companyEntityId: string;
+  costBearingCompanyEntityId?: string | null;
   projectId?: string;
   factWitnessUserId?: string;
   applicantUserId?: string;
@@ -411,6 +427,7 @@ export async function submitExpenseClaim(claimId: string) {
 export interface EditReturnedExpenseClaimDraftInput {
   expectedUpdatedAt: string;
   reason: string;
+  costBearingCompanyEntityId?: string | null;
   lines?: CreateExpenseClaimPayload["lines"];
   requestedAmountCents?: string;
 }
@@ -550,10 +567,12 @@ export function uploadExpenseClaimPaymentVoucherFile(
   claimId: string,
   file: Blob,
   fileName: string,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  scopeKey?: string
 ) {
+  const query = scopeKey === "public_cash" ? "?scopeKey=public_cash" : "";
   return uploadExpenseClaimPrivateFile(
-    `/expense-claims/${encodeURIComponent(claimId)}/payment-voucher-file-uploads`,
+    `/expense-claims/${encodeURIComponent(claimId)}/payment-voucher-file-uploads${query}`,
     file,
     fileName,
     idempotencyKey
@@ -582,6 +601,7 @@ export interface ExpenseRegisteredFundingInput {
   scopeKey: string;
   expectedRegistrationId: string;
   sourceAllocations: Array<{ sourceBatchId: string; amountCents: string }>;
+  costAllocations?: Array<{ costImpactId: string; amountCents: string }>;
 }
 export interface ExpenseClaimPaymentInput {
   amountCents: string;
@@ -601,7 +621,7 @@ export async function recordExpenseClaimPayment(claimId: string, body: ExpenseCl
   });
   await ensureOk(response);
   return response.json() as Promise<{ id: string; expenseClaimId: string; paidAmountCents: string; status: string;
-    registeredFunding?: { actualPayerCompanyId: string; relationshipEntryId: string | null };
+    registeredFunding?: { actualPayerCompanyId: string | null; actualPayerKind?: "public_cash"; relationshipEntryId: string | null };
   }>;
 }
 

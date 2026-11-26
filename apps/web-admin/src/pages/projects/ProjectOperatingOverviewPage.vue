@@ -426,6 +426,9 @@
             class="gap-panel overview-gap-panel"
           >
             <h2>公共现金成本待归属</h2>
+            <p v-if="overview.operatingProjection.costAttribution?.needsReview" class="hint">
+              已确认的归属记录仍保留。后续退款或费用更正涉及的承担金额待核对。
+            </p>
             <p
               v-if="costAttributionError"
               class="form-error"
@@ -456,7 +459,7 @@
                 <tbody>
                   <tr
                     v-for="candidate in costAttribution?.candidates ?? []"
-                    :key="candidate.factId"
+                    :key="candidate.expenseCashCostLinkId ?? candidate.factId"
                   >
                     <td>{{ candidate.sourceBusinessCode }}</td>
                     <td>{{ formatDate(candidate.occurredAt) }}</td>
@@ -464,8 +467,10 @@
                     <td>{{ candidate.description ?? "公共现金支出" }}</td>
                     <td>
                       {{
-                        candidate.activeStatus === "pending_review"
-                          ? "待财务主管确认"
+                        candidate.cashEvidenceChanged
+                          ? "实付证据已变化"
+                          : candidate.activeStatus === "pending_review"
+                            ? "待财务主管确认"
                           : candidate.activeStatus === "confirmed"
                             ? "已确认归属"
                             : "待归属"
@@ -482,6 +487,7 @@
                       </button>
                       <template v-else-if="candidate.activeStatus === 'pending_review' && canReviewCostAttribution">
                         <button
+                          v-if="!candidate.cashEvidenceChanged"
                           type="button"
                           class="table-action"
                           @click="openCostAttributionReview(
@@ -517,6 +523,7 @@
                   <tr>
                     <th>业务编号</th>
                     <th>承担公司</th>
+                    <th>确认范围金额</th>
                     <th>状态</th>
                     <th>发起原因</th>
                     <th>复核原因</th>
@@ -529,7 +536,15 @@
                   >
                     <td>{{ row.factCode || "—" }}</td>
                     <td>{{ row.companyName }}</td>
-                    <td>{{ row.statusLabel }}</td>
+                    <td>{{ row.attributedAmountCents ? formatCents(row.attributedAmountCents) : "—" }}</td>
+                    <td>
+                      {{ row.statusLabel }}
+                      <button v-if="row.expenseCashCostLinkId && row.status === 'pending_review' && canReviewCostAttribution &&
+                        !costAttribution?.candidates.some(candidate => candidate.activeConfirmationId === row.id)"
+                        type="button" class="table-action" @click="openCostAttributionReview(row, 'return')">
+                        退回
+                      </button>
+                    </td>
                     <td>{{ row.reason }}</td>
                     <td>{{ row.reviewReason ?? "—" }}</td>
                   </tr>
@@ -1222,6 +1237,7 @@
   >
     <template v-if="costAttributionReview">
       <p>承担公司：{{ costAttributionReview.companyName }}</p>
+      <p v-if="costAttributionReview.attributedAmountCents">确认范围：{{ formatCents(costAttributionReview.attributedAmountCents) }}</p>
       <p>操作：{{ costAttributionReviewDecision === 'confirm' ? '确认归属' : '退回' }}</p>
       <label>原因<t-textarea v-model="costAttributionReviewReason" /></label>
       <label v-if="costAttributionReview.requestedByUserId === auth.user?.id">本人密码<t-input
@@ -1230,6 +1246,9 @@
       /></label>
     </template>
     <template v-else>
+      <p v-if="costAttributionCandidate?.expenseCashCostLinkId">
+        原费用 {{ costAttributionCandidate.sourceBusinessCode }} · 本次可归属 {{ formatCents(costAttributionCandidate.amountCents) }}
+      </p>
       <label>成本承担公司
         <t-select v-model="costAttributionCompanyId">
           <t-option
@@ -2400,7 +2419,8 @@ async function submitCostAttribution() {
     await requestCostAttribution(projectId, candidate.factId, {
       companyEntityId: costAttributionCompanyId.value,
       reason: costAttributionReason.value.trim(),
-      idempotencyKey: crypto.randomUUID()
+      idempotencyKey: crypto.randomUUID(),
+      ...(candidate.expenseCashCostLinkId ? { expenseCashCostLinkId: candidate.expenseCashCostLinkId } : {})
     });
     costAttributionDialogVisible.value = false;
     await loadCostAttributions(projectId);

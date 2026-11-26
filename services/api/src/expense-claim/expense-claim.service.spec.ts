@@ -1,4 +1,7 @@
 import * as ExcelJS from "exceljs";
+import { Reflector } from "@nestjs/core";
+import { Prisma } from "@prisma/client";
+import { PermissionGuard } from "../auth/guards/permission.guard";
 import { Test } from "@nestjs/testing";
 import { RetiredWriteEntryGuard } from "../retired-write-entry/retired-write-entry.guard";
 import { FileService } from "../file/file.service";
@@ -16,7 +19,8 @@ jest.mock("../fund-account/registered-operational-payment", () => ({
 function createHarness(options?: { roles?: string[]; claim?: Record<string, unknown>; approvalAssignments?: Array<{ userId: string; positionId: string; role: string }>; auth?: { confirmPassword: jest.Mock }; files?: { assertFileHasNoBusinessBinding: jest.Mock }; approvalForms?: { generateForInstance: jest.Mock }; projectFunding?: { lockFundingContext: jest.Mock; allocateExecution: jest.Mock }; operatingSources?: { appendConfirmedSourceIfEnabledInTransaction: jest.Mock }; fundingNotifications?: { queue: jest.Mock; afterCommit: jest.Mock } }) {
   const approvalAssignments = options?.approvalAssignments ?? [];
   const tx = {
-    companyEntity: { findFirst: jest.fn(), findMany: jest.fn() },
+    companyEntity: { findFirst: jest.fn(), findUnique: jest.fn(), findMany: jest.fn() },
+    projectParticipatingCompany: { findFirst: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
     project: { findFirst: jest.fn().mockResolvedValue({ id: "project-1" }), findMany: jest.fn(), findUnique: jest.fn() },
     userPosition: { findMany: jest.fn().mockResolvedValue(approvalAssignments.length ? approvalAssignments.map(({ userId, positionId, role }) => ({ userId, positionId, projectId: role === "project_manager" ? "project-1" : null })) : (options?.roles ?? []).map((_, index) => ({ positionId: `position-${index}`, projectId: null }))) },
     projectMember: { findMany: jest.fn().mockResolvedValue([]) },
@@ -43,7 +47,7 @@ function createHarness(options?: { roles?: string[]; claim?: Record<string, unkn
     auditLog: { create: jest.fn().mockResolvedValue({}) },
     $queryRaw: jest.fn().mockResolvedValue(options?.claim ? [options.claim] : [])
   };
-  const prisma = { $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), companyEntity: tx.companyEntity, expenseClaim: tx.expenseClaim, expenseClaimLine: tx.expenseClaimLine, expenseClaimAttachment: tx.expenseClaimAttachment, expenseClaimPaymentExecution: tx.expenseClaimPaymentExecution, employeeProjectLoanAccount: tx.employeeProjectLoanAccount, employeeProjectLoanEntry: tx.employeeProjectLoanEntry, employeeLoanRepayment: { findMany: jest.fn() }, pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) }, fileObject: { findMany: jest.fn() }, project: tx.project, user: tx.user, userPosition: tx.userPosition, projectMember: tx.projectMember, position: tx.position, approvalInstance: tx.approvalInstance };
+  const prisma = { projectParticipatingCompany: tx.projectParticipatingCompany, $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)), companyEntity: tx.companyEntity, expenseClaim: tx.expenseClaim, expenseClaimLine: tx.expenseClaimLine, expenseClaimAttachment: tx.expenseClaimAttachment, expenseClaimPaymentExecution: tx.expenseClaimPaymentExecution, employeeProjectLoanAccount: tx.employeeProjectLoanAccount, employeeProjectLoanEntry: tx.employeeProjectLoanEntry, employeeLoanRepayment: { findMany: jest.fn() }, pdfDocument: { findFirst: jest.fn().mockResolvedValue(null) }, fileObject: { findMany: jest.fn() }, project: tx.project, user: tx.user, userPosition: tx.userPosition, projectMember: tx.projectMember, position: tx.position, approvalInstance: tx.approvalInstance };
   Object.assign(prisma, { expenseClaimEntrySnapshot: tx.expenseClaimEntrySnapshot, projectRosterMember: tx.projectRosterMember, paymentExecutionRefund: tx.paymentExecutionRefund });
   const numbering = { allocateDaily: jest.fn().mockResolvedValue("BX-20260723-001") };
   const audit = { record: jest.fn().mockResolvedValue({}) };
@@ -471,6 +475,37 @@ describe("ExpenseClaimService", () => {
       data: [expect.objectContaining({ expenseClaimId: "claim-1", sortOrder: 1, receiptCount: 2, amountCents: 1200n })]
     });
     expect(audit.record).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "expense_claim.draft.create" }));
+  });
+
+  it.each([null, "bearing-company"])("keeps the original debtor when the bearing decision is %s", async companyId => {
+    const { service, tx } = createHarness();
+    tx.user.findUnique.mockResolvedValue(actor);
+    tx.companyEntity.findFirst.mockResolvedValue({ id: "original-company", name: "原使用单位" });
+    tx.projectParticipatingCompany.findFirst.mockResolvedValue({ id: "participation" });
+    tx.expenseClaim.create.mockResolvedValue({ id: "claim-bearing", status: "draft" });
+    await service.create("user-a", {
+      claimType: "incidental_expense", incidentalExpenseCategory: "temporary_service", projectId: "project-1",
+      companyEntityId: "original-company", costBearingCompanyEntityId: companyId, applicantUserId: "user-a",
+      reason: "独立项目费用", payeeName: "服务方", requestedAmountCents: "800"
+    });
+    expect(tx.expenseClaim.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      companyEntityId: "original-company", paymentSubjectCompanyEntityId: "original-company",
+      costBearingCompanySpecified: true, costBearingCompanyEntityId: companyId
+    }) });
+    expect(tx.projectParticipatingCompany.findFirst).toHaveBeenCalledTimes(companyId === null ? 0 : 1);
+  });
+
+  it("rejects an explicit company outside the expense project", async () => {
+    const { service, tx } = createHarness();
+    tx.user.findUnique.mockResolvedValue(actor);
+    tx.companyEntity.findFirst.mockResolvedValue({ id: "original-company", name: "原使用单位" });
+    tx.projectParticipatingCompany.findFirst.mockResolvedValue(null);
+    await expect(service.create("user-a", {
+      claimType: "incidental_expense", incidentalExpenseCategory: "temporary_service", projectId: "project-1",
+      companyEntityId: "original-company", costBearingCompanyEntityId: "outside-company", applicantUserId: "user-a",
+      reason: "独立项目费用", payeeName: "服务方", requestedAmountCents: "800"
+    })).rejects.toThrow("请选择当前项目有效的成本承担公司");
+    expect(tx.expenseClaim.create).not.toHaveBeenCalled();
   });
 
   it("creates a project-scoped incidental expense without an amount cap or required attachment", async () => {
@@ -1069,6 +1104,8 @@ describe("ExpenseClaimService", () => {
       projectId: "project-1",
       applicantUserId: "user-a",
       companyEntityId: "company-1",
+      costBearingCompanySpecified: true,
+      costBearingCompanyEntityId: null,
       requestedAmountCents: 500_000n,
       handledByUserId: "user-a",
       factWitnessUserId: null
@@ -1095,6 +1132,11 @@ describe("ExpenseClaimService", () => {
       status: "approval_pending",
       loanOffsetAmountCents: "0",
       companyPayableAmountCents: "500000"
+    });
+    expect(tx.expenseClaimEntrySnapshot.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ valuesSnapshot: expect.objectContaining({
+        companyEntityId: "company-1", costBearingCompanyEntityId: null
+      }) })
     });
     expect(tx.expenseClaim.update).toHaveBeenCalledWith({
       where: { id: "claim-incidental-1" },
@@ -1470,6 +1512,24 @@ describe("ExpenseClaimService", () => {
     expect(tx.approvalInstance.update).toHaveBeenCalledTimes(1);
   });
 
+  it("updates the returned draft bearing decision without updating the original company or payment subject", async () => {
+    const updatedAt = new Date("2026-11-12T10:00:00Z");
+    const claim = { id: "claim-returned", status: "draft", submittedAt: updatedAt, approvalInstanceId: null,
+      approvedAt: null, handledByUserId: "user-a", claimType: "incidental_expense", companyEntityId: "company-1",
+      projectId: "project-1", requestedAmountCents: 800n, fundedAmountCents: 0n, updatedAt };
+    const { service, tx } = createHarness({ claim });
+    tx.expenseClaim.findUnique.mockResolvedValue(claim);
+    tx.$queryRaw.mockImplementation(async ({ sql }) => sql.includes('"User"') ? [{ isActive: true }] : [claim]);
+    tx.expenseClaim.update.mockResolvedValue(claim);
+    await service.editReturnedDraft(claim.id, "user-a", {
+      expectedUpdatedAt: updatedAt.toISOString(), reason: "核对后尚无承担公司", costBearingCompanyEntityId: null
+    });
+    const fields = tx.expenseClaim.update.mock.calls[0][0].data;
+    expect(fields).toMatchObject({ costBearingCompanySpecified: true, costBearingCompanyEntityId: null });
+    expect(fields).not.toHaveProperty("companyEntityId");
+    expect(fields).not.toHaveProperty("paymentSubjectCompanyEntityId");
+  });
+
   it("checks a linked returned draft revision against the original procurement's remaining approved amount", async () => {
     const updatedAt = new Date("2026-11-12T10:00:00Z");
     const claim = { id: "claim-r", status: "draft", claimType: "incidental_expense", projectId: "project-1",
@@ -1541,6 +1601,160 @@ describe("ExpenseClaimService", () => {
   });
 
 });
+
+it.each(["reimbursement", "incidental_expense"])(
+  "registers %s public cash on the existing payment HTTP entry",
+  async claimType => {
+    const keeper = { ...actor, id: "cash-keeper" };
+    const voucherFileId = "cash-keeper-voucher";
+    const previousId = "00000000-0000-4000-8000-000000000001";
+    const sourceBatchId = "00000000-0000-4000-8000-000000000002";
+    const costImpactId = "00000000-0000-4000-8000-000000000004";
+    const claim = {
+      id: "cash-claim", claimType, status: "approved_pending_payment", projectId: "project-1",
+      companyEntityId: "claim-debtor", companyEntityNameSnapshot: "合成申请公司",
+      companyPayableAmountCents: 800n, fundedAmountCents: 0n
+    };
+    const appendSource = jest.fn();
+    const { service, tx, prisma, audit } = createHarness({
+      roles: ["comprehensive_director"], claim,
+      auth: { confirmPassword: jest.fn().mockResolvedValue(undefined) },
+      files: { assertFileHasNoBusinessBinding: jest.fn().mockResolvedValue(undefined) },
+      operatingSources: { appendConfirmedSourceIfEnabledInTransaction: appendSource }
+    });
+    tx.expenseClaim.findUnique.mockResolvedValue({ projectId: claim.projectId });
+    const source = { id: sourceBatchId, lineNo: 1, sourceStatus: "pending", sourceName: null,
+      projectStatus: "pending", projectId: null, amountYuan: new Prisma.Decimal("100") };
+    const previous = {
+      id: previousId, accountId: "cash-account", asOfDate: "2026-11-01", version: 1,
+      balanceYuan: new Prisma.Decimal("100"), sources: [source]
+    };
+    const createRegistration = jest.fn().mockResolvedValue({ id: "cash-debit" });
+    const createSources = jest.fn();
+    const readCustody = jest.fn().mockResolvedValue({ currentCustodianId: keeper.id });
+    const writeRevision = jest.fn();
+    const findAccount = jest.fn().mockResolvedValue({
+      id: "cash-account", kind: "public_cash", companyEntityId: null, company: null, writeRevision: 1
+    });
+    const findRecorded = jest.fn();
+    const createPayment = jest.fn(async ({ data }) => {
+      findRecorded.mockResolvedValue(data);
+      return data;
+    });
+    const originalCosts = jest.fn().mockResolvedValue([{ id: costImpactId, amountCents: 800n }]);
+    const readLinks = jest.fn().mockResolvedValue([]);
+    const createLinks = jest.fn();
+    Object.assign(tx, {
+      operatingImpactEntry: { findMany: originalCosts },
+      expensePublicCashCostLink: { groupBy: readLinks, createMany: createLinks },
+      registeredFundAccount: { findUnique: findAccount, update: writeRevision },
+      publicCashCustody: { findUnique: readCustody },
+      fundAccountBalanceRegistration: {
+        findFirst: jest.fn().mockResolvedValue(previous), findFirstOrThrow: jest.fn().mockResolvedValue(previous),
+        findMany: jest.fn().mockResolvedValue([{ id: previousId }]), create: createRegistration
+      },
+      registeredFundPaymentAllocation: { findMany: jest.fn().mockResolvedValue([]) },
+      registeredFundTransferLine: { findMany: jest.fn().mockResolvedValue([]) },
+      fundAccountSourceBatch: { findMany: jest.fn().mockResolvedValue([source]), createMany: createSources },
+      registeredOperationalPayment: { create: createPayment, findUnique: findRecorded },
+      $executeRaw: jest.fn()
+    });
+    tx.fileObject.findUnique.mockResolvedValue({ id: voucherFileId, uploadedByUserId: keeper.id });
+    tx.expenseClaimPaymentExecution.create.mockImplementation(async ({ data }) => {
+      const execution = { id: "cash-execution", ...data };
+      tx.expenseClaimPaymentExecution.findUnique.mockResolvedValue(execution);
+      return execution;
+    });
+    tx.expenseClaim.update.mockImplementation(async ({ data }) => {
+      Object.assign(claim, data);
+      return claim;
+    });
+    const productionFunding = jest.requireActual<typeof import("../fund-account/registered-operational-payment")>(
+      "../fund-account/registered-operational-payment"
+    );
+    jest.mocked(appendRegisteredOperationalPayment).mockImplementation(productionFunding.appendRegisteredOperationalPayment);
+    jest.mocked(readRegisteredOperationalPayment).mockImplementation(productionFunding.readRegisteredOperationalPayment);
+
+    const testModule = await Test.createTestingModule({
+      controllers: [ExpenseClaimController],
+      providers: [{ provide: ExpenseClaimService, useValue: service }, { provide: FileService, useValue: {} }]
+    }).compile();
+    const app = testModule.createNestApplication({ logger: false });
+    app.use((request: { user?: typeof actor }, _response: unknown, next: () => void) => {
+      request.user = keeper;
+      next();
+    });
+    app.useGlobalGuards(new RetiredWriteEntryGuard(), new PermissionGuard(new Reflector(), prisma as never));
+    app.useGlobalPipes(createApiValidationPipe());
+    const registeredFunding = {
+      scopeKey: "public_cash", expectedRegistrationId: previousId,
+      sourceAllocations: [{ sourceBatchId, amountCents: "800" }],
+      costAllocations: [{ costImpactId, amountCents: "300" }]
+    };
+    try {
+      await app.listen(0, "127.0.0.1");
+      const url = `${await app.getUrl()}/expense-claims/cash-claim/payments`;
+      const post = (funding = registeredFunding) => fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ amountCents: "800", paidAt: "2026-11-05", paymentMethod: "现金",
+          voucherFileId, confirmationPassword: "synthetic-only", registeredFunding: funding })
+      });
+      expect((await post({ ...registeredFunding, scopeKey: "company:claim-debtor" })).status).toBe(403);
+      // The synthetic Prisma fixture does not roll back writes. Check wrong
+      // custody directly before testing the real HTTP commit and replay.
+      readCustody.mockResolvedValueOnce({ currentCustodianId: "previous-keeper" });
+      await expect(productionFunding.appendRegisteredOperationalPayment(tx as never, {
+        sourceType: "expense_claim_payment_execution", executionId: "not-posted", actorUserId: keeper.id,
+        projectId: claim.projectId, originalDebtorCompanyId: claim.companyEntityId, amountCents: 800n,
+        paidAt: new Date("2026-11-05"), funding: registeredFunding
+      })).rejects.toThrow(ForbiddenException);
+      expect(writeRevision).not.toHaveBeenCalled();
+      expect(createPayment).not.toHaveBeenCalled();
+      const receipt = await post();
+      expect({ status: receipt.status, body: await receipt.json() }).toMatchObject({
+        status: 201,
+        body: { id: "cash-execution", paidAmountCents: "800", status: "paid",
+          registeredFunding: { actualPayerKind: "public_cash", actualPayerCompanyId: null, relationshipEntryId: null } }
+      });
+      const replay = await post();
+      expect({ status: replay.status, body: await replay.json() }).toMatchObject({
+        status: 201, body: { id: "cash-execution", paidAmountCents: "800", status: "paid" }
+      });
+      expect((await post({ ...registeredFunding, costAllocations: [{ costImpactId, amountCents: "301" }] })).status).toBe(409);
+      expect((await post({ ...registeredFunding, expectedRegistrationId: "00000000-0000-4000-8000-000000000003" })).status).toBe(409);
+      expect(writeRevision).toHaveBeenCalledTimes(1);
+      expect(createRegistration.mock.calls[0][0].data.balanceYuan.toFixed(4)).toBe("92.0000");
+      expect(createSources.mock.calls[0][0].data).toMatchObject([
+        { previousSourceBatchId: sourceBatchId, sourceStatus: "pending", sourceName: null }
+      ]);
+      expect(createSources.mock.calls[0][0].data[0].amountYuan.toFixed(4)).toBe("92.0000");
+      expect(createPayment).toHaveBeenCalledTimes(1);
+      expect(createPayment.mock.calls[0][0].data).toMatchObject({
+        actualPayerCompanyId: null, actualPayerName: "公共现金", originalDebtorCompanyId: claim.companyEntityId,
+        allocations: { create: [{ sourceBatchId, amountCents: 800n }] }
+      });
+      expect(originalCosts).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          projectId: claim.projectId, impactKind: "confirmed_cost",
+          fact: expect.objectContaining({ sourceBusinessId: claim.id, sourceType: "expense_claim_approval" })
+        })
+      }));
+      expect(createLinks).toHaveBeenCalledTimes(1);
+      expect(createLinks).toHaveBeenCalledWith({ data: [{ operationalPaymentId: createPayment.mock.calls[0][0].data.id,
+        costImpactId, amountCents: 300n }] });
+      expect(appendSource).toHaveBeenCalledTimes(1);
+      const payments = audit.record.mock.calls.filter(([, event]) =>
+        event.action === "expense_claim.reimbursement.payment.record" || event.action === "incidental_expense.payment.record"
+      );
+      expect(payments).toHaveLength(1);
+    } finally {
+      jest.mocked(appendRegisteredOperationalPayment).mockReset();
+      jest.mocked(readRegisteredOperationalPayment).mockReset().mockResolvedValue(null);
+      await app.close();
+    }
+  }
+);
 
 describe("登记资金报销补付", () => {
   const registeredFunding = { scopeKey: "company:actual", expectedRegistrationId: "registration-1",

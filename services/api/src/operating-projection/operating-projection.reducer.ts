@@ -20,6 +20,12 @@ import {
   type OperatingImpactKind
 } from "@jiangkong/shared-domain";
 
+export interface ConfirmedCostBearingSlice {
+  companyEntityVersionId: string;
+  companyName: string;
+  amountCents: bigint;
+}
+
 export interface ProjectionImpactInput {
   numericProtocolVersion?: 1;
   id: string;
@@ -33,6 +39,9 @@ export interface ProjectionImpactInput {
   fundPurpose?: string | null;
   description?: string | null;
   impactSnapshot?: unknown;
+  costBearingSlices?: ConfirmedCostBearingSlice[];
+  publicCashCostAmountCents?: bigint;
+  cashAttributionNeedsReview?: boolean;
 }
 
 export interface ProjectionFactInput {
@@ -280,6 +289,7 @@ export interface OperatingProjectionReadModel {
     }>;
     unattributedCostCents: string;
     publicCashCostCents: string;
+    needsReview?: true;
   };
   /** OPS-14：下游已结算/已付按合同汇总；待审批与已批待付由 API 层补充，不在此相加。 */
   contractDrilldown: Array<{
@@ -663,6 +673,35 @@ export function toOperatingProjectionDetailedView(
   };
 }
 
+const CASH_ATTRIBUTION_REVIEW_NOTICE = "原公共现金费用已有归属确认，后续退款或更正影响承担关系的范围待核对。";
+
+function foldCostBearing(
+  byCompany: Map<string, { kind: string; id: string; name: string | null; costCents: bigint }>,
+  fact: ProjectionFactInput,
+  impact: ProjectionImpactInput,
+  signed: bigint
+) {
+  const slices = impact.costBearingSlices ?? [];
+  const assigned = slices.reduce((sum, slice) => sum + slice.amountCents, 0n);
+  const portions = slices.map(slice => ({
+    kind: "participating_company", id: slice.companyEntityVersionId, name: slice.companyName, amount: slice.amountCents
+  }));
+  const bearing = fact.costBearingCompanySubject;
+  if (bearing) portions.push({
+    kind: bearing.kind, id: bearing.id, name: bearing.name ?? "", amount: signed - assigned
+  });
+  for (const { kind, id, name, amount } of portions) {
+    const key = `${kind}\u0000${id}`;
+    const row = byCompany.get(key) ?? { kind, id, name: name || null, costCents: 0n };
+    row.costCents += amount;
+    byCompany.set(key, row);
+  }
+  return {
+    unassigned: bearing ? 0n : signed - assigned,
+    cash: impact.publicCashCostAmountCents ?? (fact.actualPayerSubject?.kind === "public_cash" ? signed : 0n)
+  };
+}
+
 export function toOperatingProjectionPublicDetail(
   fact: ProjectionFactInput | ProjectionV2FactInput,
   impact: ProjectionImpactInput | ProjectionV2ImpactInput,
@@ -708,7 +747,10 @@ export function toOperatingProjectionPublicDetail(
     directionLabel: directionLabel(impact.direction),
     signedImpactCents: projectionSigned === null ? null : apiMoney(projectionSigned),
     costCategoryCode: impact.costCategoryCode ?? null,
-    fundPurpose: impact.fundPurpose ?? null
+    fundPurpose: impact.fundPurpose ?? null,
+    ...(impact.costBearingSlices?.length ? { costBearingSlices: impact.costBearingSlices.map(slice => ({
+      companyName: slice.companyName, amountCents: apiMoney(slice.amountCents)
+    })) } : {})
   };
 }
 
@@ -1691,23 +1733,10 @@ export class OperatingProjectionStreamAccumulator {
         }
       }
       if (kind === "confirmed_cost") {
-        const bearing = fact.costBearingCompanySubject;
-        if (bearing) {
-          const key = `${bearing.kind}\u0000${bearing.id}`;
-          const current = this.costByBearingCompany.get(key) ?? {
-            kind: bearing.kind,
-            id: bearing.id,
-            name: bearing.name ?? null,
-            costCents: 0n
-          };
-          current.costCents += projectionSigned;
-          this.costByBearingCompany.set(key, current);
-        } else {
-          this.unattributedCostCents += projectionSigned;
-        }
-        if (fact.actualPayerSubject?.kind === "public_cash") {
-          this.publicCashCostCents += projectionSigned;
-        }
+        const bearing = foldCostBearing(this.costByBearingCompany, fact, impact, projectionSigned);
+        this.unattributedCostCents += bearing.unassigned;
+        this.publicCashCostCents += bearing.cash;
+        if (impact.cashAttributionNeedsReview) this.notices.add(CASH_ATTRIBUTION_REVIEW_NOTICE);
       }
       if (
         fact.factKind === "downstream_settlement" ||
@@ -2369,23 +2398,10 @@ function reduceLegacyOperatingProjection(
           }
         }
         if (kind === "confirmed_cost") {
-          const bearing = fact.costBearingCompanySubject;
-          if (bearing) {
-            const key = `${bearing.kind}\u0000${bearing.id}`;
-            const current = costByBearingCompany.get(key) ?? {
-              kind: bearing.kind,
-              id: bearing.id,
-              name: bearing.name ?? null,
-              costCents: 0n
-            };
-            current.costCents += projectionSigned;
-            costByBearingCompany.set(key, current);
-          } else {
-            unattributedCostCents += projectionSigned;
-          }
-          if (fact.actualPayerSubject?.kind === "public_cash") {
-            publicCashCostCents += projectionSigned;
-          }
+          const bearing = foldCostBearing(costByBearingCompany, fact, impact, projectionSigned);
+          unattributedCostCents += bearing.unassigned;
+          publicCashCostCents += bearing.cash;
+          if (impact.cashAttributionNeedsReview) notices.push(CASH_ATTRIBUTION_REVIEW_NOTICE);
         }
         if (
           fact.factKind === "downstream_settlement" ||
@@ -2742,7 +2758,8 @@ function reduceLegacyOperatingProjection(
       ),
       publicCashCostCents: apiMoney(
         input.aggregateSeed?.publicCashCostCents ?? publicCashCostCents
-      )
+      ),
+      ...(notices.includes(CASH_ATTRIBUTION_REVIEW_NOTICE) ? { needsReview: true as const } : {})
     },
     actualFunds: {
       constructionEnterpriseFundsCents: apiMoney(constructionEnterpriseFunds),

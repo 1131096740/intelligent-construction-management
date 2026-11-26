@@ -35,6 +35,7 @@ const ORIGINAL_FACT = {
 
 function correctionFixture(options: {
   roles?: string[];
+  bearingChoice?: string | null;
   originalFact?: Record<string, unknown> | null;
   correctionFact?: Record<string, unknown> | null;
   fundedCents?: bigint;
@@ -43,7 +44,9 @@ function correctionFixture(options: {
   const claimUpdate = jest.fn(async ({ data }: { data: Record<string, unknown> }) => ({ ...CLAIM, ...data }));
   const append = jest.fn().mockResolvedValue({ id: "correction-fact-1" });
   const tx = {
-    $queryRaw: jest.fn().mockResolvedValue([CLAIM]),
+    $queryRaw: jest.fn().mockResolvedValue([{ ...CLAIM, ...(options.bearingChoice === undefined ? {} : {
+      costBearingCompanySpecified: true, costBearingCompanyEntityId: options.bearingChoice
+    }) }]),
     expenseClaim: { update: claimUpdate },
     expenseClaimPaymentExecution: {
       findMany: jest.fn().mockResolvedValue([{ id: "exec-1", amountCents: options.fundedCents ?? 1000000n }])
@@ -157,6 +160,16 @@ describe("ExpenseClaimCorrectionService", () => {
         expect.objectContaining({ impactKind: "payable_increase", direction: "increase" })
       ]
     }), "director-1", "correction");
+  });
+
+  it.each([null, "bearing-company"])("keeps the independent bearing choice %s when adjusting the original cost", async bearingChoice => {
+    const { service, append } = correctionFixture({ bearingChoice });
+    await service.correctConfirmedAmount(CLAIM.id, "director-1", CORRECTION_INPUT);
+    const [, adjustment] = append.mock.calls[0];
+    const expected = bearingChoice === null ? undefined : { kind: "participating_company", id: bearingChoice };
+    expect(adjustment.subjects.costBearingCompany).toEqual(expected);
+    expect(adjustment.impacts[0].subject).toEqual(expected);
+    expect(adjustment.impacts[0].amountCents).toBe(200000n);
   });
 
   it("replays the same idempotency key instead of appending a second correction", async () => {

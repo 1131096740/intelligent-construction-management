@@ -3,6 +3,7 @@ import { formatApiErrorMessage } from "./error-message";
 
 export interface CostAttributionCandidate {
   factId: string;
+  expenseCashCostLinkId?: string;
   sourceType: string;
   sourceBusinessCode: string;
   occurredAt: string;
@@ -11,11 +12,14 @@ export interface CostAttributionCandidate {
   companyName: string;
   activeConfirmationId: string | null;
   activeStatus: string | null;
+  cashEvidenceChanged?: boolean;
 }
 
 export interface CostAttributionConfirmation {
   id: string;
   factId: string;
+  expenseCashCostLinkId?: string;
+  attributedAmountCents?: string;
   factCode: string;
   status: string;
   statusLabel: string;
@@ -76,7 +80,7 @@ export function fetchCostAttributions(projectId: string) {
 export function requestCostAttribution(
   projectId: string,
   factId: string,
-  body: { companyEntityId: string; reason: string; idempotencyKey: string }
+  body: { companyEntityId: string; reason: string; idempotencyKey: string; expenseCashCostLinkId?: string }
 ) {
   return postJson<CostAttributionConfirmation>(
     `/projects/${projectId}/cost-attributions/${factId}`,

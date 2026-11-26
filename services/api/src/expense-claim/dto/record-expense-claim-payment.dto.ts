@@ -10,6 +10,14 @@ class ExpenseClaimRegisteredAllocationDto {
   amountCents!: string;
 }
 
+class ExpenseClaimCashCostAllocationDto {
+  @IsUUID("4", { message: "请选择有效的原确认费用明细" })
+  costImpactId!: string;
+
+  @IsCanonicalMoneyText({ typeMessage: "费用分摊金额格式不正确", formatMessage: "费用分摊金额须为大于 0 的整数分" })
+  amountCents!: string;
+}
+
 class ExpenseClaimRegisteredFundingDto {
   @IsString({ message: "请选择登记资金账户" })
   @MinLength(1)
@@ -25,6 +33,14 @@ class ExpenseClaimRegisteredFundingDto {
   @ValidateNested({ each: true })
   @Type(() => ExpenseClaimRegisteredAllocationDto)
   sourceAllocations!: ExpenseClaimRegisteredAllocationDto[];
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsArray({ message: "请逐笔填写现金支付的原确认费用明细" })
+  @ArrayNotEmpty()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => ExpenseClaimCashCostAllocationDto)
+  costAllocations?: ExpenseClaimCashCostAllocationDto[];
 }
 
 export class RecordExpenseClaimPaymentDto {

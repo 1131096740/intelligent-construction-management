@@ -36,7 +36,7 @@ export async function readLegacyTransferDebt(tx: Prisma.TransactionClient, ref: 
   }
   if (ref.originalOperationalPaymentId) {
     const row = await tx.registeredOperationalPayment.findUnique({ where: { id: ref.originalOperationalPaymentId } });
-    if (!row || row.originalDebtorCompanyId === row.actualPayerCompanyId) {
+    if (!row?.actualPayerCompanyId || row.originalDebtorCompanyId === row.actualPayerCompanyId) {
       throw new BadRequestException("请选择已经登记的公司间代付");
     }
     return { id: row.id, reference: `原业务代付 ${row.paidAt.toISOString().slice(0, 10)}`,
