@@ -7,6 +7,7 @@ import { SpotProcurementReceiptService } from "./spot-procurement-receipt.servic
 import { SpotProcurementSettlementService } from "./spot-procurement-settlement.service";
 import { runPreparedParallelPgHttpCases, runPreparedParallelNotificationClaimPgCase, type PreparedParallelPgHttp } from "../database/spot-procurement-parallel.http.pg.prepared";
 import { verifyApprovedPdf } from "../database/approval-pdf-acceptance.test-support";
+import { FileService } from "../file/file.service";
 import { BUSINESS_ENTRY_DEFINITION_REGISTRY } from "../business-entry-definition/business-entry-definition.scene-registry";
 import "reflect-metadata";
 import { Catch, ConflictException, type ArgumentsHost, type INestApplication } from "@nestjs/common";
@@ -400,8 +401,10 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
       await tx.spotProcurementReceiptRevision.create({ data: { receiptId: receipt.id, revisionNo: 1, ...coordinates } });
     });
     const image = await sharp({ create: { width: 320, height: 240, channels: 3, background: "#4f8a5b" } }).png().toBuffer();
-    const photo = await uploadGenericFile(applicant, `${label}历史收货.png`, image);
-    expect(photo).toMatchObject({ status: 201, id: expect.any(String) });
+    const photo = await app.get(FileService).uploadPrivateFile({
+      originalName: `${label}历史收货.png`, mimeType: "image/png", sizeBytes: image.length,
+      uploadedByUserId: handlerId, buffer: image
+    });
     const receipts = app.get(SpotProcurementReceiptService);
     await receipts.attachPhoto(procurementId, handlerId, {
       originalFileId: photo.id, source: "camera", category: "material_scene", note: "合成少货"
@@ -878,9 +881,9 @@ describe("#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16", () 
     return { status: response.status, ...(text ? JSON.parse(text) as { id: string } : { id: "" }) };
   }
 
-  async function uploadGenericFile(session: Session, fileName: string, buffer = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")) {
+  async function uploadGenericFile(session: Session, fileName: string) {
     const form = new FormData();
-    form.append("file", new Blob([buffer], { type: "image/png" }), fileName);
+    form.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")], { type: "image/png" }), fileName);
     const response = await fetch(`${baseUrl}/files`, { method: "POST", headers: { authorization: `Bearer ${session.tokens.accessToken}` }, body: form });
     const text = await response.text();
     return { status: response.status, ...(text ? JSON.parse(text) as { id: string } : { id: "" }) };
