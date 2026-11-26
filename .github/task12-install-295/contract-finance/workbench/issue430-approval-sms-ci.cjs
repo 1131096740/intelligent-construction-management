@@ -19,7 +19,7 @@ const expectedScenarios = [
 ];
 
 async function runIssue430ApprovalSms(context, receipt, source) {
-  assert.ok(['payment-remainder-331', 'upward-archive-332', 'historical-settlement-334'].includes(source.mode));
+  assert.ok(['payment-remainder-331', 'upward-archive-332', 'historical-settlement-334', 'expense-witness-346'].includes(source.mode));
   assert.equal(context.candidateTree, source.sourceTree);
   assert.equal(context.database, 'jg_task01_' + context.runId.replaceAll('-', ''));
   const uri = new URL(context.ownerUrl);

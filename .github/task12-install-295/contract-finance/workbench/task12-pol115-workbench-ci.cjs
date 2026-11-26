@@ -27,6 +27,8 @@ function stageBrowser(workDir) {
     'apps/web-admin/playwright.template-workbench-real.config.ts','apps/web-admin/e2e/template-workbench-real.e2e.ts']) copy(file);
   fs.cpSync(path.join(workspace,'packages/shared-domain/src'),path.join(shared,'src'),
     {recursive:true,force:false,errorOnExist:true});
+  fs.mkdirSync(path.join(workDir,'node_modules'));
+  fs.symlinkSync(path.join(workspace,'node_modules/.pnpm'),path.join(workDir,'node_modules/.pnpm'));
   fs.symlinkSync(path.join(workspace,'packages/shared-domain/node_modules'),path.join(shared,'node_modules'));
   fs.symlinkSync(path.join(workspace,'apps/web-admin/node_modules/.bin'),path.join(web,'node_modules/.bin'));
   const scope = path.join(web,'node_modules/@jiangkong');
@@ -37,12 +39,13 @@ function stageBrowser(workDir) {
 }
 
 async function runWorkbench(context, receipt, source) {
-  const historicalSettlement=source?.mode==='historical-settlement-334';
+  const expenseWitness=source?.mode==='expense-witness-346';
+  const historicalSettlement=expenseWitness||source?.mode==='historical-settlement-334';
   const upwardArchive=historicalSettlement||source?.mode==='upward-archive-332';
   const paymentRemainder=upwardArchive||source?.mode==='payment-remainder-331';
   const textDirect=paymentRemainder||source?.mode==='text-direct-330';
   const current320=textDirect||source?.mode==='current-320';
-  const count=historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
+  const count=expenseWitness?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
   if (receipt.purpose !== 'POL115_WORKBENCH_ORIGINAL_'+count || context.candidateTree !== (current320?source.sourceTree:tree) ||
       context.database !== 'jg_task01_'+context.runId.replaceAll('-','')) {
     throw new Error('POL115_WORKBENCH_OWNED_SCOPE');
@@ -65,13 +68,14 @@ async function runWorkbench(context, receipt, source) {
     PATH:'/usr/local/bin:/usr/bin:/bin', NODE_ENV:'test', HOME:context.workDir, TMPDIR:context.workDir,
     DATABASE_URL:uri.toString(), COREPACK_HOME:'/opt/corepack', XDG_CACHE_HOME:cache,
     PLAYWRIGHT_BROWSERS_PATH:'/opt/jg-playwright', PLAYWRIGHT_JSON_OUTPUT_FILE:browserReport,
-    FILE_STORAGE_DRIVER:'local', FILE_STORAGE_ROOT:files,
+    FILE_STORAGE_DRIVER:'local', FILE_STORAGE_ROOT:files, APPROVAL_SMS_ENABLED:'false', SMS_ENABLED:'false',
     OPERATING_LEDGER_DB_WRITE_SECRET:randomUUID(), RUN_TEMPLATE_WORKBENCH_PG16:'1',
     ...(current320?{TASK_POL115_WORKBENCH_EXACT_320:'1'}:{}),
     ...(textDirect?{TASK_POL115_WORKBENCH_TEXT_DIRECT_330:'1'}:{}),
     ...(paymentRemainder?{TASK_POL115_WORKBENCH_PAYMENT_REMAINDER_331:'1'}:{}),
     ...(upwardArchive?{TASK_POL115_WORKBENCH_UPWARD_ARCHIVE_332:'1'}:{}),
     ...(historicalSettlement?{TASK_POL115_WORKBENCH_HISTORICAL_SETTLEMENT_334:'1'}:{}),
+    ...(expenseWitness?{TASK_POL115_WORKBENCH_EXPENSE_WITNESS_346:'1'}:{}),
     TASK_POL115_WORKBENCH_290_RUN_ID:context.runId.replaceAll('-',''), TASK_POL115_WORKBENCH_290_WEB_ROOT:web,
   };
 

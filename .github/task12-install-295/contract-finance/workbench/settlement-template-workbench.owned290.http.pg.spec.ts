@@ -63,7 +63,8 @@ describePg("结算模板工作台公开HTTP / PG16", () => {
       const paymentRemainder = process.env.TASK_POL115_WORKBENCH_PAYMENT_REMAINDER_331 === "1";
       const upwardArchive = process.env.TASK_POL115_WORKBENCH_UPWARD_ARCHIVE_332 === "1";
       const historicalSettlement = process.env.TASK_POL115_WORKBENCH_HISTORICAL_SETTLEMENT_334 === "1";
-      const count = historicalSettlement ? 334 : upwardArchive ? 332 : paymentRemainder ? 331 : textDirect ? 330 : current320 ? 329 : 295;
+      const expenseWitness = process.env.TASK_POL115_WORKBENCH_EXPENSE_WITNESS_346 === "1";
+      const count = expenseWitness ? 346 : historicalSettlement ? 334 : upwardArchive ? 332 : paymentRemainder ? 331 : textDirect ? 330 : current320 ? 329 : 295;
       const [witness] = await app.get(PrismaService).$queryRaw<Array<{ accepted: boolean }>>`
         SELECT (d.datname = ${url.pathname.slice(1)} AND d.datdba = 10 AND
           current_user = 'jg_task01_owner' AND current_user::regrole::oid = 10 AND current_user = session_user AND
@@ -95,7 +96,10 @@ describePg("结算模板工作台公开HTTP / PG16", () => {
               AND checksum = '4e41179d32a8e46eae83685eb8c071a112de5426e9ec5f6a6e6d320b4ef95f77') AND
             EXISTS (SELECT FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
               AND migration_name = '20261129003000_historical_signed_settlement_continuation'
-              AND checksum = '9df6dc654b8b0ea21713cc1c1dbcc73a8a74fd49f0df84da3b1556e85215ad5f')))) AS accepted
+              AND checksum = '9df6dc654b8b0ea21713cc1c1dbcc73a8a74fd49f0df84da3b1556e85215ad5f'))) AND
+          (NOT ${expenseWitness} OR EXISTS (SELECT FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+            AND migration_name = '20261129015000_expense_public_cash_operating_source'
+            AND checksum = 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'))) AS accepted
         FROM pg_catalog.pg_database d WHERE d.datname = current_database()
       `;
       if (witness?.accepted !== true) throw new Error("POL115_WORKBENCH_OWNED_282_DATABASE");
