@@ -272,6 +272,19 @@ test("334 routes standalone payment execution without substituting Core Payment"
   assert.deepEqual(resolved.args.slice(1), [sha, "payment-execution", "--historical-settlement-334"]);
 });
 
+test("334 routes both original Task398 browser groups without combining their evidence", () => {
+  const manifest = loadManifest();
+  const sha = "e".repeat(40);
+  for (const [id, lane] of [["task398_browser", "browser-partial"], ["task398_browser_completion", "browser-completion"]]) {
+    const group = manifest.coveredGroups.find(item => item.id === id);
+    assert.equal(group.pendingTests, 1);
+    const resolved = resolveGroupCommand(group, { candidateSha: sha, migrationCount: 334 });
+    assert.equal(resolved.command, "bash");
+    assert.match(resolved.args[0], /run-contract-adjacent-ci[.]sh$/u);
+    assert.deepEqual(resolved.args.slice(1), [sha, lane, "--historical-settlement-334"]);
+  }
+});
+
 test("334 routes the original POL109 database, HTTP and browser lane", () => {
   const group = loadManifest().coveredGroups.find(item => item.id === "project_close_profit_pol109");
   assert.equal(group.pendingTests, 4);

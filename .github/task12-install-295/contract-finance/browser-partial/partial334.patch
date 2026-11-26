@@ -1,0 +1,21 @@
+--- runner
++++ runner
+@@ -218 +218 @@
+- const browserReads=browserScenario&&[329,330,331,332].includes(ownedMigrationBaseline?.expectedDirectoryCount)?{
++ const browserReads=browserScenario&&[329,330,331,332,334].includes(ownedMigrationBaseline?.expectedDirectoryCount)?{
+@@ -361 +361 @@
+-  const browserDiagnostics=browser290 && /_EXACT_(?:329|330|331|332)$/u.test(browser290.purpose)?require("/qualification/task398-browser-diagnostics.cjs"):undefined;
++  const browserDiagnostics=browser290 && /_EXACT_(?:329|330|331|332|334)$/u.test(browser290.purpose)?require("/qualification/task398-browser-diagnostics.cjs"):undefined;
+@@ -535 +535 @@
+- const modes=new Map([["browser-partial-332",["--browser-real"]],["browser-partial-331",["--browser-real"]],["browser-partial-330",["--browser-real"]],["browser-partial-329",["--browser-real"]],["browser-partial-295",["--browser-real"]],["browser-partial-290",["--browser-real"]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["browser-partial-334",["--browser-real"]],["browser-partial-332",["--browser-real"]],["browser-partial-331",["--browser-real"]],["browser-partial-330",["--browser-real"]],["browser-partial-329",["--browser-real"]],["browser-partial-295",["--browser-real"]],["browser-partial-290",["--browser-real"]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+@@ -537,0 +538 @@
++ const historicalSettlement=mode==="browser-partial-334";
+@@ -539,2 +540,2 @@
+- const current320=upwardArchive||paymentRemainder||mode==="browser-partial-329"||mode==="browser-partial-330";
+- const count=upwardArchive?332:paymentRemainder?331:mode==="browser-partial-330"?330:329;
++ const current320=historicalSettlement||upwardArchive||paymentRemainder||mode==="browser-partial-329"||mode==="browser-partial-330";
++ const count=historicalSettlement?334:upwardArchive?332:paymentRemainder?331:mode==="browser-partial-330"?330:329;
+@@ -544,0 +546,2 @@
++ if(historicalSettlement) require("/qualification/historical-settlement-334-profile.cjs")
++   .assertFinanceInstallation(receipt,require("/qualification/contract-finance-source.json"));

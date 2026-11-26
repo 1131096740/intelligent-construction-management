@@ -9,7 +9,7 @@ const read=name=>JSON.parse(readFileSync(path.join(dir,name),'utf8'));
 const terminal=read('receipt-complete.json');
 const markers=['receipt.json','receipt-stage2.json'].map(read);
 const count=Number(process.argv[4]??295);
-assert.ok([295,329,330,331,332].includes(count));
+assert.ok([295,329,330,331,332,334].includes(count));
 assert.equal(outer.status,'TASK398_BROWSER_COMPLETION_EXACT_'+count+'_PASSED');
 if(count!==295){
   assert.equal(outer.forward320?.count,count);
@@ -32,12 +32,25 @@ if(count!==295){
     });
     if(count===331) assert.equal(outer.forward320.ledgerSha256,'0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014');
   }
-  if(count===332){
+  if(count>=332){
     assert.deepEqual(outer.upwardArchivePredecessor,{
       count:331,ledgerSha256:'0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014',
       sameIdentity:true,sameBaseB7:true
     });
-    assert.equal(outer.forward320.ledgerSha256,'b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4');
+    if(count===332) assert.equal(outer.forward320.ledgerSha256,'b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4');
+  }
+  if(count===334){
+    const {count:preimageCount,ledgerSha256,sameIdentity,sameBaseB7}=outer.historicalTakeoverPredecessor;
+    assert.deepEqual({count:preimageCount,ledgerSha256,sameIdentity,sameBaseB7},{
+      count:332,ledgerSha256:'b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4',
+      sameIdentity:true,sameBaseB7:true
+    });
+    assert.equal(outer.historicalSettlementPredecessor.count,333);
+    assert.equal(outer.historicalSettlementPredecessor.ledgerSha256,'a00af648da634cce25c27c796171ca21cfa93d17679bfd8176f961b45ecf4fca');
+    assert.equal(outer.forward320.ledgerSha256,'27f3af946003d07582efb288b443362fcf61bed0281feb548f9978b739fb5411');
+    assert.equal(outer.combinedAfterBusiness.sameIdentity,true);
+    assert.equal(outer.historicalTakeoverCatalogAfterBusiness,true);
+    assert.equal(outer.historicalSettlementCatalogAfterBusiness,true);
   }
 }
 assert.equal(outer.installOnly295.count,295);
