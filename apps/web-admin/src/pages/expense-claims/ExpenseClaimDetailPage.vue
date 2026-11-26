@@ -185,6 +185,21 @@ function statusLabel(value: string) { return ({ draft: "草稿", approval_pendin
 function tone(value: string) { return ["offset_completed", "disbursed", "paid"].includes(value) ? "success" as const : value === "rejected" ? "danger" as const : value === "draft" ? "default" as const : "warning" as const; }
 function evidenceType(value: string) { return ({ invoice: "发票", receipt_or_other: "收据或其他凭证", none: "无凭证" } as Record<string, string>)[value] ?? value; }
 function date(value: string | null) { return value ? value.replace("T", " ").slice(0, 16) : "未记录"; }
+function matchesRecordedCashPayment(
+  detail: ExpenseClaimDetailReadModel,
+  payment: Omit<ExpenseClaimPaymentInput, "confirmationPassword">,
+  actorId: string | undefined
+) {
+  return detail.paymentExecutions.some(execution =>
+    execution.voucherFileId === payment.voucherFileId &&
+    execution.recordedByUserId === actorId &&
+    execution.registeredFunding?.actualPayerKind === "public_cash" &&
+    execution.amountCents === payment.amountCents &&
+    chinaDateOnly(new Date(execution.paidAt)) === payment.paidAt &&
+    execution.paymentMethod === payment.paymentMethod.trim() &&
+    execution.note === (payment.note?.trim() || null)
+  );
+}
 async function loadDetail() {
   loading.value = true; loadError.value = "";
   try {
@@ -192,7 +207,11 @@ async function loadDetail() {
     const current = await fetchExpenseClaimDetail(String(route.params.claimId));
     if (scope !== paymentScope.value) return;
     detail.value = current;
-    if (frozenPayment.value && current.paymentExecutions.some(row => row.voucherFileId === frozenPayment.value?.voucherFileId && row.registeredFunding)) {
+    const pending = frozenPayment.value;
+    const recorded = pending && (pending.registeredFunding?.scopeKey === "public_cash"
+      ? current.id === route.params.claimId && matchesRecordedCashPayment(current, pending, auth.user?.id)
+      : current.paymentExecutions.some(row => row.voucherFileId === pending.voucherFileId && row.registeredFunding));
+    if (recorded) {
       sessionStorage.removeItem(scope);
       frozenPayment.value = null;
     }
@@ -633,15 +652,7 @@ async function recordPayment() {
     if (replaying && request.registeredFunding?.scopeKey === "public_cash") {
       const current = await fetchExpenseClaimDetail(claimId);
       if (scope !== paymentScope.value) return;
-      existingCashPayment = current.id === claimId && current.paymentExecutions.some(execution =>
-        execution.voucherFileId === request.voucherFileId &&
-        execution.recordedByUserId === auth.user?.id &&
-        execution.registeredFunding?.actualPayerKind === "public_cash" &&
-        execution.amountCents === request.amountCents &&
-        chinaDateOnly(new Date(execution.paidAt)) === request.paidAt &&
-        execution.paymentMethod === request.paymentMethod.trim() &&
-        execution.note === (request.note?.trim() || null)
-      );
+      existingCashPayment = current.id === claimId && matchesRecordedCashPayment(current, request, auth.user?.id);
     }
     if (!existingCashPayment) {
       await recordExpenseClaimPaymentWithCapability(claimId, { ...request, confirmationPassword });

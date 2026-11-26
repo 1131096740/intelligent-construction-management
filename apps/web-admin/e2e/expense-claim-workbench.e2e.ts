@@ -448,6 +448,49 @@ test("报销实付选定公司与已核来源，丢响应后刷新仍使用原�
   } });
 });
 
+test("公共现金已登记付款通过精确读回完成核对", async ({ page }) => {
+  await mockExpenseClaimSession(page, []);
+  const attemptKey = "jiangkong-expense-registered-payment:expense-claim-canary:expense-claim-1";
+  const pending = {
+    amountCents: "2000", paidAt: "2026-07-24", paymentMethod: "现金", voucherFileId: "cash-voucher",
+    registeredFunding: { scopeKey: "public_cash", expectedRegistrationId: "registration",
+      sourceAllocations: [{ sourceBatchId: "cash-source", amountCents: "2000" }] }
+  };
+  let detailReads = 0;
+  let paymentWrites = 0;
+  await page.route("**/api/expense-claims/expense-claim-1", route => {
+    detailReads++;
+    const recorded = detailReads > 1;
+    return route.fulfill({ json: expenseClaim({
+      status: recorded ? "paid" : "approved_pending_payment", fundedAmountCents: recorded ? pending.amountCents : "0",
+      attachments: [], lines: [],
+      fundsPermissions: { canRecordPayment: false, canRecordPublicCashPayment: false },
+      paymentExecutions: recorded ? [{
+        id: "cash-execution", amountCents: pending.amountCents, paidAt: "2026-07-24T00:00:00.000Z",
+        paymentMethod: pending.paymentMethod, voucherFileId: pending.voucherFileId,
+        recordedByUserId: "expense-claim-canary", note: null, createdAt: "2026-07-24T09:00:00.000Z",
+        registeredFunding: { actualPayerKind: "public_cash", actualPayerName: "公共现金" }
+      }] : []
+    }) });
+  });
+  await page.route("**/api/expense-claims/expense-claim-1/payments", route => {
+    paymentWrites++;
+    return route.fulfill({ status: 409, json: {} });
+  });
+  await login(page);
+  await page.evaluate(({ attemptKey, pending }) => sessionStorage.setItem(attemptKey, JSON.stringify(pending)), { attemptKey, pending });
+  await page.goto("/费用与报销/expense-claim-1");
+  await page.getByRole("button", { name: "核对原实际付款" }).click();
+  await page.getByPlaceholder("用于确认本次实际付款").fill("E2e@2026");
+  await page.getByRole("button", { name: "继续核对原付款" }).click();
+  await page.getByRole("button", { name: "确认写入", exact: true }).click();
+
+  await expect.poll(() => page.evaluate(key => sessionStorage.getItem(key), attemptKey)).toBeNull();
+  await expect(page.getByRole("button", { name: "核对原实际付款" })).toHaveCount(0);
+  expect(detailReads).toBeGreaterThanOrEqual(2);
+  expect(paymentWrites).toBe(0);
+});
+
 test("历史借款保留余额与资金记录，旧客户端权限也不再显示办理动作", async ({ page }) => {
   await mockExpenseClaimSession(page, []);
   const writes: string[] = [];
@@ -575,7 +618,8 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
       paymentSubjectAdjustedByUserId: paymentSubjectReason ? "finance-1" : null,
       paymentSubjectAdjustedByRoleKey: paymentSubjectReason ? "finance_staff" : null,
       paymentSubjectPermissions: { canAdjust: canAdjustPaymentSubject },
-      fundsPermissions: { canRecordReimbursementPayment: true, canGenerateFinalPaymentPdf: false, canGenerateLoanFinalDisbursementPdf: false },
+      fundsPermissions: { canRecordPayment: registeredFunding, canRecordReimbursementPayment: true,
+        canGenerateFinalPaymentPdf: false, canGenerateLoanFinalDisbursementPdf: false },
       paymentSubjectCompanyEntities: [{ id: "company-1", name: "建工智管有限公司" }, { id: "company-pay", name: "集团资金公司" }],
       paymentExecutions: [],
       finalPaymentPdf: null,
