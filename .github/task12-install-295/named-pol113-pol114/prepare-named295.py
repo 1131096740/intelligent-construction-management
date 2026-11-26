@@ -327,15 +327,13 @@ write(context/'candidate-admission.json',(json.dumps({
 })+'\n').encode())
 docker = read_pinned(donor/'Dockerfile.in','456025c143f993973d1947343c7636565406c74c5a0456addc1e1ff3dcffc24e').decode()
 copy = read_pinned(donor/'runtime-copy.txt','de9a7b69c406aa307423a7231ec086b8c6995bd435bfc1fae0bb0dab5d4b40e6').decode().strip()
-docker = docker.replace('@RUNTIME_COPY@',copy+'\nCOPY --chmod=0644 named295-tail.cjs terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs terminal.sql payout-terminal.sql multi-witness.sql /qualification/')
+copy += '\nCOPY --chmod=0644 named295-tail.cjs terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs terminal.sql payout-terminal.sql multi-witness.sql /qualification/'
+# Keep profile changes out of the dependency and browser setup layers.
 if historical_settlement:
-    docker=docker.replace('WORKDIR /qualification/workspace\nCOPY workspace/package.json',
-        'COPY --chmod=0644 historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs /qualification/\n'
-        'WORKDIR /qualification/workspace\nCOPY workspace/package.json',1)
+    copy += '\nCOPY --chmod=0644 historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs /qualification/'
 if expense_witness:
-    docker=docker.replace('WORKDIR /qualification/workspace\nCOPY workspace/package.json',
-        'COPY --chmod=0644 expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json /qualification/\n'
-        'WORKDIR /qualification/workspace\nCOPY workspace/package.json',1)
+    copy += '\nCOPY --chmod=0644 expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json /qualification/'
+docker = docker.replace('@RUNTIME_COPY@',copy)
 write(context/'Dockerfile',docker.encode())
 for file in context.glob('*.cjs'):
     subprocess.run(['node','--check',str(file)],check=True)
