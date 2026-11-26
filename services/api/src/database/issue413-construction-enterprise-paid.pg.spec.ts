@@ -238,6 +238,72 @@ describe("issue 413 construction enterprise paid PostgreSQL", () => {
     },
     120_000
   );
+
+  integrationTest(
+    "rejects new advances without writing facts and confirms a correction to a historical advance",
+    async () => {
+      const prisma = new PrismaClient({ datasources: { db: { url: assertDedicatedDatabase() } } });
+      const fixture = fixtureIds();
+      const { projectId, contractLedgerId, financeUserId, directorUserId, counterpartyName } = fixture;
+      try {
+        await seedFixture(prisma, fixture, { advanceOnly: true });
+        expect(await prisma.projectAffiliateSettlementFact.count({ where: { projectId } })).toBe(0);
+        const payment = {
+          contractLedgerId,
+          counterpartyName,
+          paidAt: "2026-11-01",
+          amountCents: "12000",
+          paymentKind: "advance",
+          basisType: "oral"
+        } as const;
+        const service = new ProjectAffiliateBusinessService(
+          prisma as never, new AuditService(), { confirmPassword: async () => undefined } as never
+        );
+        const existingId = randomUUID();
+        const historical = await prisma.projectAffiliatePaymentFact.create({ data: {
+          ...payment,
+          id: existingId,
+          ledgerId: existingId,
+          projectId,
+          paidAt: new Date(payment.paidAt),
+          amountCents: 12_000n,
+          externalPaymentReference: `${fixture.prefix}_legacy`,
+          affiliateAssignmentId: fixture.affiliateAssignmentId,
+          affiliateBusinessPartyVersionId: fixture.affiliateVersionId,
+          affiliateNameSnapshot: fixture.affiliateName,
+          idempotencyKey: randomUUID(),
+          requestFingerprint: "a".repeat(64),
+          recordedByUserId: financeUserId,
+          recordedByRoleKey: "finance_staff",
+          status: "confirmed",
+          confirmedByUserId: directorUserId,
+          confirmedAt: new Date("2026-11-02"),
+          confirmationActionId: randomUUID(),
+          confirmationSignatureVersionId: fixture.signatureVersionId,
+          confirmationSignatureFileId: fixture.signatureFileId,
+          confirmationSignatureSha256: "a".repeat(64)
+        } });
+
+        await expect(service.recordPaymentFact(projectId, financeUserId, {
+          ...payment, externalPaymentReference: `${fixture.prefix}_new`, idempotencyKey: randomUUID()
+        })).rejects.toThrow("施工企业预付款已停止新增登记");
+        expect(await prisma.projectAffiliatePaymentFact.findMany({ where: { projectId } })).toEqual([historical]);
+
+        const correction = await service.recordPaymentFact(projectId, financeUserId, {
+          ...payment, amountCents: "1000", entryKind: "correction", effectDirection: "decrease",
+          adjustsFactId: historical.id, idempotencyKey: randomUUID()
+        });
+        await expect(service.confirmPaymentFact(projectId, correction.id, directorUserId, {
+          confirmationPassword: "synthetic-approval", confirmationActionId: randomUUID()
+        })).resolves.toMatchObject({ status: "confirmed", amountCents: "1000" });
+        expect(await prisma.projectAffiliatePaymentFact.findUnique({ where: { id: historical.id } })).toEqual(historical);
+        expect(await prisma.projectAffiliatePaymentFact.count({ where: { projectId, ledgerId: historical.ledgerId } })).toBe(2);
+      } finally {
+        await prisma.$disconnect();
+      }
+    },
+    120_000
+  );
 });
 
 function assertDedicatedDatabase() {
@@ -293,7 +359,7 @@ function fixtureIds() {
   };
 }
 
-async function seedFixture(prisma: PrismaClient, fixture: ReturnType<typeof fixtureIds>) {
+async function seedFixture(prisma: PrismaClient, fixture: ReturnType<typeof fixtureIds>, { advanceOnly = false } = {}) {
   const sha = "a".repeat(64);
   const now = new Date("2026-11-23T00:00:00.000Z");
   await prisma.project.create({
@@ -396,7 +462,8 @@ async function seedFixture(prisma: PrismaClient, fixture: ReturnType<typeof fixt
       signedAt: new Date("2026-10-01T00:00:00.000Z"),
       amountNature: "fixed",
       amountCents: 1_000_000n,
-      advanceAllowed: false,
+      advanceAllowed: advanceOnly,
+      ...(advanceOnly ? { advanceLimitCents: 20_000n, advanceTermsSummary: "合成合同约定预付上限" } : {}),
       affiliateAssignmentId: fixture.affiliateAssignmentId,
       affiliateBusinessPartyVersionId: fixture.affiliateVersionId,
       affiliateNameSnapshot: fixture.affiliateName,
@@ -408,6 +475,7 @@ async function seedFixture(prisma: PrismaClient, fixture: ReturnType<typeof fixt
       ...confirmed
     }
   });
+  if (advanceOnly) return;
   for (const [ledgerId, amountCents, suffix] of [
     [fixture.settlementLedgerId, 100_000n, "1"],
     [fixture.settlementLedgerId2, 200_000n, "2"]
