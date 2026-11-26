@@ -49,7 +49,8 @@ function readCatalog(size) {
       FROM pg_catalog.pg_proc p WHERE p.pronamespace='public'::regnamespace AND p.proname IN (${routineNames})),
     'triggers', (SELECT COALESCE(jsonb_object_agg(t.tgname, jsonb_build_object(
       'oid',t.oid,'relation',c.relname,'routine',p.proname,'type',t.tgtype,
-      'enabled',t.tgenabled='O','condition',COALESCE(pg_get_expr(t.tgqual,t.tgrelid),''),
+      'enabled',t.tgenabled='O',
+      'condition',CASE WHEN t.tgqual IS NULL THEN '' ELSE pg_get_triggerdef(t.oid) END,
       'deferred',t.tgdeferrable AND t.tginitdeferred)), '{}'::jsonb)
       FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid=t.tgrelid
       JOIN pg_catalog.pg_proc p ON p.oid=t.tgfoid

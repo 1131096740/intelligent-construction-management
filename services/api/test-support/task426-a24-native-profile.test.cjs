@@ -7,6 +7,7 @@ const path = require("node:path");
 const { test } = require("node:test");
 const { qualifyA24Source, verifyA24Prefix } = require("./task426-a24-native-profile.cjs");
 const combined = require("./task426-a24-native340-profile.cjs");
+const cashVoucher = require("./task426-a24-native344-voucher.cjs");
 
 const root = path.resolve(__dirname, "../prisma/migrations");
 const rows = readdirSync(root, { withFileTypes: true }).filter(entry => entry.isDirectory()).map(entry => entry.name).sort()
@@ -84,4 +85,13 @@ test("refuses missing historical catalog evidence at the 340 boundary", () => {
   assert.throws(() => check.atPrefix(332), /A28_CONSTRAINT_CATALOG_SHAPE/u);
   assert.throws(() => check.atPrefix(340), /NATIVE_A24_340_HISTORICAL_CATALOG/u);
   assert.throws(() => check.verifyAfterBusiness(), /NATIVE_A24_340_HISTORICAL_CATALOG_MISSING/u);
+});
+
+test("reads the 343 mixed OLD and NEW trigger condition through the trigger deparser", () => {
+  const preimage = cashVoucher.readCatalog(342);
+  const installed = cashVoucher.readCatalog(343);
+  assert.doesNotMatch(preimage, /OperatingTakeoverBatch_partial_history_expense_scene_check/u);
+  assert.match(installed, /OperatingTakeoverBatch_partial_history_expense_scene_check/u);
+  assert.match(installed, /CASE WHEN t\.tgqual IS NULL THEN '' ELSE pg_get_triggerdef\(t\.oid\) END/u);
+  assert.doesNotMatch(installed, /pg_get_expr\(t\.tgqual/u);
 });
