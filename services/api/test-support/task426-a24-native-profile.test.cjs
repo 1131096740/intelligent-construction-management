@@ -122,27 +122,28 @@ test("pins the 343 batch scene as JSON and its row scene as text", () => {
   assert.throws(() => cashVoucher.verifyCatalog(343, good, good), /NATIVE_A24_343_CONSTRAINT/u);
 });
 
-test("adds only the three cash witness system-column reads and the cash command grant", () => {
+test("adds only the four cash witness system-column reads and the cash command grant", () => {
   const previous = {
-    read: { RegisteredFundAccount: ["id", "writeRevision"], RegisteredOperationalPayment: ["id"],
+    read: { RegisteredFundAccount: ["id", "writeRevision"], FundAccountBalanceRegistration: ["id"], RegisteredOperationalPayment: ["id"],
       ExpenseClaimPaymentExecution: ["id"], Unrelated: ["id"] },
     insert: { RegisteredOperationalPayment: ["id"], ExpenseClaimPaymentExecution: ["id"] },
     update: { RegisteredFundAccount: ["writeRevision"] }, observer: {}, functions: ["test-command"]
   };
   const expected = {
     ...previous,
-    read: { RegisteredFundAccount: ["id", "writeRevision", "xmin"], RegisteredOperationalPayment: ["id", "xmin"],
+    read: { RegisteredFundAccount: ["id", "writeRevision", "xmin"], FundAccountBalanceRegistration: ["id", "xmin"], RegisteredOperationalPayment: ["id", "xmin"],
       ExpenseClaimPaymentExecution: ["id", "xmin"], Unrelated: ["id"] },
     functions: ["test-command", cashVoucher.command]
   };
   assert.deepEqual(cashVoucher.addCashVoucherAcl(previous), expected);
   assert.deepEqual(previous.read.RegisteredFundAccount, ["id", "writeRevision"]);
   const acl = cashVoucher.readAcl("jg_a24_app", "jg_a24_observer");
-  for (const table of ["RegisteredFundAccount", "RegisteredOperationalPayment", "ExpenseClaimPaymentExecution"]) {
+  for (const table of ["RegisteredFundAccount", "FundAccountBalanceRegistration", "RegisteredOperationalPayment", "ExpenseClaimPaymentExecution"]) {
     assert.ok(acl.includes(`('public."${table}"'::regclass)`));
   }
   assert.match(acl, /NOT has_column_privilege\('jg_a24_app',target.relation,'xmin','SELECT'\)/u);
   assert.match(acl, /'SELECT WITH GRANT OPTION,INSERT,UPDATE,REFERENCES'/u);
   assert.match(acl, /has_column_privilege\('jg_a24_observer',target.relation,a.attnum,'SELECT,INSERT,UPDATE,REFERENCES'\)/u);
   assert.match(acl, /a.attnum<0[\s\S]+a.attname<>'xmin'/u);
+  assert.doesNotMatch(acl, /public\."PaymentExecution"|'xmax'|'ctid'/u);
 });

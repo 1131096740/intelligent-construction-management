@@ -7,7 +7,9 @@ const command = "public.jg_record_expense_public_cash_voucher(text,text,bigint,t
 const finish = "public.jg_finish_expense_public_cash_voucher()";
 const rawOwnerVoucher = "public.jg_project_owner_settlement_voucher_bound(text)";
 const witness = "public.jg_expense_public_cash_voucher_witness";
-const cashWitnessRelations = ["RegisteredFundAccount", "RegisteredOperationalPayment", "ExpenseClaimPaymentExecution"];
+const cashWitnessRelations = [
+  "RegisteredFundAccount", "FundAccountBalanceRegistration", "RegisteredOperationalPayment", "ExpenseClaimPaymentExecution"
+];
 const routines = [
   ["jg_issue417_check_partial_activation", "756f8871172efc4c8a9c50179f291b833fa0910c7a37775530fd0bcc093abc65", false],
   ["jg_issue417_preserve_partial_activation_scene", "7fa4b88fdb60996032cf86daf0c9e14e87902e4c76233a8a8b4e3ad25e157be3", false],
