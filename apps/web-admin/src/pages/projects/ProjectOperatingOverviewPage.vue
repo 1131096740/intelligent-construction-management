@@ -2013,9 +2013,11 @@ const profitIncomplete = computed(() => {
 const profitAndLossItems = computed(() => {
   const profit = overview.value?.operatingProjection.profitAndLoss;
   const distribution = overview.value?.operatingProjection.distribution;
-  const currentProfit = formatCents(
-    profit?.currentOperatingProfitCents ?? null
-  );
+  const currentProfitCents = profit?.currentOperatingProfitCents ?? null;
+  const currentProfitYuan = overview.value?.business.grossProfitYuan;
+  const currentProfit = currentProfitCents === null && currentProfitYuan
+    ? `¥${currentProfitYuan}`
+    : formatCents(currentProfitCents);
   return [
     {
       label: profitIncomplete.value

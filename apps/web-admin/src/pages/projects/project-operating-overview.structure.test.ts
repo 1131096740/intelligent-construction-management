@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
+import { computed } from "vue";
 import { describe, expect, it } from "vitest";
+import { centsTextToYuanText } from "../../lib/money";
 
 const source = readFileSync(
   fileURLToPath(new URL("./ProjectOperatingOverviewPage.vue", import.meta.url)),
@@ -141,6 +144,41 @@ describe("project operating overview structure", () => {
     expect(source).toContain("（已知数，不作为最终利润）");
     expect(source).toContain("暂不可确认（资料待补充）");
     expect(source).toContain("projection?.profitAndLoss.finalConfirmable");
+  });
+
+  it("shows the known V2 current profit when the final profit remains unknown", () => {
+    const profitMetrics = source.slice(
+      source.indexOf("const profitIncomplete ="),
+      source.indexOf("const evidenceItems =")
+    );
+    const formatCents = source
+      .slice(source.indexOf("function formatCents("), source.indexOf("function upstreamFundStatusLabel("))
+      .replace("(value: string | null): string", "(value)");
+    const v2Overview = {
+      business: { grossProfitCents: null, grossProfitYuan: "40.0000" },
+      operatingProjection: {
+        numericProtocolVersion: 2,
+        integrity: { moneyComplete: false },
+        profitAndLoss: {
+          currentOperatingProfitCents: null,
+          currentOperatingProfitYuan: "40.0000",
+          finalConfirmedProfitCents: null,
+          finalConfirmable: false
+        }
+      }
+    };
+    const items = runInNewContext(
+      formatCents + profitMetrics + "\nprofitAndLossItems.value",
+      { overview: { value: v2Overview }, computed, centsTextToYuanText }
+    );
+    expect(items).toContainEqual({
+      label: "当前经营盈亏（已知数，资料待补充）",
+      value: "¥40.0000（已知数，不作为最终利润）"
+    });
+    expect(items).toContainEqual({
+      label: "最终确认盈亏",
+      value: "暂不可确认（资料待补充）"
+    });
   });
 
   it("renders the unified projection layers without exposing source identifiers", () => {
