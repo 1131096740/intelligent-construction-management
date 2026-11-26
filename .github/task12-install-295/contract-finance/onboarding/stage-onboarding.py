@@ -16,11 +16,12 @@ source_record=json.loads(source.read_text())
 count=source_record['migrationCount']
 mode=source_record.get('mode')
 text_direct=mode=='text-direct-330'
-historical_settlement=mode=='historical-settlement-334'
+expense_witness=mode=='expense-witness-346'
+historical_settlement=mode=='historical-settlement-334' or expense_witness
 upward_archive=mode=='upward-archive-332' or historical_settlement
 payment_remainder=mode=='payment-remainder-331' or upward_archive
 forward=mode=='current-320' or text_direct or payment_remainder
-if count!={'historical-settlement-334':334,'upward-archive-332':332,'payment-remainder-331':331,'text-direct-330':330,'current-320':329}.get(mode,295):
+if count!={'expense-witness-346':346,'historical-settlement-334':334,'upward-archive-332':332,'payment-remainder-331':331,'text-direct-330':330,'current-320':329}.get(mode,295):
     raise SystemExit('ONBOARDING_SOURCE_LEDGER')
 application_tree=source_record['sourceTree'] if forward else '67644d9465a0ab4ee80ede099139d9c129d66f14'
 if forward:
@@ -38,6 +39,8 @@ if payment_remainder:
         candidate_drift.update(json.loads((plan/'onboarding-332-source-drift.json').read_text()))
     if historical_settlement:
         candidate_drift.update(json.loads((plan/'onboarding-334-source-drift.json').read_text()))
+    if expense_witness:
+        candidate_drift.update(json.loads((plan/'onboarding-346-source-drift.json').read_text()))
     expected_drift.update({name:digest for name,digest in candidate_drift.items() if name in old['files']})
     # Also pin reviewed files absent from the sealed inventory.
     additional={name:digest for name,digest in candidate_drift.items() if name not in old['files']}
@@ -114,7 +117,7 @@ for lane in pins['lanes']:
             raise SystemExit('ONBOARDING_329_ROSTER_FAILURE_FRAME_ANCHOR')
         text=text.replace(anchor, frame+'\n'+anchor+'\n            ...(frame&&{frame:[Number(frame[1]),Number(frame[2])]}),',1)
     runner.write_text(text)
-    if count in (331, 332, 334) and lane=='reset-case12':
+    if count in (331, 332, 334, 346) and lane=='reset-case12':
         subprocess.run(['patch','--batch','--forward','--fuzz=0','--no-backup-if-mismatch','--silent',
                         str(runner),str(plan/'reset-case12-memory-observation.patch')],check=True)
     if lane=='roster':
@@ -156,23 +159,47 @@ else:
     (out/'lanes.json').write_bytes((archive/'lanes.json').read_bytes())
 installer=out/'installer.cjs'
 if historical_settlement:
-    subprocess.run(['node', str(plan/'../stage-historical-takeover-333.cjs'), str(out), mode], check=True)
+    subprocess.run(['node', str(plan/'../stage-historical-takeover-333.cjs'), str(out), 'historical-settlement-334'], check=True)
+    if expense_witness:
+        subprocess.run(['git','apply','--unidiff-zero',str((plan/'../expense-witness/installer.patch').resolve())],
+                       cwd=out,check=True)
+        if hashlib.sha256(installer.read_bytes()).hexdigest()!='50208a12c5ac61b396655807e87f8c86ea92db83aa2a3297c38f253735ce155d':
+            raise SystemExit('ONBOARDING_346_INSTALLER_PREIMAGE')
 else:
     installer.write_bytes((common/'installer.cjs').read_bytes())
 if text_direct or payment_remainder:
-    profile_name,installer_method={
-        330: ('text-direct-330-profile.cjs','withCombined330TextAgreement'),
-        331: ('payment-remainder-331-profile.cjs','withCombined331PaymentRemainder'),
-        332: ('upward-archive-332-profile.cjs','withCombined332UpwardArchive'),
-        334: ('historical-settlement-334-profile.cjs','withCombined334HistoricalSettlement'),
-    }[count]
     role_patch, marker, old_entry = (plan/'installer-onboarding.patch').read_bytes().rpartition(b'\n@@ -1388,3 ')
     if not marker or old_entry.count(b'module.exports.withInstalled295Onboarding')!=1:
         raise SystemExit('ONBOARDING_330_INSTALLER_ENTRY_ANCHOR')
     subprocess.run(['patch','--batch','--forward','--fuzz=0','--silent',str(installer)],
                     input=role_patch+b'\n',check=True)
-    with installer.open('a') as script:
-        script.write("""
+    if expense_witness:
+        with installer.open('a') as script:
+            script.write("""
+module.exports.withInstalled295Onboarding = receipt => {
+  const source=require('./contract-finance-source.json');
+  const historical=require('./historical-settlement-334-profile.cjs');
+  const consume=async context=>{
+    historical.assertFinanceInstallation(receipt,{...source,tails:source.tails.slice(0,39)});
+    const verify=async ()=>
+      assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,true,true))).stdout.trim()));
+    await verify();
+    await require('./onboarding-full.cjs').run(context,receipt);
+    await verify();
+    receipt.sameInstancePostConsume=true;
+  };
+  return require('./payment-execution-346.cjs').install(receipt,consume,source);
+};
+""")
+    else:
+        profile_name,installer_method={
+            330: ('text-direct-330-profile.cjs','withCombined330TextAgreement'),
+            331: ('payment-remainder-331-profile.cjs','withCombined331PaymentRemainder'),
+            332: ('upward-archive-332-profile.cjs','withCombined332UpwardArchive'),
+            334: ('historical-settlement-334-profile.cjs','withCombined334HistoricalSettlement'),
+        }[count]
+        with installer.open('a') as script:
+            script.write("""
 module.exports.withInstalled295Onboarding = receipt => {
   const source=require('./contract-finance-source.json');
   const profile=require('./PROFILE_NAME');
@@ -191,13 +218,15 @@ module.exports.withInstalled295Onboarding = receipt => {
   });
 };
 """.replace('PROFILE_NAME',profile_name).replace('INSTALLER_METHOD',installer_method)
-                 .replace('UPWARD_ARCHIVE_ARG',',true' if upward_archive else '')
-                 .replace('profile.assertSource(source,source.sourceSha,', 'profile.assertSource(source,' if historical_settlement else 'profile.assertSource(source,source.sourceSha,')
-                 .replace('profile.assertInstallation', 'profile.assertFinanceInstallation' if historical_settlement else 'profile.assertInstallation'))
+                     .replace('UPWARD_ARCHIVE_ARG',',true' if upward_archive else '')
+                     .replace('profile.assertSource(source,source.sourceSha,', 'profile.assertSource(source,' if historical_settlement else 'profile.assertSource(source,source.sourceSha,')
+                     .replace('profile.assertInstallation', 'profile.assertFinanceInstallation' if historical_settlement else 'profile.assertInstallation'))
 else:
     subprocess.run(['patch','--batch','--forward','--fuzz=0','--silent',str(installer),str(plan/'installer-onboarding.patch')],check=True)
-if historical_settlement and hashlib.sha256(installer.read_bytes()).hexdigest() != '12ab29cc7ebd344552362cec76aa7d178fd2e7887363ff18a1cb74614088d10d':
+if count==334 and hashlib.sha256(installer.read_bytes()).hexdigest() != '12ab29cc7ebd344552362cec76aa7d178fd2e7887363ff18a1cb74614088d10d':
     raise SystemExit('ONBOARDING_334_INSTALLER_POSTIMAGE')
+if expense_witness and hashlib.sha256(installer.read_bytes()).hexdigest() != '24c6a40b9c09729661eeb8dac4916b8e2c3249489c264b355c3c59d41f4b2e04':
+    raise SystemExit('ONBOARDING_346_INSTALLER_POSTIMAGE')
 subprocess.run(['node','--check',str(installer)],check=True)
 for file in [out/'workspace-inputs.json',out/'verify-application-source.cjs',out/'lanes.json',installer]:
     file.chmod(0o644)
