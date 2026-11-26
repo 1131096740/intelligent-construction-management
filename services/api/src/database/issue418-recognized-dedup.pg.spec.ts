@@ -148,18 +148,22 @@ run("issue #418 identifiable settlement dedup on the ordered operating ledger", 
     const replay = new OperatingSourceReplayService(
       prisma, new OperatingLedgerService(prisma), createOperatingSourceRegistry()
     );
+    async function appendSource(sourceType: string, sourceBusinessId: string) {
+      await expect(prisma.$transaction(tx => replay.appendConfirmedSourceIfEnabledInTransaction(
+        tx, { projectId: project.id, sourceType, sourceBusinessId }, reviewer.id
+      ))).resolves.toMatchObject({ created: true, sourceBusinessId });
+    }
     for (const { sourceType, sourceBusinessId } of [
       { sourceType: "settlement", sourceBusinessId: legacy.id },
       { sourceType: SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE, sourceBusinessId: duplicate.id },
       { sourceType: SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE, sourceBusinessId: nextPeriod.id }
     ]) {
-      await expect(prisma.$transaction(tx => replay.appendConfirmedSourceIfEnabledInTransaction(
-        tx, { projectId: project.id, sourceType, sourceBusinessId }, reviewer.id
-      ))).resolves.toMatchObject({ created: true, sourceBusinessId });
+      await appendSource(sourceType, sourceBusinessId);
     }
-    const stored = await prisma.operatingFact.findMany({
+    const readStoredFacts = () => prisma.operatingFact.findMany({
       where: { projectId: project.id }, orderBy: { id: "asc" }, include: { impacts: true }
     });
+    const stored = await readStoredFacts();
     expect(stored).toHaveLength(3);
     const samePeriod = stored.filter(fact => fact.sourceBusinessId !== nextPeriod.id);
     expect(samePeriod).toHaveLength(2);
@@ -176,32 +180,89 @@ run("issue #418 identifiable settlement dedup on the ordered operating ledger", 
     const view = await projection.getProjectView(reader.id, { projectId: project.id });
     expect(view.operating).toMatchObject({ confirmedCostCents: "8500", payableCents: "8500" });
     expect(view.asOf.crossSourceDedupedFactCount).toBe(1);
-    const detailItems: Record<string, unknown>[] = [];
-    let cursor: string | undefined;
-    for (let page = 0; page < 5; page += 1) {
-      const result = await projection.getProjectDetailPage(reader.id, { projectId: project.id, pageSize: 1, cursor });
-      expect(result.items.length).toBeLessThanOrEqual(1);
-      detailItems.push(...result.items);
-      cursor = result.page.nextCursor ?? undefined;
-      if (!cursor) break;
+    async function readAllDetail(expectedCount: number) {
+      const detailItems: Record<string, unknown>[] = [];
+      let cursor: string | undefined;
+      for (let page = 0; page < expectedCount + 1; page += 1) {
+        const result = await projection.getProjectDetailPage(reader.id, { projectId: project.id, pageSize: 1, cursor });
+        expect(result.items.length).toBeLessThanOrEqual(1);
+        detailItems.push(...result.items);
+        cursor = result.page.nextCursor ?? undefined;
+        if (!cursor) break;
+      }
+      expect(cursor).toBeUndefined();
+      expect(detailItems).toHaveLength(expectedCount);
+      return detailItems;
     }
-    expect(cursor).toBeUndefined();
+    async function readExport() {
+      const exported = await projection.exportView(reader.id, { scopeKind: "project", projectId: project.id },
+        password, "project_operating_ledger_detail");
+      const chunks: Buffer[] = [];
+      for await (const chunk of exported.stream) chunks.push(Buffer.from(chunk));
+      return Buffer.concat(chunks).toString("utf8");
+    }
+    function expectNoInternalIds(
+      detailItems: Record<string, unknown>[],
+      csv: string,
+      facts: Awaited<ReturnType<typeof readStoredFacts>>
+    ) {
+      const detail = JSON.stringify(detailItems);
+      for (const fact of facts) {
+        for (const id of [fact.id, fact.sourceBusinessId, ...fact.impacts.map(impact => impact.id)]) {
+          expect(detail).not.toContain(id);
+          expect(csv).not.toContain(id);
+        }
+      }
+    }
+
+    const detailItems = await readAllDetail(4);
     expect(detailItems.map(item => item.sourceBusinessCode).sort()).toEqual(expectedCodes);
-    const exported = await projection.exportView(reader.id, { scopeKind: "project", projectId: project.id },
-      password, "project_operating_ledger_detail");
-    const chunks: Buffer[] = [];
-    for await (const chunk of exported.stream) chunks.push(Buffer.from(chunk));
-    const csv = Buffer.concat(chunks).toString("utf8");
+    const csv = await readExport();
     expect(csv.split("\n").slice(1).filter(Boolean)).toHaveLength(4);
     expect(csv).toContain(`"${survivingCode}"`);
     expect(csv).toContain('"第2期"');
     expect(csv).not.toContain(`"${suppressedCode}"`);
-    const detail = JSON.stringify(detailItems);
-    for (const fact of stored) {
-      for (const id of [fact.id, fact.sourceBusinessId, ...fact.impacts.map(impact => impact.id)]) {
-        expect(detail).not.toContain(id);
-        expect(csv).not.toContain(id);
-      }
+    expectNoInternalIds(detailItems, csv, stored);
+
+    // Confirmed signed items may share a manually entered number and contract version.
+    const repeated = await seedSigned("第2期", "15.0000", 3n, new Date("2026-11-04T00:00:00Z"));
+    const decrease = await seedSigned("第2期", "-9.0000", 4n, new Date("2026-11-05T00:00:00Z"));
+    for (const signed of [repeated, decrease]) {
+      await appendSource(SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE, signed.id);
     }
+    const extendedFacts = await readStoredFacts();
+    expect(extendedFacts).toHaveLength(5);
+    expect(extendedFacts.filter(fact => fact.sourceBusinessCode === "第2期")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sourceBusinessId: nextPeriod.id, sourceVersion: 2 }),
+        expect.objectContaining({ sourceBusinessId: repeated.id, sourceVersion: 3 }),
+        expect.objectContaining({ sourceBusinessId: decrease.id, sourceVersion: 4 })
+      ])
+    );
+
+    const extendedView = await projection.getProjectView(reader.id, { projectId: project.id });
+    expect(extendedView.operating).toMatchObject({ confirmedCostCents: "9100", payableCents: "9100" });
+    expect(extendedView.asOf.crossSourceDedupedFactCount).toBe(1);
+    const extendedDetail = await readAllDetail(8);
+    expect(extendedDetail.map(item => item.sourceBusinessCode).sort()).toEqual(
+      [...expectedCodes, "第2期", "第2期", "第2期", "第2期"].sort()
+    );
+    expect(extendedDetail.filter(item => item.sourceBusinessCode === "第2期")
+      .map(item => item.signedImpactCents).sort()).toEqual(["-900", "-900", "1500", "1500", "2500", "2500"]);
+    const extendedCsv = await readExport();
+    const [header, ...exportedRows] = extendedCsv.trimEnd().split("\n");
+    expect(exportedRows).toHaveLength(8);
+    const columns = header!.split('","');
+    const codeColumn = columns.indexOf("来源业务编号");
+    const amountColumn = columns.indexOf("金额（元）");
+    expect(codeColumn).toBeGreaterThanOrEqual(0);
+    expect(amountColumn).toBeGreaterThanOrEqual(0);
+    const repeatedAmounts = exportedRows.map(row => row.split('","'))
+      .filter(cells => cells[codeColumn] === "第2期")
+      .map(cells => cells[amountColumn]).sort();
+    expect(repeatedAmounts).toEqual(["'-9.00", "'-9.00", "15.00", "15.00", "25.00", "25.00"]);
+    expect(extendedCsv).toContain(`"${survivingCode}"`);
+    expect(extendedCsv).not.toContain(`"${suppressedCode}"`);
+    expectNoInternalIds(extendedDetail, extendedCsv, extendedFacts);
   });
 });
