@@ -31,7 +31,6 @@ describe("issue 417 history expense batch PostgreSQL", () => {
     async () => {
       const databaseUrl = assertDedicatedDatabase();
       const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
-      const fixture = await seedFixture(prisma);
       const posted: Array<{ input: AppendOperatingFactInput; entryKind: string }> = [];
       const factIds = new Map<string, string>();
       const ledger = {
@@ -72,6 +71,10 @@ describe("issue 417 history expense batch PostgreSQL", () => {
         ledger as never
       );
       try {
+        if (process.env.ISSUE417_EXACT_FORWARD_RUN_ID) {
+          await assertExactForwardDatabase(prisma, databaseUrl);
+        }
+        const fixture = await seedFixture(prisma);
         const rows = twentyRows();
         const baseline = await writableFacts(prisma);
 
@@ -546,6 +549,21 @@ describe("issue 417 history expense batch PostgreSQL", () => {
 
 function assertDedicatedDatabase(): string {
   const url = new URL(process.env.DATABASE_URL ?? "");
+  const runId = process.env.ISSUE417_EXACT_FORWARD_RUN_ID;
+  if (runId !== undefined) {
+    if (
+      process.env.NODE_ENV !== "test" || !/^[a-f0-9]{32}$/u.test(runId) ||
+      url.protocol !== "postgresql:" || url.hostname !== "127.0.0.1" ||
+      !url.port || url.username !== "jg_task01_owner" || !url.password ||
+      url.pathname !== `/jg_task01_${runId}` ||
+      url.searchParams.getAll("sslmode").join(",") !== "require" ||
+      url.searchParams.getAll("sslaccept").join(",") !== "strict" ||
+      !/^\/tmp\/jg394-[A-Za-z0-9]+\/ca\.crt$/u.test(url.searchParams.get("sslcert") ?? "")
+    ) {
+      throw new Error("ISSUE417_EXACT_FORWARD_ENDPOINT");
+    }
+    return url.href;
+  }
   if (
     process.env.NODE_ENV === "production" ||
     url.hostname !== "127.0.0.1" ||
@@ -556,6 +574,28 @@ function assertDedicatedDatabase(): string {
   return url.toString();
 }
 
+async function assertExactForwardDatabase(prisma: PrismaClient, databaseUrl: string) {
+  const endpoint = new URL(databaseUrl);
+  const expectedCount = Number(process.env.ISSUE417_EXACT_FORWARD_COUNT);
+  assert.ok(Number.isInteger(expectedCount) && expectedCount >= 335, "ISSUE417_EXACT_FORWARD_COUNT");
+  const [row] = await prisma.$queryRaw<Array<{ accepted: boolean }>>`
+    SELECT current_database() = ${endpoint.pathname.slice(1)}
+      AND current_user = 'jg_task01_owner' AND session_user = current_user
+      AND inet_client_addr() = '127.0.0.1'::inet AND inet_server_addr() = '127.0.0.1'::inet
+      AND inet_server_port() = ${Number(endpoint.port)}::integer
+      AND current_setting('server_version_num') = '160015'
+      AND EXISTS (SELECT 1 FROM pg_catalog.pg_stat_ssl WHERE pid = pg_backend_pid() AND ssl)
+      AND (SELECT count(*) = ${expectedCount}
+        AND count(*) FILTER (WHERE finished_at IS NULL OR rolled_back_at IS NOT NULL) = 0
+        AND count(*) FILTER (
+          WHERE migration_name = '20261129012000_issue417_historical_expense_states'
+            AND checksum = '924effc588fe48f9f4e63bd5187c2eb6a1a48b35d1749d699fccc4135ddaaecd'
+        ) = 1
+        FROM public._prisma_migrations) AS accepted
+  `;
+  assert.equal(row?.accepted, true, "ISSUE417_EXACT_FORWARD_DATABASE");
+}
+
 async function seedFixture(prisma: PrismaClient) {
   const projectId = randomUUID();
   await prisma.project.create({
@@ -563,7 +603,6 @@ async function seedFixture(prisma: PrismaClient) {
       id: projectId,
       code: `LSFY-${randomUUID()}`,
       name: "历史费用批量核实合成项目",
-      operatingLedgerEffectiveDate: new Date("2026-11-01"),
       takeoverStatus: "preparing"
     }
   });
@@ -577,11 +616,21 @@ async function seedFixture(prisma: PrismaClient) {
   const company = await prisma.companyEntity.create({
     data: { name: "合成承担公司" }
   });
+  const companyVersion = await prisma.companyEntityVersion.create({
+    data: {
+      companyEntityId: company.id,
+      versionNo: 1,
+      name: company.name,
+      isActive: true,
+      action: "create",
+      actorUserId: comprehensiveDirectorUserId
+    }
+  });
   await prisma.projectParticipatingCompany.create({
     data: {
       projectId,
       companyEntityId: company.id,
-      companyEntityVersionId: randomUUID(),
+      companyEntityVersionId: companyVersion.id,
       companyNameSnapshot: company.name,
       effectiveFrom: new Date("2020-01-01"),
       changeReason: "合成测试",
@@ -613,6 +662,10 @@ async function seedFixture(prisma: PrismaClient) {
       changeReason: "合成测试",
       assignedByUserId: comprehensiveDirectorUserId
     }
+  });
+  await prisma.project.update({
+    where: { id: projectId },
+    data: { operatingLedgerEffectiveDate: new Date("2026-11-01") }
   });
   await prisma.businessParty.create({
     data: {
