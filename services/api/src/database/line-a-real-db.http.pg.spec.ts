@@ -16,6 +16,7 @@ import { loadSignedSettlementPaymentBasis } from "../payment/signed-settlement-p
 const run = process.env.RUN_LINE_A_REAL_DB === "1" ? describe : describe.skip;
 const upwardArchive = process.env.RUN_LINE_A_UPWARD_ARCHIVE_332 === "1";
 const paymentRemainder = process.env.RUN_LINE_A_PAYMENT_REMAINDER_331 === "1";
+const historicalSettlement = process.env.RUN_LINE_A_HISTORICAL_SETTLEMENT_334 === "1";
 
 run("line A contract candidate on real PostgreSQL and HTTP", () => {
   jest.setTimeout(180_000);
@@ -106,15 +107,18 @@ run("line A contract candidate on real PostgreSQL and HTTP", () => {
     await app.listen(0, "127.0.0.1");
     base = await app.getUrl();
     owner = new PrismaClient({ datasources: { db: { url: ownerTarget.href } } });
-    if (paymentRemainder || upwardArchive) {
+    if (paymentRemainder || upwardArchive || historicalSettlement) {
       const [ledger] = await owner.$queryRaw<Array<{ count: bigint; terminal: string }>>`
         SELECT count(*), max(migration_name) AS terminal
         FROM public._prisma_migrations
         WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
       `;
-      expect(ledger).toEqual(upwardArchive
-        ? { count: 332n, terminal: "20261129001000_contract_upward_archive_verifier_pin_forward" }
-        : { count: 331n, terminal: "20261129000000_payment_remaining_withdrawal" });
+      const expectedLedger = historicalSettlement
+        ? { count: 334n, terminal: "20261129003000_historical_signed_settlement_continuation" }
+        : upwardArchive
+          ? { count: 332n, terminal: "20261129001000_contract_upward_archive_verifier_pin_forward" }
+          : { count: 331n, terminal: "20261129000000_payment_remaining_withdrawal" };
+      expect(ledger).toEqual(expectedLedger);
     }
 
     const passwordHash = await hash(password, 4);

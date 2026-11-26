@@ -214,6 +214,7 @@ async function consume(context) {
         RUN_LINE_A_REAL_DB: '1', ...(textDirect ? { RUN_LINE_A_TEXT_DIRECT_330: '1' } : {}),
         ...(paymentRemainder ? { RUN_LINE_A_PAYMENT_REMAINDER_331: '1' } : {}),
         ...(upwardArchive ? { RUN_LINE_A_UPWARD_ARCHIVE_332: '1' } : {}),
+        ...(historicalSettlement ? { RUN_LINE_A_HISTORICAL_SETTLEMENT_334: '1' } : {}),
         JG_LINE_A_SEALED_RUN_ID: run, DATABASE_URL: runtime.href, OWNER_DATABASE_URL: owner.href,
         FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: path.join(directory, 'files'),
         APPROVAL_SMS_ENABLED: 'false', SMS_ENABLED: 'false',
@@ -227,11 +228,23 @@ async function consume(context) {
     const cases = report?.testResults?.[0]?.assertionResults ?? [];
     const messages = [
       ...(result.stderr ? [result.stderr] : []),
+      ...(report?.testResults?.[0]?.message ? [report.testResults[0].message] : []),
       ...cases.flatMap(test => test.failureMessages ?? [])
     ].join('\n').slice(0, 65_536);
     receipt.lineA = {
       passed: report?.numPassedTests ?? 0, skipped: report?.numPendingTests ?? 0,
       registered: report?.numTotalTests ?? 0,
+      ...(historicalSettlement ? {
+        processExit: result.status, signal: result.signal, reportWritten: report !== null,
+        failedSuites: report?.numFailedTestSuites ?? null,
+        ...(result.error?.code && /^[A-Z0-9_]+$/u.test(result.error.code) ? { spawnError: result.error.code } : {}),
+        ...(cases.length === 0 ? {
+          startupFailure: /Cannot find module/u.test(messages) ? 'MODULE_NOT_FOUND'
+            : /heap out of memory|Allocation failed/iu.test(messages) ? 'JS_HEAP_LIMIT'
+            : /(?:SyntaxError|TS\d{4}:)/u.test(messages) ? 'SOURCE_TRANSFORM'
+            : 'UNCLASSIFIED'
+        } : {})
+      } : {}),
       failedCases: cases.flatMap((test, index) => {
         if (test.status !== 'failed') return [];
         const failure = (test.failureMessages ?? []).join('\n').replace(/\u001b\[[0-9;]*m/gu, '').slice(0, 32768);
