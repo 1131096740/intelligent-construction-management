@@ -63,7 +63,11 @@ export function generatedUpwardOperatingCatalogFor(projection: UpwardLegacyProje
         (FALSE,'bcc05db15d2a1e2679e9887475a110ffc7cc5b08e423e0b737195ee74f63c4a6',
           'd6666bbad410b5f1cacc8e40fe29dbaea990e2e101f9857cb14585d6a6a9d92b'),
         (TRUE,'61ea7834175ed793857205130b5cd33b163a4fad7d762d93ef46d45bbedbcaeb',
-          'e6d843c9d702ce00f88e79b1e7f83eac977df271c3962bb949b9299d78d9de3c')
+          'e6d843c9d702ce00f88e79b1e7f83eac977df271c3962bb949b9299d78d9de3c'),
+        (FALSE,'1235c355fa2777269b1920f9922401a357a725039f14e3321e00b5a3d338c973',
+          'f9cc8b1db6c0fe72b0ee7d38e2193fb2a446e88f6da133e726b47424663f4250'),
+        (TRUE,'92f6f3e2e3e0f58bca1d00b5c631c0dd652b5552992dda991da3564429dc4644',
+          '2db9ce648393690e5b1cf1e008b1a2df86b776d47240bca28fd04fe50f93ccc7')
       ) version(with_direct_clock,fact_body,impact_body)
       WHERE 2=(SELECT count(*) FROM (VALUES
         ('public."validateOperatingFactReferences"()','public."OperatingFact"','OperatingFact_validate_references',version.fact_body),
