@@ -7,7 +7,7 @@ const { createHash, randomBytes } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { stripVTControlCharacters } = require('node:util');
 const { admitSource } = require('./install-only292.cjs');
-const { withCombined334HistoricalSettlement } = require('./installer.cjs');
+const { withCombined334HistoricalSettlement, withCombinedExpenseWitness } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
 const historical = require('./historical-settlement-334-profile.cjs');
 const source = require('./contract-finance-source.json');
@@ -18,7 +18,9 @@ const { profileFor } = require('./issue-ordered-profiles.cjs');
 const scope = process.argv[2];
 const profile = profileFor(scope);
 const { file, titles } = profile;
-const purpose = scope.toUpperCase() + '_ORIGINAL_334';
+const combined = source.mode === 'expense-witness-346';
+const ledgerProfile = combined ? require('./expense-witness-346-profile.cjs') : historical;
+const purpose = scope.toUpperCase() + '_ORIGINAL_' + source.migrationCount;
 const receipt = { schemaVersion: 1, purpose, sourceSha: source.sourceSha,
   stages: ['INPUTS'], status: 'STOPPED' };
 const sha256 = value => createHash('sha256').update(value).digest('hex');
@@ -54,7 +56,12 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
   assert.deepEqual(url.searchParams.getAll('sslmode'), ['require']);
   assert.deepEqual(url.searchParams.getAll('sslaccept'), ['strict']);
   assert.deepEqual(url.searchParams.getAll('sslcert'), [path.join(workDir, 'ca.crt')]);
-  historical.assertFinanceInstallation(receipt, source);
+  historical.assertFinanceInstallation(receipt, combined ? { ...source, tails: source.tails.slice(0, 39) } : source);
+  if (combined) {
+    assert.equal(receipt.expenseWitnessForward.count, ledgerProfile.count);
+    assert.equal(receipt.expenseWitnessForward.ledgerSha256, ledgerProfile.ledgerSha256);
+    assert.equal(receipt.expenseWitnessForward.sameIdentity, true);
+  }
   const { stdout } = await sql(`SELECT (
     current_database() = '${database}' AND current_user = session_user AND current_user = 'jg_task01_owner' AND
     current_user::regrole::oid = 10 AND EXISTS(SELECT FROM pg_database WHERE datname=current_database() AND datdba=10) AND
@@ -98,19 +105,33 @@ async function main() {
   assert.equal(process.argv.length, 3);
   assert.notEqual(process.getuid(), 0);
   assert.equal(process.env.DATABASE_URL, undefined);
-  historical.assertSource(source, final);
-  assert.equal(sha256(fs.readFileSync(path.join(root, 'installer.cjs'))), historical.installerSha256);
+  assert.equal(combined, Boolean(profile.requiredMigrationCount), 'ISSUE_ORDERED_MIGRATION_SCOPE');
+  ledgerProfile.assertSource(source, final);
+  if (combined) {
+    const required = source.tails[profile.requiredMigrationCount - 296];
+    assert.equal(required?.name, profile.requiredTerminalMigration);
+    assert.equal(required?.sha256, profile.requiredTerminalMigrationSha256);
+  }
+  assert.equal(sha256(fs.readFileSync(path.join(root, 'installer.cjs'))), ledgerProfile.installerSha256);
   assert.equal(sha256(fs.readFileSync(path.join(api, file))),
     profile.fixtureDigest ?? profile.sourceDigest);
-  const schema = require(path.join(api, 'prisma/migration-baseline.cjs')).loadCanonicalMigrationBaseline();
-  assert.equal(schema.expectedDirectoryCount, 334);
-  assert.equal(schema.terminalMigration, historical.terminal.name);
-  assert.equal(schema.terminalMigrationChecksum, historical.terminal.sha256);
+  const baseline = require(path.join(api, 'prisma/migration-baseline.cjs'));
+  if (combined) ledgerProfile.assertRuntimeBaseline(baseline);
+  else {
+    const schema = baseline.loadCanonicalMigrationBaseline();
+    assert.equal(schema.expectedDirectoryCount, 334);
+    assert.equal(schema.terminalMigration, historical.terminal.name);
+    assert.equal(schema.terminalMigrationChecksum, historical.terminal.sha256);
+  }
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
-  await withCombined334HistoricalSettlement(receipt, consume, {
-    sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails
-  });
-  assert.equal(receipt.combinedAfterBusiness.count, 334);
+  const material = { sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails };
+  if (combined) {
+    await withCombinedExpenseWitness(receipt, consume, material, ledgerProfile.count);
+    assert.equal(receipt.expenseWitnessCatalogAfterBusiness, true);
+  } else {
+    await withCombined334HistoricalSettlement(receipt, consume, material);
+  }
+  assert.equal(receipt.combinedAfterBusiness.count, source.migrationCount);
   assert.equal(receipt.combinedAfterBusiness.ledgerSha256, source.ledgerSha256);
   assert.equal(receipt.combinedAfterBusiness.sameIdentity, true);
   assert.equal(receipt.combinedAfterBusiness.exactB7, true);

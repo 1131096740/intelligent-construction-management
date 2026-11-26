@@ -15,6 +15,41 @@ const profiles = {
       'registers refunds and corrections as new facts without rewriting the original payment'
     ]
   },
+  issue403: {
+    "file": "src/database/issue403-actual-purchase-batch.pg.spec.ts",
+    "sourceDigest": "dc60ff652c24fde0cc2da5ab75a633ee8ca924221b31401a18b2434a7a26f620",
+    "fixtureDigest": "abf05b9a2017b2b80ac3493b6b84341cc44d6006d02c9c487167172428f5eacc",
+    "orderedDatabaseKey": "JG_ORDERED_ISSUE333_DATABASE",
+    "databaseUrlKey": "ISSUE403_DATABASE_URL",
+    "enableKey": "ISSUE403_ACTUAL_PURCHASE_RUN",
+    "stage": "ORIGINAL_ACTUAL_PURCHASE_JEST",
+    "requiresOperatingLedgerWriteSecret": true,
+    "requiredMigrationCount": 340,
+    "requiredTerminalMigration": "20261129009000_general_purchase_batch_claim_guard",
+    "requiredTerminalMigrationSha256": "96f3eb48fc233b32a7f2af85e0f1813ef1e2b25a8dd52bc1bb6f373e98f8a4a6",
+    "titles": [
+      "migrates a legacy pending spot payment atomically and accepts a finance signature through HTTP after reopening",
+      "confirms batch cost once, splits payments, corrects cost and restores capacity after refund",
+      "records a general procurement batch and rejects over-commitment before claim approval"
+    ]
+  },
+  issue404: {
+    "file": "src/database/issue404-reimbursement.pg.spec.ts",
+    "sourceDigest": "f0916a78e40070fef835509251978102531592ec7991c2769942e3feb15dce65",
+    "fixtureDigest": "9c258efa49b32693e9c300bbb6f84507977bd35a1c024fe0ebc6d85a3687b707",
+    "orderedDatabaseKey": "JG_ISSUE404_ORDERED_344_DATABASE",
+    "databaseUrlKey": "ISSUE404_DATABASE_URL",
+    "enableKey": "ISSUE404_REIMBURSEMENT_RUN",
+    "stage": "ORIGINAL_REIMBURSEMENT_JEST",
+    "requiredMigrationCount": 344,
+    "requiredTerminalMigration": "20261129013000_expense_public_cash_voucher",
+    "requiredTerminalMigrationSha256": "b35a305dbe45edd2822bf850f3ef8abcd6161820dd065db82b7b084463255106",
+    "titles": [
+      "records a multi-category direct claim, confirms cost once and keeps batch cost unique",
+      "lets an employee claim only the advanced part of a purchase batch without a second cost",
+      "carries general procurement and company-daily sources into employee advance claims"
+    ]
+  },
   issue405: {
     file: 'src/database/issue405-other-project-payment.pg.spec.ts',
     sourceDigest: 'cc7b5d5bbdfba6c73f47a808a5c3ce3ebf33b75675c8dc8a253b696c261d0c8e',

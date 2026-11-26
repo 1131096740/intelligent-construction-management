@@ -1,0 +1,175 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -7,0 +8 @@
++import { assertOrderedIssue333Database } from "../../test-support/ordered-issue333-fixture";
+@@ -300 +301 @@
+-    const fixture = await seedFixture(prisma);
++    const fixture = await seedFixture(prisma, { includePublicCashFunding: true });
+@@ -568,0 +570 @@
++        const input = claimInput(`claim-1-${fixture.prefix}`, "300000");
+@@ -570 +572 @@
+-          claimInput(`claim-1-${fixture.prefix}`, "300000") as never, 300000n,
++          input as never, 300000n,
+@@ -589,0 +592,3 @@
++            generalProcurementId: input.generalProcurementId,
++            generalProcurementRequestKey: input.generalProcurementRequestKey,
++            generalProcurementFingerprint: prepared!.fingerprint,
+@@ -602,2 +607,3 @@
+-        await prepareProcurementPayment(tx, prisma as never, fixture.comprehensiveDirectorUserId,
+-          claimInput(`claim-2-${fixture.prefix}`, "700000") as never, 700000n,
++        const input = claimInput(`claim-2-${fixture.prefix}`, "700000");
++        const prepared = await prepareProcurementPayment(tx, prisma as never, fixture.comprehensiveDirectorUserId,
++          input as never, 700000n,
+@@ -605,19 +611,22 @@
+-      });
+-      await prisma.expenseClaim.create({
+-        data: {
+-          code: `LXFY-403-2-${fixture.prefix}`,
+-          claimType: "incidental_expense",
+-          incidentalExpenseCategory: "procurement_office_supplies",
+-          status: "approval_pending",
+-          companyEntityId: fixture.companyId,
+-          companyEntityNameSnapshot: "合成费用公司",
+-          projectId: fixture.projectId,
+-          applicantUserId: fixture.comprehensiveDirectorUserId,
+-          applicantNameSnapshot: "综合部主管",
+-          handledByUserId: fixture.comprehensiveDirectorUserId,
+-          handledByNameSnapshot: "综合部主管",
+-          reason: "办公用品第二批",
+-          requestedAmountCents: 700000n,
+-          payeeNameSnapshot: "合成办公用品供应商",
+-          actualPurchaseBatchId: batch.id
+-        }
++        await tx.expenseClaim.create({
++          data: {
++            code: `LXFY-403-2-${fixture.prefix}`,
++            claimType: "incidental_expense",
++            incidentalExpenseCategory: "procurement_office_supplies",
++            status: "approval_pending",
++            companyEntityId: fixture.companyId,
++            companyEntityNameSnapshot: "合成费用公司",
++            projectId: fixture.projectId,
++            applicantUserId: fixture.comprehensiveDirectorUserId,
++            applicantNameSnapshot: "综合部主管",
++            handledByUserId: fixture.comprehensiveDirectorUserId,
++            handledByNameSnapshot: "综合部主管",
++            reason: "办公用品第二批",
++            requestedAmountCents: 700000n,
++            payeeNameSnapshot: "合成办公用品供应商",
++            actualPurchaseBatchId: batch.id,
++            generalProcurementId: input.generalProcurementId,
++            generalProcurementRequestKey: input.generalProcurementRequestKey,
++            generalProcurementFingerprint: prepared!.fingerprint
++          }
++        });
+@@ -672,0 +682,3 @@
++  if (process.env.JG_ORDERED_ISSUE333_DATABASE !== undefined) {
++    return assertOrderedIssue333Database(raw);
++  }
+@@ -682 +694 @@
+-  { includeGlobalApprovalRoles = true } = {}
++  { includeGlobalApprovalRoles = true, includePublicCashFunding = false } = {}
+@@ -693,2 +704,0 @@
+-  const openingId = randomUUID();
+-  const sourceBatchId = randomUUID();
+@@ -698 +708,3 @@
+-  await prisma.companyEntity.create({ data: { id: companyId, name: `合成费用公司 ${prefix}`, dataStatus: "complete" } });
++  const companyName = `合成费用公司 ${prefix}`;
++  const effectiveFrom = new Date("2020-01-01");
++  await prisma.companyEntity.create({ data: { id: companyId, name: companyName, dataStatus: "complete" } });
+@@ -703,2 +715 @@
+-      name: `#403 真库项目 ${prefix}`,
+-      operatingLedgerEffectiveDate: new Date("2026-11-01")
++      name: `#403 真库项目 ${prefix}`
+@@ -738 +749 @@
+-      effectiveFrom: new Date("2020-01-01"),
++      effectiveFrom,
+@@ -741,0 +753,19 @@
++  });
++  const companyVersion = await prisma.companyEntityVersion.create({
++    data: { companyEntityId: companyId, versionNo: 1, name: companyName, isActive: true,
++      action: "create", actorUserId: handlerUserId }
++  });
++  await prisma.companyEntity.update({
++    where: { id: companyId },
++    data: { currentVersionNo: companyVersion.versionNo }
++  });
++  await prisma.projectParticipatingCompany.create({
++    data: {
++      projectId, companyEntityId: companyId, companyEntityVersionId: companyVersion.id,
++      companyNameSnapshot: companyName, effectiveFrom, changeReason: "#403 合成参与公司",
++      addedByUserId: handlerUserId
++    }
++  });
++  await prisma.project.update({
++    where: { id: projectId },
++    data: { operatingLedgerEffectiveDate: new Date("2026-11-01") }
+@@ -755 +785 @@
+-      category: "procurement_office_supplies",
++      category: "office_supplies",
+@@ -759 +789,4 @@
+-      lines: [],
++      lines: [{
++        id: randomUUID(), name: "合成办公用品", specification: null, unit: null,
++        quantity: null, unitPrice: null, estimatedAmount: null, requiredOn: null, note: null
++      }],
+@@ -794,32 +827,27 @@
+-  await prisma.registeredFundAccount.create({ data: { id: accountId, scopeKey: `public_cash_403_${prefix}`, kind: "public_cash" } });
+-  await prisma.fundAccountBalanceRegistration.create({
+-    data: {
+-      id: openingId,
+-      accountId,
+-      version: 1,
+-      kind: "opening",
+-      status: "confirmed",
+-      balanceYuan: 5000,
+-      asOfDate: "2026-11-01",
+-      evidenceReference: `OPEN-403-${prefix}`,
+-      reconciliationNote: "真库期初",
+-      reason: "真库期初",
+-      idempotencyKey: `opening-403-${prefix}`,
+-      payloadFingerprint: "d".repeat(64),
+-      createdByUserId: financeStaffUserId,
+-      confirmedByUserId: financeStaffUserId,
+-      confirmedAt: new Date("2026-11-01T00:00:00.000Z")
+-    }
+-  });
+-  await prisma.fundAccountSourceBatch.create({
+-    data: {
+-      id: sourceBatchId,
+-      registrationId: openingId,
+-      lineNo: 1,
+-      amountYuan: 5000,
+-      sourceStatus: "known",
+-      sourceName: "期初",
+-      projectStatus: "project",
+-      projectId
+-    }
+-  });
++  if (includePublicCashFunding) {
++    await prisma.registeredFundAccount.create({ data: { id: accountId, scopeKey: "public_cash", kind: "public_cash" } });
++    await prisma.fundAccountBalanceRegistration.create({
++      data: {
++        accountId,
++        version: 1,
++        kind: "opening",
++        status: "confirmed",
++        balanceYuan: 5000,
++        asOfDate: "2026-11-01",
++        evidenceReference: `OPEN-403-${prefix}`,
++        reconciliationNote: "真库期初",
++        reason: "真库期初",
++        idempotencyKey: `opening-${prefix}`,
++        payloadFingerprint: "d".repeat(64),
++        createdByUserId: financeStaffUserId,
++        confirmedByUserId: financeStaffUserId,
++        confirmedAt: new Date("2026-11-01T00:00:00Z"),
++        sources: {
++          create: {
++            lineNo: 1, amountYuan: 5000, sourceStatus: "known", sourceName: "期初",
++            projectStatus: "project", projectId
++          }
++        }
++      }
++    });
++  }

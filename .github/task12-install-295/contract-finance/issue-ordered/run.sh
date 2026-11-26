@@ -12,13 +12,24 @@ plan=$(cd "$(dirname "$0")" && pwd -P)
 base="$plan/.."
 common="$base/common"
 [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan") ]] || exit 65
-node - "$prepared/source.json" "$sha" "$(git -C "$repo" rev-parse "$sha^{tree}")" "$base" <<'JS'
+mode=$(node - "$prepared/source.json" "$sha" "$(git -C "$repo" rev-parse "$sha^{tree}")" "$base" "$scope" <<'JS'
 const assert=require('node:assert/strict');
-const [file,sha,tree,base]=process.argv.slice(2),source=require(file);
+const [file,sha,tree,base,scope]=process.argv.slice(2),source=require(file);
+const profile=require(base+'/issue-ordered/profiles.cjs').profileFor(scope);
 assert.equal(source.sourceSha,sha);
 assert.equal(source.sourceTree,tree);
-require(base+'/historical-settlement-334-profile.cjs').assertSource(source,require(base+'/common/multi-witness.cjs').final);
+const combined=source.mode==='expense-witness-346';
+assert.equal(combined,Boolean(profile.requiredMigrationCount),'ISSUE_ORDERED_MIGRATION_SCOPE');
+const ledger=require(base+(combined?'/expense-witness-346-profile.cjs':'/historical-settlement-334-profile.cjs'));
+ledger.assertSource(source,require(base+'/common/multi-witness.cjs').final);
+if(combined){
+  const required=source.tails[profile.requiredMigrationCount-296];
+  assert.equal(required?.name,profile.requiredTerminalMigration);
+  assert.equal(required?.sha256,profile.requiredTerminalMigrationSha256);
+}
+console.log(source.mode);
 JS
+)
 profile=$(node -e '
 const { file, sourceDigest, fixtureDigest } = require(process.argv[1]).profileFor(process.argv[2]);
 console.log([file, sourceDigest, fixtureDigest].filter(Boolean).join(" "));
@@ -34,6 +45,11 @@ if [[ -n $fixture_digest ]]; then
   [[ $(sha256sum "$work/fixture.ts" | cut -d' ' -f1) == "$fixture_digest" ]] || exit 65
 fi
 node "$base/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
+if [[ $mode == expense-witness-346 ]]; then
+  git -C "$work" apply --unidiff-zero "$base/expense-witness/installer.patch"
+  expected=$(node -e 'console.log(require(process.argv[1]).installerSha256)' "$base/expense-witness-346-profile.cjs")
+  [[ $(sha256sum "$work/installer.cjs" | cut -d' ' -f1) == "$expected" ]] || exit 65
+fi
 printf '%s\n' "$work"
 if [[ ${6-} == --host-only ]]; then exit 0; fi
 
@@ -63,6 +79,11 @@ fi
 for file in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs; do
   args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
 done
+if [[ $mode == expense-witness-346 ]]; then
+  for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
+    args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
+  done
+fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
@@ -72,9 +93,11 @@ status=0
 docker run "${args[@]}" --entrypoint node "$image" /qualification/issue-ordered-entry.cjs "$scope" >"$work/receipt.json" 2>"$work/private.stderr" || status=$?
 [[ ! -s "$work/receipt.json" ]] || cat "$work/receipt.json"
 (( status == 0 )) || exit "$status"
-node - "$work/receipt.json" "$sha" "$scope" <<'JS'
-const assert=require('node:assert/strict'),[file,sha,scope]=process.argv.slice(2),receipt=require(file);
+node - "$work/receipt.json" "$sha" "$scope" "$prepared/source.json" <<'JS'
+const assert=require('node:assert/strict'),[file,sha,scope,sourcePath]=process.argv.slice(2);
+const receipt=require(file),source=require(sourcePath);
 assert.equal(receipt.sourceSha,sha);
-assert.equal(receipt.status,scope.toUpperCase()+'_ORIGINAL_334_PASSED');
+assert.equal(receipt.status,scope.toUpperCase()+'_ORIGINAL_'+source.migrationCount+'_PASSED');
+assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
 assert.equal(receipt.suite.complete,true);
 JS
