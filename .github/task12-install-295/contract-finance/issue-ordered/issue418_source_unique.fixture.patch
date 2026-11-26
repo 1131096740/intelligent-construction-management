@@ -1,8 +1,6 @@
 --- a/fixture.ts
 +++ b/fixture.ts
-@@ -1 +1,2 @@
--import { randomUUID } from "node:crypto";
-+import { createHash, randomUUID } from "node:crypto";
+@@ -1,0 +2 @@
 +import { Prisma } from "@prisma/client";
 @@ -4,6 +4,0 @@
 -import { AuditService } from "../audit/audit.service";
@@ -13,11 +11,12 @@
 -import { ClearingReconciliationReaderService } from "../clearing/clearing-reconciliation-reader.service";
 @@ -13 +7,0 @@
 -import { OperatingProjectionService } from "../operating-projection/operating-projection.service";
-@@ -16 +10 @@
+@@ -16,3 +10,3 @@
 -const run = process.env.ISSUE418_SIGNED_OPERATING_RUN === "1" ? describe : describe.skip;
-+const run = process.env.ISSUE418_SOURCE_UNIQUE_RUN === "1" ? describe : describe.skip;
-@@ -18 +12 @@
+-
 -run("issue #418 confirmed signed settlements on the ordered operating ledger", () => {
++const run = process.env.ISSUE418_SOURCE_UNIQUE_RUN === "1" ? describe : describe.skip;
++
 +run("issue #418 database natural uniqueness on the ordered operating ledger", () => {
 @@ -22,2 +16,2 @@
 -    const raw = process.env.ISSUE418_SIGNED_OPERATING_DATABASE_URL;
@@ -41,82 +40,13 @@
 @@ -134 +119 @@
 -        include: { impacts: true }
 +        include: { impacts: { orderBy: { id: "asc" } } }
-@@ -138,5 +123,69 @@
+@@ -138,35 +123,67 @@
 -    const upward = await appendConfirmed("upward", "对上-418-01", "50.0000");
 -    const outside = await appendConfirmed("outside_fact", "表外-418-01", "30.0000");
 -    expect(upward).toMatchObject({
 -      operatingLevel: "participating_company", amountCents: 5000n,
 -      impacts: [{ impactKind: "receivable_increase", amountCents: 5000n, direction: "increase" }]
-+    const original = await appendConfirmed("outside_fact", "表外-418-UNIQUE", "30.0000");
-+    expect(original.numericProtocolVersion).toBe(1);
-+    expect(original.impacts).toHaveLength(2);
-+    const sourceKey = {
-+      sourceType: original.sourceType,
-+      sourceBusinessId: original.sourceBusinessId
-+    };
-+    const repeated = await prisma.$transaction(tx => replay.appendConfirmedSourceIfEnabledInTransaction(
-+      tx, { projectId: project.id, ...sourceKey }, reviewer.id
-+    ));
-+    expect(repeated).toMatchObject({ id: original.id, created: false, ...sourceKey });
-+    expect(repeated?.impactIds.slice().sort()).toEqual(original.impacts.map(impact => impact.id));
-+
-+    const duplicateId = randomUUID();
-+    const duplicateIdempotencyKey = `issue418-source-unique:${randomUUID()}`;
-+    // Pass the same cents payload through the installed writer with only fresh artificial identities.
-+    const accepted = new Error("ISSUE418_SOURCE_UNIQUE_WRITE_ACCEPTED");
-+    const duplicate = await prisma.$transaction(async tx => {
-+      await tx.$queryRaw`
-+        SELECT attempt.id
-+        FROM public."OperatingFact" fact
-+        CROSS JOIN LATERAL public."appendOperatingFactThroughService"(
-+          pg_catalog.jsonb_populate_record(
-+            NULL::public."OperatingLedgerFactWritePayload",
-+            pg_catalog.to_jsonb(fact) || pg_catalog.jsonb_build_object(
-+              'id', ${duplicateId}::text, 'idempotencyKey', ${duplicateIdempotencyKey}::text,
-+              'occurredAt', fact."occurredAt" AT TIME ZONE 'UTC',
-+              'confirmedAt', fact."confirmedAt" AT TIME ZONE 'UTC'
-+            )
-+          ),
-+          ${reviewer.id}::text,
-+          ${secret}::text
-+        ) attempt
-+        WHERE fact.id = ${original.id} AND fact."projectId" = ${project.id}
-+      `;
-+      throw accepted;
-+    }).catch(
-+      (error: unknown) => {
-+        if (error === accepted) throw accepted;
-+        if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2010") {
-+          throw new Error("ISSUE418_SOURCE_UNIQUE_UNEXPECTED_PRISMA_ERROR");
-+        }
-+        const sqlstate = typeof error.meta?.code === "string" && /^[0-9A-Z]{5}$/u.test(error.meta.code)
-+          ? error.meta.code : "UNAVAILABLE";
-+        const message = typeof error.meta?.message === "string" ? error.meta.message : "";
-+        const namedConstraint = typeof error.meta?.constraint === "string"
-+          ? error.meta.constraint
-+          : /\bconstraint(?: failed:)?\s+[`"']([A-Za-z_][A-Za-z0-9_]{0,62})[`"']/iu.exec(message)?.[1];
-+        const constraint = namedConstraint && /^[A-Za-z_][A-Za-z0-9_]{0,62}$/u.test(namedConstraint)
-+          ? namedConstraint : null;
-+        const messageSha256 = createHash("sha256").update(message).digest("hex");
-+        return { sqlstate, constraint, messageSha256 };
-+      }
-+    );
-+    if (duplicate.sqlstate !== "23505" || duplicate.constraint !== "OperatingFact_sourceType_sourceBusinessId_key") {
-+      const named = duplicate.constraint ? ` constraint "${duplicate.constraint}"` : "";
-+      throw new Error(
-+        `ISSUE418_SOURCE_UNIQUE_MISMATCH SQLSTATE ${duplicate.sqlstate}${named} message_sha256=${duplicate.messageSha256}`
-+      );
-+    }
-+
-+    await prisma.$transaction(async tx => {
-+      const persisted = await tx.operatingFact.findMany({
-+        where: sourceKey, include: { impacts: { orderBy: { id: "asc" } } }
-+      });
-+      expect(persisted).toEqual([original]);
-+      expect(await tx.operatingFact.count({
-+        where: { OR: [{ id: duplicateId }, { idempotencyKey: duplicateIdempotencyKey }] }
-+      })).toBe(0);
-@@ -144,30 +192,0 @@
+-    });
 -    expect(outside).toMatchObject({ operatingLevel: "project", amountCents: 3000n });
 -    expect(outside.impacts).toHaveLength(2);
 -    expect(outside.impacts).toEqual(expect.arrayContaining([
@@ -146,4 +76,81 @@
 -      expect(await prisma.operatingImpactEntry.count({
 -        where: { factId: fact.id, sourceType: SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE, sourceBusinessId: fact.sourceBusinessId }
 -      })).toBe(fact.impacts.length);
--    }
++    const original = await appendConfirmed("outside_fact", "表外-418-UNIQUE", "30.0000");
++    expect(original.numericProtocolVersion).toBe(1);
++    expect(original.impacts).toHaveLength(2);
++    const sourceKey = {
++      sourceType: original.sourceType,
++      sourceBusinessId: original.sourceBusinessId
++    };
++    const repeated = await prisma.$transaction(tx => replay.appendConfirmedSourceIfEnabledInTransaction(
++      tx, { projectId: project.id, ...sourceKey }, reviewer.id
++    ));
++    expect(repeated).toMatchObject({ id: original.id, created: false, ...sourceKey });
++    expect(repeated?.impactIds.slice().sort()).toEqual(original.impacts.map(impact => impact.id));
++
++    const duplicateId = randomUUID();
++    const duplicateIdempotencyKey = `issue418-source-unique:${randomUUID()}`;
++    // The temporary invoker reads native diagnostics without changing the installed writer.
++    const duplicate = await prisma.$transaction(async tx => {
++      await tx.$executeRaw`
++        CREATE FUNCTION pg_temp.issue418_source_unique(
++          payload public."OperatingLedgerFactWritePayload", actor_id text, write_secret text
++        ) RETURNS TABLE ("sqlstate" text, "constraint" text)
++        LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $proof$
++        DECLARE
++          returned_state text;
++          violated_constraint text;
++        BEGIN
++          PERFORM * FROM public."appendOperatingFactThroughService"(payload, actor_id, write_secret);
++          RETURN;
++        EXCEPTION WHEN unique_violation THEN
++          GET STACKED DIAGNOSTICS returned_state = RETURNED_SQLSTATE, violated_constraint = CONSTRAINT_NAME;
++          RETURN QUERY SELECT returned_state, violated_constraint;
++        END;
++        $proof$
++      `;
++      const [result, extra] = await tx.$queryRaw<Array<{ sqlstate: string; constraint: string }>>`
++        SELECT attempt."sqlstate", attempt."constraint"
++        FROM public."OperatingFact" fact
++        CROSS JOIN LATERAL pg_temp.issue418_source_unique(
++          pg_catalog.jsonb_populate_record(
++            NULL::public."OperatingLedgerFactWritePayload",
++            pg_catalog.to_jsonb(fact) || pg_catalog.jsonb_build_object(
++              'id', ${duplicateId}::text, 'idempotencyKey', ${duplicateIdempotencyKey}::text,
++              'occurredAt', fact."occurredAt" AT TIME ZONE 'UTC',
++              'confirmedAt', fact."confirmedAt" AT TIME ZONE 'UTC'
++            )
++          ),
++          ${reviewer.id}::text,
++          ${secret}::text
++        ) attempt
++        WHERE fact.id = ${original.id} AND fact."projectId" = ${project.id}
++      `;
++      if (!result || extra) throw new Error("ISSUE418_SOURCE_UNIQUE_DIAGNOSTIC_ROW_COUNT");
++      await tx.$executeRaw`
++        DROP FUNCTION pg_temp.issue418_source_unique(public."OperatingLedgerFactWritePayload", text, text)
++      `;
++      return result;
++    }).catch((error: unknown) => {
++      if (error instanceof Error && error.message === "ISSUE418_SOURCE_UNIQUE_DIAGNOSTIC_ROW_COUNT") throw error;
++      const code = error instanceof Prisma.PrismaClientKnownRequestError ? error.meta?.code : undefined;
++      const sqlstate = typeof code === "string" && /^[0-9A-Z]{5}$/u.test(code) ? code : "UNAVAILABLE";
++      throw new Error(`ISSUE418_SOURCE_UNIQUE_NATIVE_DIAGNOSTIC_FAILED SQLSTATE ${sqlstate}`);
++    });
++    if (duplicate.sqlstate !== "23505" || duplicate.constraint !== "OperatingFact_sourceType_sourceBusinessId_key") {
++      const sqlstate = /^[0-9A-Z]{5}$/u.test(duplicate.sqlstate) ? duplicate.sqlstate : "UNAVAILABLE";
++      const named = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/u.test(duplicate.constraint)
++        ? ` constraint "${duplicate.constraint}"` : "";
++      throw new Error(`ISSUE418_SOURCE_UNIQUE_MISMATCH SQLSTATE ${sqlstate}${named}`);
+@@ -173,0 +191,10 @@
++
++    await prisma.$transaction(async tx => {
++      const persisted = await tx.operatingFact.findMany({
++        where: sourceKey, include: { impacts: { orderBy: { id: "asc" } } }
++      });
++      expect(persisted).toEqual([original]);
++      expect(await tx.operatingFact.count({
++        where: { OR: [{ id: duplicateId }, { idempotencyKey: duplicateIdempotencyKey }] }
++      })).toBe(0);
++    });
