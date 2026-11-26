@@ -34,7 +34,7 @@ const browserFailurePatterns = {
   BROWSER_LAUNCH_FAILED: /browserType\.launch:|Failed to launch (?:the )?browser process/iu,
   BROWSER_SANDBOX: /No usable sandbox|SUID sandbox|Failed to move to new namespace/iu,
   VITE_WEBSERVER_STARTUP: /Process from config\.webServer (?:was not able to start|exited)|waiting for config\.webServer/iu,
-  VITE_BIND: /port 4215 is already in use|listen EADDRINUSE/iu,
+  VITE_BIND: /port 421[5-7] is already in use|127\.0\.0\.1:421[5-7] is already used|listen EADDRINUSE/iu,
   VITE_IMPORT: /failed to load config from|Failed to resolve import|failed to resolve entry for package/iu,
   BROWSER_TOOL_LOOKUP: /Command "playwright" not found|corepack.*(?:not found|network|download)|Cannot find module '[^'\r\n]*@playwright\/test\/cli\.js'/iu,
   BROWSER_TEST_TIMEOUT: /Test timeout of \d+ms exceeded|Timeout \d+ms exceeded/iu

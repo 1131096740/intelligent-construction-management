@@ -909,6 +909,10 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const deletionSelected = (!process.env.POL115_BROWSER_SPEC || process.env.POL115_BROWSER_SPEC === "draft-deletion-real.e2e.ts")
       && (!process.env.POL115_BROWSER_GREP?.trim() || new RegExp(process.env.POL115_BROWSER_GREP.trim()).test(deletionTitle));
     const deletionFixtures = deletionSelected ? await prepareBrowserDeletionFixtures() : [];
+    const activeProjects = await app.get(PrismaService).project.findMany({
+      where: { isActive: true }, orderBy: { code: "asc" }, select: { id: true, code: true, name: true }
+    });
+    expect(activeProjects.map(project => project.id)).toEqual(expect.arrayContaining([projectId, ...Object.values(browserRepaymentProjectIds)]));
     const pdf = await PDFDocument.create();
     pdf.addPage().drawText("Local synthetic takeover deletion acceptance");
     const pdfBase64 = Buffer.from(await pdf.save()).toString("base64");
@@ -920,6 +924,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
         POL115_DELETION_FIXTURES: JSON.stringify(deletionFixtures.map(({ viewport, kind, id, path, rootPath, session }) => ({ viewport, kind, id, path, rootPath, session }))),
         POL115_BROWSER_SESSION: JSON.stringify(browserSession),
         POL115_FINANCE_SESSION: JSON.stringify(financeSession),
+        POL115_FINANCE_PROJECT_LABELS: JSON.stringify(activeProjects.map(project => `${project.code} · ${project.name}`)),
         POL115_PROXY_SESSION: JSON.stringify(proxySession),
         POL115_FINANCE_DIRECTOR_SESSION: JSON.stringify(financeDirectorSession),
         POL115_REPAYMENT_CLAIM_IDS: JSON.stringify(browserRepaymentClaimIds),
