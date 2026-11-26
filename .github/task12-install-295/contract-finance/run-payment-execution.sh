@@ -2,11 +2,10 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 ]] || exit 64
+[[ $# == 4 || ( $# == 5 && $5 == --host-only ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
-build=$(cd "$4" && pwd -P)
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$plan/common"
@@ -14,17 +13,39 @@ scope=payment-execution
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
+  const counts=new Map([["expense-witness-346",346],["historical-settlement-334",334],["upward-archive-332",332],
+    ["payment-remainder-331",331],["text-direct-330",330],["current-320",329],[undefined,295]]);
+  const count=counts.get(source.mode);
+  if(!count||source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(65);
   if(count===332) require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
   if(count===334) require(process.argv[5]).assertSource(source,require(process.argv[4]).final);
+  if(count===346) require(process.argv[6]).assertSource(source,require(process.argv[4]).final);
   console.log(count);
-'  "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs")
-image=$(cat "$build/image.id")
-fingerprint=$(cat "$build/context.sha256")
-[[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
-[[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
-[[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
+'  "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan/expense-witness-346-profile.cjs")
+host_only=false
+if [[ ${5-} == --host-only ]]; then
+  [[ $count == 346 ]] || exit 64
+  host_only=true
+fi
+if [[ $count == 346 ]]; then
+  [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
+  [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$repo/.github/task12-install-290/payment") ]] || exit 65
+  node - "$prepared" "$(git -C "$repo" rev-parse "$sha^{tree}")" "$plan" <<'JS'
+const assert = require('node:assert/strict');
+const [prepared, tree, plan] = process.argv.slice(2);
+assert.equal(require(prepared + '/source.json').sourceTree, tree);
+const baseline = require(prepared + '/prepared/context/workspace/services/api/prisma/migration-baseline.cjs');
+require(plan + '/expense-witness-346-profile.cjs').assertRuntimeBaseline(baseline);
+JS
+fi
+if [[ $host_only == false ]]; then
+  build=$(cd "$4" && pwd -P)
+  image=$(cat "$build/image.id")
+  fingerprint=$(cat "$build/context.sha256")
+  [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
+  [[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
+  [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
+fi
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 material="$work/material"
@@ -34,8 +55,23 @@ case "$count" in
   331) portable_args=(--payment-remainder-331) ;;
   332) portable_args=(--upward-archive-332) ;;
   334) portable_args=(--historical-settlement-334) ;;
+  346) portable_args=(--expense-witness-346) ;;
 esac
 python3 "$plan/stage-payment-execution.py" "$repo/.github/task12-install-290/payment" "$common" "$material" ${portable_args[@]+"${portable_args[@]}"}
+
+if [[ $host_only == true ]]; then
+  for file in installer.cjs fresh.cjs valid.cjs paid/payment-retained-ci.cjs other/payment-retained-ci.cjs; do
+    node --check "$material/$file"
+  done
+  node --check "$plan/payment-execution-346.cjs"
+  node - "$prepared/source.json" "$material" <<'JS'
+const [file, material] = process.argv.slice(2);
+const { sourceSha, sourceTree, migrationCount, ledgerSha256 } = require(file);
+console.log(JSON.stringify({ status: 'PAYMENT_EXECUTION_346_HOST_READY', sourceSha, sourceTree,
+  migrationCount, ledgerSha256, material }));
+JS
+  exit 0
+fi
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
   --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory 4g
@@ -76,8 +112,13 @@ for lane in fresh valid paid other; do
   if [[ $count == 332 && ( $lane == fresh || $lane == valid ) ]]; then
     lane_args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
   fi
-  if [[ $count == 334 && ( $lane == fresh || $lane == valid ) ]]; then
+  if [[ ( $count == 334 || $count == 346 ) && ( $lane == fresh || $lane == valid ) ]]; then
     for file in upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
+      lane_args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
+    done
+  fi
+  if [[ $count == 346 && ( $lane == fresh || $lane == valid ) ]]; then
+    for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json payment-execution-346.cjs; do
       lane_args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
     done
   fi
@@ -108,9 +149,10 @@ for lane in fresh valid paid other; do
       if(row.combinedAfterBusiness?.sameIdentity!==true||row.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256||
          row.historicalTakeoverCatalogAfterBusiness!==true||row.historicalSettlementCatalogAfterBusiness!==true)process.exit(1);
     }
+    if(positive&&count==="346") require(process.argv[10]).assertInstallation(row,require(process.argv[7]));
     if(code!=="0"||row.status!==expected||row.cleanup!=="POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT"||
       (positive&&(row.sourceSha!==sha||row.installOnly295?.count!==295||row.combinedAfterBusiness?.count!==Number(count)||row.combinedAfterBusiness?.exactB7!==true))||
       (!positive&&(row.retainedPaymentNegatives?.length!==(lane==="paid"?1:13)||row.installOnly295!==undefined)))process.exit(1);
-  ' "$work/$lane.json" "$lane" "$sha" "$expected" "$exit_code" "$count" "$prepared/source.json" "$plan/upward-archive-332-profile.cjs" "$plan/historical-settlement-334-profile.cjs" ||
+  ' "$work/$lane.json" "$lane" "$sha" "$expected" "$exit_code" "$count" "$prepared/source.json" "$plan/upward-archive-332-profile.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan/payment-execution-346.cjs" ||
     { printf 'PAYMENT_EXECUTION_%s_STOPPED %s %s\n' "$count" "$lane" "$work" >&2; exit 1; }
 done

@@ -1,0 +1,137 @@
+--- fresh.cjs
++++ fresh.cjs
+@@ -8,12 +8,15 @@
+ const tree="67644d9465a0ab4ee80ede099139d9c129d66f14";
+ const suite="src/database/payment-execution-concurrency.spec.ts";
+ const source=require('./contract-finance-source.json');
++const expenseWitness=source.mode==='expense-witness-346' ? require('./payment-execution-346.cjs') : null;
+ const historicalSettlement=source.mode==='historical-settlement-334';
+ const upwardArchive=source.mode==='upward-archive-332';
+ const paymentRemainder=source.mode==='payment-remainder-331';
+-const forward=historicalSettlement||upwardArchive||paymentRemainder||source.mode==='current-320'||source.mode==='text-direct-330';
+-const count=historicalSettlement?334:upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
+-const install=(receipt,consume)=>forward
++const forward=expenseWitness||historicalSettlement||upwardArchive||paymentRemainder||source.mode==='current-320'||source.mode==='text-direct-330';
++const count=expenseWitness?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
++const install=(receipt,consume)=>expenseWitness
++  ? expenseWitness.install(receipt,consume,source)
++  : forward
+   ? (historicalSettlement?withCombined334HistoricalSettlement:upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:count===330?withCombined330TextAgreement:withCombined320ContractPayment)(receipt,consume,{sourceTree:source.sourceTree,
+     migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails})
+   : withCombined295MultiWitness(receipt,consume);
+@@ -97,13 +100,14 @@
+       parsed.testResults.length!==1 || !parsed.testResults[0].name.endsWith("/"+suite))throw new Error("PAYMENT_FRESH_COVERAGE");
+   receipt.scope={suites:1,tests:2,skips:0,reportSha256:createHash("sha256").update(raw).digest("hex")};
+ }).then(()=>{
++  if(expenseWitness) expenseWitness.assertInstallation(receipt,source);
+   if(historicalSettlement) {
+     require('./historical-settlement-334-profile.cjs').assertFinanceInstallation(receipt,source);
+     if(receipt.historicalTakeoverCatalogAfterBusiness!==true || receipt.historicalSettlementCatalogAfterBusiness!==true)
+       throw new Error("PAYMENT_334_POST_BUSINESS_CATALOG");
+   }
+   if(upwardArchive) require('./upward-archive-332-profile.cjs').assertInstallation(receipt,source);
+-  if(forward && (receipt.forward320?.ledgerSha256!==source.ledgerSha256 ||
++  if(forward && !expenseWitness && (receipt.forward320?.ledgerSha256!==source.ledgerSha256 ||
+     receipt.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256 || receipt.combinedAfterBusiness?.count!==count))
+     throw new Error("PAYMENT_FORWARD_320_LEDGER");
+   if(paymentRemainder && (receipt.paymentRemainderPredecessor?.count!==330 ||
+--- valid.cjs
++++ valid.cjs
+@@ -2,12 +2,15 @@
+ const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement}=require("./installer.cjs");
+ const {load,verifyFacts}=require("./retained-payment.cjs");
+ const source=require('./contract-finance-source.json');
++const expenseWitness=source.mode==='expense-witness-346' ? require('./payment-execution-346.cjs') : null;
+ const historicalSettlement=source.mode==='historical-settlement-334';
+ const upwardArchive=source.mode==='upward-archive-332';
+ const paymentRemainder=source.mode==='payment-remainder-331';
+-const forward=historicalSettlement||upwardArchive||paymentRemainder||source.mode==='current-320'||source.mode==='text-direct-330';
+-const count=historicalSettlement?334:upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
+-const install=(receipt,consume)=>forward
++const forward=expenseWitness||historicalSettlement||upwardArchive||paymentRemainder||source.mode==='current-320'||source.mode==='text-direct-330';
++const count=expenseWitness?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
++const install=(receipt,consume)=>expenseWitness
++  ? expenseWitness.install(receipt,consume,source)
++  : forward
+   ? (historicalSettlement?withCombined334HistoricalSettlement:upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:count===330?withCombined330TextAgreement:withCombined320ContractPayment)(receipt,consume,{sourceTree:source.sourceTree,
+     migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails})
+   : withCombined295MultiWitness(receipt,consume);
+@@ -17,13 +20,14 @@
+      context.database!==receipt.retainedPayment?.identity.database)throw new Error("PAYMENT_RETAINED_FINAL_CONTEXT");
+   receipt.retainedPayment["at"+count]=await verifyFacts(load("/qualification/retained-payment.json"),context.sql);
+ }).then(()=>{
++  if(expenseWitness) expenseWitness.assertInstallation(receipt,source);
+   if(historicalSettlement) {
+     require('./historical-settlement-334-profile.cjs').assertFinanceInstallation(receipt,source);
+     if(receipt.historicalTakeoverCatalogAfterBusiness!==true || receipt.historicalSettlementCatalogAfterBusiness!==true)
+       throw new Error("PAYMENT_334_POST_BUSINESS_CATALOG");
+   }
+   if(upwardArchive) require('./upward-archive-332-profile.cjs').assertInstallation(receipt,source);
+-  if(forward && (receipt.forward320?.ledgerSha256!==source.ledgerSha256 ||
++  if(forward && !expenseWitness && (receipt.forward320?.ledgerSha256!==source.ledgerSha256 ||
+     receipt.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256 || receipt.combinedAfterBusiness?.count!==count))
+     throw new Error("PAYMENT_FORWARD_320_LEDGER");
+   if(paymentRemainder && (receipt.paymentRemainderPredecessor?.count!==330 ||
+--- payment-execution-concurrency.spec.ts
++++ payment-execution-concurrency.spec.ts
+@@ -21,11 +21,6 @@
+
+ const DATABASE_NAME = "jiangkong_payment_execution_concurrency";
+ const localRequire = createRequire(__filename);
+-const EXPECTED_MIGRATION_COUNT = (
+-  localRequire(resolve(__dirname, "../../prisma/migration-baseline.cjs")) as {
+-    loadCanonicalMigrationBaseline: () => { expectedDirectoryCount: number };
+-  }
+-).loadCanonicalMigrationBaseline().expectedDirectoryCount;
+ const COMPANY_ENTITY_NAME = "付款实付并发验收建设有限公司";
+
+ describe("payment execution PostgreSQL concurrency", () => {
+@@ -197,7 +192,7 @@
+ async function assertFullyMigrated(client: PrismaClientType) {
+   const target = new URL(process.env.DATABASE_URL!);
+   if (isOwned280ContractDatabase(target)) {
+-    if (["332", "334"].includes(process.env.JG_CONTRACT_FINANCE_LEDGER ?? "")) {
++    if (["332", "334", "346"].includes(process.env.JG_CONTRACT_FINANCE_LEDGER ?? "")) {
+       if (!await assertOwnedContractFinanceLedger(client, "payment")) {
+         throw new Error("PAYMENT_CONCURRENCY_OWNED_LEDGER_IDENTITY");
+       }
+@@ -222,6 +217,11 @@
+     if (result?.accepted !== true) throw new Error("PAYMENT_CONCURRENCY_OWNED_295_IDENTITY");
+     return;
+   }
++  const EXPECTED_MIGRATION_COUNT = (
++    localRequire(resolve(__dirname, "../../prisma/migration-baseline.cjs")) as {
++      loadCanonicalMigrationBaseline: () => { expectedDirectoryCount: number };
++    }
++  ).loadCanonicalMigrationBaseline().expectedDirectoryCount;
+   const [migrationCount] = await client.$queryRaw<Array<{ count: bigint }>>`
+     SELECT COUNT(*)::bigint AS count
+     FROM "_prisma_migrations"
+--- contract-finance-owned.test-support.ts
++++ contract-finance-owned.test-support.ts
+@@ -41,7 +41,7 @@
+   `;
+   const ledger = observed?.ledger.map(({ name, sha256, finished, rolledBack }) => ({ name, sha256, finished, rolledBack }));
+   const configured = process.env.JG_CONTRACT_FINANCE_LEDGER;
+-  if (configured !== undefined && configured !== "329" && configured !== "330" && configured !== "331" && configured !== "332" && configured !== "334") {
++  if (configured !== undefined && configured !== "329" && configured !== "330" && configured !== "331" && configured !== "332" && configured !== "334" && configured !== "346") {
+     throw new Error("CONTRACT_FINANCE_LEDGER_MODE");
+   }
+   const count = Number(configured ?? 295);
+@@ -61,11 +61,13 @@
+         "0ad8b165cbf5c974596c4da840ab327e438ef84fd1beb3788ef980c8f28dd014") ||
+       (count >= 332 && createHash("sha256").update(JSON.stringify(ledger.slice(0,332))).digest("hex") !==
+         "b9cd72d795d2ae6d9d61f038c8c89b2391375bc5fdc56337c9dab6d3a18858f4") ||
+-      (count === 334 && (
++      (count >= 334 && (
+         createHash("sha256").update(JSON.stringify(ledger.slice(0,333))).digest("hex") !==
+           "a00af648da634cce25c27c796171ca21cfa93d17679bfd8176f961b45ecf4fca" ||
+-        createHash("sha256").update(JSON.stringify(ledger)).digest("hex") !==
+-          "27f3af946003d07582efb288b443362fcf61bed0281feb548f9978b739fb5411"))) {
++        createHash("sha256").update(JSON.stringify(ledger.slice(0,334))).digest("hex") !==
++          "27f3af946003d07582efb288b443362fcf61bed0281feb548f9978b739fb5411")) ||
++      (count === 346 && createHash("sha256").update(JSON.stringify(ledger)).digest("hex") !==
++        "bdddd170728d7c28c1b5a4f4a4b2b8981aa1ba2d041590475d695427502d8225")) {
+     throw new Error("CONTRACT_FINANCE_OWNED_LEDGER_MISMATCH");
+   }
+   return true;

@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 archive_arg, common_arg, stage_arg, *options = sys.argv[1:]
-modes = ([], ['--text-direct-330'], ['--payment-remainder-331'], ['--upward-archive-332'], ['--historical-settlement-334'])
+modes = ([], ['--text-direct-330'], ['--payment-remainder-331'], ['--upward-archive-332'], ['--historical-settlement-334'], ['--expense-witness-346'])
 if options not in modes:
     raise SystemExit('PAYMENT_STAGE_MODE')
 archive, common, stage = map(Path, (archive_arg, common_arg, stage_arg))
@@ -21,10 +21,16 @@ for name, checksum in pins.items():
     shutil.copyfile(source, target)
 
 installer = stage / 'installer.cjs'
-historical_settlement = options == ['--historical-settlement-334']
+expense_witness = options == ['--expense-witness-346']
+historical_settlement = options in modes[4:]
 if historical_settlement:
     subprocess.run(['node', str((plan / 'stage-historical-takeover-333.cjs').resolve()),
                     str(stage.resolve()), 'historical-settlement-334'], check=True)
+    if expense_witness:
+        subprocess.run(['git', 'apply', '--unidiff-zero',
+                        str((plan / 'expense-witness/installer.patch').resolve())], cwd=stage, check=True)
+        if hashlib.sha256(installer.read_bytes()).hexdigest() != '50208a12c5ac61b396655807e87f8c86ea92db83aa2a3297c38f253735ce155d':
+            raise SystemExit('PAYMENT_346_INSTALLER_PREIMAGE')
 else:
     shutil.copyfile(common / 'installer.cjs', installer)
 subprocess.run(['git', 'apply', '-p0',
@@ -86,6 +92,8 @@ if historical_settlement:
          core['fixtures']['contract-finance-owned.test-support.ts']),
     )
     for name, before, after in entries:
+        if expense_witness and name == 'installer.cjs':
+            continue
         target = stage / name
         delta = f'payment-execution-334-{name}.patch'
         if hashlib.sha256(target.read_bytes()).hexdigest() != before:
@@ -96,6 +104,25 @@ if historical_settlement:
                         str(target), str(plan / delta)], check=True)
         if hashlib.sha256(target.read_bytes()).hexdigest() != after:
             raise SystemExit(f'PAYMENT_334_POSTIMAGE {name}')
+
+if expense_witness:
+    old = b'PAYMENT_EXECUTION_ORIGINAL_RETAINED_VALID_(295|329|330|331|332)'
+    contents = installer.read_bytes()
+    if contents.count(old) != 1:
+        raise SystemExit('PAYMENT_346_RETAINED_VALID_PREIMAGE')
+    installer.write_bytes(contents.replace(old, old[:-1] + b'|334|346)'))
+    subprocess.run(['git', 'apply', '-p0',
+                    str((plan / 'payment-execution-346-fixtures.patch').resolve())], cwd=stage, check=True)
+
+    for name, digest in {
+        'installer.cjs': '7f9e10a584ac09252a292064013b950897cfbdb35da2fbd142759f44efb1d38f',
+        'fresh.cjs': '905653234f6bfde440594050d1bb13d514d710337c21d7a093b7937a6d42534a',
+        'valid.cjs': 'c2294fb345d4b43024cb08231ddc529d6660eb2946fa792be8eda4aba52ecfa1',
+        'payment-execution-concurrency.spec.ts': '56d1cb18351ea8d9fbe36a33bc3542f20f8ac174ba212d15960f304b56941235',
+        'contract-finance-owned.test-support.ts': 'e2afc9fe3da2262eee0c2cb3d13c113eff125c24fda9f959eb09949639ffa8ff',
+    }.items():
+        if hashlib.sha256((stage / name).read_bytes()).hexdigest() != digest:
+            raise SystemExit(f'PAYMENT_346_POSTIMAGE {name}')
 
 for file in stage.rglob('*'):
     if file.is_file():
