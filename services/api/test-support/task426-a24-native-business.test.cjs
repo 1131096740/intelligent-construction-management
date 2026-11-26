@@ -55,6 +55,19 @@ test("drives all expected scoped HTTP operations and keeps the actual debit and 
   assert.equal(requests[10].actor, "reviewer");
   assert.equal(requests[3].request.json.registeredFunding.scopeKey, "public_cash");
   assert.equal(requests[17].request.path, "/other-project-payments/refund-claim/payments/refund-payment/refunds");
+  assert.deepEqual(requests.map(({ request }) => request.cashPhase), result.steps.map(step => step.phase));
+});
+
+test("a failed 409 gate identifies its fixed phase and does not send later requests", async () => {
+  const { input, requests } = fixture();
+  const send = input.send;
+  input.send = async (...args) => {
+    const response = await send(...args);
+    return args[1].cashPhase === "INSUFFICIENT_SOURCE" ? { status: 500 } : response;
+  };
+  await assert.rejects(proveA24CashAttribution(input), error =>
+    error.message.split("\n", 1)[0] === "INSUFFICIENT_SOURCE" && error.actual === 500 && error.expected === 409);
+  assert.deepEqual(requests.map(({ request }) => request.cashPhase), ["COST_OPTIONS", "KEEPER_VOUCHER", "INSUFFICIENT_SOURCE"]);
 });
 
 test("refuses a whole-cost projection or an old refund gross amount", async () => {

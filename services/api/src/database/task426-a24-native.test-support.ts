@@ -4,6 +4,7 @@ import { BaseExceptionFilter, HttpAdapterHost } from "@nestjs/core";
 import { Test } from "@nestjs/testing";
 import { PrismaClient } from "@prisma/client";
 import * as assert from "node:assert/strict";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { readFileSync, realpathSync, lstatSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -12,7 +13,8 @@ import { AppModule } from "../app.module";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { PrismaService } from "./prisma.service";
 import { projectTask16RegistrationError } from "./task16-registration-error-diagnostic";
-import { projectA24ApprovalFailure, projectA24SignatureFailure, projectA24SubmissionFailure } from "./task426-a24-signature-diagnostic.test-support";
+import { projectA24ApprovalFailure, projectA24CashFailure, projectA24SignatureFailure,
+  projectA24SubmissionFailure } from "./task426-a24-signature-diagnostic.test-support";
 import { createApiValidationPipe } from "../validation/api-validation";
 
 const { proveA24CashAttribution } = require("../../test-support/task426-a24-native-business.cjs") as {
@@ -24,7 +26,8 @@ const ROLES = {
   requester: "finance_staff", reviewer: "finance_director", manager: "project_manager", leader: "chairman"
 } as const;
 type Actor = keyof typeof ROLES;
-type Command = { path: string; method?: string; json?: Record<string, unknown>; form?: FormData; usePassword?: boolean };
+type Command = { path: string; method?: string; json?: Record<string, unknown>; form?: FormData; usePassword?: boolean; cashPhase?: string };
+type ActiveRequest = Pick<Command, "path" | "cashPhase"> & { method: string };
 type Packet = {
   candidate: string; database: string; ownerUrl: string; applicationOid: string; observerUrl: string; observerOid: string;
 };
@@ -77,13 +80,20 @@ it("records and confirms only an exact A24 public cash slice with separate datab
   const observer = new PrismaClient({ datasources: { db: { url: packet.observerUrl } } });
   let app: INestApplication | undefined;
   let stage = "ROLE";
-  let activeRequest: { method: string; path: string } | undefined;
+  let activeRequest: ActiveRequest | undefined;
+  const cashRequests = new AsyncLocalStorage<ActiveRequest>();
+  let cashPhase: string | undefined;
   let httpStatus: number | undefined;
   let httpError: ReturnType<typeof projectTask16RegistrationError> | undefined;
   let signatureFailure: ReturnType<typeof projectA24SignatureFailure> | undefined;
   let submissionFailure: ReturnType<typeof projectA24SubmissionFailure> | undefined;
   let approvalFailure: ReturnType<typeof projectA24ApprovalFailure> | undefined;
+  let cashFailure: ReturnType<typeof projectA24CashFailure> | undefined;
   const captureDatabaseFailure = (error: unknown, operation?: Parameters<typeof projectA24SubmissionFailure>[1]) => {
+    if (activeRequest?.cashPhase && activeRequest === cashRequests.getStore()) {
+      cashFailure ??= projectA24CashFailure(error, operation);
+      return;
+    }
     if (activeRequest?.method !== "POST") return;
     if (activeRequest.path === signaturePath) {
       signatureFailure ??= projectA24SignatureFailure(error, operation);
@@ -182,6 +192,14 @@ it("records and confirms only an exact A24 public cash slice with separate datab
     stage = "PUBLIC_HTTP_CONFIGURE";
     app = module.createNestApplication({ logger: false });
     app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
+    app.use((request: { method: string; originalUrl: string }, _response: unknown, next: () => void) => {
+      const active = activeRequest;
+      if (active?.cashPhase && active.method === request.method && active.path === request.originalUrl) {
+        cashRequests.run(active, next);
+      } else {
+        next();
+      }
+    });
     app.useGlobalPipes(createApiValidationPipe());
     @Catch()
     class A24NativeHttpDiagnostic extends BaseExceptionFilter {
@@ -219,8 +237,14 @@ it("records and confirms only an exact A24 public cash slice with separate datab
       signatureFailure = undefined;
       submissionFailure = undefined;
       approvalFailure = undefined;
+      cashFailure = undefined;
+      cashPhase = command.cashPhase;
+      if (cashPhase) {
+        assert.match(cashPhase, /^[A-Z0-9_]{1,40}$/u, "A24_CASH_PHASE");
+        stage = "A24_CASH_AND_G4";
+      }
       const method = command.method ?? "GET";
-      activeRequest = { method, path: command.path };
+      activeRequest = { method, path: command.path, cashPhase };
       try {
         const response = await fetch(base + command.path, {
           method, signal: AbortSignal.timeout(10_000),
@@ -372,7 +396,9 @@ it("records and confirms only an exact A24 public cash slice with separate datab
       ...(httpError ? { httpError } : {}),
       ...(signatureFailure ? { signatureFailure } : {}),
       ...(submissionFailure ? { submissionFailure } : {}),
-      ...(approvalFailure ? { approvalFailure } : {})
+      ...(approvalFailure ? { approvalFailure } : {}),
+      ...(cashPhase ? { cashPhase } : {}),
+      ...(cashFailure ? { cashFailure } : {})
     }) + "\n");
     throw new Error(stage + " " + message);
   } finally {

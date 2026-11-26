@@ -51,6 +51,32 @@ const approvalOperations = {
   "ApprovalFormGenerationClaim.findUnique": "APPROVAL_FORM_CLAIM_READ",
   "ApprovalFormGenerationClaim.create": "APPROVAL_FORM_CLAIM_CREATE"
 } as const;
+const cashOperations = {
+  "undefined.queryRaw": "CASH_TRANSACTION_QUERY",
+  "undefined.executeRaw": "CASH_TRANSACTION_LOCK",
+  "ExpenseClaim.findUnique": "CASH_CLAIM_READ",
+  "ExpenseClaim.update": "CASH_CLAIM_UPDATE",
+  "ExpenseClaimPaymentExecution.findUnique": "CASH_PAYMENT_REPLAY_LOOKUP",
+  "ExpenseClaimPaymentExecution.create": "CASH_PAYMENT_CREATE",
+  "PaymentExecutionRefund.aggregate": "CASH_REFUND_CAPACITY",
+  "PaymentExecutionRefund.create": "CASH_REFUND_CREATE",
+  "FileObject.findUnique": "CASH_VOUCHER_READ",
+  "FileObject.create": "CASH_VOUCHER_REGISTER",
+  "SpotProcurementReceiptPhoto.findFirst": "CASH_RECEIPT_COLLISION",
+  "RegisteredFundAccount.findUnique": "CASH_FUND_ACCOUNT_READ",
+  "RegisteredFundAccount.update": "CASH_FUND_ACCOUNT_UPDATE",
+  "FundAccountBalanceRegistration.findFirst": "CASH_REGISTRATION_READ",
+  "FundAccountSourceBatch.findMany": "CASH_SOURCE_BATCH_READ",
+  "RegisteredOperationalPayment.findUnique": "CASH_REGISTERED_PAYMENT_READ",
+  "RegisteredOperationalPayment.create": "CASH_REGISTERED_PAYMENT_CREATE",
+  "RegisteredOperationalPaymentAllocation.createMany": "CASH_SOURCE_ALLOCATION_CREATE",
+  "ExpensePublicCashCostLink.findMany": "CASH_COST_LINK_READ",
+  "ExpensePublicCashCostLink.createMany": "CASH_COST_LINK_CREATE",
+  "OperatingCostAttributionConfirmation.findUnique": "CASH_ATTRIBUTION_REPLAY_LOOKUP",
+  "OperatingCostAttributionConfirmation.create": "CASH_ATTRIBUTION_CREATE",
+  "OperatingCostAttributionConfirmation.update": "CASH_ATTRIBUTION_UPDATE",
+  "AuditLog.create": "CASH_AUDIT"
+} as const;
 type Operation = Pick<Prisma.MiddlewareParams, "model" | "action">;
 const sqlStates = new Set(["42501", "23502", "23503", "23505", "23514", "42P01", "42703", "42883", "55000",
   "25006", "25P02", "40001", "40P01", "55P03", "57014"]);
@@ -94,3 +120,4 @@ function projectFailure(error: unknown, nodes: Readonly<Record<string, string>>,
 export const projectA24SignatureFailure = (error: unknown, operation?: Operation) => projectFailure(error, operations, operation);
 export const projectA24SubmissionFailure = (error: unknown, operation?: Operation) => projectFailure(error, submissionOperations, operation);
 export const projectA24ApprovalFailure = (error: unknown, operation?: Operation) => projectFailure(error, approvalOperations, operation);
+export const projectA24CashFailure = (error: unknown, operation?: Operation) => projectFailure(error, cashOperations, operation);

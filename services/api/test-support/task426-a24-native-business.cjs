@@ -8,7 +8,7 @@ const voucher = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0l
 async function proveA24CashAttribution({ send, snapshot, primary, refundCase, key = randomUUID }) {
   const steps = [];
   const request = async (phase, actor, path, status, command = {}) => {
-    const result = await send(actor, { path, ...command });
+    const result = await send(actor, { path, ...command, cashPhase: phase });
     steps.push({ phase, status: result.status });
     assert.equal(result.status, status, phase);
     return result.body;

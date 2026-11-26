@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
-import { projectA24ApprovalFailure, projectA24SignatureFailure, projectA24SubmissionFailure } from "./task426-a24-signature-diagnostic.test-support";
+import { projectA24ApprovalFailure, projectA24CashFailure, projectA24SignatureFailure,
+  projectA24SubmissionFailure } from "./task426-a24-signature-diagnostic.test-support";
 
 const clientVersion = "test";
 
@@ -58,4 +59,17 @@ it("isolates a final approval failure to the proved project-close operation", ()
     relation: "ProjectCloseAggregate"
   });
   expect(projectA24SubmissionFailure(failure, operation)).not.toHaveProperty("node");
+});
+
+it("projects the cash voucher collision lookup without returning query or request values", () => {
+  const failure = new Prisma.PrismaClientUnknownRequestError(
+    'PostgresError { code: "42501", message: "permission denied for table SpotProcurementReceiptPhoto" } postgresql://private token=private',
+    { clientVersion }
+  );
+  const operation = { model: "SpotProcurementReceiptPhoto", action: "findFirst" } as const;
+  expect(projectA24CashFailure(failure, operation)).toEqual({
+    serverErrorKind: "UNKNOWN_REQUEST_ERROR", serverSqlState: "42501", node: "CASH_RECEIPT_COLLISION",
+    relation: "SpotProcurementReceiptPhoto"
+  });
+  expect(projectA24ApprovalFailure(failure, operation)).not.toHaveProperty("node");
 });
