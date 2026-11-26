@@ -428,7 +428,7 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
   const step = /      - name: Run exact-SHA PostgreSQL dynamic gate shard\n[\s\S]*?        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(dynamic);
   assert.ok(step);
   const source = step[1].replace(/^          /gmu, "");
-  const executable = source.replace('exec bash "${exact_args[@]}"',
+  const executable = source.replace(/^count=.*$/mu, "count=334").replaceAll('exec bash "${exact_args[@]}"',
     'printf "%s\\n" "${exact_args[@]}"; exit 0');
   const sha = "d".repeat(40);
   for (const [group, shard, status, lane] of [
@@ -473,7 +473,7 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
     ]);
     else assert.match(result.stdout, /334 PostgreSQL gate has no admitted runner/u);
   }
-  for (const count of [335, 346]) {
+  for (const count of [335, 347]) {
     const repinned = executable.replace(/^count=.*$/mu, `count=${count}`);
     const result = spawnSync("bash", ["-c", `exec () { exit 99; }\n${repinned}`], {
       cwd: root, encoding: "utf8",
@@ -481,6 +481,35 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
     });
     assert.equal(result.status, 65, result.stdout + result.stderr);
     assert.match(result.stdout, new RegExp(`${count} PostgreSQL gate has no admitted baseline`, "u"));
+  }
+});
+
+test("the hosted 346 step routes the complete automatic matrix through isolated wrappers", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const job = jobBlock(workflow, "postgresql16-dynamic-gates");
+  const [, command] = /      - name: Run exact-SHA PostgreSQL dynamic gate shard\n[\s\S]*?        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(job);
+  const executable = command.replace(/^          /gmu, "").replaceAll('exec bash "${exact_args[@]}"',
+    'printf "%s\\n" "${exact_args[@]}"; exit 0');
+  const manifest = JSON.parse(await readFile(join(root, "services/api/prisma/database-dynamic-gate-manifest.json")));
+  const sha = "d".repeat(40);
+  for (const { id, ciExecution } of manifest.coveredGroups) {
+    const shards = id === "pol113_pol115_business_entries" ? ["pol113_pol114", "pol115_workbench"] : [""];
+    for (const shard of shards) {
+      const result = spawnSync("bash", ["-c", executable], { cwd: root, encoding: "utf8",
+        env: { ...process.env, CI_SOURCE_SHA: sha, DYNAMIC_GROUP: id, DYNAMIC_SHARD: shard } });
+      const label = shard ? id + "/" + shard : id;
+      if (ciExecution === "manual-only") {
+        assert.equal(result.status, 65, label);
+        assert.match(result.stdout, /346 PostgreSQL gate has no admitted runner/u);
+        continue;
+      }
+      assert.equal(result.status, 0, label + result.stderr);
+      const [runner, actualSha, ...args] = result.stdout.trim().split("\n");
+      assert.match(runner, /^\.github\/task12-install-295\//u, label);
+      assert.equal(actualSha, sha, label);
+      if (shard) assert.deepEqual(args, [shard], label);
+      else assert.ok(args.includes("--expense-witness-346"), label);
+    }
   }
 });
 

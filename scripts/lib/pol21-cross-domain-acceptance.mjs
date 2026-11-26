@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import gate334 from "../../services/api/prisma/dynamic-gate-334.cjs";
+import gate346 from "../../services/api/prisma/dynamic-gate-346.cjs";
 
 const requireFromApiWorkspace = createRequire(
   new URL("../../services/api/package.json", import.meta.url)
@@ -164,7 +165,13 @@ export function inspectPol21CrossDomainAcceptance({
     blockers.push("POL21_DYNAMIC_INVENTORY_INCOMPLETE");
   }
   const migrationCount = dynamicGateManifest?.migrationBaseline?.expectedDirectoryCount;
-  if (migrationCount > 334) {
+  if (migrationCount === 346) {
+    if (!gate346.matchesBaseline346(dynamicGateManifest.migrationBaseline) ||
+        gate346.unadmittedGroups346(dynamicGateManifest.coveredGroups ?? []).length ||
+        !knownGroups.has(gate334.historicalTakeoverGroup) || !knownGroups.has("line_a_real_db")) {
+      blockers.push("POL21_DYNAMIC_FORWARD_ADMISSION_INCOMPLETE");
+    }
+  } else if (migrationCount > 334) {
     blockers.push("POL21_DYNAMIC_FORWARD_ADMISSION_INCOMPLETE");
   } else if (migrationCount === 334) {
     const unadmitted = gate334.unadmittedGroups334(dynamicGateManifest.coveredGroups ?? []);

@@ -286,8 +286,9 @@ for name,pin in pins['workspace'].items():
         # overlay replaced only these three scalars, independently of installation ledger.
         before = json.loads(material)
         keys = ('expectedDirectoryCount','terminalMigration','terminalMigrationChecksum')
-        manifest_count = 334 if expense_witness else count
-        last = source['tails'][38] if expense_witness else source['tails'][-1]
+        manifest_count = before['migrationBaseline']['expectedDirectoryCount']
+        assert manifest_count == count or (expense_witness and manifest_count == 334)
+        last = source['tails'][38] if expense_witness and manifest_count == 334 else source['tails'][-1]
         assert tuple(before['migrationBaseline'][key] for key in keys) == (manifest_count,last['name'],last['sha256'])
         historical_base = subprocess.check_output(['git','-C',str(repo),'show',
             f'233e0d6808352e4b169ec0a82909afc0d3b8f8fa:{name}'])

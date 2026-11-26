@@ -56,10 +56,10 @@ if(ledger.length===295) {
   assert.equal(digest,predecessor295Sha256);
 }
 const {migrationBaseline}=JSON.parse(blob('services/api/prisma/database-dynamic-gate-manifest.json'));
-// 346 remains an explicit qualification mode until the complete hosted matrix is rebound.
-const admittedCount=expenseWitness?.count===346 ? 334 : ledger.length;
+const admittedCount=migrationBaseline.expectedDirectoryCount;
+assert.ok(admittedCount===ledger.length || (expenseWitness?.count===346 && admittedCount===334),
+  'CONTRACT_FINANCE_RELEASE_SCOPE');
 const terminal=ledger[admittedCount-1];
-assert.equal(migrationBaseline.expectedDirectoryCount,admittedCount);
 assert.equal(migrationBaseline.terminalMigration,terminal.name);
 assert.equal(migrationBaseline.terminalMigrationChecksum,terminal.sha256);
 if (current320) {

@@ -23,6 +23,7 @@ const {
 } = require("./pol113-pol115-shards.cjs");
 
 const gate334 = require("./dynamic-gate-334.cjs");
+const gate346 = require("./dynamic-gate-346.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const manifestPath = path.join(
@@ -670,17 +671,19 @@ const current330Lanes = Object.freeze({
 });
 
 function assertAutomaticBaselineAdmitted(migrationCount) {
-  if (migrationCount > 334) fail(`${migrationCount} PostgreSQL 动态基线未准入`);
+  if (migrationCount > 334 && migrationCount !== 346) fail(`${migrationCount} PostgreSQL 动态基线未准入`);
 }
 
 function resolveGroupCommand(group, options = {}) {
   if (group.id !== TASK01_GROUP) assertAutomaticBaselineAdmitted(options.migrationCount);
-  if (options.migrationCount === 334) {
-    const dispatch = gate334.commandFor334(group.id, options.candidateSha, group.pol113Pol115Shard);
-    if (!dispatch) fail(`334 PostgreSQL 动态组未接入：${group.id}`);
-    if (!/^[a-f0-9]{40}$/u.test(options.candidateSha ?? "")) fail("334 运行必须提供完整候选 SHA");
+  const { migrationCount } = options;
+  if (migrationCount === 334 || (migrationCount === 346 && group.id !== TASK01_GROUP)) {
+    const commandForBaseline = migrationCount === 346 ? gate346.commandFor346 : gate334.commandFor334;
+    const dispatch = commandForBaseline(group.id, options.candidateSha, group.pol113Pol115Shard);
+    if (!dispatch) fail(`${migrationCount} PostgreSQL 动态组未接入：${group.id}`);
+    if (!/^[a-f0-9]{40}$/u.test(options.candidateSha ?? "")) fail(`${migrationCount} 运行必须提供完整候选 SHA`);
     const [runner, ...args] = dispatch;
-    return { command: "bash", args: [resolveRepositoryPath(runner, "334 PostgreSQL 隔离入口"), ...args] };
+    return { command: "bash", args: [resolveRepositoryPath(runner, `${migrationCount} PostgreSQL 隔离入口`), ...args] };
   }
   if (group.id === gate334.historicalTakeoverGroup) fail("A28 需要准确的 334 迁移基线");
   if (options.migrationCount === 330 && Object.hasOwn(current330Lanes, group.id)) {
@@ -801,9 +804,14 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
   }
   const migrationCount = manifest.migrationBaseline.expectedDirectoryCount;
   assertAutomaticBaselineAdmitted(migrationCount);
-  if (migrationCount === 334) {
-    const unadmitted = gate334.unadmittedGroups334(coveredGroups);
-    if (unadmitted.length) fail(`334 PostgreSQL 动态组未接入：${unadmitted.join(", ")}`);
+  if (migrationCount === 346 && !gate346.matchesBaseline346(manifest.migrationBaseline)) {
+    fail("346 PostgreSQL 动态基线摘要未准入");
+  }
+  if (migrationCount === 334 || migrationCount === 346) {
+    const unadmitted = migrationCount === 346
+      ? gate346.unadmittedGroups346(coveredGroups)
+      : gate334.unadmittedGroups334(coveredGroups);
+    if (unadmitted.length) fail(`${migrationCount} PostgreSQL 动态组未接入：${unadmitted.join(", ")}`);
   }
   const temporaryRoot = await mkdtemp(
     path.join(tmpdir(), "jiangkong-database-dynamic-gate-" +
@@ -832,7 +840,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
     childEnvironment.DATABASE_DYNAMIC_GATE_CANDIDATE_SHA = candidateSha;
     // The remaining runner owns preparation for both standalone and CI use.
     // No environment flag or persisted cache can bypass that preparation.
-    if (migrationCount !== 334 && coveredGroups.some(group => group.id !== "remaining_dynamic_postgresql16" &&
+    if (migrationCount !== 334 && migrationCount !== 346 && coveredGroups.some(group => group.id !== "remaining_dynamic_postgresql16" &&
         !(migrationCount === 330 && Object.hasOwn(current330Lanes, group.id)))) {
       await runPreflight(childEnvironment);
     }

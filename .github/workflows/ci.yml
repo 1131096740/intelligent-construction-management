@@ -410,6 +410,15 @@ jobs:
           TASK12_289_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.number == 428 }}
         run: |
           count=$(node -p "require('./services/api/prisma/database-dynamic-gate-manifest.json').migrationBaseline.expectedDirectoryCount")
+          if [[ "$count" == 346 ]]; then
+            dispatch=$(node -e "const gate=require('./services/api/prisma/dynamic-gate-346.cjs'); const {migrationBaseline}=require('./services/api/prisma/database-dynamic-gate-manifest.json'); if(!gate.matchesBaseline346(migrationBaseline)) process.exit(65); console.log((gate.commandFor346(process.env.DYNAMIC_GROUP, process.env.CI_SOURCE_SHA, process.env.DYNAMIC_SHARD) ?? []).join(' '));")
+            if [[ -z "$dispatch" ]]; then
+              echo "::error::346 PostgreSQL gate has no admitted runner for $DYNAMIC_GROUP${DYNAMIC_SHARD:+/$DYNAMIC_SHARD}"
+              exit 65
+            fi
+            read -r -a exact_args <<< "$dispatch"
+            exec bash "${exact_args[@]}"
+          fi
           if (( count > 334 )); then
             echo "::error::$count PostgreSQL gate has no admitted baseline"
             exit 65

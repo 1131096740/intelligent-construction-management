@@ -29,9 +29,11 @@ function assertSource(source, predecessor295) {
 function assertRuntimeBaseline({ loadManifest, deriveMigrationBaseline, DEFAULT_MANIFEST_PATH }) {
   const admitted = loadManifest(DEFAULT_MANIFEST_PATH).migrationBaseline;
   const installed = deriveMigrationBaseline();
+  assert.ok([334, count].includes(admitted.expectedDirectoryCount), 'CASH_OPERATING_346_RELEASE_SCOPE');
+  const admittedTerminal = admitted.expectedDirectoryCount === count ? terminal : historical.terminal;
   assert.deepEqual(
-    [admitted.expectedDirectoryCount, admitted.terminalMigration, admitted.terminalMigrationChecksum],
-    [334, historical.terminal.name, historical.terminal.sha256],
+    [admitted.terminalMigration, admitted.terminalMigrationChecksum],
+    [admittedTerminal.name, admittedTerminal.sha256],
     'CASH_OPERATING_346_RELEASE_SCOPE'
   );
   assert.deepEqual(

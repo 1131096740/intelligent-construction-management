@@ -11,6 +11,7 @@ const {
   assertLocalDockerEndpoint,
   assertSafeExecutionEnvironment,
   createChildEnvironment,
+  executeGate,
   inheritedDatabaseTargetNames,
   loadManifest,
   parseArguments,
@@ -208,7 +209,7 @@ test("the 330 gate dispatches application and finance through the exact isolated
   }
 });
 
-test("334 routes Line A, A28, finance and Remaining and rejects other groups before tooling", () => {
+test("334 routes Line A, A28, finance and Remaining and rejects other groups before tooling", async () => {
   const manifest = loadManifest();
   const sha = "e".repeat(40);
   const original = manifest.coveredGroups.find(group => group.id === "line_a_real_db");
@@ -262,13 +263,11 @@ test("334 routes Line A, A28, finance and Remaining and rejects other groups bef
   drift.coveredGroups.find(group => group.id === historical.id).runner.path = original.runner.path;
   assert.throws(() => validateManifest(drift), /A28.*固定/u);
 
-  const result = spawnSync(process.execPath, [runnerPath, "--execute", "--group", "issue403_actual_purchase_batch",
-    "--candidate-sha", sha, "--confirm", "LOCAL_PG16_DYNAMIC_GATE"], {
-    encoding: "utf8", env: { PATH: "", NODE_ENV: "test" }
-  });
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /334 PostgreSQL.*issue403_actual_purchase_batch/u);
-  assert.doesNotMatch(result.stderr, /ENOENT|spawn|Docker/u);
+  manifest.migrationBaseline.expectedDirectoryCount = 334;
+  const options = parseArguments(["--execute", "--group", "issue403_actual_purchase_batch",
+    "--candidate-sha", sha, "--confirm", "LOCAL_PG16_DYNAMIC_GATE"]);
+  await assert.rejects(executeGate({ manifest, options, sourceEnv: { PATH: "", NODE_ENV: "test" } }),
+    /334 PostgreSQL.*issue403_actual_purchase_batch/u);
 });
 
 test("unadmitted forward baselines reject automatic execution before temporary resources", async () => {
@@ -287,12 +286,24 @@ test("unadmitted forward baselines reject automatic execution before temporary r
   const candidateSha = "e".repeat(40);
   const options = parseArguments(["--execute", "--group", group.id,
     "--candidate-sha", candidateSha, "--confirm", "LOCAL_PG16_DYNAMIC_GATE"]);
-  for (const count of [335, 346]) {
+  for (const count of [335, 347]) {
     manifest.migrationBaseline.expectedDirectoryCount = count;
     const expected = new RegExp(`${count} PostgreSQL 动态基线未准入`, "u");
     await assert.rejects(fixture.exports.executeGate({ manifest, options, sourceEnv: { PATH: "", NODE_ENV: "test" } }), expected);
     assert.throws(() => resolveGroupCommand(group, { candidateSha, migrationCount: count }), expected);
   }
+});
+
+test("346 uses the exact isolated runner and rejects an unknown automatic group", () => {
+  const manifest = loadManifest();
+  const candidateSha = "e".repeat(40);
+  const group = manifest.coveredGroups.find(item => item.id === "issue418_operating_dedup");
+  const resolved = resolveGroupCommand(group, { candidateSha, migrationCount: 346 });
+  assert.equal(resolved.command, "bash");
+  assert.match(resolved.args[0], /run-contract-adjacent-ci[.]sh$/u);
+  assert.deepEqual(resolved.args.slice(1), [candidateSha, "issue418-operating", "--expense-witness-346"]);
+  assert.throws(() => resolveGroupCommand({ ...group, id: "unknown" }, { candidateSha, migrationCount: 346 }),
+    /346 PostgreSQL 动态组未接入/u);
 });
 
 test("334 routes standalone payment execution without substituting Core Payment", () => {
