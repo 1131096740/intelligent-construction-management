@@ -15,7 +15,38 @@ const projects = ['desktop', 'mobile'];
 const statuses = ['passed', 'failed', 'timedOut', 'skipped', 'interrupted'];
 const steps = ['fixture', 'navigation', 'response_wait', 'request', 'assertion', 'interaction', 'other'];
 const routes = ['login', 'expense', 'draft_deletion', 'fund', 'takeover', 'spot'];
+const operations = {
+  create_context: /(?:browser\.newContext|^Create browser context$)/iu,
+  create_page: /(?:browserContext\.newPage|^Create page$)/iu,
+  init_script: /\.addInitScript\b/u,
+  evaluate: /\.evaluate(?:Handle)?\b/u
+};
+const reasons = {
+  target_closed: /Target page, context or browser has been closed|(?:Page|Browser|Context) closed\b/iu,
+  browser_crashed: /(?:Page|Browser) (?:has )?crashed|WebProcess.*(?:crashed|terminated)/iu,
+  browser_launch: /(?:browserType\.launch|Failed to launch browser)/iu,
+  strict_locator: /strict mode violation/iu,
+  action_timeout: /(?:Test timeout of \d+ms exceeded|Timeout \d+ms exceeded)/iu,
+  reference_error: /\bReferenceError:/u,
+  type_error: /\bTypeError:/u,
+  navigation_error: /net::ERR_[A-Z_]+|Frame load interrupted|Navigation interrupted/iu
+};
 const lineNumber = line => Number.isInteger(line) && line > 0 && line <= 2_000;
+
+function matchLabel(patterns, text) {
+  return Object.entries(patterns).find(([, pattern]) => pattern.test(text))?.[0];
+}
+
+function diagnoseFailure(step, errors, suite) {
+  const error = errors?.[0];
+  const message = (step?.error?.message ?? error?.message ?? '').slice(0, 2_048);
+  const operation = matchLabel(operations, step?.title ?? '') ?? matchLabel(operations, message.split('\n', 1)[0]);
+  const reason = matchLabel(reasons, message);
+  const frames = (step?.error?.stack ?? error?.stack ?? '').slice(0, 4_096);
+  const frame = [...frames.matchAll(/(?:[\\/])([a-z0-9.-]+\.e2e\.ts):(\d{1,4}):\d{1,4}(?=[)\s]|$)/gu)]
+    .find(([, file, line]) => suites[file] === suite && lineNumber(Number(line)));
+  return { ...(operation && { operation }), ...(reason && { reason }), ...(frame && { stepLine: Number(frame[2]) }) };
+}
 
 function testIdentity(test) {
   const suite = suites[basename(test.location.file)];
@@ -83,8 +114,9 @@ class BrowserWitness {
     this.progressCounts.delete(test);
     if (!identity) return;
     const step = result.steps.map(failedStep).find(Boolean);
+    const failure = diagnoseFailure(step, result.errors, identity.suite);
     emit({ event: 'end', ...identity, status: result.status, durationMs: result.duration,
-      ...classifyStep(step, identity.suite) });
+      ...failure, ...classifyStep(step, identity.suite) });
   }
 }
 
@@ -97,7 +129,7 @@ function summarizeBrowserWitness(output) {
     if (events++ >= 512) break;
     let raw;
     try { raw = JSON.parse(json); } catch { continue; }
-    const { event, suite, project, testLine, status, durationMs, category, stepLine, route } = raw;
+    const { event, suite, project, testLine, status, durationMs, category, stepLine, route, operation, reason } = raw;
     if (!Object.values(suites).includes(suite) || !projects.includes(project) || !lineNumber(testLine)) continue;
     const key = suite + ':' + project + ':' + testLine;
     const identity = { suite, project, testLine };
@@ -115,6 +147,8 @@ function summarizeBrowserWitness(output) {
       suitesSeen[suite].completed++;
       if (!['passed', 'skipped'].includes(status) && failures.length < 12) {
         failures.push({ ...progress, ...detail, status,
+          ...(typeof operation === 'string' && Object.hasOwn(operations, operation) && { operation }),
+          ...(typeof reason === 'string' && Object.hasOwn(reasons, reason) && { reason }),
           ...(Number.isInteger(durationMs) && durationMs >= 0 && durationMs <= 900_000 && { durationMs }) });
       }
     }
