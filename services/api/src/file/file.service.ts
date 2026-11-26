@@ -2972,8 +2972,23 @@ export class FileService {
     if (await assertGeneratedContractFileAccess(tx, file, actorUserId, this.moduleRef)) return;
     if (layoutAccess === true) return;
 
+    const archiveRecordClient = (tx as unknown as {
+      archiveRecord?: {
+        findFirst: (args: {
+          where: { fileId: string; businessType?: string };
+          select: { businessType: true; businessId: true };
+        }) => Promise<{ businessType: string; businessId: string } | null>;
+      };
+    }).archiveRecord;
     if (file.uploadedByUserId === actorUserId && !projectOwnerContract) {
-      return;
+      const archive = await archiveRecordClient?.findFirst({
+        where: { fileId: file.id, businessType: "contract_version" },
+        select: { businessType: true, businessId: true }
+      });
+      if (!archive) return;
+      const projectId = await this.resolveApprovalProjectId(tx, archive.businessType, archive.businessId);
+      if (projectId && await this.hasProjectRole(tx, actorUserId, projectId, ARCHIVE_FILE_DOWNLOAD_ROLES)) return;
+      throw new ForbiddenException("当前账号无权下载该合同归档原件");
     }
 
     const contractArchiveEvidence = await tx.contractArchiveEvidenceFile.findFirst({ where: { fileId: file.id } });
@@ -3343,14 +3358,6 @@ export class FileService {
       }
     }
 
-    const archiveRecordClient = (tx as unknown as {
-      archiveRecord?: {
-        findFirst: (args: {
-          where: { fileId: string };
-          select: { businessType: true; businessId: true };
-        }) => Promise<{ businessType: string; businessId: string } | null>;
-      };
-    }).archiveRecord;
     const archiveRecord = archiveRecordClient
       ? await archiveRecordClient.findFirst({
           where: { fileId: file.id },

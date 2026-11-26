@@ -7975,6 +7975,46 @@ describe("FileService", () => {
     expect(tx.projectExpenseRequest.findUnique).not.toHaveBeenCalled();
   });
 
+  it("requires current contract project access even for the original archive uploader", async () => {
+    const tx = {
+      contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
+      fileObject: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: "file-1",
+          originalName: "合同归档.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 12,
+          uploadedByUserId: "uploader"
+        })
+      },
+      archiveRecord: {
+        findFirst: jest.fn().mockResolvedValue({
+          businessType: "contract_version", businessId: "version-1"
+        })
+      },
+      contractVersion: { findUnique: jest.fn().mockResolvedValue({ contractId: "contract-1" }) },
+      contract: { findUnique: jest.fn().mockResolvedValue({ projectId: "project-1" }) },
+      userPosition: { findMany: jest.fn().mockResolvedValue([]) },
+      projectMember: { findMany: jest.fn().mockResolvedValue([]) }
+    };
+    const prisma = {
+      $transaction: async (callback: (transaction: typeof tx) => unknown) =>
+        callback(legacyFileTransaction(tx))
+    } as unknown as PrismaService;
+    const service = new FileService(prisma, audit as never, storage as never);
+
+    await expect(service.createDownloadTicket("file-1", { actorUserId: "uploader" }))
+      .rejects.toBeInstanceOf(ForbiddenException);
+    expect(audit.record).not.toHaveBeenCalled();
+
+    tx.projectMember.findMany.mockResolvedValue([{ positionKey: "contract_staff" }]);
+    await expect(service.createDownloadTicket("file-1", { actorUserId: "uploader" }))
+      .resolves.toMatchObject({ fileId: "file-1" });
+    expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      actorUserId: "uploader", action: "file.download.ticket", businessId: "file-1"
+    }));
+  });
+
   it("allows finance staff to download a project expense archived PDF by project role", async () => {
     const tx = {
       contractGeneratedDocument: { findMany: jest.fn().mockResolvedValue([]) },
