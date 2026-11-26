@@ -77,7 +77,7 @@ const cashOperations = {
   "OperatingCostAttributionConfirmation.update": "CASH_ATTRIBUTION_UPDATE",
   "AuditLog.create": "CASH_AUDIT"
 } as const;
-type Operation = Pick<Prisma.MiddlewareParams, "model" | "action">;
+type Operation = Pick<Prisma.MiddlewareParams, "model" | "action"> & { args?: unknown };
 const sqlStates = new Set(["42501", "23502", "23503", "23505", "23514", "42P01", "42703", "42883", "55000",
   "25006", "25P02", "40001", "40P01", "55P03", "57014"]);
 const routines = new Set([
@@ -90,6 +90,7 @@ const routines = new Set([
   "jg_file_business_binding_columns",
   "jg_file_business_binding_columns_before_signed_settlement",
   "jg_file_business_binding_columns_before_owner_settlement",
+  "jg_project_owner_settlement_voucher_bound",
   "jg_guard_generated_upward_seal_completion_v1",
   "jg_validate_fund_balance_correction_round",
   "appendOperatingFactThroughService",
@@ -120,4 +121,18 @@ function projectFailure(error: unknown, nodes: Readonly<Record<string, string>>,
 export const projectA24SignatureFailure = (error: unknown, operation?: Operation) => projectFailure(error, operations, operation);
 export const projectA24SubmissionFailure = (error: unknown, operation?: Operation) => projectFailure(error, submissionOperations, operation);
 export const projectA24ApprovalFailure = (error: unknown, operation?: Operation) => projectFailure(error, approvalOperations, operation);
-export const projectA24CashFailure = (error: unknown, operation?: Operation) => projectFailure(error, cashOperations, operation);
+export function projectA24CashFailure(error: unknown, operation?: Operation) {
+  const detail = projectFailure(error, cashOperations, operation);
+  if (detail.node !== "CASH_TRANSACTION_QUERY") return detail;
+
+  // Prisma middleware receives a prepared Sql object or the tagged template's literal segments.
+  const args = operation?.args;
+  if (!Array.isArray(args)) return detail;
+  const query: unknown = args[0];
+  const strings: unknown = Array.isArray(query) ? query
+    : query && typeof query === "object" && "strings" in query ? query.strings : undefined;
+  const prefix: unknown = Array.isArray(strings) ? strings[0] : undefined;
+  if (typeof prefix !== "string" ||
+      !prefix.trimStart().startsWith('/* receipt_non_receipt_file_binding */\n      WITH candidates("id") AS (VALUES ')) return detail;
+  return { ...detail, node: "CASH_NON_RECEIPT_BINDING" };
+}

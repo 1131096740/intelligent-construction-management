@@ -64,15 +64,21 @@ test("uses the proven project-close projection and narrow reference locks at fin
   for (const table of ["ProjectMember", "UserPosition", "Position"]) assert.equal(plan.insert[table], undefined);
 });
 
-test("grants only the sealed V1 writer calls while leaving the ledger write fences unchanged", () => {
+test("grants the sealed V1 writer calls and voucher collision ID while retaining write fences", () => {
   const models = Prisma.dmmf.datamodel.models;
   const original = a24ColumnPlan(models);
   const revised = a24ColumnPlan(models, true);
-  assert.deepEqual(revised, { ...original, functions: [...original.functions, ...CASH_WRITER_FUNCTIONS] });
+  assert.deepEqual(revised, {
+    ...original,
+    read: { ...original.read, SpotProcurementReceiptPhoto: ["id", "originalFileId", "watermarkedFileId"] },
+    functions: [...original.functions, ...CASH_WRITER_FUNCTIONS]
+  });
   const grant = plan => renderA24FixtureAcl(plan, "jg_a24_application", "jg_a24_observer").split("\n");
   const oldGrants = grant(original);
-  assert.deepEqual(grant(revised).filter(line => !oldGrants.includes(line)),
-    CASH_WRITER_FUNCTIONS.map(signature => `GRANT EXECUTE ON FUNCTION ${signature} TO "jg_a24_application";`));
+  assert.deepEqual(grant(revised).filter(line => !oldGrants.includes(line)), [
+    'GRANT SELECT ("id", "originalFileId", "watermarkedFileId") ON public."SpotProcurementReceiptPhoto" TO "jg_a24_application";',
+    ...CASH_WRITER_FUNCTIONS.map(signature => `GRANT EXECUTE ON FUNCTION ${signature} TO "jg_a24_application";`)
+  ]);
   const scope = readA24LegacyWriterAcl("jg_a24_application", "jg_a24_observer");
   assert.match(scope, /NOT has_function_privilege\('jg_a24_observer', routine\.oid, 'EXECUTE'\)/u);
   assert.match(scope, /NOT has_function_privilege\('jg_a24_application', routine\.oid, 'EXECUTE WITH GRANT OPTION'\)/u);

@@ -59,7 +59,7 @@ const functions = [
   'public."appendOperatingImpactThroughService"(public."OperatingLedgerImpactWritePayloadV2",text,text)'
 ];
 
-function a24ColumnPlan(models, legacyOperatingWriters = false) {
+function a24ColumnPlan(models, combined342 = false) {
   const full = table => {
     const model = models.find(row => row.name === table);
     assert.ok(model, "NATIVE_A24_REQUIRED_MODEL_" + table);
@@ -67,6 +67,8 @@ function a24ColumnPlan(models, legacyOperatingWriters = false) {
   };
   const read = {
     ...signatureUploadReads,
+    // The 342 cash voucher collision check also selects the receipt photo ID.
+    ...(combined342 ? { SpotProcurementReceiptPhoto: ["id", ...signatureUploadReads.SpotProcurementReceiptPhoto] } : {}),
     User: nativeOrdinary.tables.User[0],
     // The login audit uses Prisma create() with its default RETURNING projection.
     AuditLog: nativeOrdinary.tables.AuditLog[0],
@@ -133,7 +135,7 @@ function a24ColumnPlan(models, legacyOperatingWriters = false) {
     for (const column of columns) assert.ok(existing.includes(column), "NATIVE_A24_REQUIRED_COLUMN_" + table + "_" + column);
   }
   return { read, insert, update, observer,
-    functions: legacyOperatingWriters ? [...functions, ...CASH_WRITER_FUNCTIONS] : functions };
+    functions: combined342 ? [...functions, ...CASH_WRITER_FUNCTIONS] : functions };
 }
 
 function renderA24FixtureAcl(plan, app, observer) {

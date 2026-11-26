@@ -73,3 +73,19 @@ it("projects the cash voucher collision lookup without returning query or reques
   });
   expect(projectA24ApprovalFailure(failure, operation)).not.toHaveProperty("node");
 });
+
+it("projects the known raw voucher-collision shape without returning SQL or bindings", () => {
+  const failure = new Prisma.PrismaClientKnownRequestError("raw failure", {
+    clientVersion, code: "P2010",
+    meta: { code: "42501", message: "permission denied for function jg_project_owner_settlement_voucher_bound" }
+  });
+  const prefix = '/* receipt_non_receipt_file_binding */\n      WITH candidates("id") AS (VALUES ';
+  const query = Prisma.sql([prefix, ") SELECT"], "private-file-id");
+  const operation = { model: undefined, action: "queryRaw" } as const;
+  expect(projectA24CashFailure(failure, { ...operation, args: [query] })).toEqual({
+    serverPrismaCode: "P2010", serverErrorKind: "KNOWN_REQUEST_ERROR", serverSqlState: "42501",
+    node: "CASH_NON_RECEIPT_BINDING", routine: "jg_project_owner_settlement_voucher_bound"
+  });
+  expect(projectA24CashFailure(failure, { ...operation, args: [["SELECT ", ""], prefix] }))
+    .toHaveProperty("node", "CASH_TRANSACTION_QUERY");
+});
