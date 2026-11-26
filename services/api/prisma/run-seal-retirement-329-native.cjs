@@ -768,7 +768,10 @@ async function main(args) {
           const match = /^([0-9A-Z]{5}) ERROR:\s+(.*)$/u.exec(line);
           if (!match) return [];
           const code = /^(EXPENSE_PUBLIC_CASH_VOUCHER_[A-Z_]+|EXPENSE_OPERATING_CASH_[A-Z_]+)$/u.exec(match[2])?.[0];
-          return [{ sqlState: match[1], ...(code ? { code } : {}) }];
+          const permission = match[1] === "42501" &&
+            /^permission denied for (table|relation|schema|function|sequence) ([A-Za-z_][A-Za-z0-9_]{0,62})$/u.exec(match[2]);
+          return [{ sqlState: match[1], ...(code ? { code } : {}),
+            ...(permission ? { permissionKind: permission[1], permissionObject: permission[2] } : {}) }];
         });
       receipt.firstFailure.databaseErrors = errorCodes.slice(-12);
     }
