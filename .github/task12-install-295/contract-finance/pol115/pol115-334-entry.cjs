@@ -87,6 +87,9 @@ function prepareBrowser(workDir) {
   ]) copy(file);
   fs.cpSync(path.join(workspace, 'packages/shared-domain/src'), path.join(shared, 'src'),
     { recursive: true, force: false, errorOnExist: true });
+  // pnpm's executable shims resolve the virtual store relative to the staged workspace.
+  fs.mkdirSync(path.join(workDir, 'node_modules'));
+  fs.symlinkSync(path.join(workspace, 'node_modules/.pnpm'), path.join(workDir, 'node_modules/.pnpm'));
   fs.symlinkSync(path.join(workspace, 'packages/shared-domain/node_modules'), path.join(shared, 'node_modules'));
   fs.symlinkSync(path.join(workspace, 'apps/web-admin/node_modules/.bin'), path.join(browser, 'node_modules/.bin'));
   const alias = path.join(browser, 'node_modules/@jiangkong');
