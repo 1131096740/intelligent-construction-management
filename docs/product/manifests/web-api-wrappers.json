@@ -6711,7 +6711,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5719,
+          "sourceLine": 5720,
           "method": "POST",
           "path": "/files/download-package",
           "normalizedPath": "/files/download-package",
@@ -7102,7 +7102,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7157,
+          "sourceLine": 7158,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -7134,7 +7134,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7141,
+          "sourceLine": 7142,
           "method": "GET",
           "path": "/contracts/ledger-export?:param",
           "normalizedPath": "/contracts/ledger-export",
@@ -7164,7 +7164,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7141,
+          "sourceLine": 7142,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -7194,7 +7194,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5831,
+          "sourceLine": 5832,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -7223,7 +7223,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7141,
+          "sourceLine": 7142,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -7253,7 +7253,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2891,
+          "sourceLine": 2892,
           "method": "POST",
           "path": "/operating-projections/export",
           "normalizedPath": "/operating-projections/export",
@@ -7283,7 +7283,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7141,
+          "sourceLine": 7142,
           "method": "GET",
           "path": "/payments/ledger-export?:param",
           "normalizedPath": "/payments/ledger-export",
@@ -7343,7 +7343,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5690,
+          "sourceLine": 5691,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -7377,7 +7377,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3966,
+          "sourceLine": 3967,
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
@@ -7436,7 +7436,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7184,
+          "sourceLine": 7185,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -7465,7 +7465,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7171,
+          "sourceLine": 7172,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -7494,7 +7494,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7199,
+          "sourceLine": 7200,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -7523,7 +7523,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7141,
+          "sourceLine": 7142,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -7553,7 +7553,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7141,
+          "sourceLine": 7142,
           "method": "GET",
           "path": "/settlements/signed-ledger-export?:param",
           "normalizedPath": "/settlements/signed-ledger-export",
@@ -12917,7 +12917,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 40,
+          "sourceLine": 44,
           "method": "GET",
           "path": "/projects/:param/cost-attributions",
           "normalizedPath": "/projects/:param/cost-attributions",
@@ -12945,7 +12945,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 55,
+          "sourceLine": 59,
           "method": "POST",
           "path": "/projects/:param/cost-attributions/:param",
           "normalizedPath": "/projects/:param/cost-attributions/:param",
@@ -12973,7 +12973,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 55,
+          "sourceLine": 59,
           "method": "POST",
           "path": "/projects/:param/cost-attributions/:param/review",
           "normalizedPath": "/projects/:param/cost-attributions/:param/review",
@@ -13959,7 +13959,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 564,
+          "sourceLine": 584,
           "method": "POST",
           "path": "/expense-claims/:param/payment-subject",
           "normalizedPath": "/expense-claims/:param/payment-subject",
@@ -13988,7 +13988,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 472,
+          "sourceLine": 489,
           "method": "POST",
           "path": "/expense-claims/:param/attachments/append",
           "normalizedPath": "/expense-claims/:param/attachments/append",
@@ -14017,7 +14017,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 459,
+          "sourceLine": 476,
           "method": "POST",
           "path": "/expense-claims/:param/attachments",
           "normalizedPath": "/expense-claims/:param/attachments",
@@ -14046,7 +14046,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 396,
+          "sourceLine": 412,
           "method": "POST",
           "path": "/expense-claims",
           "normalizedPath": "/expense-claims",
@@ -14076,7 +14076,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 498,
+          "sourceLine": 516,
           "method": "GET",
           "path": "/expense-claims/:param/capability",
           "normalizedPath": "/expense-claims/:param/capability",
@@ -14091,7 +14091,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 617,
+          "sourceLine": 638,
           "method": "POST",
           "path": "/expense-claims/:param/draft-deletion",
           "normalizedPath": "/expense-claims/:param/draft-deletion",
@@ -14118,7 +14118,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 343,
+          "sourceLine": 359,
           "method": "GET",
           "path": "/expense-claims/ledger-export",
           "normalizedPath": "/expense-claims/ledger-export",
@@ -14145,7 +14145,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 429,
+          "sourceLine": 446,
           "method": "PATCH",
           "path": "/expense-claims/:param/draft",
           "normalizedPath": "/expense-claims/:param/draft",
@@ -14174,7 +14174,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 498,
+          "sourceLine": 516,
           "method": "GET",
           "path": "/expense-claims/:param/capability",
           "normalizedPath": "/expense-claims/:param/capability",
@@ -14187,10 +14187,12 @@
           ]
         }
       ],
+      "testConsumers": [
+        "apps/web-admin/src/api/expense-claim.api.test.ts"
+      ],
       "productionConsumers": [
         "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
       ],
-      "testConsumers": [],
       "unreachableConsumers": []
     },
     {
@@ -14201,7 +14203,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 390,
+          "sourceLine": 406,
           "method": "GET",
           "path": "/expense-claims/create-options",
           "normalizedPath": "/expense-claims/create-options",
@@ -14230,7 +14232,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 492,
+          "sourceLine": 509,
           "method": "GET",
           "path": "/expense-claims/:param",
           "normalizedPath": "/expense-claims/:param",
@@ -14259,7 +14261,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 369,
+          "sourceLine": 385,
           "method": "GET",
           "path": "/expense-claims/expense-categories?:param",
           "normalizedPath": "/expense-claims/expense-categories",
@@ -14288,7 +14290,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 324,
+          "sourceLine": 340,
           "method": "GET",
           "path": "/expense-claims/ledger",
           "normalizedPath": "/expense-claims/ledger",
@@ -14315,7 +14317,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 382,
+          "sourceLine": 398,
           "method": "GET",
           "path": "/expense-claims/selectable-purchase-batches?:param",
           "normalizedPath": "/expense-claims/selectable-purchase-batches",
@@ -14344,7 +14346,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 609,
+          "sourceLine": 630,
           "method": "POST",
           "path": "/expense-claims/:param/final-payment-pdf",
           "normalizedPath": "/expense-claims/:param/final-payment-pdf",
@@ -14373,7 +14375,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 597,
+          "sourceLine": 618,
           "method": "POST",
           "path": "/expense-claims/:param/payments",
           "normalizedPath": "/expense-claims/:param/payments",
@@ -14402,7 +14404,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 482,
+          "sourceLine": 499,
           "method": "POST",
           "path": "/expense-claims/:param/attachments/:param/removal",
           "normalizedPath": "/expense-claims/:param/attachments/:param/removal",
@@ -14431,7 +14433,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 446,
+          "sourceLine": 463,
           "method": "POST",
           "path": "/expense-claims/:param/approval",
           "normalizedPath": "/expense-claims/:param/approval",
@@ -14460,7 +14462,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 406,
+          "sourceLine": 422,
           "method": "POST",
           "path": "/expense-claims/:param/submission",
           "normalizedPath": "/expense-claims/:param/submission",
@@ -14489,7 +14491,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 516,
+          "sourceLine": 534,
           "method": "POST",
           "path": "/expense-claims/:param/append-attachment-file-uploads",
           "normalizedPath": "/expense-claims/:param/append-attachment-file-uploads",
@@ -14517,7 +14519,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 516,
+          "sourceLine": 534,
           "method": "POST",
           "path": "/expense-claims/:param/draft-attachment-file-uploads",
           "normalizedPath": "/expense-claims/:param/draft-attachment-file-uploads",
@@ -14545,7 +14547,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 516,
+          "sourceLine": 534,
           "method": "POST",
           "path": "/expense-claims/:param/payment-voucher-file-uploads",
           "normalizedPath": "/expense-claims/:param/payment-voucher-file-uploads",
@@ -14573,7 +14575,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 419,
+          "sourceLine": 436,
           "method": "POST",
           "path": "/expense-claims/:param/withdrawal",
           "normalizedPath": "/expense-claims/:param/withdrawal",

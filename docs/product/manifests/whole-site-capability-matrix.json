@@ -22,7 +22,7 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "b891f304418840167a236c45d020d5b12dcb34635008c99bd01b47107d8a1197",
+      "sha256": "b0b22dd0dff57c5bbb2d5d5855da59633891a42a7c61696f3c6119cd634ce52c",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
@@ -42,7 +42,7 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "9bfe6ec96f24dac0f23b7503e4ef68dbecc325fc89b510ef741f2da69ee7e54a",
+      "sha256": "62ac97bf40fc70213589c95065686d42b1d2b3dfefcdf5e95d8ff2558d054816",
       "status": "ready",
       "summary": {
         "registeredActionCount": 435,
@@ -53,7 +53,7 @@
         "totalVueFileCount": 257,
         "parsedVueFileCount": 257,
         "reachableProductionModuleCount": 407,
-        "templateEventDirectiveCount": 1548,
+        "templateEventDirectiveCount": 1549,
         "propCallbackDirectiveCount": 8,
         "coveredProductionMutationConsumerCount": 426,
         "candidateProductionMutationConsumerCount": 426,
@@ -64,7 +64,7 @@
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "b64b7f6b91d23848827ee416046593509febe1db21cfec2f3b07121811d6e6ca",
+      "sha256": "dfe07832c51941d036c9039c0bfdbb14c866e56fbf3e468b3e94c1370d96d56f",
       "status": "ready",
       "summary": {
         "routeCount": 884,
@@ -5234,7 +5234,9 @@
           "productionConsumers": [
             "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue"
           ],
-          "testConsumers": []
+          "testConsumers": [
+            "apps/web-admin/src/api/expense-claim.api.test.ts"
+          ]
         }
       ],
       "authTransports": [],

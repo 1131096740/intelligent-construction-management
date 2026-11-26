@@ -17,7 +17,7 @@
     "totalVueFileCount": 257,
     "parsedVueFileCount": 257,
     "reachableProductionModuleCount": 407,
-    "templateEventDirectiveCount": 1548,
+    "templateEventDirectiveCount": 1549,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 426,
     "candidateProductionMutationConsumerCount": 426,
@@ -2333,7 +2333,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5690,
+              "sourceLine": 5691,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2379,7 +2379,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5690,
+              "sourceLine": 5691,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3529,7 +3529,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5690,
+              "sourceLine": 5691,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3573,7 +3573,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5690,
+              "sourceLine": 5691,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5138,7 +5138,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5690,
+              "sourceLine": 5691,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5182,7 +5182,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5690,
+              "sourceLine": 5691,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6249,7 +6249,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5690,
+              "sourceLine": 5691,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6295,7 +6295,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5690,
+              "sourceLine": 5691,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7345,7 +7345,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5690,
+              "sourceLine": 5691,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7389,7 +7389,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5690,
+              "sourceLine": 5691,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -10678,7 +10678,7 @@
         "event": "call",
         "handler": "submitCostAttribution",
         "kind": "background_call",
-        "sourceLine": 2386,
+        "sourceLine": 2405,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10746,7 +10746,7 @@
         "event": "call",
         "handler": "submitCostAttributionReview",
         "kind": "background_call",
-        "sourceLine": 2428,
+        "sourceLine": 2448,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12328,7 +12328,7 @@
         "event": "call",
         "handler": "appendExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 279,
+        "sourceLine": 301,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12393,7 +12393,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimAppendAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 343,
+        "sourceLine": 365,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12458,7 +12458,7 @@
         "event": "call",
         "handler": "attachExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 268,
+        "sourceLine": 290,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12523,7 +12523,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimDraftAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 335,
+        "sourceLine": 357,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12588,7 +12588,7 @@
         "event": "call",
         "handler": "removeExpenseClaimAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 290,
+        "sourceLine": 312,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12653,7 +12653,7 @@
         "event": "call",
         "handler": "createExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 359,
+        "sourceLine": 371,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12718,7 +12718,7 @@
         "event": "call",
         "handler": "deleteExpenseClaimDraftWithCapability",
         "kind": "background_call",
-        "sourceLine": 359,
+        "sourceLine": 381,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12819,7 +12819,7 @@
         "event": "call",
         "handler": "generateExpenseClaimFinalPaymentPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 327,
+        "sourceLine": 349,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12884,7 +12884,7 @@
         "event": "call",
         "handler": "adjustExpenseClaimPaymentSubjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 305,
+        "sourceLine": 327,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -12953,7 +12953,7 @@
         "event": "call",
         "handler": "uploadExpenseClaimPaymentVoucherWithCapability",
         "kind": "background_call",
-        "sourceLine": 351,
+        "sourceLine": 373,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13018,7 +13018,7 @@
         "event": "call",
         "handler": "recordExpenseClaimPaymentWithCapability",
         "kind": "background_call",
-        "sourceLine": 316,
+        "sourceLine": 338,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13083,7 +13083,7 @@
         "event": "call",
         "handler": "editReturnedExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 222,
+        "sourceLine": 244,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13148,7 +13148,7 @@
         "event": "call",
         "handler": "reviewExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 246,
+        "sourceLine": 268,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13213,7 +13213,7 @@
         "event": "call",
         "handler": "submitExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 181,
+        "sourceLine": 203,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -13278,7 +13278,7 @@
         "event": "call",
         "handler": "withdrawExpenseClaimWithCapability",
         "kind": "background_call",
-        "sourceLine": 198,
+        "sourceLine": 220,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15614,7 +15614,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5690,
+              "sourceLine": 5691,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -15658,7 +15658,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5690,
+              "sourceLine": 5691,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17255,7 +17255,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5690,
+              "sourceLine": 5691,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17299,7 +17299,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5690,
+              "sourceLine": 5691,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20098,7 +20098,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5690,
+              "sourceLine": 5691,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20142,7 +20142,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5690,
+              "sourceLine": 5691,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -21811,7 +21811,7 @@
         "event": "call",
         "handler": "reconcileProjectCloseImpactsWithCapability",
         "kind": "background_call",
-        "sourceLine": 2265,
+        "sourceLine": 2284,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -22106,7 +22106,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 3440,
+        "sourceLine": 3460,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -22171,7 +22171,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 3402,
+        "sourceLine": 3422,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -22236,7 +22236,7 @@
         "event": "call",
         "handler": "uploadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2766,
+        "sourceLine": 2786,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -22301,7 +22301,7 @@
         "event": "call",
         "handler": "createProjectExpenseRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 2750,
+        "sourceLine": 2770,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -22604,7 +22604,7 @@
         "event": "call",
         "handler": "recordProjectExpensePurchaseExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 3361,
+        "sourceLine": 3381,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -24380,7 +24380,7 @@
         "event": "confirm",
         "handler": "submitOperatingProjectionExport",
         "kind": "event",
-        "sourceLine": 1116,
+        "sourceLine": 1131,
         "sourceColumn": 6
       },
       "semantic": "business_write",
@@ -25798,7 +25798,7 @@
         "event": "call",
         "handler": "createProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 2176,
+        "sourceLine": 2195,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25863,7 +25863,7 @@
         "event": "call",
         "handler": "uploadOwnerSettlementFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 1765,
+        "sourceLine": 1784,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25928,7 +25928,7 @@
         "event": "call",
         "handler": "recordOwnerSettlementWithCapability",
         "kind": "background_call",
-        "sourceLine": 1756,
+        "sourceLine": 1775,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26341,7 +26341,7 @@
         "event": "call",
         "handler": "updateProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 2185,
+        "sourceLine": 2204,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26406,7 +26406,7 @@
         "event": "call",
         "handler": "confirmProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 3143,
+        "sourceLine": 3163,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26473,7 +26473,7 @@
         "event": "call",
         "handler": "uploadProjectUpstreamFundEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 3082,
+        "sourceLine": 3102,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26542,7 +26542,7 @@
         "event": "call",
         "handler": "recordProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 3030,
+        "sourceLine": 3050,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26609,7 +26609,7 @@
         "event": "call",
         "handler": "validateProjectUpstreamFundDraftWithDefinition",
         "kind": "background_call",
-        "sourceLine": 3046,
+        "sourceLine": 3066,
         "sourceColumn": 0
       },
       "semantic": "business_write",
