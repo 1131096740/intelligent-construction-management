@@ -15,6 +15,7 @@ const lanes = Object.freeze({
   task398_shared_standard: "task398-standard",
   task407_public_cash_handover: "cash-handover",
   task409_principal_return: "principal-return",
+  payment_execution: "payment-execution",
   project_expense_execution: "expense-execution",
   project_expense_finance: "expense-finance",
   project_expense_receipt: "expense-receipt",

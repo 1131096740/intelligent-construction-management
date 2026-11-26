@@ -253,13 +253,23 @@ test("334 routes Line A, A28, finance and Remaining and rejects other groups bef
   drift.coveredGroups.find(group => group.id === historical.id).runner.path = original.runner.path;
   assert.throws(() => validateManifest(drift), /A28.*固定/u);
 
-  const result = spawnSync(process.execPath, [runnerPath, "--execute", "--group", "payment_execution",
+  const result = spawnSync(process.execPath, [runnerPath, "--execute", "--group", "issue422_archives",
     "--candidate-sha", sha, "--confirm", "LOCAL_PG16_DYNAMIC_GATE"], {
     encoding: "utf8", env: { PATH: "", NODE_ENV: "test" }
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /334 PostgreSQL.*payment_execution/u);
+  assert.match(result.stderr, /334 PostgreSQL.*issue422_archives/u);
   assert.doesNotMatch(result.stderr, /ENOENT|spawn|Docker/u);
+});
+
+test("334 routes standalone payment execution without substituting Core Payment", () => {
+  const group = loadManifest().coveredGroups.find(item => item.id === "payment_execution");
+  assert.equal(group.pendingTests, 2);
+  const sha = "e".repeat(40);
+  const resolved = resolveGroupCommand(group, { candidateSha: sha, migrationCount: 334 });
+  assert.equal(resolved.command, "bash");
+  assert.match(resolved.args[0], /run-contract-adjacent-ci[.]sh$/u);
+  assert.deepEqual(resolved.args.slice(1), [sha, "payment-execution", "--historical-settlement-334"]);
 });
 
 test("334 routes the three original project expense groups with their original case counts", () => {

@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 
 archive_arg, common_arg, stage_arg, *options = sys.argv[1:]
-if options not in ([], ['--text-direct-330'], ['--payment-remainder-331'], ['--upward-archive-332']):
+modes = ([], ['--text-direct-330'], ['--payment-remainder-331'], ['--upward-archive-332'], ['--historical-settlement-334'])
+if options not in modes:
     raise SystemExit('PAYMENT_STAGE_MODE')
 archive, common, stage = map(Path, (archive_arg, common_arg, stage_arg))
 plan = Path(__file__).parent
@@ -20,14 +21,19 @@ for name, checksum in pins.items():
     shutil.copyfile(source, target)
 
 installer = stage / 'installer.cjs'
-shutil.copyfile(common / 'installer.cjs', installer)
+historical_settlement = options == ['--historical-settlement-334']
+if historical_settlement:
+    subprocess.run(['node', str((plan / 'stage-historical-takeover-333.cjs').resolve()),
+                    str(stage.resolve()), 'historical-settlement-334'], check=True)
+else:
+    shutil.copyfile(common / 'installer.cjs', installer)
 subprocess.run(['git', 'apply', '-p0',
                 str((plan / 'payment-execution-installer.patch').resolve())], cwd=stage, check=True)
 for name in ('fresh.cjs','valid.cjs','payment-execution-concurrency.spec.ts'):
     subprocess.run(['patch','--silent','--batch','--fuzz=0',str(stage/name),str(plan/(name+'.patch'))],check=True)
 subprocess.run(['patch','--silent','--batch','--fuzz=0',str(stage/'payment-execution-concurrency.spec.ts'),
                 str(plan/('payment-concurrency-330.patch' if options else 'payment-concurrency-320.patch'))],check=True)
-if options in (['--payment-remainder-331'], ['--upward-archive-332']):
+if options in modes[2:]:
     support = 'contract-finance-owned.test-support.ts'
     shutil.copyfile(plan / support, stage / support)
     for name, delta, before, after in [
@@ -47,7 +53,7 @@ if options in (['--payment-remainder-331'], ['--upward-archive-332']):
                         str(target), str(plan / delta)], check=True)
         if hashlib.sha256(target.read_bytes()).hexdigest() != after:
             raise SystemExit(f'PAYMENT_331_POSTIMAGE {name}')
-if options == ['--upward-archive-332']:
+if options in modes[3:]:
     for name, delta, before, after in [
         ('fresh.cjs', 'payment-execution-332-fresh.cjs.patch',
          '1694f94fb0248da07f88f7f7b76d83c64195d1fcb13379aadc321b71c6da48b0', 'c68867cf66ec834c5d05be44bdfe17975497d9d216a0a4b654a8dcfb9ce891cf'),
@@ -65,6 +71,32 @@ if options == ['--upward-archive-332']:
                         str(target), str(plan / delta)], check=True)
         if hashlib.sha256(target.read_bytes()).hexdigest() != after:
             raise SystemExit(f'PAYMENT_332_POSTIMAGE {name}')
+if historical_settlement:
+    core = json.loads((plan / 'core-payment-334-fixtures.json').read_bytes())
+    entries = (
+        ('installer.cjs', '1c8fc6101879482fd323988bc19b218a5ef63b001b98c1d6146cd9186595d1cb',
+         '6e6e8036a5e0af54a0ab161fdae44a01b29055173193263be1821b041cea52f1'),
+        ('fresh.cjs', 'c68867cf66ec834c5d05be44bdfe17975497d9d216a0a4b654a8dcfb9ce891cf',
+         'f4e7f359d1e130584e0c1832305935569162615ae9c83802eb928aef8108f45c'),
+        ('valid.cjs', '213b61fbd163f4ac150f33c463419e382240cd1b78d6ed1a60f724c001a2bd2f',
+         '244f4bd15389f1b7559c9f575f65c875649657e7ad4921ec6c0be853c1a5dc3a'),
+        ('payment-execution-concurrency.spec.ts', '60fadabef257b2eab2eb359f8add2e8c2455a1b44be09aba4bcf8d8bece1b56e',
+         'd57ee4073dd761d704cc9ab7fc2c45d38a0125653d8e3e985772c9d74abb60d9'),
+        ('contract-finance-owned.test-support.ts', 'be618a894a7aaf7f0ab007b1049a2f98f81c330f2352f01f97aeebf0bcd63cc5',
+         core['fixtures']['contract-finance-owned.test-support.ts']),
+    )
+    for name, before, after in entries:
+        target = stage / name
+        delta = f'payment-execution-334-{name}.patch'
+        if hashlib.sha256(target.read_bytes()).hexdigest() != before:
+            raise SystemExit(f'PAYMENT_334_PREIMAGE {name}')
+        if delta in core['materials'] and hashlib.sha256((plan / delta).read_bytes()).hexdigest() != core['materials'][delta]:
+            raise SystemExit(f'PAYMENT_334_MATERIAL {name}')
+        subprocess.run(['patch', '--silent', '--batch', '--forward', '--fuzz=0',
+                        str(target), str(plan / delta)], check=True)
+        if hashlib.sha256(target.read_bytes()).hexdigest() != after:
+            raise SystemExit(f'PAYMENT_334_POSTIMAGE {name}')
+
 for file in stage.rglob('*'):
     if file.is_file():
         file.chmod(0o644)

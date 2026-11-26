@@ -1,0 +1,24 @@
+--- fresh.cjs
++++ fresh.cjs
+@@ -6 +6 @@
+-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive}=require("./installer.cjs");
++const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement}=require("./installer.cjs");
+@@ -10,0 +11 @@
++const historicalSettlement=source.mode==='historical-settlement-334';
+@@ -13,2 +14,2 @@
+-const forward=upwardArchive||paymentRemainder||source.mode==='current-320'||source.mode==='text-direct-330';
+-const count=upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
++const forward=historicalSettlement||upwardArchive||paymentRemainder||source.mode==='current-320'||source.mode==='text-direct-330';
++const count=historicalSettlement?334:upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
+@@ -16 +17 @@
+-  ? (upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:count===330?withCombined330TextAgreement:withCombined320ContractPayment)(receipt,consume,{sourceTree:source.sourceTree,
++  ? (historicalSettlement?withCombined334HistoricalSettlement:upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:count===330?withCombined330TextAgreement:withCombined320ContractPayment)(receipt,consume,{sourceTree:source.sourceTree,
+@@ -37 +38 @@
+-        /PAYMENT_CONCURRENCY_OWNED_(?:295|320|330|331|332)_IDENTITY/u.test(message)?"OWNED_IDENTITY":
++        /PAYMENT_CONCURRENCY_OWNED_(?:295|320|330|331|332|LEDGER)_IDENTITY/u.test(message)?"OWNED_IDENTITY":
+@@ -98,0 +100,5 @@
++  if(historicalSettlement) {
++    require('./historical-settlement-334-profile.cjs').assertFinanceInstallation(receipt,source);
++    if(receipt.historicalTakeoverCatalogAfterBusiness!==true || receipt.historicalSettlementCatalogAfterBusiness!==true)
++      throw new Error("PAYMENT_334_POST_BUSINESS_CATALOG");
++  }

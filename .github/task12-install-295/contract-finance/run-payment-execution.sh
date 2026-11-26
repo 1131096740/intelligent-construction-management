@@ -14,11 +14,12 @@ scope=payment-execution
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const count=source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
   if(count===332) require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
+  if(count===334) require(process.argv[5]).assertSource(source,require(process.argv[4]).final);
   console.log(count);
-'  "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs")
+'  "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs")
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -32,6 +33,7 @@ case "$count" in
   330) portable_args=(--text-direct-330) ;;
   331) portable_args=(--payment-remainder-331) ;;
   332) portable_args=(--upward-archive-332) ;;
+  334) portable_args=(--historical-settlement-334) ;;
 esac
 python3 "$plan/stage-payment-execution.py" "$repo/.github/task12-install-290/payment" "$common" "$material" ${portable_args[@]+"${portable_args[@]}"}
 
@@ -74,6 +76,11 @@ for lane in fresh valid paid other; do
   if [[ $count == 332 && ( $lane == fresh || $lane == valid ) ]]; then
     lane_args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
   fi
+  if [[ $count == 334 && ( $lane == fresh || $lane == valid ) ]]; then
+    for file in upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
+      lane_args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
+    done
+  fi
   exit_code=0
   docker run "${lane_args[@]}" --entrypoint node "$image" "/qualification/$entry" \
     > "$work/$lane.stdout" 2> "$work/$lane.stderr" || exit_code=$?
@@ -95,9 +102,15 @@ for lane in fresh valid paid other; do
          row.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256)process.exit(1);
     }
     if(positive&&count==="332") require(process.argv[8]).assertInstallation(row,require(process.argv[7]));
+    if(positive&&count==="334"){
+      const source=require(process.argv[7]);
+      require(process.argv[9]).assertFinanceInstallation(row,source);
+      if(row.combinedAfterBusiness?.sameIdentity!==true||row.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256||
+         row.historicalTakeoverCatalogAfterBusiness!==true||row.historicalSettlementCatalogAfterBusiness!==true)process.exit(1);
+    }
     if(code!=="0"||row.status!==expected||row.cleanup!=="POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT"||
       (positive&&(row.sourceSha!==sha||row.installOnly295?.count!==295||row.combinedAfterBusiness?.count!==Number(count)||row.combinedAfterBusiness?.exactB7!==true))||
       (!positive&&(row.retainedPaymentNegatives?.length!==(lane==="paid"?1:13)||row.installOnly295!==undefined)))process.exit(1);
-  ' "$work/$lane.json" "$lane" "$sha" "$expected" "$exit_code" "$count" "$prepared/source.json" "$plan/upward-archive-332-profile.cjs" ||
+  ' "$work/$lane.json" "$lane" "$sha" "$expected" "$exit_code" "$count" "$prepared/source.json" "$plan/upward-archive-332-profile.cjs" "$plan/historical-settlement-334-profile.cjs" ||
     { printf 'PAYMENT_EXECUTION_%s_STOPPED %s %s\n' "$count" "$lane" "$work" >&2; exit 1; }
 done
