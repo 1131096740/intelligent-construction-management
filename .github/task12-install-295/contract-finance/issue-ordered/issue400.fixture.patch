@@ -1,0 +1,286 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -37 +37 @@
+-      // 1) 已确认结算 1000，付款申请只批 800，实际付 1000（多付 200）。退款 200。
++      // 1) 原结算及审批均为 1000 元，已付 1000 元。后续负数结算 200 元造成合同超付。
+@@ -39 +39 @@
+-      expect(before.confirmedCents).toBe(100000n);
++      expect(before.confirmedCents).toBe(80000n);
+@@ -40,0 +41 @@
++      expect(before.abnormalOverpayCents).toBe(20000n);
+@@ -41,0 +43,2 @@
++      const approvals = { businessType: "payment_request", businessId: fixture.refundPaymentId };
++      const approvalCount = await prisma.approvalInstance.count({ where: approvals });
+@@ -51,0 +55 @@
++          accountId: fixture.accountId,
+@@ -60 +64 @@
+-        status: "paid"
++        status: "partially_paid"
+@@ -62,0 +67,4 @@
++      expect(await prisma.fundAccountBalanceRegistration.findUniqueOrThrow({
++        where: { id: refund.fundRegistrationId }
++      })).toMatchObject({ accountId: fixture.accountId, kind: "payment_refund", status: "confirmed" });
++      expect(await prisma.approvalInstance.count({ where: approvals })).toBe(approvalCount);
+@@ -66,2 +74,3 @@
+-      expect(after.outstandingCents).toBe(0n);
+-      expect(after.remainingCents).toBe(20000n);
++      expect(after.abnormalOverpayCents).toBe(0n);
++      expect(after.outstandingCents).toBe(20000n);
++      expect(after.remainingCents).toBe(0n);
+@@ -83,0 +93 @@
++          accountId: fixture.accountId,
+@@ -90,16 +100,17 @@
+-
+-      // 3) 累计退款超过原实付被拒；数据库触发器也兜底同一上限。
+-      // 先补一笔 500 的实付，使“当前净已付”大于“本笔原实付剩余可退”，
+-      // 从而单独验证按执行事实累计的上限。
+-      const secondExecutionId = randomUUID();
+-      await prisma.paymentExecution.create({
+-        data: {
+-          id: secondExecutionId, idempotencyKey: `exec-refund-second-${fixture.prefix}`,
+-          paymentRequestId: fixture.refundPaymentId, paymentSubjectType: "our_company",
+-          companyEntityIdSnapshot: randomUUID(), companyEntityNameSnapshot: "我方公司",
+-          companyEntityCreditCodeSnapshot: "91350000TEST400000",
+-          amountCents: 50000n, paidAt: new Date("2026-11-02T00:00:00.000Z"), executedByUserId: fixture.staffUserId
+-        }
+-      });
+-      await prisma.paymentRequest.update({ where: { id: fixture.refundPaymentId }, data: { paidAmountCents: 130000n, status: "paid" } });
+-      await expect(refunds.recordRefund(fixture.refundPaymentId, fixture.refundExecutionId, fixture.staffUserId, {
++      expect(await prisma.auditLog.count({ where: {
++        ...approvals, actorUserId: fixture.staffUserId, action: "payment.execution.refund"
++      } })).toBe(1);
++
++      // 3) 独立的 1500 元已批已付申请有 1000 + 500 两笔实付。
++      // 第一笔退过 200 元，单笔还可退 800 元，申请净已付仍为 1300 元。
++      const capRefund = await refunds.recordRefund(fixture.capPaymentId, fixture.capExecutionId, fixture.staffUserId, {
++        amountCents: "20000",
++        receivedAt: "2026-11-20",
++        reason: "独立上限样本已收到退款",
++        accountId: fixture.accountId,
++        idempotencyKey: randomUUID()
++      });
++      expect(capRefund).toMatchObject({
++        originalPaidCents: "100000", refundedCents: "20000", netPaidCents: "130000", status: "partially_paid"
++      });
++      await expect(refunds.recordRefund(fixture.capPaymentId, fixture.capExecutionId, fixture.staffUserId, {
+@@ -108 +119,2 @@
+-        reason: "重复退款测试",
++        reason: "分笔退款上限测试",
++        accountId: fixture.accountId,
+@@ -114,2 +126,2 @@
+-          paymentExecutionId: fixture.refundExecutionId,
+-          paymentRequestId: fixture.refundPaymentId,
++          paymentExecutionId: fixture.capExecutionId,
++          paymentRequestId: fixture.capPaymentId,
+@@ -123,2 +135,4 @@
+-      })).rejects.toThrow();
+-      expect(await prisma.paymentExecutionRefund.count({ where: { paymentExecutionId: fixture.refundExecutionId } })).toBe(1);
++      })).rejects.toThrow(/payment_execution_refund_cap_exceeded/u);
++      expect(await prisma.paymentExecutionRefund.count({ where: { paymentExecutionId: fixture.capExecutionId } })).toBe(1);
++      expect(await prisma.paymentRequest.findUniqueOrThrow({ where: { id: fixture.capPaymentId } }))
++        .toMatchObject({ approvedAmountCents: 150000n, paidAmountCents: 130000n });
+@@ -192 +206,12 @@
+-  assert.match(url, /^postgresql:\/\/[^/]+\/jiangkong_issue400_[a-z_]+(\?.*)?$/u);
++  const target = new URL(url);
++  const ordered = process.env.JG_ISSUE400_ORDERED_DATABASE;
++  assert.equal(process.env.NODE_ENV, "test");
++  assert.match(ordered ?? "", /^jg_task01_[a-f0-9]{32}$/u);
++  assert.equal(target.protocol, "postgresql:");
++  assert.equal(target.hostname, "127.0.0.1");
++  assert.equal(target.username, "jg_task01_owner");
++  assert.ok(Number(target.port) > 1024);
++  assert.equal(target.pathname, "/" + ordered);
++  assert.deepEqual(target.searchParams.getAll("sslmode"), ["require"]);
++  assert.deepEqual(target.searchParams.getAll("sslaccept"), ["strict"]);
++  assert.match(target.searchParams.get("sslcert") ?? "", /^\/tmp\/jg394-[A-Za-z0-9]+\/ca\.crt$/u);
+@@ -218,2 +242,0 @@
+-  const financeStaffPositionId = randomUUID();
+-  const financeDirectorPositionId = randomUUID();
+@@ -222,5 +245,2 @@
+-  await prisma.position.createMany({
+-    data: [
+-      { id: financeStaffPositionId, key: `finance_staff`, name: "财务人员" },
+-      { id: financeDirectorPositionId, key: `finance_director`, name: "财务主管" }
+-    ]
++  const staff = await prisma.position.upsert({
++    where: { key: "finance_staff" }, update: {}, create: { key: "finance_staff", name: "财务人员" }
+@@ -228,5 +248,2 @@
+-  await prisma.userPosition.createMany({
+-    data: [
+-      { userId: staffUserId, positionId: financeStaffPositionId },
+-      { userId: directorUserId, positionId: financeDirectorPositionId }
+-    ]
++  const director = await prisma.position.upsert({
++    where: { key: "finance_director" }, update: {}, create: { key: "finance_director", name: "财务主管" }
+@@ -234,15 +251,28 @@
+-  await prisma.registeredFundAccount.create({
+-    data: { id: accountId, scopeKey: "public_cash", kind: "public_cash" }
+-  });
+-  await prisma.fundAccountBalanceRegistration.create({
+-    data: {
+-      id: openingId, accountId, version: 1, kind: "opening", status: "confirmed",
+-      balanceYuan: 5000, asOfDate: "2026-11-01", evidenceReference: `OPEN-${prefix}`,
+-      reconciliationNote: "真库期初", reason: "真库期初", idempotencyKey: `opening-${prefix}`,
+-      payloadFingerprint: "a".repeat(64), createdByUserId: staffUserId,
+-      confirmedByUserId: staffUserId, confirmedAt: new Date("2026-11-01T00:00:00.000Z")
+-    }
+-  });
+-  await prisma.fundAccountSourceBatch.create({
+-    data: {
+-      id: sourceBatchId, registrationId: openingId, lineNo: 1, amountYuan: 5000,
++  await prisma.userPosition.createMany({ data: [
++    { userId: staffUserId, positionId: staff.id },
++    { userId: directorUserId, positionId: director.id }
++  ] });
++  const company = await prisma.companyEntity.create({ data: {
++    name: `#400 隔离我方公司 ${prefix}`, unifiedSocialCreditCode: "913100000000000018"
++  } });
++  const enterprise = await prisma.businessParty.create({ data: {
++    name: `#400 隔离施工企业 ${prefix}`, normalizedName: `issue400-${prefix}`, createdByUserId: directorUserId
++  } });
++  const enterpriseVersion = await prisma.businessPartyVersion.create({ data: {
++    businessPartyId: enterprise.id, versionNo: 1, snapshot: { name: enterprise.name }, createdByUserId: directorUserId
++  } });
++  await prisma.projectAffiliateAssignment.create({ data: {
++    projectId, businessPartyId: enterprise.id, businessPartyVersionId: enterpriseVersion.id,
++    affiliateNameSnapshot: enterprise.name, effectiveFrom: new Date("2026-01-01"),
++    changeReason: "隔离财务验收", assignedByUserId: directorUserId
++  } });
++  await prisma.registeredFundAccount.create({ data: { id: accountId, scopeKey: "public_cash", kind: "public_cash" } });
++  // 核对的期初为历史原付款之后的实际余额，同事务写入来源快照。
++  await prisma.fundAccountBalanceRegistration.create({ data: {
++    id: openingId, accountId, version: 1, kind: "opening", status: "confirmed",
++    balanceYuan: 2000, asOfDate: "2026-11-19", evidenceReference: `OPEN-${prefix}`,
++    reconciliationNote: "核对原付款后的公共现金余额", reason: "隔离核对期初", idempotencyKey: `opening-${prefix}`,
++    payloadFingerprint: "a".repeat(64), createdByUserId: staffUserId,
++    confirmedByUserId: staffUserId, confirmedAt: new Date("2026-11-19"),
++    sources: { create: {
++      id: sourceBatchId, lineNo: 1, amountYuan: 2000,
+@@ -250,53 +280,37 @@
+-    }
+-  });
+-  const refundContractId = randomUUID();
+-  const correctionContractId = randomUUID();
+-  const selfReviewContractId = randomUUID();
+-  await prisma.signedContractSettlement.createMany({
+-    data: [
+-      { id: randomUUID(), projectId, contractKind: "downstream", contractId: refundContractId, ownerUserId: staffUserId, number: `SS-REFUND-${prefix}`, amountYuan: 1000, state: "confirmed", confirmationNo: 1n, reviewedAt: new Date("2026-11-01T00:00:00.000Z"), reviewedByUserId: directorUserId },
+-      { id: randomUUID(), projectId, contractKind: "downstream", contractId: correctionContractId, ownerUserId: staffUserId, number: `SS-CORR-${prefix}`, amountYuan: 1000, state: "confirmed", confirmationNo: 2n, reviewedAt: new Date("2026-11-01T00:00:00.000Z"), reviewedByUserId: directorUserId },
+-      { id: randomUUID(), projectId, contractKind: "downstream", contractId: selfReviewContractId, ownerUserId: staffUserId, number: `SS-SELF-${prefix}`, amountYuan: 1000, state: "confirmed", confirmationNo: 3n, reviewedAt: new Date("2026-11-01T00:00:00.000Z"), reviewedByUserId: directorUserId }
+-    ]
+-  });
+-  const refundPaymentId = randomUUID();
+-  const correctionPaymentId = randomUUID();
+-  const selfReviewPaymentId = randomUUID();
+-  await prisma.paymentRequest.createMany({
+-    data: [
+-      { id: refundPaymentId, projectId, contractId: refundContractId, contractVersionId: randomUUID(), paymentTermsVersionId: randomUUID(), code: `PAY-REFUND-${prefix}`, status: "paid", requestedAmountCents: 80000n, approvedAmountCents: 80000n, paidAmountCents: 100000n, sourceType: "signed_settlement", signedSettlementId: null },
+-      { id: correctionPaymentId, projectId, contractId: correctionContractId, contractVersionId: randomUUID(), paymentTermsVersionId: randomUUID(), code: `PAY-CORR-${prefix}`, status: "paid", requestedAmountCents: 100000n, approvedAmountCents: 100000n, paidAmountCents: 100000n, sourceType: "signed_settlement", signedSettlementId: null },
+-      { id: selfReviewPaymentId, projectId, contractId: selfReviewContractId, contractVersionId: randomUUID(), paymentTermsVersionId: randomUUID(), code: `PAY-SELF-${prefix}`, status: "paid", requestedAmountCents: 100000n, approvedAmountCents: 100000n, paidAmountCents: 100000n, sourceType: "signed_settlement", signedSettlementId: null }
+-    ]
+-  });
+-  const refundExecutionId = randomUUID();
+-  const correctionExecutionId = randomUUID();
+-  const selfReviewExecutionId = randomUUID();
+-  const executions = [
+-    { id: refundExecutionId, paymentRequestId: refundPaymentId, amountCents: 100000n, idempotencyKey: `exec-refund-${prefix}` },
+-    { id: correctionExecutionId, paymentRequestId: correctionPaymentId, amountCents: 100000n, idempotencyKey: `exec-corr-${prefix}` },
+-    { id: selfReviewExecutionId, paymentRequestId: selfReviewPaymentId, amountCents: 100000n, idempotencyKey: `exec-self-${prefix}` }
+-  ];
+-  for (const execution of executions) {
+-    await prisma.paymentExecution.create({
+-      data: {
+-        ...execution,
+-        paymentSubjectType: "our_company",
+-        companyEntityIdSnapshot: randomUUID(),
+-        companyEntityNameSnapshot: "我方公司",
+-        companyEntityCreditCodeSnapshot: "91350000TEST400000",
+-        paidAt: new Date("2026-11-01T00:00:00.000Z"),
+-        executedByUserId: staffUserId
+-      }
+-    });
+-    await prisma.registeredPaymentFunding.create({
+-      data: {
+-        executionId: execution.id, accountId, balanceRegistrationId: openingId,
+-        actualPayerKind: "public_cash", actualPayerId: "public_cash", actualPayerSnapshot: { kind: "public_cash" },
+-        openingTreatment: "included", openingReason: "真库测试", openingEvidence: "真库测试",
+-        payloadFingerprint: "b".repeat(64)
+-      }
+-    });
+-    await prisma.registeredFundPaymentAllocation.create({
+-      data: { id: randomUUID(), executionId: execution.id, accountId, sourceBatchId, amountCents: execution.amountCents }
+-    });
++    } }
++  } });
++
++  async function seedPaidRequest(label: string, approved: bigint, amountYuan: number) {
++    const contract = await prisma.contract.create({ data: {
++      projectId, code: `HT-${label}-${prefix}`, name: `隔离财务合同 ${label}`,
++      counterparty: "隔离供应商", contractTypeKey: "material_purchase", companyEntityName: company.name
++    } });
++    const version = await prisma.contractVersion.create({ data: {
++      contractId: contract.id, versionNo: 1, changeType: "initial", status: "effective",
++      effectiveAt: new Date("2026-10-01"), amountCents: approved, signingSubjectType: "our_company",
++      companyEntityIdSnapshot: company.id, companyEntityNameSnapshot: company.name,
++      draftData: {}, templateSnapshot: {}, clauseSnapshot: {}
++    } });
++    const terms = await prisma.paymentTermsVersion.create({ data: {
++      contractId: contract.id, contractVersionId: version.id, versionNo: 1,
++      status: "effective", originalText: "按确认结算付款"
++    } });
++    const confirmedSource = {
++      relationship: "inside", sourceRecordId: version.id, sourceVersion: 1, contractTypeKey: "material_purchase",
++      name: contract.name, counterparty: contract.counterparty, signingParty: company.name, payerKind: "participating_company"
++    };
++    const settlement = await prisma.signedContractSettlement.create({ data: {
++      projectId, contractKind: "downstream", contractId: contract.id, ownerUserId: staffUserId,
++      number: `SS-${label}-${prefix}`, amountYuan, state: "confirmed", confirmationNo: 1n,
++      submittedAt: new Date("2026-10-31T02:00:00.000Z"), reviewedAt: new Date("2026-10-31T03:00:00.000Z"),
++      reviewedByUserId: directorUserId, confirmedContractSource: confirmedSource
++    } });
++    const payment = await prisma.paymentRequest.create({ data: {
++      projectId, contractId: contract.id, contractVersionId: version.id, paymentTermsVersionId: terms.id,
++      code: `PAY-${label}-${prefix}`, status: "paid", requestedAmountCents: approved,
++      approvedAmountCents: approved, paidAmountCents: approved, sourceType: "signed_settlement",
++      signedSettlementId: settlement.id, signedSettlementConfirmationNo: 1n,
++      signedSettlementConfirmedYuan: amountYuan, signedSettlementContractConfirmedYuan: amountYuan,
++      signedSettlementOccupiedCents: 0n, signedSettlementBasisAt: new Date("2026-10-31T03:30:00.000Z")
++    } });
++    return { contractId: contract.id, paymentId: payment.id, confirmedSource };
+@@ -304 +318,35 @@
+-  return { prefix, projectId, staffUserId, directorUserId, accountId, refundContractId, correctionContractId, selfReviewContractId, refundPaymentId, correctionPaymentId, selfReviewPaymentId, refundExecutionId, correctionExecutionId, selfReviewExecutionId };
++
++  async function seedLegacyExecution(paymentRequestId: string, amountCents: bigint, paidOn: string) {
++    const voucher = await prisma.fileObject.create({ data: {
++      bucket: "private-local", objectKey: `issue400/${prefix}/${randomUUID()}.pdf`,
++      originalName: "历史付款凭证.pdf", mimeType: "application/pdf", sizeBytes: 128,
++      uploadedByUserId: staffUserId, contentSha256: "a".repeat(64), storageStatus: "active"
++    } });
++    return prisma.paymentExecution.create({ data: {
++      paymentRequestId, amountCents, paidAt: new Date(paidOn), idempotencyKey: randomUUID(),
++      paymentSubjectType: "our_company", companyEntityIdSnapshot: company.id,
++      companyEntityNameSnapshot: company.name, companyEntityCreditCodeSnapshot: company.unifiedSocialCreditCode!,
++      executedByUserId: staffUserId, voucherFileId: voucher.id
++    } });
++  }
++
++  const refund = await seedPaidRequest("REFUND", 100000n, 1000);
++  const refundExecution = await seedLegacyExecution(refund.paymentId, 100000n, "2026-11-01");
++  await prisma.signedContractSettlement.create({ data: {
++    projectId, contractKind: "downstream", contractId: refund.contractId, ownerUserId: staffUserId,
++    number: `SS-REFUND-REDUCTION-${prefix}`, amountYuan: -200, state: "confirmed", confirmationNo: 2n,
++    submittedAt: new Date("2026-11-15T02:00:00.000Z"), reviewedAt: new Date("2026-11-15T03:00:00.000Z"),
++    reviewedByUserId: directorUserId, confirmedContractSource: refund.confirmedSource
++  } });
++
++  const cap = await seedPaidRequest("CAP", 150000n, 1500);
++  const capExecution = await seedLegacyExecution(cap.paymentId, 100000n, "2026-11-01");
++  await seedLegacyExecution(cap.paymentId, 50000n, "2026-11-02");
++  const correction = await seedPaidRequest("CORR", 100000n, 1000);
++  const correctionExecution = await seedLegacyExecution(correction.paymentId, 100000n, "2026-11-01");
++  const selfReview = await seedPaidRequest("SELF", 100000n, 1000);
++  const selfReviewExecution = await seedLegacyExecution(selfReview.paymentId, 100000n, "2026-11-01");
++  return { projectId, staffUserId, directorUserId, accountId, refundContractId: refund.contractId,
++    refundPaymentId: refund.paymentId, refundExecutionId: refundExecution.id, capPaymentId: cap.paymentId,
++    capExecutionId: capExecution.id, correctionPaymentId: correction.paymentId, correctionExecutionId: correctionExecution.id,
++    selfReviewPaymentId: selfReview.paymentId, selfReviewExecutionId: selfReviewExecution.id };
