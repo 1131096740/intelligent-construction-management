@@ -6,7 +6,7 @@ import sys
 
 repo, workspace, output = map(Path, sys.argv[1:4])
 options = sys.argv[4:]
-if options not in ([], ['--payment-remainder-331'], ['--upward-archive-332'], ['--historical-settlement-334']):
+if options not in ([], ['--payment-remainder-331'], ['--upward-archive-332'], ['--historical-settlement-334'], ['--expense-witness-346']):
     raise SystemExit('TASK398_BROWSER_PARTIAL_STAGING_MODE')
 original = repo / '.github/task12-install-290'
 partial = original / 'browser-partial'
@@ -68,15 +68,20 @@ for name in sorted(partial_pins.keys() | completion_pins.keys()):
             subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                             str(target), str(payment_remainder)], check=True)
             check(target.read_bytes(), '6a33493fa5f0e10d95e8a9cb8989ef663b43277340374336fd3a10d3cf287741', target.name)
-        if options in (['--upward-archive-332'], ['--historical-settlement-334']):
+        if options in (['--upward-archive-332'], ['--historical-settlement-334'], ['--expense-witness-346']):
             upward_archive = Path(__file__).with_name('partial332.patch')
             subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                             str(target), str(upward_archive)], check=True)
             check(target.read_bytes(), '83e28caef3edcd4202b818447905faf71ec1ef9cc8089448a311a728b4df4758', target.name)
-        if options == ['--historical-settlement-334']:
+        if options in (['--historical-settlement-334'], ['--expense-witness-346']):
             historical_settlement = Path(__file__).with_name('partial334.patch')
             subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                             str(target), str(historical_settlement)], check=True)
             check(target.read_bytes(), 'b0f660099f96e0b9143dd7e6f3d09d8ebfd0c48fc31ce5aeb028c94524225015', target.name)
+        if options == ['--expense-witness-346']:
+            expense_witness = Path(__file__).with_name('partial346.patch')
+            subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
+                            str(target), str(expense_witness)], check=True)
+            check(target.read_bytes(), '5820c14040794cea653ed73f42aa54cecafc6a2916356e0dfa8dfdc9fb1a1ac8', target.name)
     target.chmod(0o644)
     print(name)
