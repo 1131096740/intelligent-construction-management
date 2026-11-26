@@ -26,7 +26,7 @@ const sha256 = value => createHash('sha256').update(value).digest('hex');
 function summarizeFirstFailure(file, test) {
   const diagnostic = stripVTControlCharacters((test.failureMessages ?? []).join('\n'));
   const codes = [...diagnostic.matchAll(
-    /\b(P\d{4})\b|\b(?:SQLSTATE|Code:)\s*`?([0-9A-Z]{5})\b/gu
+    /\b(P\d{4})\b|\b(?:SQLSTATE|[Cc]ode:)\s*[`"']?([0-9][0-9A-Z]{4})\b/gu
   )].map(match => match[1] ?? match[2]);
   const statusPair = diagnostic.match(/Expected:\s*([1-5]\d{2})\s+Received:\s*([1-5]\d{2})\b/u);
   const location = diagnostic.split('\n').find(line => line.includes(file + ':') && line.trimStart().startsWith('at '));
@@ -34,9 +34,12 @@ function summarizeFirstFailure(file, test) {
   const kind = /ISOLATED_DATABASE_REQUIRED/u.test(diagnostic) ? 'ISOLATED_DATABASE_REQUIRED' :
     /PrismaClientInitializationError/u.test(diagnostic) ? 'PRISMA_INITIALIZATION' :
     /PrismaClientKnownRequestError/u.test(diagnostic) ? 'PRISMA_REQUEST' :
+    /PrismaClientUnknownRequestError/u.test(diagnostic) ? 'PRISMA_UNKNOWN_REQUEST' :
     /Cannot find module/u.test(diagnostic) ? 'MODULE_NOT_FOUND' : undefined;
+  const constraint = diagnostic.match(/\bconstraint\s+"([A-Za-z_][A-Za-z0-9_]{0,80})"/u)?.[1];
   return { codes: [...new Set(codes)].slice(0, 6),
     ...(kind && { kind }), ...(line && { line: Number(line) }),
+    ...(constraint && { constraint }),
     ...(statusPair && { expectedStatus: Number(statusPair[1]), receivedStatus: Number(statusPair[2]) }) };
 }
 
