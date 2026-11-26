@@ -123,4 +123,5 @@ const assert=require('node:assert/strict');
 assert.equal(createHash('sha256').update(readFileSync(process.argv[2])).digest('hex'),
   'e2afc9fe3da2262eee0c2cb3d13c113eff125c24fda9f959eb09949639ffa8ff','CORE_346_LEDGER_FIXTURE');
 JS
+  chmod 0644 "$fixtures/contract-finance-owned.test-support.ts"
 fi
