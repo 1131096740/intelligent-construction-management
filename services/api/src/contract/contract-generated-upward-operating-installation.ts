@@ -59,6 +59,10 @@ export function generatedUpwardOperatingCatalogFor(projection: UpwardLegacyProje
         (FALSE,'26a0fe0d77faa0cb21df9098d339f6350e45e9468504d1cc9d66afee4171a975',
           'd6666bbad410b5f1cacc8e40fe29dbaea990e2e101f9857cb14585d6a6a9d92b'),
         (TRUE,'a9f2052a70675effdd906929c1b3490c4f4f81867b65b29ea13c9e3a935f7434',
+          'e6d843c9d702ce00f88e79b1e7f83eac977df271c3962bb949b9299d78d9de3c'),
+        (FALSE,'bcc05db15d2a1e2679e9887475a110ffc7cc5b08e423e0b737195ee74f63c4a6',
+          'd6666bbad410b5f1cacc8e40fe29dbaea990e2e101f9857cb14585d6a6a9d92b'),
+        (TRUE,'61ea7834175ed793857205130b5cd33b163a4fad7d762d93ef46d45bbedbcaeb',
           'e6d843c9d702ce00f88e79b1e7f83eac977df271c3962bb949b9299d78d9de3c')
       ) version(with_direct_clock,fact_body,impact_body)
       WHERE 2=(SELECT count(*) FROM (VALUES

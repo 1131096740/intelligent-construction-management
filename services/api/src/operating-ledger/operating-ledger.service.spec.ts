@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { ContractOperatingSourceAdapter } from "../contract/contract-operating-source.adapter";
+import { ExpenseClaimApprovalOperatingSourceAdapter } from "../expense-claim/expense-claim-operating-source.adapter";
 import { syntheticOperatingWrite } from "./operating-precision.persistence.test-support";
 
 import {
@@ -431,6 +432,64 @@ describe("OperatingLedgerService", () => {
     ).rejects.toThrow("事实种类project_wage必须填写payee主体");
   });
 
+  it("retains the original cost and payable with an explicitly pending bearing company", async () => {
+    const prisma = pendingExpensePrisma();
+    const service = new OperatingLedgerService(prisma as never);
+    const input = pendingExpenseInput();
+
+    await expect(service.appendConfirmedSourceInTransaction(prisma as never, input, "actor-1"))
+      .resolves.toEqual(expect.objectContaining({ created: true }));
+    expect(prisma.expenseClaim.findFirst).toHaveBeenCalledWith({ where: expect.objectContaining({
+      id: input.sourceBusinessId, projectId: input.projectId, approvedAt: input.occurredAt, requestedAmountCents: 800n,
+      voidedAt: null, actualPurchaseBatchId: null, generalProcurementId: null,
+      costBearingCompanySpecified: true, costBearingCompanyEntityId: null
+    }), select: { approvalInstanceId: true } });
+    expect(prisma.approvalInstance.findFirst).toHaveBeenCalledWith({ where: {
+      id: "round-1", businessType: "expense_claim", businessId: input.sourceBusinessId, flowType: "expense_claim.approve", status: "approved"
+    }, select: { id: true } });
+    expect(prisma.approvalActionLog.findFirst).toHaveBeenCalledWith({ where: {
+      approvalInstanceId: "round-1", action: "approve", actorUserId: "actor-1", createdAt: input.confirmedAt
+    }, select: { id: true } });
+    const writes = prisma.$queryRaw.mock.calls.map(([sql]: [Prisma.Sql]) => syntheticOperatingWrite(sql));
+    expect(writes.map(write => write.row)).toEqual([
+      expect.objectContaining({ amountCents: 800n, costBearingCompanySubjectId: null, entryKind: "original" }),
+      expect.objectContaining({ impactKind: "confirmed_cost", amountCents: 800n, subjectId: null }),
+      expect.objectContaining({ impactKind: "payable_increase", amountCents: 800n, subjectKind: "downstream_counterparty" })
+    ]);
+    await expect(service.materializeSourceForComparisonInTransaction(prisma as never, input))
+      .resolves.toEqual(expect.objectContaining({ input: expect.objectContaining({ sourceBusinessId: input.sourceBusinessId }) }));
+  });
+
+  it.each(["expenseClaim", "approvalInstance", "approvalActionLog"] as const)(
+    "requires the matching persisted %s before allowing the pending bearing company",
+    async model => {
+      const prisma = pendingExpensePrisma();
+      prisma[model].findFirst.mockResolvedValue(null);
+      await expect(new OperatingLedgerService(prisma as never).appendConfirmedSourceInTransaction(
+        prisma as never, pendingExpenseInput(), "actor-1"
+      )).rejects.toThrow("事实种类expense必须填写costBearingCompany主体");
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    }
+  );
+
+  it("rejects pending-bearing markers on generic writes and expense corrections", async () => {
+    const prisma = pendingExpensePrisma();
+    const service = new OperatingLedgerService(prisma as never);
+    const input = pendingExpenseInput();
+    await expect(service.appendFromSource(input, "actor-1")).rejects.toThrow("必须填写costBearingCompany主体");
+    await expect(service.appendConfirmedSourceInTransaction(
+      prisma as never, { ...input, sourceVersion: 2, adjustsFactId: "old-fact" }, "actor-1", "correction"
+    )).rejects.toThrow("必须填写costBearingCompany主体");
+    await expect(service.appendConfirmedSourceInTransaction(
+      prisma as never, { ...input, sourceType: "expense_claim" }, "actor-1"
+    )).rejects.toThrow("必须填写costBearingCompany主体");
+    await expect(service.appendConfirmedSourceInTransaction(
+      prisma as never, { ...input, sourceSnapshot: { formalStatus: "confirmed", claimType: "incidental_expense" } }, "actor-1"
+    )).rejects.toThrow("必须填写costBearingCompany主体");
+    expect(prisma.expenseClaim.findFirst).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+  });
+
   it("does not expose the wage external creditor kind to generic operating facts", async () => {
     const prisma = createPrismaMock({
       user: { id: "actor-1", isActive: true },
@@ -713,6 +772,32 @@ function baseInput(projectId = "project-1") {
         costCategoryCode: "project_daily_expense" as const
       }
     ]
+  };
+}
+
+function pendingExpenseInput() {
+  return new ExpenseClaimApprovalOperatingSourceAdapter().toOperatingFactInput({
+    projectId: "project-1", sourceType: "expense_claim_approval", sourceBusinessId: "expense-1",
+    sourceBusinessCode: "BX-001", sourceVersion: 1, status: "confirmed",
+    sourceSnapshot: {
+      formalStatus: "confirmed", claimType: "incidental_expense", incidentalExpenseCategory: "temporary_service",
+      companyEntityId: "company-1", costBearingCompanyEntityId: null, payeeNameSnapshot: "合成服务方",
+      requestedAmountCents: "800", companyPayableAmountCents: "800", confirmedByUserId: "actor-1",
+      approvedAt: "2026-08-14T00:00:00.000Z", confirmedAt: "2026-08-14T01:00:00.000Z",
+      operatingLedgerEffectiveDate: "2026-08-01T00:00:00.000Z",
+      affiliate: { assignmentId: "assignment-1", businessPartyVersionId: "affiliate-version-1",
+        name: "施工企业", creditCode: "91110000000000000A" }
+    }
+  }).input;
+}
+
+function pendingExpensePrisma() {
+  return {
+    ...createPrismaMock({ persistControlledRows: true, user: { id: "actor-1", isActive: true },
+      project: projectRecord(), assignment: assignmentRecord() }),
+    expenseClaim: { findFirst: jest.fn().mockResolvedValue({ approvalInstanceId: "round-1" }) },
+    approvalInstance: { findFirst: jest.fn().mockResolvedValue({ id: "round-1" }) },
+    approvalActionLog: { findFirst: jest.fn().mockResolvedValue({ id: "action-1" }) }
   };
 }
 
