@@ -57,7 +57,7 @@ Promise.resolve().then(()=>{
   assert.equal(receipt.releaseTree,'67644d9465a0ab4ee80ede099139d9c129d66f14');
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.deepEqual(receipt.jest,{passed:8,suites:2,failed:0,skipped:0,postgresql:7,http:1});
-  assert.deepEqual(receipt.browser,{passed:5,failed:0,flakes:0,skipped:0});
+  assert.deepEqual(receipt.browser,{passed:expenseWitness?6:5,failed:0,flakes:0,skipped:0});
   assert.equal(receipt.noOpDeploy,true);
   assert.equal(receipt.seed,true);
   assert.equal(receipt.nestHealth,true);

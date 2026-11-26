@@ -86,6 +86,12 @@ for target in [owned_http,out/'task12-pol109-ci.cjs']:
         text=exactly(text,old_spec,sha(out/'project-close-profit.owned282.http.pg.spec.ts'))
         text=exactly(text,'a1be083076018686dd8afba68c44ff9c75502014',source_tree)
         text=exactly(text,"path.join(context.workDir,'prefixes/combined289/schema.prisma')",'context.combinedSchemaPath')
+        text=exactly(text,'23b6784cf8f944d22d9f779240871befc1b7d4bef96fc405f32d31a79894ed56',
+                          '65530c8905be0e71ecd6bb6ddb740d22b3ba7ddc14f2a68500a5b0be694e6ce6')
+        if count == 346:
+            text=exactly(text,"RUN_POL109_PROJECT_CLOSE_PG16:'1',",
+                             "RUN_POL109_PROJECT_CLOSE_PG16:'1',POL109_A27_FORMAL_V2:'1',")
+            text=exactly(text,'output.stats?.expected===5','output.stats?.expected===6')
         if count in (332, 334, 346):
             anchor = "      receipt.toolFailure={stage,code,signal,overflow,"
             diagnostics = r"""      if(stage==='JEST'){

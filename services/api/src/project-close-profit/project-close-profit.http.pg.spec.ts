@@ -865,196 +865,247 @@ describePg("POL-109 project close real HTTP / PostgreSQL 16", () => {
     await appendAdjustment("browser-reopen", "expense", 1n, "outflow", "confirmed_cost");
 
     // A27 incomplete operating details
-    const incompleteProject = await prisma.project.create({
-      data: {
-        code: "POL109-A27",
-        name: "POL-109 经营资料缺口验收"
-      }
-    });
-    const incompleteProjectId = incompleteProject.id;
-    const where = { projectId: incompleteProjectId };
-    const memberships = await prisma.projectMember.findMany({
-      where: {
-        projectId,
-        positionKey: { in: ["project_manager", "contract_director", "finance_director"] }
-      },
-      select: { userId: true, positionKey: true }
-    });
-    await prisma.projectMember.createMany({
-      data: memberships.map((member) => ({ ...member, ...where }))
-    });
-    const assignment = await prisma.projectAffiliateAssignment.findUniqueOrThrow({
-      where: { id: affiliate.id },
-      select: { businessPartyId: true, effectiveFrom: true, assignedByUserId: true }
-    });
-    const incompleteAssignment = await prisma.projectAffiliateAssignment.create({
-      data: {
-        ...assignment,
-        ...where,
-        businessPartyVersionId: affiliate.businessPartyVersionId,
-        affiliateNameSnapshot: affiliate.affiliateNameSnapshot,
-        affiliateCreditCodeSnapshot: affiliate.affiliateCreditCodeSnapshot,
-        changeReason: "POL-109 资料缺口验收"
-      }
-    });
-    const enabledAt = new Date("2026-01-01T00:00:00.000Z");
-    const participatingCompany = await prisma.projectParticipatingCompany.findFirstOrThrow({
-      where: {
-        projectId,
-        effectiveFrom: { lte: enabledAt },
-        OR: [{ endedAt: null }, { endedAt: { gt: enabledAt } }]
-      },
-      orderBy: { id: "asc" },
-      select: {
-        companyEntityId: true,
-        companyEntityVersionId: true,
-        companyNameSnapshot: true,
-        companyCreditCodeSnapshot: true
-      }
-    });
-    await prisma.projectParticipatingCompany.create({
-      data: {
-        ...participatingCompany,
-        ...where,
-        effectiveFrom: enabledAt,
-        changeReason: "POL-109 资料缺口验收",
-        addedByUserId: "seed-user-finance-director"
-      }
-    });
-    await operatingProfile.updateProfile(
-      incompleteProjectId,
-      "seed-user-finance-director",
-      { operatingLedgerEffectiveDate: "2026-01-01" }
-    );
-    const a27Fact = {
-      ...commonFact,
-      ...where,
-      affiliateAssignmentId: incompleteAssignment.id,
-      sourceSnapshot: { fixture: "POL-109 A27" }
-    };
-    await ledger.appendFromSource({
-      ...a27Fact,
-      sourceType: "pol109_a27_income",
-      sourceBusinessId: "pol109-a27-income",
-      sourceBusinessCode: "POL109-A27-SR",
-      idempotencyKey: "pol109:a27:income:fact",
-      factKind: "owner_settlement",
-      subjects: { debtor: { kind: "owner", id: "pol109-a27-owner" }, creditor: enterprise },
-      impacts: [{
-        idempotencyKey: "pol109:a27:income:impact",
-        sourceImpactKey: "confirmed-income",
-        impactKind: "confirmed_income",
-        amountCents: 10_000n,
-        direction: "increase"
-      }]
-    }, a27Fact.confirmedByUserId);
-    await ledger.appendFromSource({
-      ...a27Fact,
-      sourceType: "pol109_a27_cost",
-      sourceBusinessId: "pol109-a27-cost",
-      sourceBusinessCode: "POL109-A27-CB",
-      idempotencyKey: "pol109:a27:cost:fact",
-      factKind: "expense",
-      amountCents: 6_000n,
-      direction: "outflow",
-      subjects: { costBearingCompany: enterprise },
-      impacts: [{
-        idempotencyKey: "pol109:a27:cost:impact",
-        sourceImpactKey: "confirmed-cost",
-        impactKind: "confirmed_cost",
-        amountCents: 6_000n,
-        direction: "increase",
-        subjectRole: "cost_bearing_company",
-        subject: enterprise,
-        costCategoryCode: "other_project_cost"
-      }]
-    }, a27Fact.confirmedByUserId);
-    await ledger.appendFromSource({
-      ...a27Fact,
-      sourceType: "pol109_a27_gap",
-      sourceBusinessId: "pol109-a27-gap",
-      sourceBusinessCode: "POL109-A27-QK",
-      idempotencyKey: "pol109:a27:gap:fact",
-      factKind: "historical_gap",
-      evidenceLevel: "C",
-      amountCents: 75n,
-      direction: "neutral",
-      subjects: { payee: enterprise },
-      impacts: [{
-        idempotencyKey: "pol109:a27:gap:impact",
-        sourceImpactKey: "missing-cost-evidence",
-        impactKind: "evidence_gap_notice",
-        amountCents: 75n,
-        direction: "notice"
-      }]
-    }, a27Fact.confirmedByUserId);
-
-    const incompletePath = `/projects/${incompleteProjectId}`;
-    const incompleteClose = `${incompletePath}/close-profit`;
-    for (const [path, actor] of [
-      ["stages/construction_completed/complete", projectManager],
-      ["stages/owner_settlement_completed/complete", contractDirector],
-      ["downstream-cost/attestations/contract", contractDirector],
-      ["downstream-cost/attestations/finance", financeDirector],
-      ["stages/tax_and_enterprise_clearing_completed/complete", financeDirector]
-    ]) {
-      const view = await request(incompleteClose, actor);
-      expect(view.status).toBe(200);
-      expect((await request(
-        `${incompleteClose}/${path}`, actor, "POST", commandBody(view.body.projection.fingerprint)
-      )).status).toBe(201);
-    }
-    const overview = await request(`${incompletePath}/operating-funds-overview`, financeDirector);
-    expect(overview).toMatchObject({
-      status: 200,
-      body: {
-        operatingProjection: {
-          operating: { confirmedIncomeCents: "10000", confirmedCostCents: "6000" },
-          profitAndLoss: {
-            currentOperatingProfitCents: "4000",
-            finalConfirmedProfitCents: null,
-            finalConfirmable: false
-          },
-          evidence: { gapFactCount: 1, gapAmountCents: "75" }
+    const a27Variants = process.env.POL109_A27_FORMAL_V2 === "1" ? ["a27", "a27-v2"] : ["a27"];
+    for (const variant of a27Variants) {
+      const formal = variant === "a27-v2";
+      const fixtureCode = `POL109-${variant.toUpperCase()}`;
+      const fixtureKey = `pol109-${variant}`;
+      const incompleteProject = await prisma.project.create({
+        data: {
+          code: fixtureCode,
+          name: formal ? "POL-109 正式业主结算资料缺口验收" : "POL-109 经营资料缺口验收"
         }
+      });
+      const incompleteProjectId = incompleteProject.id;
+      const where = { projectId: incompleteProjectId };
+      const memberships = await prisma.projectMember.findMany({
+        where: {
+          projectId,
+          positionKey: { in: ["project_manager", "contract_director", "finance_director"] }
+        },
+        select: { userId: true, positionKey: true }
+      });
+      await prisma.projectMember.createMany({
+        data: memberships.map((member) => ({ ...member, ...where }))
+      });
+      const assignment = await prisma.projectAffiliateAssignment.findUniqueOrThrow({
+        where: { id: affiliate.id },
+        select: { businessPartyId: true, effectiveFrom: true, assignedByUserId: true }
+      });
+      const incompleteAssignment = await prisma.projectAffiliateAssignment.create({
+        data: {
+          ...assignment,
+          ...where,
+          businessPartyVersionId: affiliate.businessPartyVersionId,
+          affiliateNameSnapshot: affiliate.affiliateNameSnapshot,
+          affiliateCreditCodeSnapshot: affiliate.affiliateCreditCodeSnapshot,
+          changeReason: "POL-109 资料缺口验收"
+        }
+      });
+      const enabledAt = new Date("2026-01-01T00:00:00.000Z");
+      const participatingCompany = await prisma.projectParticipatingCompany.findFirstOrThrow({
+        where: {
+          projectId,
+          effectiveFrom: { lte: enabledAt },
+          OR: [{ endedAt: null }, { endedAt: { gt: enabledAt } }]
+        },
+        orderBy: { id: "asc" },
+        select: {
+          companyEntityId: true,
+          companyEntityVersionId: true,
+          companyNameSnapshot: true,
+          companyCreditCodeSnapshot: true
+        }
+      });
+      await prisma.projectParticipatingCompany.create({
+        data: {
+          ...participatingCompany,
+          ...where,
+          effectiveFrom: enabledAt,
+          changeReason: "POL-109 资料缺口验收",
+          addedByUserId: "seed-user-finance-director"
+        }
+      });
+      await operatingProfile.updateProfile(
+        incompleteProjectId,
+        "seed-user-finance-director",
+        { operatingLedgerEffectiveDate: "2026-01-01" }
+      );
+      const incompletePath = `/projects/${incompleteProjectId}`;
+      const a27Fact = {
+        ...commonFact,
+        ...where,
+        affiliateAssignmentId: incompleteAssignment.id,
+        sourceSnapshot: { fixture: "POL-109 A27" }
+      };
+      if (formal) {
+        const { PDFDocument } = await import("pdf-lib");
+        const document = await PDFDocument.create();
+        document.addPage().drawText("POL-109 A27 synthetic owner settlement");
+        const pdf = new Uint8Array(await document.save());
+        const voucher = new FormData();
+        voucher.append(
+          "file",
+          new Blob([pdf], { type: "application/pdf" }),
+          "pol109-a27-v2-voucher.pdf"
+        );
+        const uploaded = await fetch(`${baseUrl}${incompletePath}/owner-settlements/file-uploads`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${financeDirector}`, Connection: "close" },
+          body: voucher
+        });
+        expect(uploaded.status).toBe(201);
+        const { id: voucherFileId } = await uploaded.json();
+        const recorded = await request(`${incompletePath}/owner-settlements`, financeDirector, "POST", {
+          ownerName: "POL-109 合成业主",
+          settledAt: "2026-09-18",
+          amountYuan: "100.0000",
+          voucherFileId,
+          idempotencyKey: "pol109:a27-v2:owner-settlement"
+        });
+        expect(recorded).toMatchObject({
+          status: 201,
+          body: { id: expect.any(String), amountYuan: "100.0000" }
+        });
+      } else {
+        await ledger.appendFromSource({
+          ...a27Fact,
+          sourceType: "pol109_a27_income",
+          sourceBusinessId: "pol109-a27-income",
+          sourceBusinessCode: "POL109-A27-SR",
+          idempotencyKey: "pol109:a27:income:fact",
+          factKind: "owner_settlement",
+          subjects: { debtor: { kind: "owner", id: "pol109-a27-owner" }, creditor: enterprise },
+          impacts: [{
+            idempotencyKey: "pol109:a27:income:impact",
+            sourceImpactKey: "confirmed-income",
+            impactKind: "confirmed_income",
+            amountCents: 10_000n,
+            direction: "increase"
+          }]
+        }, a27Fact.confirmedByUserId);
       }
-    });
-    const ready = await request(incompleteClose, financeDirector);
-    expect(ready.status).toBe(200);
-    expect(ready.body.stages).toContainEqual(
-      expect.objectContaining({ key: "final_profit_confirmed", status: "ready" })
-    );
-    expect(ready.body.currentProfitConfirmation).toBeNull();
-    expect(ready.body.currentDecisionSubmissions.finalProfit).toBeNull();
+      await ledger.appendFromSource({
+        ...a27Fact,
+        sourceType: "pol109_a27_cost",
+        sourceBusinessId: `${fixtureKey}-cost`,
+        sourceBusinessCode: `${fixtureCode}-CB`,
+        idempotencyKey: `pol109:${variant}:cost:fact`,
+        factKind: "expense",
+        amountCents: 6_000n,
+        direction: "outflow",
+        subjects: { costBearingCompany: enterprise },
+        impacts: [{
+          idempotencyKey: `pol109:${variant}:cost:impact`,
+          sourceImpactKey: "confirmed-cost",
+          impactKind: "confirmed_cost",
+          amountCents: 6_000n,
+          direction: "increase",
+          subjectRole: "cost_bearing_company",
+          subject: enterprise,
+          costCategoryCode: "other_project_cost"
+        }]
+      }, a27Fact.confirmedByUserId);
+      await ledger.appendFromSource({
+        ...a27Fact,
+        sourceType: "pol109_a27_gap",
+        sourceBusinessId: `${fixtureKey}-gap`,
+        sourceBusinessCode: `${fixtureCode}-QK`,
+        idempotencyKey: `pol109:${variant}:gap:fact`,
+        factKind: "historical_gap",
+        evidenceLevel: "C",
+        amountCents: 75n,
+        direction: "neutral",
+        subjects: { payee: enterprise },
+        impacts: [{
+          idempotencyKey: `pol109:${variant}:gap:impact`,
+          sourceImpactKey: "missing-cost-evidence",
+          impactKind: "evidence_gap_notice",
+          amountCents: 75n,
+          direction: "notice"
+        }]
+      }, a27Fact.confirmedByUserId);
 
-    const storedRows = async () => Promise.all([
-      prisma.projectCloseDecisionSubmission.count({ where }),
-      prisma.projectCloseProfitConfirmation.count({ where }),
-      prisma.projectCloseStageVersion.count({ where }),
-      prisma.projectCloseCommandReceipt.count({ where }),
-      prisma.operatingFact.count({ where }),
-      prisma.operatingImpactEntry.count({ where })
-    ]);
-    const before = await storedRows();
-    const rejected = await request(
-      `${incompleteClose}/final-profit/submissions`,
-      financeDirector,
-      "POST",
-      commandBody(ready.body.projection.fingerprint)
-    );
-    expect(rejected).toMatchObject({
-      status: 409,
-      body: { message: "经营金额或来源仍不完整，不能最终确认盈亏" }
-    });
-    expect(await storedRows()).toEqual(before);
-    const readback = await request(incompleteClose, financeDirector);
-    expect(readback).toMatchObject({
-      status: 200,
-      body: {
-        currentProfitConfirmation: null,
-        currentDecisionSubmissions: { finalProfit: null }
+      const incompleteClose = `${incompletePath}/close-profit`;
+      for (const [path, actor] of [
+        ["stages/construction_completed/complete", projectManager],
+        ["stages/owner_settlement_completed/complete", contractDirector],
+        ["downstream-cost/attestations/contract", contractDirector],
+        ["downstream-cost/attestations/finance", financeDirector],
+        ["stages/tax_and_enterprise_clearing_completed/complete", financeDirector]
+      ]) {
+        const view = await request(incompleteClose, actor);
+        expect(view.status).toBe(200);
+        expect((await request(
+          `${incompleteClose}/${path}`, actor, "POST", commandBody(view.body.projection.fingerprint)
+        )).status).toBe(201);
       }
-    });
+      const overview = await request(`${incompletePath}/operating-funds-overview`, financeDirector);
+      expect(overview).toMatchObject({
+        status: 200,
+        body: {
+          operatingProjection: {
+            operating: formal
+              ? {
+                  confirmedIncomeCents: null,
+                  confirmedIncomeYuan: "100.0000",
+                  confirmedCostYuan: "60.0000"
+                }
+              : { confirmedIncomeCents: "10000", confirmedCostCents: "6000" },
+            profitAndLoss: {
+              ...(formal
+                ? { currentOperatingProfitCents: null, currentOperatingProfitYuan: "40.0000" }
+                : { currentOperatingProfitCents: "4000" }),
+              finalConfirmedProfitCents: null,
+              finalConfirmable: false
+            },
+            evidence: { gapFactCount: 1, gapAmountCents: "75" }
+          }
+        }
+      });
+      if (formal) {
+        expect(overview.body).toMatchObject({
+          business: { grossProfitCents: null, grossProfitYuan: "40.0000" },
+          operatingProjection: { numericProtocolVersion: 2 }
+        });
+      }
+      const ready = await request(incompleteClose, financeDirector);
+      expect(ready.status).toBe(200);
+      expect(ready.body.stages).toContainEqual(
+        expect.objectContaining({ key: "final_profit_confirmed", status: "ready" })
+      );
+      expect(ready.body.currentProfitConfirmation).toBeNull();
+      expect(ready.body.currentDecisionSubmissions.finalProfit).toBeNull();
+
+      const storedRows = async () => Promise.all([
+        prisma.projectCloseDecisionSubmission.count({ where }),
+        prisma.projectCloseProfitConfirmation.count({ where }),
+        prisma.projectCloseStageVersion.count({ where }),
+        prisma.projectCloseCommandReceipt.count({ where }),
+        prisma.operatingFact.count({ where }),
+        prisma.operatingImpactEntry.count({ where })
+      ]);
+      const before = await storedRows();
+      const rejected = await request(
+        `${incompleteClose}/final-profit/submissions`,
+        financeDirector,
+        "POST",
+        commandBody(ready.body.projection.fingerprint)
+      );
+      expect(rejected).toMatchObject({
+        status: 409,
+        body: { message: "经营金额或来源仍不完整，不能最终确认盈亏" }
+      });
+      expect(await storedRows()).toEqual(before);
+      const readback = await request(incompleteClose, financeDirector);
+      expect(readback).toMatchObject({
+        status: 200,
+        body: {
+          currentProfitConfirmation: null,
+          currentDecisionSubmissions: { finalProfit: null }
+        }
+      });
+    }
     // End A27 incomplete operating details
   });
 });

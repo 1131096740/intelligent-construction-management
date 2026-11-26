@@ -94,6 +94,44 @@ test("真实 API/PG16 项目收口桌面刷新和重进仍回读七阶段与历�
   await expect(page.getByText("公司盈亏分配", { exact: true })).toBeVisible();
 });
 
+if (process.env.POL109_A27_FORMAL_V2 === "1") {
+  test("A27 正式业主结算显示已知经营盈亏，最终盈亏仍不可确认", async ({ page }) => {
+    await login(page, "13800001015");
+    const projectWrites: string[] = [];
+    page.on("request", (request) => {
+      const { pathname } = new URL(request.url());
+      if (pathname.startsWith("/api/projects/") && !["GET", "HEAD", "OPTIONS"].includes(request.method())) {
+        projectWrites.push(request.method());
+      }
+    });
+
+    await page.goto(`/项目经营?projectId=${projectId}`);
+    const projectLabel = "POL109-A27-V2 · POL-109 正式业主结算资料缺口验收";
+    const projectPicker = page.locator(".project-picker input");
+    await expect(projectPicker).toBeEnabled();
+    await projectPicker.click();
+    const selectedOverview = page.waitForResponse(async (response) => {
+      if (!response.ok() || response.request().method() !== "GET" ||
+          !/^\/api\/projects\/[^/]+\/operating-funds-overview$/u.test(new URL(response.url()).pathname)) {
+        return false;
+      }
+      const overview = await response.json();
+      return overview.project?.code === "POL109-A27-V2";
+    });
+    await page.locator(".t-select__dropdown:visible").getByText(projectLabel, { exact: true }).click();
+    expect(await (await selectedOverview).json()).toMatchObject({
+      business: { grossProfitCents: null, grossProfitYuan: "40.0000" },
+      operatingProjection: { numericProtocolVersion: 2 }
+    });
+
+    await page.getByText("项目概览", { exact: true }).click();
+    const profit = page.locator(".operating-metric-panel").filter({ hasText: "四层盈亏与可分配上限" });
+    await expect(profit.getByText("¥40.0000（已知数，不作为最终利润）", { exact: true })).toBeVisible();
+    await expect(profit.getByText("暂不可确认（资料待补充）", { exact: true })).toBeVisible();
+    expect(projectWrites).toEqual([]);
+  });
+}
+
 test("RC-06 真实 API/PG16 项目收口移动刷新重进仍可见且无面板横向溢出", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await login(page);

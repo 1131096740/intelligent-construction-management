@@ -119,6 +119,9 @@ done
 spec=project-close-profit.owned282.http.pg.spec.ts
 args+=(--mount "type=bind,src=$material/$spec,dst=/qualification/workspace/services/api/src/project-close-profit/$spec,readonly")
 printf '%s\n' "验证原项目收口 8 项数据库与 HTTP、5 项浏览器断言在 $count 同库通过。观察原 Jest/浏览器计数、同库 B7、Nest 清理。" > "$work/hypothesis.txt"
+if [[ $count == 346 ]]; then
+  printf '%s\n' "追加 A27 正式业主结算的同库 HTTP 与只读浏览器核对，保留原 13 项。" >> "$work/hypothesis.txt"
+fi
 exit_code=0
 docker run "${args[@]}" --entrypoint node "$image" /qualification/pol109-295-entry.cjs ${mode_args[@]+"${mode_args[@]}"} \
   > "$work/private.stdout" 2> "$work/private.stderr" || exit_code=$?
