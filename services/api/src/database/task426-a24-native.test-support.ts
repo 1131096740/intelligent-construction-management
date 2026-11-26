@@ -2,7 +2,7 @@ import "reflect-metadata";
 import { Catch, type ArgumentsHost, type INestApplication } from "@nestjs/common";
 import { BaseExceptionFilter, HttpAdapterHost } from "@nestjs/core";
 import { Test } from "@nestjs/testing";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import * as assert from "node:assert/strict";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
@@ -354,6 +354,33 @@ it("records and confirms only an exact A24 public cash slice with separate datab
     tokens.set("refundOperator", tokens.get("reviewer")!);
     const proof = await proveA24CashAttribution({
       send, primary,
+      ...(process.env.TASK426_A24_CASH_VOUCHER_344 === "1" ? {
+        voucherBoundary: async (scope: typeof primary, fileId: string) => {
+          stage = "A24_CASH_VOUCHER_BOUNDARY";
+          const secret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET;
+          assert.ok(secret, "A24_CASH_VOUCHER_FIXTURE");
+          const submit = (credential: string, actorId: string, enforceDebit = false) => application.$transaction(async tx => {
+            await tx.$queryRaw`SELECT public.jg_record_expense_public_cash_voucher(
+              ${scope.claimId}, ${actorId}, 800::bigint, ${scope.paidAt}::timestamp,
+              '现金', ${fileId}, NULL::text, ${scope.registrationId}, ${credential}
+            )`;
+            if (enforceDebit) await tx.$executeRaw`
+              SET CONSTRAINTS public.jg_expense_public_cash_voucher_debit_required IMMEDIATE
+            `;
+          });
+          const exactRejection = (code: string, label: string) => (error: unknown) =>
+            error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2010" &&
+            error.meta?.code === code && typeof error.meta.message === "string" &&
+            error.meta.message.replace(/^ERROR: /u, "") === label;
+          await assert.rejects(submit("invalid-isolated-a24-cash-authority", keeperId),
+            exactRejection("42501", "EXPENSE_PUBLIC_CASH_VOUCHER_AUTHORITY"), "A24_CASH_AUTHORITY_DENIAL");
+          await assert.rejects(submit(secret, users.get("otherComprehensive")!.id),
+            exactRejection("42501", "EXPENSE_PUBLIC_CASH_VOUCHER_KEEPER"), "A24_CASH_KEEPER_DENIAL");
+          await assert.rejects(submit(secret, keeperId, true),
+            exactRejection("23514", "EXPENSE_PUBLIC_CASH_VOUCHER_DEBIT_REQUIRED"), "A24_CASH_UNFUNDED_DENIAL");
+          return { wrongCredentialDenied: true, foreignKeeperDenied: true, unfundedExecutionRolledBack: true };
+        }
+      } : {}),
       refundCase: async () => ({ ...await approveExpense(projects[1]), refund: { accountScopeKey: "public_cash",
         receivedAt: "2026-11-21", evidenceReference: "隔离退款凭据", reason: "隔离供应商退款" } }),
       snapshot: async (scope: CaseScope) => {

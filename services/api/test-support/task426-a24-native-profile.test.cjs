@@ -68,6 +68,17 @@ test("qualifies the 342 fact successor only after the exact 341 prefix", () => {
   assert.throws(() => qualify([...rows.slice(0, 340), rows[341], rows[340]], 342), /NATIVE_A24_340_PINNED_LEDGER/u);
 });
 
+test("qualifies exact 343 historical expense and 344 cash voucher in order", () => {
+  const qualify = ledger => combined.qualifyA24Source("a".repeat(40), "b".repeat(40), ledger, 344);
+  const profile = qualify(rows);
+  assert.deepEqual(profile.a24Prefixes.slice(-3), [342, 343, 344]);
+  assert.equal(combined.verifyA24Prefix(343, rows.slice(0, 343)).ledgerSha256,
+    "17c4d2d98cf19b6f3e7fd2581165940b0f803c5e306bc68adfe018ac52048307");
+  assert.equal(combined.verifyA24Prefix(344, rows).ledgerSha256, profile.ledgerDigest);
+  assert.throws(() => qualify(rows.slice(0, 343)), /NATIVE_A24_344_COUNT/u);
+  assert.throws(() => qualify([...rows.slice(0, 342), rows[343], rows[342]]), /NATIVE_A24_340_PINNED_LEDGER/u);
+});
+
 test("refuses missing historical catalog evidence at the 340 boundary", () => {
   const check = combined.createHistoricalCatalogCheck(() => ({}));
   assert.throws(() => check.atPrefix(332), /A28_CONSTRAINT_CATALOG_SHAPE/u);

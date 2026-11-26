@@ -5,7 +5,7 @@ const { randomUUID } = require("node:crypto");
 
 const voucher = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64");
 
-async function proveA24CashAttribution({ send, snapshot, primary, refundCase, key = randomUUID }) {
+async function proveA24CashAttribution({ send, snapshot, primary, refundCase, voucherBoundary, key = randomUUID }) {
   const steps = [];
   const request = async (phase, actor, path, status, command = {}) => {
     const result = await send(actor, { path, ...command, cashPhase: phase });
@@ -42,6 +42,8 @@ async function proveA24CashAttribution({ send, snapshot, primary, refundCase, ke
     paidCents: "0", cashBalanceYuan: primary.balanceBefore, acceptedAttributions: 0 }, "A24_ORIGINAL_COST");
   await scopeCost(primary);
   const file = await upload(primary);
+  const voucherBoundaryProof = await voucherBoundary?.(primary, file.id);
+  if (voucherBoundaryProof) assert.deepEqual(await snapshot(primary), source, "A24_VOUCHER_BOUNDARY_ROLLBACK");
   const exact = cashCommand(primary, file.id, "800", "300");
   const insufficient = cashCommand({ ...primary, sourceId: primary.insufficientSourceId }, file.id, "800", "300");
   await request("INSUFFICIENT_SOURCE", "keeper", expense(primary) + "/payments", 409, insufficient);
@@ -99,7 +101,7 @@ async function proveA24CashAttribution({ send, snapshot, primary, refundCase, ke
     { method: "POST", json: { ...refundAttribution, idempotencyKey: key() } });
   assert.equal(net.attributedAmountCents, "600");
   assert.equal(net.status, "pending_review");
-  return { steps, positive: { costCents: "800", companyCents: "300", pendingCents: "500", payments: 1, cashDebits: 1 },
+  return { ...(voucherBoundaryProof ? { voucherBoundary: voucherBoundaryProof } : {}), steps, positive: { costCents: "800", companyCents: "300", pendingCents: "500", payments: 1, cashDebits: 1 },
     refund: { previousCents: "800", returnedCents: "200", availableCents: "600" } };
 }
 
