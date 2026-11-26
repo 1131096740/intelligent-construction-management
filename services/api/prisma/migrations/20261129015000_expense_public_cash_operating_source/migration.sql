@@ -7,12 +7,28 @@ LOCK TABLE public."OperatingFact", public."OperatingImpactEntry" IN SHARE ROW EX
 CREATE FUNCTION public.jg_validate_expense_public_cash_fact_v1()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $expense_cash$
-DECLARE source record;
+DECLARE
+  source record;
+  subject_whitespace CONSTANT text := U&'\0009\000A\000B\000C\000D\0020\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF';
 BEGIN
+  IF TG_RELID <> 'public."OperatingFact"'::regclass OR TG_OP <> 'INSERT'
+    OR current_setting('session_replication_role') <> 'origin' THEN
+    RAISE EXCEPTION 'EXPENSE_PUBLIC_CASH_FACT_TRIGGER_SCOPE' USING ERRCODE = '42501';
+  END IF;
+  IF NEW."sourceType" IS DISTINCT FROM 'expense_claim_payment_execution' THEN
+    RAISE EXCEPTION 'EXPENSE_PUBLIC_CASH_FACT_TRIGGER_SCOPE' USING ERRCODE = '42501';
+  END IF;
   SELECT execution.id, execution."paidAt", execution."createdAt", execution."recordedByUserId",
     execution."amountCents", execution."voucherFileId", claim.id AS claim_id, claim.code,
     claim."claimType", payment.id AS payment_id, payment."originalDebtorCompanyId",
-    claim."projectId"
+    claim."projectId",
+    CASE
+      WHEN claim."claimType" = 'incidental_expense' THEN
+        'downstream_counterparty:' || nullif(btrim(claim."payeeNameSnapshot", subject_whitespace), '')
+      WHEN nullif(btrim(claim."applicantUserId", subject_whitespace), '') IS NOT NULL THEN claim."applicantUserId"
+      ELSE 'employee:' || btrim(nullif(btrim(claim."applicantNameSnapshot", subject_whitespace), '') || '/'
+        || coalesce(claim."applicantPhoneSnapshot", ''), subject_whitespace)
+    END AS payee_id
   INTO source
   FROM public."ExpenseClaimPaymentExecution" execution
   JOIN public."ExpenseClaim" claim ON claim.id = execution."expenseClaimId"
@@ -42,6 +58,7 @@ BEGIN
     AND NEW."debtorSubjectKind" IS NULL AND NEW."creditorSubjectKind" IS NULL
     AND NEW."approvedPayerSubjectKind" IS NULL AND NEW."costBearingCompanySubjectKind" IS NULL
     AND NEW."payeeSubjectKind" = CASE source."claimType" WHEN 'reimbursement' THEN 'employee' ELSE 'downstream_counterparty' END
+    AND NEW."payeeSubjectId" = source.payee_id
     AND NEW."projectId" = source."projectId" AND NEW."amountCents" = source."amountCents"
     AND NEW."occurredAt" = source."paidAt" AND NEW."confirmedAt" = source."createdAt"
     AND NEW."confirmedByUserId" = source."recordedByUserId"
@@ -75,6 +92,13 @@ RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, pg_temp AS $expense_cash$
 DECLARE source record;
 BEGIN
+  IF TG_RELID <> 'public."OperatingImpactEntry"'::regclass OR TG_OP <> 'INSERT'
+    OR current_setting('session_replication_role') <> 'origin' THEN
+    RAISE EXCEPTION 'EXPENSE_PUBLIC_CASH_IMPACT_TRIGGER_SCOPE' USING ERRCODE = '42501';
+  END IF;
+  IF NEW."sourceType" IS DISTINCT FROM 'expense_claim_payment_execution' THEN
+    RAISE EXCEPTION 'EXPENSE_PUBLIC_CASH_IMPACT_TRIGGER_SCOPE' USING ERRCODE = '42501';
+  END IF;
   SELECT fact."sourceSnapshot"->>'expenseClaimId' AS claim_id, fact."amountCents",
     fact."payeeSubjectKind", fact."payeeSubjectId"
   INTO source
@@ -241,6 +265,16 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'EXPENSE_PUBLIC_CASH_LEDGER_METADATA' USING ERRCODE = '55000';
     END IF;
+  END LOOP;
+
+  FOR target IN
+    SELECT p.oid::regprocedure::text AS routine, acl.grantee FROM pg_proc p
+    CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl
+    WHERE p.oid IN ('public.jg_validate_expense_public_cash_fact_v1()'::regprocedure,
+      'public.jg_validate_expense_public_cash_impact_v1()'::regprocedure) AND acl.grantee <> owner_oid
+  LOOP
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM %s', target.routine,
+      CASE WHEN target.grantee = 0 THEN 'PUBLIC' ELSE quote_ident(pg_get_userbyid(target.grantee)) END);
   END LOOP;
 
   IF prepared THEN RETURN; END IF;
