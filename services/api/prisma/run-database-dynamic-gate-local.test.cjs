@@ -208,7 +208,7 @@ test("the 330 gate dispatches application and finance through the exact isolated
   }
 });
 
-test("334 routes Line A, A28 and the finance combination and rejects other groups before tooling", () => {
+test("334 routes Line A, A28, finance and Remaining and rejects other groups before tooling", () => {
   const manifest = loadManifest();
   const sha = "e".repeat(40);
   const original = manifest.coveredGroups.find(group => group.id === "line_a_real_db");
@@ -228,6 +228,12 @@ test("334 routes Line A, A28 and the finance combination and rejects other group
   assert.equal(resolved.command, "bash");
   assert.match(resolved.args[0], /contract-finance\/run[.]sh$/u);
   assert.deepEqual(resolved.args.slice(1), [sha, "--historical-settlement-334", "a187dc73a133114e1cfbbc891a4aec923abe2545"]);
+  const remaining = manifest.coveredGroups.find(group => group.id === "remaining_dynamic_postgresql16");
+  const resolvedRemaining = resolveGroupCommand(remaining, { candidateSha: sha, migrationCount: 334 });
+  assert.equal(remaining.pendingTests, 180);
+  assert.equal(resolvedRemaining.command, "bash");
+  assert.match(resolvedRemaining.args[0], /contract-finance\/run-remaining[.]sh$/u);
+  assert.deepEqual(resolvedRemaining.args.slice(1), [sha, "--historical-settlement-334"]);
   assert.throws(() => resolveGroupCommand(historical, { candidateSha: sha, migrationCount: 332 }), /A28.*334/u);
   const drift = structuredClone(manifest);
   drift.coveredGroups.find(group => group.id === historical.id).runner.path = original.runner.path;
