@@ -3,6 +3,18 @@
 const assert = require('node:assert/strict');
 
 const profiles = {
+  issue400: {
+    file: 'src/database/issue400-financial-correction-refund.pg.spec.ts',
+    sourceDigest: '263db63fb01eb5a821669039c92b645f456d45a51766f08d2345a4cb9986f329',
+    fixtureDigest: '46d3f77df3ea8fb4bbde943fca95de5af983a5c1bfbfd18ae7e8927d22c8f088',
+    orderedDatabaseKey: 'JG_ISSUE400_ORDERED_DATABASE',
+    databaseUrlKey: 'ISSUE400_FINANCIAL_CORRECTION_DATABASE_URL',
+    enableKey: 'ISSUE400_FINANCIAL_CORRECTION_RUN',
+    stage: 'ORDERED_REFUND_CORRECTION_ALTERNATE_JEST',
+    titles: [
+      'registers refunds and corrections as new facts without rewriting the original payment'
+    ]
+  },
   issue405: {
     file: 'src/database/issue405-other-project-payment.pg.spec.ts',
     sourceDigest: 'cc7b5d5bbdfba6c73f47a808a5c3ce3ebf33b75675c8dc8a253b696c261d0c8e',
