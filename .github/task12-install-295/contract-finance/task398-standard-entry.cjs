@@ -9,10 +9,11 @@ const expenseWitness=source.mode==="expense-witness-346"?require("./expense-witn
 const historical=expenseWitness||source.mode==="historical-settlement-334"?require("./historical-settlement-334-profile.cjs"):null;
 const upwardArchive=source.mode==='upward-archive-332';
 const count=expenseWitness?expenseWitness.count:historical?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
-const standard=!expenseWitness&&process.argv[2]===`standard-${count}`;
+const standard=process.argv[2]===`standard-${count}`;
+const explicitTextFinance=Boolean(expenseWitness)&&process.argv[2]==="text-direct-346";
 const ledgerLoss=(!historical||expenseWitness!==null)&&process.argv[2]===`ledger-loss-${count}`;
 const competition=(!historical||expenseWitness!==null)&&count>=331&&process.argv[2]===`competition-${count}`;
-assert.ok((!expenseWitness||ledgerLoss||competition)&&(process.argv.length===2||(process.argv.length===3&&count>=330&&(standard||ledgerLoss||competition))));
+assert.ok((!expenseWitness||standard||explicitTextFinance||ledgerLoss||competition)&&(process.argv.length===2||(process.argv.length===3&&count>=330&&(standard||explicitTextFinance||ledgerLoss||competition))));
 const textFinance=count>=330&&!standard&&!ledgerLoss&&!competition;
 const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness} = require('./installer.cjs');
 const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run-task398-shared-standard-local.cjs');
@@ -25,6 +26,9 @@ async function run(){
     const {readFileSync}=require('node:fs'),{createHash}=require('node:crypto');
     assert.equal(createHash('sha256').update(readFileSync('/qualification/installer.cjs')).digest('hex'),profile.installerSha256);
     profile.assertSource(source,require('./multi-witness.cjs').final);
+    if(expenseWitness&&(standard||explicitTextFinance)) {
+      expenseWitness.assertRuntimeBaseline(require('./workspace/services/api/prisma/migration-baseline.cjs'));
+    }
   }
   const validate332=upwardArchive?require('./upward-archive-332-profile.cjs'):undefined;
   const consume=context=>{

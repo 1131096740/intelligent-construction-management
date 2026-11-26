@@ -2,10 +2,10 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || $# == 5 || ( $# == 6 && ( $5 == ledger-loss-346 || $5 == competition-346 ) && $6 == --host-only ) ]] || exit 64
+[[ $# == 4 || $# == 5 || ( $# == 6 && ( $5 == ledger-loss-346 || $5 == competition-346 || $5 == standard-346 || $5 == text-direct-346 ) && $6 == --host-only ) ]] || exit 64
 variant=${5-}
 case "$variant" in
-  ''|standard-330|standard-331|standard-332|standard-334|ledger-loss-330|ledger-loss-331|ledger-loss-332|ledger-loss-346|competition-331|competition-332|competition-346) ;;
+  ''|standard-330|standard-331|standard-332|standard-334|standard-346|text-direct-346|ledger-loss-330|ledger-loss-331|ledger-loss-332|ledger-loss-346|competition-331|competition-332|competition-346) ;;
   *) exit 64 ;;
 esac
 [[ $# == 4 || -n $variant ]] || exit 64
@@ -27,7 +27,7 @@ count=$(node -e '
   if(count===346) require(process.argv[6]).assertSource(source,require(process.argv[4]).final);
   console.log(count);
 ' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan/expense-witness-346-profile.cjs")
-if [[ $count == 346 && $variant != ledger-loss-346 && $variant != competition-346 ]]; then exit 64; fi
+if [[ $count == 346 && $variant != ledger-loss-346 && $variant != competition-346 && $variant != standard-346 && $variant != text-direct-346 ]]; then exit 64; fi
 if [[ $count == 334 && -n $variant && $variant != standard-334 ]]; then exit 64; fi
 variant_args=()
 purpose=TASK398_STANDARD_EXACT_$count
@@ -38,8 +38,19 @@ fi
 case "$variant" in
   ledger-loss-*) purpose=TASK398_LEDGER_LOSS_EXACT_$count ;;
   competition-*) purpose=TASK398_COMPETITION_EXACT_$count ;;
+  text-direct-346) purpose=TASK425_TEXT_DIRECT_FINANCE_$count ;;
   '') if (( count >= 330 )); then purpose=TASK425_TEXT_DIRECT_FINANCE_$count; fi ;;
 esac
+if [[ $variant == standard-346 || $variant == text-direct-346 ]]; then
+  [[ $plan == "$repo/.github/task12-install-295/contract-finance" && $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
+  [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$repo/.github/task12-install-290/standard/fixtures") ]] || exit 65
+  cmp -s "$prepared/source.json" <(node "$plan/check-ledger.cjs" "$repo" "$sha" --expense-witness-346) || exit 65
+  node - "$plan" "$prepared/prepared/context/workspace" <<'JS'
+const [plan,workspace]=process.argv.slice(2);
+require(plan+'/expense-witness-346-profile.cjs').assertRuntimeBaseline(
+  require(workspace+'/services/api/prisma/migration-baseline.cjs'));
+JS
+fi
 if [[ ${6:-} != --host-only ]]; then
   image=$(cat "$build/image.id")
   fingerprint=$(cat "$build/context.sha256")
@@ -100,23 +111,31 @@ if (( count >= 330 )); then
         patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-competition-runner-346.patch"
         [[ $(runner_sha) == 4838c88e40550af557caadd31cb1d4a6c6b3ab83fa306bc551dec5a7687c2193 ]] || exit 65
       fi
-    elif (( count == 332 || count == 334 )); then
+    elif (( count >= 332 )); then
       patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-standard-332.patch"
       [[ $(runner_sha) == c6a839367ad8896d95e464a6da9499788338d347f02f21fc76f81bf7500487fc ]] || exit 65
-      if [[ $count == 334 ]]; then
+      if (( count >= 334 )); then
         patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-standard-334.patch"
         [[ $(runner_sha) == ca49599d0ff11ab106f211195d3f5c485ce4259d145c538e6c1c38f832535f68 ]] || exit 65
       fi
-      if [[ -z $variant ]]; then
+      if (( count == 346 )); then
+        patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-standard-346.patch"
+        [[ $(runner_sha) == fbbe5c4b574daabf90e17ec2cca84f9c0083aaebf5b0dbccb7dc5275e0110a05 ]] || exit 65
+      fi
+      if [[ -z $variant || $variant == text-direct-346 ]]; then
         relative=services/api/src/database/task16-text-agreement-payments.http.pg.spec.ts
         spec="$work/$relative"
         cp "$prepared/prepared/context/workspace/$relative" "$spec"
         [[ $(sha256sum "$spec" | cut -d' ' -f1) == a23a5009503b6683aa545c582ff0e511c85768e417d591555d502a1934686b49 ]] || exit 65
         patch --batch --forward --fuzz=0 --silent "$spec" < "$plan/task398-text-direct-spec-332.patch"
         [[ $(sha256sum "$spec" | cut -d' ' -f1) == a019456b916800c5f9d8356b014182aedfdead1d7e93252a745841d8223b274a ]] || exit 65
-        if [[ $count == 334 ]]; then
+        if (( count >= 334 )); then
           patch --batch --forward --fuzz=0 --silent "$spec" < "$plan/task398-text-direct-spec-334.patch"
           [[ $(sha256sum "$spec" | cut -d' ' -f1) == d27353b766c05c16fd1e55d139646902188184e5998cab9a3e9e73f77c6cb6d2 ]] || exit 65
+        fi
+        if (( count == 346 )); then
+          patch --batch --forward --fuzz=0 --silent "$spec" < "$plan/task398-text-direct-spec-346.patch"
+          [[ $(sha256sum "$spec" | cut -d' ' -f1) == 7756d9190db9096eca879a059d766695239b93b8b07a1bf067712a3d61477163 ]] || exit 65
         fi
         chmod 0644 "$spec"
         overlay_files+=("$relative")
@@ -147,6 +166,13 @@ if [[ $count == 334 || $count == 346 ]]; then
     expected_installer=$(node -p 'require(process.argv[1]).installerSha256' "$plan/expense-witness-346-profile.cjs")
     [[ $(sha256sum "$installer" | cut -d' ' -f1) == "$expected_installer" ]] || exit 65
     if [[ ${6:-} == --host-only ]]; then
+      if [[ $variant == standard-346 || $variant == text-direct-346 ]]; then
+        node --check "$runner"
+        node --check "$installer"
+        node --check "$plan/task398-standard-entry.cjs"
+        printf '%s_HOST_READY sha=%s material=%s\n' "$purpose" "$sha" "$work"
+        exit 0
+      fi
       printf '%s\n' "$work"
       exit 0
     fi
