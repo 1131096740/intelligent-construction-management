@@ -45,3 +45,7 @@
 +        companyEntityNameSnapshot: companyVersion.name
 +      } : {}),
 +      draftData: {}, templateSnapshot: {}, clauseSnapshot: ordered ? [] : {} } });
+@@ -94 +127,2 @@
+-      paidAmountCents: 0n, sourceType: "contract_advance", paymentMatter: "隔离真库进度付款" } });
++      paidAmountCents: 0n, sourceType: "contract_advance", paymentMatter: "隔离真库进度付款",
++      amountCalculationExplanation: "合成合同总价 50000 元 × 本期进度 24% = 12000 元" } });

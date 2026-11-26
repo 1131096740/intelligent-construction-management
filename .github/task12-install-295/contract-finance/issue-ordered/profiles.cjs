@@ -6,7 +6,7 @@ const profiles = {
   issue400: {
     file: 'src/database/issue400-financial-correction-refund.pg.spec.ts',
     sourceDigest: '263db63fb01eb5a821669039c92b645f456d45a51766f08d2345a4cb9986f329',
-    fixtureDigest: '46d3f77df3ea8fb4bbde943fca95de5af983a5c1bfbfd18ae7e8927d22c8f088',
+    fixtureDigest: '4b74d949924a41c7e5e0aa070f616b4d28dcfc0562d06f93086fb6802d3b74b7',
     orderedDatabaseKey: 'JG_ISSUE400_ORDERED_DATABASE',
     databaseUrlKey: 'ISSUE400_FINANCIAL_CORRECTION_DATABASE_URL',
     enableKey: 'ISSUE400_FINANCIAL_CORRECTION_RUN',
@@ -91,7 +91,7 @@ const profiles = {
   issue420: {
     file: 'src/database/issue420-approval-center.http.pg.spec.ts',
     sourceDigest: 'd4effcfb32e745737be3278c0556f903c2ae6c55c631016a59a3c0c79588d5a3',
-    fixtureDigest: 'a14c4c822d5346c63ef7cda1b498e36957e6969709c20c4d2caea2cb2ca41fde',
+    fixtureDigest: '108ebe6f851963c968a9cda874024deec0ac121b99a0aab4b76e4d5ad7bcf892',
     orderedDatabaseKey: 'JG_ISSUE420_ORDERED_DATABASE',
     enableKey: 'RUN_ISSUE420_REAL_DB',
     stage: 'ORIGINAL_HTTP_PDF_JEST',

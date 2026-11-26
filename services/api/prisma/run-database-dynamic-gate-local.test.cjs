@@ -234,7 +234,9 @@ test("334 routes Line A, A28, finance and Remaining and rejects other groups bef
   assert.equal(resolvedRemaining.command, "bash");
   assert.match(resolvedRemaining.args[0], /contract-finance\/run-remaining[.]sh$/u);
   assert.deepEqual(resolvedRemaining.args.slice(1), [sha, "--historical-settlement-334"]);
-  for (const [id, lane, count] of [["employee_onboarding", "onboarding", 59], ["general_procurement", "procurement", 27]]) {
+  for (const [id, lane, count] of [["employee_onboarding", "onboarding", 59], ["general_procurement", "procurement", 27],
+    ["issue422_archives", "issue422", 4], ["issue420_approval_center", "issue420", 3],
+    ["issue400_financial_correction_refund", "issue400", 1]]) {
     const group = manifest.coveredGroups.find(item => item.id === id);
     assert.equal(group.pendingTests, count);
     assert.deepEqual(resolveGroupCommand(group, { candidateSha: sha, migrationCount: 334 }).args.slice(1),
@@ -253,12 +255,12 @@ test("334 routes Line A, A28, finance and Remaining and rejects other groups bef
   drift.coveredGroups.find(group => group.id === historical.id).runner.path = original.runner.path;
   assert.throws(() => validateManifest(drift), /A28.*固定/u);
 
-  const result = spawnSync(process.execPath, [runnerPath, "--execute", "--group", "issue422_archives",
+  const result = spawnSync(process.execPath, [runnerPath, "--execute", "--group", "issue403_actual_purchase_batch",
     "--candidate-sha", sha, "--confirm", "LOCAL_PG16_DYNAMIC_GATE"], {
     encoding: "utf8", env: { PATH: "", NODE_ENV: "test" }
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /334 PostgreSQL.*issue422_archives/u);
+  assert.match(result.stderr, /334 PostgreSQL.*issue403_actual_purchase_batch/u);
   assert.doesNotMatch(result.stderr, /ENOENT|spawn|Docker/u);
 });
 
