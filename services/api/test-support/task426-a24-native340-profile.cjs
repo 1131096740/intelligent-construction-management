@@ -16,9 +16,10 @@ const prefixDigests = Object.freeze({
   337: "bf605f3797f13bdf4b0b2b10f650d2274d948fe3851067e151a07052cd9da486",
   338: "7bc5a865850aad7699646704b3dfc0112244af05912bc117d83540132b1ef155",
   339: "5d1613031f4e89f5effadf215cc2003fa22864aa3f5e24ce0fda9627a49c9e4f",
-  340: "926f3247bb8404665c50706296ee12b0abb809ab70c7d7ce203701ce1bc354a1"
+  340: "926f3247bb8404665c50706296ee12b0abb809ab70c7d7ce203701ce1bc354a1",
+  341: "ee07723252f99ba933fbc4b06fa522b5f1a249cf50817761f849e57cc7962815"
 });
-const prefixes = [332, 333, 334, 335, 336, 337, 338, 339, 340];
+const prefixes = [332, 333, 334, 335, 336, 337, 338, 339, 340, 341];
 const digest = rows => createHash("sha256").update(JSON.stringify(rows)).digest("hex");
 
 function verifyA24Prefix(size, ledger) {
@@ -28,18 +29,20 @@ function verifyA24Prefix(size, ledger) {
   return { count: size, ledgerSha256: prefixDigests[size], sameIdentity: true };
 }
 
-function qualifyA24Source(candidate, sourceTree, ledger) {
+function qualifyA24Source(candidate, sourceTree, ledger, terminal = 340) {
+  assert.ok(terminal === 340 || terminal === 341);
   assert.match(candidate, /^[a-f0-9]{40}$/u);
   assert.match(sourceTree, /^[a-f0-9]{40}$/u);
-  assert.equal(ledger.length, 340, "NATIVE_A24_340_COUNT");
+  assert.equal(ledger.length, terminal, "NATIVE_A24_" + terminal + "_COUNT");
   for (const size of [330, 331]) {
     assert.equal(digest(ledger.slice(0, size)), prefixDigests[size], "NATIVE_A24_340_PINNED_LEDGER");
   }
-  for (const size of prefixes) verifyA24Prefix(size, ledger.slice(0, size));
+  const a24Prefixes = prefixes.filter(size => size <= terminal);
+  for (const size of a24Prefixes) verifyA24Prefix(size, ledger.slice(0, size));
   return {
-    candidate, sourceTree, ledger, ledgerDigest: prefixDigests[340],
+    candidate, sourceTree, ledger, ledgerDigest: prefixDigests[terminal],
     predecessor330: { migrationCount: 330, ledgerSha256: prefixDigests[330] },
-    a24Prefixes: [...prefixes]
+    a24Prefixes
   };
 }
 
@@ -64,16 +67,17 @@ function createHistoricalCatalogCheck(read) {
       settlement.assertCatalog(result.settlement, snapshots.predecessor333.settlement);
       snapshots.predecessor334 = result;
     }
-    if (size === 340) {
+    if (size === 340 || size === 341) {
       const result = observe();
       assert.deepEqual(result, snapshots.predecessor334, "NATIVE_A24_340_HISTORICAL_CATALOG");
-      snapshots.beforeBusiness340 = result;
+      snapshots["beforeBusiness" + size] = result;
     }
   }
   function verifyAfterBusiness() {
-    assert.ok(snapshots.beforeBusiness340, "NATIVE_A24_340_HISTORICAL_CATALOG_MISSING");
+    const beforeBusiness = snapshots.beforeBusiness341 ?? snapshots.beforeBusiness340;
+    assert.ok(beforeBusiness, "NATIVE_A24_340_HISTORICAL_CATALOG_MISSING");
     const result = observe();
-    assert.deepEqual(result, snapshots.beforeBusiness340, "NATIVE_A24_340_HISTORICAL_CATALOG_AFTER_BUSINESS");
+    assert.deepEqual(result, beforeBusiness, "NATIVE_A24_340_HISTORICAL_CATALOG_AFTER_BUSINESS");
     return result;
   }
   return { snapshots, atPrefix, verifyAfterBusiness };

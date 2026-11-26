@@ -32,16 +32,27 @@ test("refuses any changed historical row, reordering, or imported combined migra
 
 test("requires the combined 334 predecessor and individual exact rows through 340", () => {
   const qualify = ledger => combined.qualifyA24Source("a".repeat(40), "b".repeat(40), ledger);
-  const profile = qualify(rows);
+  const combined340 = rows.slice(0, 340);
+  const profile = qualify(combined340);
   assert.deepEqual(profile.a24Prefixes, [332, 333, 334, 335, 336, 337, 338, 339, 340]);
   assert.deepEqual(combined.verifyA24Prefix(334, rows.slice(0, 334)), {
     count: 334, sameIdentity: true, ledgerSha256: "27f3af946003d07582efb288b443362fcf61bed0281feb548f9978b739fb5411"
   });
-  assert.equal(combined.verifyA24Prefix(340, rows).ledgerSha256, profile.ledgerDigest);
+  assert.equal(combined.verifyA24Prefix(340, combined340).ledgerSha256, profile.ledgerDigest);
   assert.throws(() => qualify(isolatedRows), /NATIVE_A24_340_COUNT/u);
   assert.throws(() => qualify(rows.slice(0, 334)), /NATIVE_A24_340_COUNT/u);
-  assert.throws(() => qualify([...rows.slice(0, 332), rows[333], rows[332], ...rows.slice(334)]), /NATIVE_A24_340_PINNED_LEDGER/u);
+  assert.throws(() => qualify([...rows.slice(0, 332), rows[333], rows[332], ...combined340.slice(334)]), /NATIVE_A24_340_PINNED_LEDGER/u);
   assert.throws(() => qualify([...rows.slice(0, 339), { ...rows[339], finished: false }]), /NATIVE_A24_340_PINNED_LEDGER/u);
+});
+
+test("requires the exact 341 successor and refuses cross-profile admission", () => {
+  const qualify = (ledger, terminal) => combined.qualifyA24Source("a".repeat(40), "b".repeat(40), ledger, terminal);
+  const source = qualify(rows, 341);
+  assert.equal(source.a24Prefixes.at(-1), 341);
+  assert.equal(combined.verifyA24Prefix(341, rows).ledgerSha256, source.ledgerDigest);
+  assert.throws(() => qualify(rows, 340), /NATIVE_A24_340_COUNT/u);
+  assert.throws(() => qualify(rows.slice(0, 340), 341), /NATIVE_A24_341_COUNT/u);
+  assert.throws(() => qualify([...rows.slice(0, 340), { ...rows[340], rolledBack: true }], 341), /NATIVE_A24_340_PINNED_LEDGER/u);
 });
 
 test("refuses missing historical catalog evidence at the 340 boundary", () => {

@@ -72,6 +72,7 @@ async function assertBoundRestrictedRole(db: PrismaClient, packet: Packet, roleO
 
 it("records and confirms only an exact A24 public cash slice with separate database roles", async () => {
   const packet = packetForIsolatedDatabase();
+  const assignment341 = process.env.TASK426_A24_ASSIGNMENT_341 === "1";
   const owner = new PrismaClient({ datasources: { db: { url: packet.ownerUrl } } });
   const observer = new PrismaClient({ datasources: { db: { url: packet.observerUrl } } });
   let app: INestApplication | undefined;
@@ -208,7 +209,8 @@ it("records and confirms only an exact A24 public cash slice with separate datab
     await app.listen(0, "127.0.0.1");
     const base = await app.getUrl();
     stage = "PUBLIC_HTTP_APPLICATION_ROLE";
-    await assertBoundRestrictedRole(app.get(PrismaService), packet, packet.applicationOid);
+    const application = app.get(PrismaService);
+    await assertBoundRestrictedRole(application, packet, packet.applicationOid);
     const tokens = new Map<string, string>();
     const send = async (actor: string, command: Command) => {
       const body = command.usePassword ? { ...command.json, confirmationPassword: password } : command.json;
@@ -267,6 +269,22 @@ it("records and confirms only an exact A24 public cash slice with separate datab
       stage = "PUBLIC_APPROVAL_SUBMIT";
       const submitted = await send("applicant", { path: path + "/submission", method: "POST", json: {} });
       assert.equal(submitted.status, 201, "A24_SUBMIT");
+      if (assignment341 && projectId === projects[0]) {
+        stage = "PUBLIC_APPROVAL_ASSIGNMENT_ROLLBACK";
+        const where = { id: projectId };
+        const select = { constructionEnterpriseLockedAt: true } as const;
+        assert.equal((await application.project.findUniqueOrThrow({ where, select })).constructionEnterpriseLockedAt, null);
+        const rollback = new Error("A24_EXPECTED_ASSIGNMENT_ROLLBACK");
+        await assert.rejects(application.$transaction(async tx => {
+          await tx.expenseClaim.update({ where: { id: claimId },
+            data: { status: "approved_pending_payment", approvedAt: new Date() }, select: { id: true } });
+          assert.ok((await tx.project.findUniqueOrThrow({ where, select })).constructionEnterpriseLockedAt instanceof Date);
+          throw rollback;
+        }), error => error === rollback);
+        assert.equal((await application.project.findUniqueOrThrow({ where, select })).constructionEnterpriseLockedAt, null);
+        assert.equal((await application.expenseClaim.findUniqueOrThrow({ where: { id: claimId }, select: { status: true } })).status,
+          "approval_pending");
+      }
       for (const actor of ["keeper", "manager", "reviewer", "leader"] as const) {
         stage = "PUBLIC_APPROVAL_DETAIL_" + actor.toUpperCase();
         const detail = await send(actor, { path });
@@ -278,6 +296,13 @@ it("records and confirms only an exact A24 public cash slice with separate datab
           approvalDutyIndex: detail.body.approval.actionableDuties[0].index
         } });
         assert.equal(review.status, 201, "A24_APPROVAL_" + actor);
+      }
+      if (assignment341) {
+        stage = "PUBLIC_APPROVAL_OBSERVE_ASSIGNMENT_LOCK";
+        const lockedProject = await application.project.findUniqueOrThrow({
+          where: { id: projectId }, select: { constructionEnterpriseLockedAt: true }
+        });
+        assert.ok(lockedProject.constructionEnterpriseLockedAt instanceof Date);
       }
       stage = "PUBLIC_APPROVAL_OBSERVE_COST";
       httpStatus = undefined;
@@ -329,7 +354,9 @@ it("records and confirms only an exact A24 public cash slice with separate datab
           cashDebits, cashBalanceYuan: balance.balanceYuan?.toFixed(4), acceptedAttributions };
       }
     });
-    process.stdout.write("NATIVE_A24_PROOF " + JSON.stringify({ candidate: packet.candidate, ...proof }) + "\n");
+    process.stdout.write("NATIVE_A24_PROOF " + JSON.stringify({ candidate: packet.candidate, ...proof,
+      ...(assignment341 ? { assignmentLock: { rollbackVerified: true, approvedProjectsLocked: 2 } } : {})
+    }) + "\n");
   } catch (error) {
     const firstLine = error instanceof Error ? error.message.split("\n", 1)[0] : "";
     const message = firstLine.length <= 80 && /^A24_[A-Z_]+(?:_[A-Za-z]+)*$/u.test(firstLine) ? firstLine : "A24_CHECK_FAILED";

@@ -30,14 +30,16 @@ function file(pathname, expected) {
   return bytes;
 }
 
-function captureSource(candidate, paymentRemainder, a24Profile) {
+function captureSource(candidate, paymentRemainder, a24Profile, expenseAssignment341) {
   assert.match(candidate, /^[a-f0-9]{40}$/u);
   assert.equal(git(["rev-parse", "HEAD"]).toString().trim(), candidate);
   assert.equal(tracked(), "");
   const ledger = git(["ls-tree", "-r", "--name-only", "-z", candidate, "--", "services/api/prisma/migrations"]).toString().split("\0")
     .filter(name => name.endsWith("/migration.sql"))
     .map(name => ({ name: path.basename(path.dirname(name)), sha256: hash(fs.readFileSync(path.join(root, name))), finished: true, rolledBack: false }));
-  if (a24Profile) return a24Profile.qualifyA24Source(candidate, git(["rev-parse", candidate + "^{tree}"]).toString().trim(), ledger);
+  if (a24Profile) return a24Profile.qualifyA24Source(
+    candidate, git(["rev-parse", candidate + "^{tree}"]).toString().trim(), ledger, expenseAssignment341 ? 341 : undefined
+  );
   assert.ok(paymentRemainder ? ledger.length === 331 : ledger.length === 329 || ledger.length === 330);
   const mode = paymentRemainder ? "--payment-remainder-331" : ledger.length === 330 ? "--text-direct-330" : "--current-320";
   const archive = JSON.parse(execFileSync(process.execPath,
@@ -200,7 +202,7 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
     verify(installed, size);
     if (source.a24Prefixes?.includes(size)) {
       a24Installation.push(a24Profile.verifyA24Prefix(size, installed.ledger));
-      if (historicalCatalog && [332, 333, 334, 340].includes(size)) {
+      if (historicalCatalog && [332, 333, 334, 340, 341].includes(size)) {
         stage("A24_HISTORICAL_CATALOG_" + size);
         historicalCatalog.atPrefix(size);
       }
@@ -314,9 +316,10 @@ async function main(args) {
   const expenseApproval = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1) === "--approval-round-a04";
   const issue430ApprovalSms = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1) === "--issue430-approval-sms";
   const expenseCashA24Mode = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1);
+  const expenseAssignment341 = expenseCashA24Mode === "--expense-cash-a24-combined-341";
   const a24Profile = expenseCashA24Mode === "--expense-cash-a24"
     ? require("../test-support/task426-a24-native-profile.cjs")
-    : expenseCashA24Mode === "--expense-cash-a24-combined-340"
+    : expenseCashA24Mode === "--expense-cash-a24-combined-340" || expenseAssignment341
       ? require("../test-support/task426-a24-native340-profile.cjs")
       : undefined;
   const expenseCashA24 = Boolean(a24Profile);
@@ -324,7 +327,7 @@ async function main(args) {
   assert.ok(args.length === 10 || paymentRemainder);
   const [mode, sha, pgManifest, pgSha, docManifest, docSha, office, officeSha, archiveAdmission, archiveSha] = args;
   assert.ok(["verify", "run"].includes(mode));
-  const source = captureSource(sha, paymentRemainder, a24Profile);
+  const source = captureSource(sha, paymentRemainder, a24Profile, expenseAssignment341);
   const normalArchiveRecipeSha = "90b698f5230ae172518e285bf8c4e197eb1d552518c55670c2b3794eb82f1b75";
   file(path.join(__dirname, "task12-normal274-archive-binding.cjs"), normalArchiveRecipeSha);
   const approvalLockRecipeSha = "5d565dc516cd26c64e3fda295b97968be7912abc62f47ab47ffd93be29fd6c2f";
@@ -336,6 +339,7 @@ async function main(args) {
     postgresMaterialSha256: pgSha, historicalSourceAdmissionSha256: archiveSha, normalArchiveRecipeSha256: normalArchiveRecipeSha, approvalLockRecipeSha256: approvalLockRecipeSha, documentManifestSha256: docSha, libreOfficeWrapperSha256: officeSha, libreOfficeExecutableSha256: runtime.nativeOfficeSha,
     status: "HOST_MATERIAL_VERIFIED", stages: [], cleanup: "NOT_NEEDED" };
   const a24Acl = expenseCashA24 && require("../test-support/task426-a24-native-acl.cjs");
+  const a24Assignment = expenseAssignment341 && require("../test-support/task426-a24-native341-assignment.cjs");
   const a24Plan = a24Acl && a24Acl.a24ColumnPlan(require("@prisma/client").Prisma.dmmf.datamodel.models);
   if (a24Plan) receipt.a24AclSha256 = hash(JSON.stringify(a24Plan));
   if (expenseCashA24) receipt.a24ExpectedPrefixes = source.a24Prefixes.map(size => {
@@ -510,6 +514,12 @@ async function main(args) {
           + a24Acl.readSignatureExclusiveClosure(app) + "ROLLBACK;"));
         receipt.a24SignatureExclusiveAcl = a24Acl.verifySignatureExclusiveClosure(closure);
       }
+      if (a24Assignment) {
+        stage("A24_STANDALONE_ASSIGNMENT_BEFORE_BUSINESS");
+        receipt.a24AssignmentLockBefore = a24Assignment.verifyExpenseAssignmentLock(
+          JSON.parse(sql(a24Assignment.readExpenseAssignmentLock(app)))
+        );
+      }
       const observerUrl = new URL(ownerUrl);
       observerUrl.username = observationRole;
       observerUrl.password = observerPassword;
@@ -520,6 +530,7 @@ async function main(args) {
       const outcome = run(process.execPath, [require.resolve("jest/bin/jest"), "--runInBand", "--testRegex",
         "task426-a24-native[.]test-support[.]ts$", "--runTestsByPath", "src/database/task426-a24-native.test-support.ts"], {
         NODE_ENV: "test", TMPDIR: directory, TASK426_A24_NATIVE_PACKET: a24Packet, DATABASE_URL: appUrl.toString(),
+        ...(expenseAssignment341 ? { TASK426_A24_ASSIGNMENT_341: "1" } : {}),
         FILE_STORAGE_DRIVER: "local", FILE_STORAGE_ROOT: files, FILE_DOWNLOAD_SECRET: secret(),
         JWT_ACCESS_SECRET: secret(), JWT_REFRESH_SECRET: secret(), OPERATING_LEDGER_DB_WRITE_SECRET: operatingWriteSecret,
         CONTRACT_DOCX4J_RUNTIME_MANIFEST: runtime.document, DOC_CONVERTER_COMMAND: office
@@ -621,7 +632,13 @@ async function main(args) {
     }
     if (historicalCatalog) {
       stage("A24_HISTORICAL_CATALOG_AFTER_BUSINESS");
-      receipt.a24HistoricalCatalog.afterBusiness340 = historicalCatalog.verifyAfterBusiness();
+      receipt.a24HistoricalCatalog["afterBusiness" + source.ledger.length] = historicalCatalog.verifyAfterBusiness();
+    }
+    if (a24Assignment) {
+      stage("A24_STANDALONE_ASSIGNMENT_AFTER_BUSINESS");
+      const result = a24Assignment.verifyExpenseAssignmentLock(JSON.parse(sql(a24Assignment.readExpenseAssignmentLock(app))));
+      assert.deepEqual(result, receipt.a24AssignmentLockBefore, "NATIVE_A24_341_ASSIGNMENT_CATALOG_DRIFT");
+      receipt.a24AssignmentLockAfter = result;
     }
     assert.equal(tracked(), "");
     file(runtime.document, runtime.documentSha);
