@@ -436,7 +436,7 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
     ["historical_takeover_a28", "", 0, "historical-takeover-a28"],
     ["contract_finance_acceptance", "", 0, "contract-finance"],
     ["remaining_dynamic_postgresql16", "", 0, "remaining"],
-    ["payment_execution", "", 65],
+    ["payment_execution", "", 0, "payment-execution"],
     ["employee_onboarding", "", 0, "onboarding"],
     ["general_procurement", "", 0, "procurement"],
     ["pol113_pol115_business_entries", "pol113_pol114", 0, "named"],
