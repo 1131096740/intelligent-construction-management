@@ -1,0 +1,80 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -1,0 +2 @@
++import { join } from "node:path";
+@@ -248,0 +250,18 @@
++  const orderedDatabase = process.env.JG_ISSUE416_HANDOVER_ORDERED_DATABASE;
++  if (orderedDatabase !== undefined) {
++    const workDir = process.env.TMPDIR;
++    if (
++      process.env.NODE_ENV !== "test" || url !== process.env.DATABASE_URL ||
++      !/^jg_task01_[a-f0-9]{32}$/u.test(orderedDatabase) ||
++      target.protocol !== "postgresql:" || target.hostname !== "127.0.0.1" ||
++      target.username !== "jg_task01_owner" || !target.password || !target.port ||
++      target.pathname !== "/" + orderedDatabase ||
++      target.searchParams.getAll("sslmode").join(",") !== "require" ||
++      target.searchParams.getAll("sslaccept").join(",") !== "strict" ||
++      !workDir || !/^\/tmp\/jg394-[A-Za-z0-9]+$/u.test(workDir) ||
++      target.searchParams.getAll("sslcert").join(",") !== join(workDir, "ca.crt")
++    ) {
++      throw new Error("ISSUE416_HANDOVER_ORDERED_DATABASE_REQUIRED");
++    }
++    return url;
++  }
+@@ -319,0 +339,26 @@
++  const constructionEnterprise = await prisma.businessParty.create({
++    data: {
++      name: "Issue416 合成施工企业",
++      normalizedName: "issue416-construction-enterprise",
++      createdByUserId: ids.creator
++    }
++  });
++  const constructionEnterpriseVersion = await prisma.businessPartyVersion.create({
++    data: {
++      businessPartyId: constructionEnterprise.id,
++      versionNo: 1,
++      snapshot: { name: constructionEnterprise.name },
++      createdByUserId: ids.creator
++    }
++  });
++  await prisma.projectAffiliateAssignment.create({
++    data: {
++      projectId: ids.project,
++      businessPartyId: constructionEnterprise.id,
++      businessPartyVersionId: constructionEnterpriseVersion.id,
++      affiliateNameSnapshot: constructionEnterprise.name,
++      effectiveFrom: new Date("2025-01-01T00:00:00Z"),
++      changeReason: "#416 合成施工企业",
++      assignedByUserId: ids.creator
++    }
++  });
+@@ -377 +422,3 @@
+-      settlementModeSource: "contract_takeover",
++      settlementModeSource: "backfill",
++      settlementModeConfirmedByUserId: input.supervisor,
++      settlementModeConfirmedAt: new Date("2026-10-01T00:00:00Z"),
+@@ -392,0 +440,18 @@
++  });
++  const historicalSettlement = await prisma.settlement.create({
++    data: {
++      projectId: input.project,
++      contractId: input.contract,
++      contractVersionId: input.version,
++      paymentTermsVersionId: input.terms,
++      code: `HT-OPEN-${input.takeover}`,
++      periodLabel: "历史期初",
++      status: "effective",
++      amountCents: 600_000n,
++      payableAmountCents: 600_000n,
++      paidAmountCents: 600_000n,
++      sourceType: "historical_takeover",
++      sourceTakeoverId: input.takeover,
++      isFinal: false
++    },
++    select: { id: true }
+@@ -413,0 +479 @@
++      activationIdempotencyKey: randomUUID(),
+@@ -415 +481,2 @@
+-      activatedByUserId: input.supervisor
++      activatedByUserId: input.supervisor,
++      historicalInitialSettlementId: historicalSettlement.id
