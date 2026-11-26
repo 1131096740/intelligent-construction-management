@@ -1417,7 +1417,9 @@ export class ProjectAffiliateBusinessService {
     idempotencyKey: string,
     requestFingerprint: string
   ) {
-    if (!isUniqueConstraintError(error)) throw error;
+    const duplicateBankEvent = error instanceof Prisma.PrismaClientUnknownRequestError &&
+      error.message.includes('PostgresError { code: "P0001", message: "施工企业该银行流水已登记，不得跨入口重复付款", severity:');
+    if (!isUniqueConstraintError(error) && !duplicateBankEvent) throw error;
     const existing = await this.prisma.projectAffiliatePaymentFact.findUnique({
       where: { idempotencyKey }
     });
