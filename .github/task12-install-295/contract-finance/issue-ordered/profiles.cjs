@@ -25,6 +25,18 @@ const profiles = {
       'registers, rejects duplicates, corrects and keeps paid aggregation unchanged'
     ]
   },
+  issue416_handover: {
+    file: 'src/database/issue416-takeover-handover.pg.spec.ts',
+    sourceDigest: 'abde4945f276cbe0f1adef32ee7b69dd86ed63369814ce51c55e57b1136d861a',
+    fixtureDigest: '2a4e09cc0cc40d1af577f1eacfb28cd53f750c722013ef44148094f0bd56af17',
+    orderedDatabaseKey: 'JG_ISSUE416_HANDOVER_ORDERED_DATABASE',
+    databaseUrlKey: 'ISSUE416_HANDOVER_DATABASE_URL',
+    enableKey: 'RUN_ISSUE416_HANDOVER_DATABASE',
+    stage: 'ORIGINAL_HISTORY_HANDOVER_JEST',
+    titles: [
+      'blocks a no-grade takeover before its division handover, allows it after registration, keeps facts and traces reassignment'
+    ]
+  },
   issue416_his: {
     file: 'src/database/issue416-his-gap.pg.spec.ts',
     sourceDigest: '2dd17a1119728583b21e158cd282173222a8db66b690e9d93ba0ddcbab9f0f07',
