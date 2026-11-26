@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import gate334 from "../../services/api/prisma/dynamic-gate-334.cjs";
 
 const requireFromApiWorkspace = createRequire(
   new URL("../../services/api/package.json", import.meta.url)
@@ -161,6 +162,13 @@ export function inspectPol21CrossDomainAcceptance({
     dynamicGateManifest?.inventory?.remainingTests !== 0
   ) {
     blockers.push("POL21_DYNAMIC_INVENTORY_INCOMPLETE");
+  }
+  if (dynamicGateManifest?.migrationBaseline?.expectedDirectoryCount === 334) {
+    const unadmitted = gate334.unadmittedGroups334(dynamicGateManifest.coveredGroups ?? []);
+    if (unadmitted.length || !knownGroups.has(gate334.historicalTakeoverGroup) ||
+        !knownGroups.has("line_a_real_db")) {
+      blockers.push("POL21_DYNAMIC_334_ADMISSION_INCOMPLETE");
+    }
   }
   const declaredRequiredChecks = new Set(
     manifest?.requiredReleaseChecks ?? []

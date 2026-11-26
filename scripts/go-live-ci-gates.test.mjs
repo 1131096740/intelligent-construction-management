@@ -333,9 +333,9 @@ test("CI fans out independent static and database gates behind one stable summar
   assert.equal(manualGroups[0].runner.invocation, "task01_explicit_inputs");
   assert.equal(manualGroups[0].executionStatus, "NOT_EXECUTED");
   const ciGroups = manifest.coveredGroups.filter(group => group.ciExecution !== "manual-only");
-  assert.equal(ciGroups.length, 44);
-  assert.equal(ciGroups.reduce((n, group) => n + group.testFiles.length, 0), 104);
-  assert.equal(ciGroups.reduce((n, group) => n + group.pendingTests, 0), 626);
+  assert.equal(ciGroups.length, 45);
+  assert.equal(ciGroups.reduce((n, group) => n + group.testFiles.length, 0), 105);
+  assert.equal(ciGroups.reduce((n, group) => n + group.pendingTests, 0), 634);
   assert.doesNotMatch(workflow, /enterprise_task01_entry|run-enterprise-task01-local|--task01-(?:packet|inputs|confirm)/u);
   assert.deepEqual(
     configuredGroups,
@@ -421,6 +421,38 @@ test("CI binds PR head, main push and manual target to verified checkouts", asyn
   }
 });
 
+
+test("the hosted 334 step routes only prepared exact groups and rejects unadmitted original groups", async () => {
+  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+  const dynamic = jobBlock(workflow, "postgresql16-dynamic-gates");
+  const step = /      - name: Run exact-SHA PostgreSQL dynamic gate shard\n[\s\S]*?        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(dynamic);
+  assert.ok(step);
+  const source = step[1].replace(/^          /gmu, "");
+  const executable = source.replace('exec bash "${exact_args[@]}"',
+    'printf "%s\\n" "${exact_args[@]}"; exit 0');
+  const sha = "d".repeat(40);
+  for (const [group, shard, status, lane] of [
+    ["line_a_real_db", "", 0, "line-a"],
+    ["historical_takeover_a28", "", 0, "historical-takeover-a28"],
+    ["contract_finance_acceptance", "", 0, "contract-finance"],
+    ["payment_execution", "", 65],
+    ["pol113_pol115_business_entries", "pol113_pol114", 65],
+    ["issue403_actual_purchase_batch", "", 65],
+    ["line_a_real_db", "unexpected", 65]
+  ]) {
+    const result = spawnSync("bash", ["-c", executable], { cwd: root, encoding: "utf8",
+      env: { ...process.env, CI_SOURCE_SHA: sha, DYNAMIC_GROUP: group, DYNAMIC_SHARD: shard } });
+    assert.equal(result.status, status, result.stderr);
+    const plan = ".github/task12-install-295/contract-finance/";
+    if (lane === "contract-finance") assert.deepEqual(result.stdout.trim().split("\n"), [
+      plan + "run.sh", sha, "--historical-settlement-334", "a187dc73a133114e1cfbbc891a4aec923abe2545"
+    ]);
+    else if (status === 0) assert.deepEqual(result.stdout.trim().split("\n"), [
+      plan + "run-contract-adjacent-ci.sh", sha, lane, "--historical-settlement-334"
+    ]);
+    else assert.match(result.stdout, /334 PostgreSQL gate has no admitted runner/u);
+  }
+});
 
 test("personnel feedback runs after its real PostgreSQL shard with both browsers and original budgets", async () => {
   const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");

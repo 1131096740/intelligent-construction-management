@@ -5,6 +5,7 @@ const previous = require('./historical-takeover-333-profile.cjs');
 
 const mode = 'historical-settlement-334';
 const installerSha256 = '89b088447358ac8cd9e49ae43492c26a33e24aa4fead4b2ddc11a78a46a364da';
+const restoreInstallerSha256 = 'db5fef9a160b3db101b0075138b93cb4c0187b541a1ec3643dbb7e324a7072a9';
 const ledgerSha256 = '27f3af946003d07582efb288b443362fcf61bed0281feb548f9978b739fb5411';
 const terminal = Object.freeze({
   name: '20261129003000_historical_signed_settlement_continuation',
@@ -64,4 +65,30 @@ function assertSource(source, predecessor295) {
   }, predecessor295);
 }
 
-module.exports = { mode, installerSha256, ledgerSha256, terminal, catalogSql, assertCatalog, assertSource, predecessor332: previous.predecessor332 };
+function assertFinanceInstallation(receipt, source) {
+  const upward = require('./upward-archive-332-profile.cjs');
+  const anchor = receipt.historicalTakeoverPredecessor;
+  previous.assertCatalog(anchor.catalog, false);
+  upward.assertInstallation({
+    ...receipt,
+    forward320: {
+      count: anchor.count, ledgerSha256: anchor.ledgerSha256,
+      sourceTree: receipt.forward320.sourceTree,
+      sameIdentity: anchor.sameIdentity, sameBaseB7: anchor.sameBaseB7,
+      tails: receipt.forward320.tails.slice(0, 37)
+    }
+  }, { ...source, tails: source.tails.slice(0, 37) });
+  previous.assertCatalog(receipt.historicalTakeover333Catalog, true);
+  assert.equal(receipt.historicalSettlementPredecessor.count, 333);
+  assert.equal(receipt.historicalSettlementPredecessor.ledgerSha256, previous.ledgerSha256);
+  assertCatalog(receipt.historicalSettlementPredecessor.routineCatalog);
+  assertCatalog(receipt.historicalSettlement334Catalog, receipt.historicalSettlementPredecessor.routineCatalog);
+  assert.equal(receipt.forward320.count, 334);
+  assert.equal(receipt.forward320.ledgerSha256, ledgerSha256);
+  assert.equal(receipt.forward320.sameIdentity, true);
+  assert.equal(receipt.forward320.sameBaseB7, true);
+  assert.deepEqual(receipt.forward320.tails, source.tails.map(({name, sha256}) => ({name, sha256})));
+}
+
+module.exports = { mode, installerSha256, restoreInstallerSha256, ledgerSha256, terminal, catalogSql, assertCatalog, assertSource, assertFinanceInstallation,
+  predecessor332: previous.predecessor332 };

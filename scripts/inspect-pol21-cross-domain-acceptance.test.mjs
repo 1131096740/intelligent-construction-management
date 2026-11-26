@@ -169,14 +169,15 @@ test("fails closed when the exact-SHA PostgreSQL gate or one of the six global r
   );
 });
 
-test("repository POL-21 manifest passes the public require-ready CLI seam", async () => {
-  const report = await runPol21CrossDomainAcceptanceCli(
-    ["--check", "--require-ready"],
-    { root }
-  );
-
-  assert.equal(report.status, "ready");
-  assert.equal(report.mainlineCount, 15);
+test("repository POL-21 require-ready blocks partial 334 matrix admission", async () => {
+  await assert.rejects(runPol21CrossDomainAcceptanceCli(
+    ["--check", "--require-ready"], { root }
+  ), error => {
+    assert.equal(error.code, "POL21_ACCEPTANCE_BLOCKED");
+    assert.equal(error.report.mainlineCount, 15);
+    assert.deepEqual(error.report.blockers, ["POL21_DYNAMIC_334_ADMISSION_INCOMPLETE"]);
+    return true;
+  });
 });
 
 test("the fail-closed POL-21 checker is itself mandatory in CI orchestration", async () => {

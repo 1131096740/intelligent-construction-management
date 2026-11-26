@@ -17,7 +17,7 @@ for relative in "${tests[@]}"; do
   cp "$workspace/$relative" "$work/$relative"
 done
 case "$mode" in
-  current-320|text-direct-330|payment-remainder-331|upward-archive-332)
+  current-320|text-direct-330|payment-remainder-331|upward-archive-332|historical-settlement-334)
     gzip -dc "$plan/core-payment-tests-current329.patch.gz" | patch --batch --forward --fuzz=0 --silent -p1 -d "$work"
     if [[ $mode != current-320 ]]; then
       payment=payment-concurrency-330.patch
@@ -33,7 +33,7 @@ case "$mode" in
 esac
 for relative in "${tests[@]}"; do chmod 0644 "$work/$relative"; done
 
-if [[ $mode == text-direct-330 || $mode == payment-remainder-331 || $mode == upward-archive-332 ]]; then
+if [[ $mode == text-direct-330 || $mode == payment-remainder-331 || $mode == upward-archive-332 || $mode == historical-settlement-334 ]]; then
   node - "$workspace" "$work" "$plan/core-payment-330-fixtures.json" <<'JS'
 const {readFileSync}=require('node:fs');
 const {createHash}=require('node:crypto');
@@ -51,7 +51,7 @@ for (const [relative,{input,output}] of Object.entries(fixtures)) {
 JS
 fi
 
-if [[ $mode == payment-remainder-331 || $mode == upward-archive-332 ]]; then
+if [[ $mode == payment-remainder-331 || $mode == upward-archive-332 || $mode == historical-settlement-334 ]]; then
   fixtures="$work/services/api/src/database"
   cp "$plan/contract-finance-owned.test-support.ts" "$fixtures/"
   for file in payment-execution-concurrency.spec.ts contract-finance-owned.test-support.ts; do
@@ -71,7 +71,7 @@ for (const [relative,expected] of Object.entries(fixtures)) assert.equal(checksu
 JS
 fi
 
-if [[ $mode == upward-archive-332 ]]; then
+if [[ $mode == upward-archive-332 || $mode == historical-settlement-334 ]]; then
   fixtures="$work/services/api/src/database"
   for file in payment-execution-concurrency.spec.ts contract-finance-owned.test-support.ts; do
     patch --batch --forward --fuzz=0 --silent -p0 -d "$fixtures" < "$plan/payment-execution-332-$file.patch"
@@ -86,5 +86,24 @@ const {materials,fixtures}=require(path.join(plan,'core-payment-332-fixtures.jso
 const checksum=(root,relative)=>createHash('sha256').update(readFileSync(path.join(root,relative))).digest('hex');
 for (const [relative,expected] of Object.entries(materials)) assert.equal(checksum(plan,relative),expected,'CORE_PAYMENT_332_MATERIAL');
 for (const [relative,expected] of Object.entries(fixtures)) assert.equal(checksum(overlays,relative),expected,'CORE_PAYMENT_332_POSTIMAGE');
+JS
+fi
+
+
+if [[ $mode == historical-settlement-334 ]]; then
+  fixtures="$work/services/api/src/database"
+  for file in payment-execution-concurrency.spec.ts contract-finance-owned.test-support.ts; do
+    patch --batch --forward --fuzz=0 --silent -p0 -d "$fixtures" < "$plan/payment-execution-334-$file.patch"
+  done
+  node - "$plan" "$fixtures" <<'JS'
+const {readFileSync}=require('node:fs');
+const {createHash}=require('node:crypto');
+const assert=require('node:assert/strict');
+const path=require('node:path');
+const [plan,overlays]=process.argv.slice(2);
+const {materials,fixtures}=require(path.join(plan,'core-payment-334-fixtures.json'));
+const checksum=(root,relative)=>createHash('sha256').update(readFileSync(path.join(root,relative))).digest('hex');
+for (const [relative,expected] of Object.entries(materials)) assert.equal(checksum(plan,relative),expected,'CORE_PAYMENT_334_MATERIAL');
+for (const [relative,expected] of Object.entries(fixtures)) assert.equal(checksum(overlays,relative),expected,'CORE_PAYMENT_334_POSTIMAGE');
 JS
 fi

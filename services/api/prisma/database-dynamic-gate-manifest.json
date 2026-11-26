@@ -29,11 +29,11 @@
     "pendingFiles": 106,
     "fullyPendingSuites": 85,
     "partiallyPendingSuites": 21,
-    "pendingTests": 630,
-    "coveredFiles": 105,
-    "coveredTests": 627,
-    "remainingFiles": 1,
-    "remainingTests": 3
+    "pendingTests": 635,
+    "coveredFiles": 106,
+    "coveredTests": 635,
+    "remainingFiles": 0,
+    "remainingTests": 0
   },
   "coveredGroups": [
     {
@@ -838,11 +838,11 @@
     },
     {
       "id": "line_a_real_db",
-      "pendingTests": 13,
+      "pendingTests": 18,
       "testFiles": [
         {
           "path": "services/api/src/database/line-a-real-db.http.pg.spec.ts",
-          "pendingTests": 13,
+          "pendingTests": 18,
           "suiteStatus": "fully_pending"
         }
       ],
@@ -1107,25 +1107,34 @@
         "path": "services/api/prisma/run-issue421b-four-ledger-local.cjs"
       },
       "state": "executable_local_runner"
-    }
-  ],
-  "remainingFiles": [
+    },
     {
-      "path": "services/api/src/contract-takeover/contract-takeover-a28.http.pg.spec.ts",
+      "id": "historical_takeover_a28",
       "pendingTests": 3,
-      "suiteStatus": "fully_pending",
-      "runFlag": "RUN_CONTRACT_TAKEOVER_A28_PG16",
-      "databaseEnv": [
-        "DATABASE_URL"
+      "testFiles": [
+        {
+          "path": "services/api/src/contract-takeover/contract-takeover-a28.http.pg.spec.ts",
+          "pendingTests": 3,
+          "suiteStatus": "fully_pending",
+          "runFlag": "RUN_CONTRACT_TAKEOVER_A28_PG16",
+          "databaseEnv": [
+            "DATABASE_URL"
+          ]
+        }
       ],
-      "reason": "missing_disposable_pg16_orchestration"
+      "runner": {
+        "kind": "exactLedgerShell",
+        "path": ".github/task12-install-295/contract-finance/run-contract-adjacent-ci.sh"
+      },
+      "state": "executable_local_runner"
     }
   ],
+  "remainingFiles": [],
   "executionInventory": {
     "ciEligible": {
-      "groups": 44,
-      "files": 104,
-      "tests": 626
+      "groups": 45,
+      "files": 105,
+      "tests": 634
     },
     "manualOnly": {
       "groups": 1,

@@ -280,6 +280,7 @@ jobs:
           - issue418_operating_dedup
           - issue421_signed_settlement_ledger
           - issue421b_four_ledger
+          - historical_takeover_a28
         include:
           - group: pol113_pol115_business_entries
             shard: pol113_pol114
@@ -409,6 +410,17 @@ jobs:
           TASK12_289_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.number == 428 }}
         run: |
           count=$(node -p "require('./services/api/prisma/database-dynamic-gate-manifest.json').migrationBaseline.expectedDirectoryCount")
+          if [[ "$count" == 334 ]]; then
+            if [[ -z "$DYNAMIC_SHARD" ]]; then
+              dispatch=$(node -e "const gate=require('./services/api/prisma/dynamic-gate-334.cjs'); console.log((gate.commandFor334(process.env.DYNAMIC_GROUP, process.env.CI_SOURCE_SHA) || []).join(' '))")
+              if [[ -n "$dispatch" ]]; then
+                read -r -a exact_args <<< "$dispatch"
+                exec bash "${exact_args[@]}"
+              fi
+            fi
+            echo "::error::334 PostgreSQL gate has no admitted runner for $DYNAMIC_GROUP${DYNAMIC_SHARD:+/$DYNAMIC_SHARD}"
+            exit 65
+          fi
           mode_args=()
           case "$count" in
             329) mode_args=(--current-320) ;;

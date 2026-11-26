@@ -10,7 +10,7 @@ const { installerSha256 } = require('./historical-takeover-333-profile.cjs');
 const hash = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 assert.ok(process.argv.length === 3 || process.argv.length === 4);
 const mode = process.argv[3] ?? 'historical-takeover-333';
-assert.ok(['historical-takeover-333', 'historical-settlement-334'].includes(mode));
+assert.ok(['historical-takeover-333', 'historical-settlement-334', 'historical-settlement-334-restore'].includes(mode));
 const output = fs.realpathSync(process.argv[2]);
 const original = path.join(__dirname, 'common/installer.cjs');
 const installer = path.join(output, 'installer.cjs');
@@ -18,9 +18,13 @@ assert.equal(hash(original), '5f6e2959275504ff409928e6cab08e9cffabacc8dd22e48439
 fs.copyFileSync(original, installer, fs.constants.COPYFILE_EXCL);
 execFileSync('git', ['apply', '--unidiff-zero', path.join(__dirname, 'historical-takeover-333-installer.patch')], { cwd: output });
 assert.equal(hash(installer), installerSha256, 'A28_INSTALLER_POSTIMAGE');
-if (mode === 'historical-settlement-334') {
+if (mode !== 'historical-takeover-333') {
   const next = require('./historical-settlement-334-profile.cjs');
   execFileSync('git', ['apply', '--unidiff-zero', path.join(__dirname, 'historical-settlement-334-installer.patch')], { cwd: output });
   assert.equal(hash(installer), next.installerSha256, 'A28_334_INSTALLER_POSTIMAGE');
+  if (mode === 'historical-settlement-334-restore') {
+    execFileSync('git', ['apply', '--unidiff-zero', path.join(__dirname, 'historical-settlement-334-restore-installer.patch')], { cwd: output });
+    assert.equal(hash(installer), next.restoreInstallerSha256, 'A28_334_RESTORE_INSTALLER_POSTIMAGE');
+  }
 }
 fs.chmodSync(installer, 0o644);
