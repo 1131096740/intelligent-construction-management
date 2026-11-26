@@ -35,7 +35,7 @@ test("retains both product archive validator tuples and admits only their exact 
   const source = read("src/contract/contract-generated-upward-operating-installation.ts");
   const tuples = [...source.matchAll(/\((TRUE|FALSE),'([a-f0-9]{64})',\s*'([a-f0-9]{64})'\)/gu)].map(match => match.slice(1));
   const [withoutClock, withClock, successorWithoutClock, successorWithClock] = tuples;
-  assert.equal(tuples.length, 4);
+  assert.equal(tuples.length, 6);
   assert.equal(withoutClock[1], "26a0fe0d77faa0cb21df9098d339f6350e45e9468504d1cc9d66afee4171a975");
   assert.equal(withClock[1], "a9f2052a70675effdd906929c1b3490c4f4f81867b65b29ea13c9e3a935f7434");
   assert.equal(successorWithoutClock[1], "bcc05db15d2a1e2679e9887475a110ffc7cc5b08e423e0b737195ee74f63c4a6");

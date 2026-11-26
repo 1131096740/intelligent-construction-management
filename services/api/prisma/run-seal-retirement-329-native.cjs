@@ -130,7 +130,7 @@ function migrationPrefixes(directory, source) {
   }));
 }
 
-async function migrate({ source, archive, database, directory, sql, url, run, stage, runId, port, a24Profile, pendingExpense, cashVoucher }) {
+async function migrate({ source, archive, database, directory, sql, url, run, stage, runId, port, a24Profile, pendingExpense, cashVoucher, operatingCash }) {
   const prefixes = migrationPrefixes(directory, source);
   const deploy = (size, target = url) => {
     stage("MIGRATE_" + size);
@@ -195,11 +195,15 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
   const a24Installation = [];
   const expenseFactCatalog = {};
   const cashVoucherCatalog = {};
+  const operatingCashCatalog = {};
   const historicalCatalog = a24Profile?.createHistoricalCatalogCheck?.(statement => JSON.parse(
     sql("BEGIN READ ONLY; SET LOCAL search_path=pg_catalog,pg_temp;" + statement + "ROLLBACK;")
   ));
   const readCashVoucher = size => JSON.parse(sql(
     "BEGIN READ ONLY; SET LOCAL search_path=pg_catalog,pg_temp;" + cashVoucher.readCatalog(size) + "ROLLBACK;"
+  ));
+  const readOperatingCash = size => JSON.parse(sql(
+    "BEGIN READ ONLY; SET LOCAL search_path=pg_catalog,pg_temp;" + operatingCash.readCatalog(size, plan.appName) + "ROLLBACK;"
   ));
   for (const size of [...liveForwardPrefixes(source.ledger.length), ...(source.a24Prefixes ?? [])]) {
     if (pendingExpense && size === 342) {
@@ -218,12 +222,20 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
       verify(inspect(), 343);
       assert.deepEqual(readCashVoucher(343), cashVoucherCatalog[343], "NATIVE_A24_344_PREVIEW_ROLLBACK");
     }
+    if (operatingCash && size === 346) {
+      stage("A24_MIGRATE_346_FIRST_SQL_ERROR");
+      const terminal = source.ledger[345];
+      const terminalPath = path.join(__dirname, "migrations", terminal.name, "migration.sql");
+      sql(pendingExpense.rollbackMigration342(file(terminalPath, terminal.sha256).toString("utf8")));
+      verify(inspect(), 345);
+      assert.deepEqual(readOperatingCash(345), operatingCashCatalog[345], "NATIVE_A24_346_PREVIEW_ROLLBACK");
+    }
     deploy(size);
     const installed = inspect();
     verify(installed, size);
     if (source.a24Prefixes?.includes(size)) {
       a24Installation.push(a24Profile.verifyA24Prefix(size, installed.ledger));
-      if (historicalCatalog && [332, 333, 334, 340, 341, 342, 343, 344].includes(size)) {
+      if (historicalCatalog && [332, 333, 334, 340, 341, 342, 343, 344, 345, 346].includes(size)) {
         stage("A24_HISTORICAL_CATALOG_" + size);
         historicalCatalog.atPrefix(size);
       }
@@ -238,6 +250,10 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
       stage("A24_CASH_VOUCHER_CATALOG_" + size);
       cashVoucherCatalog[size] = cashVoucher.verifyCatalog(size, readCashVoucher(size), cashVoucherCatalog[size - 1]);
     }
+    if (operatingCash && [345, 346].includes(size)) {
+      stage("A24_OPERATING_CASH_CATALOG_" + size);
+      operatingCashCatalog[size] = operatingCash.verifyCatalog(size, readOperatingCash(size), operatingCashCatalog[345]);
+    }
     if (size === 330 && source.predecessor330) {
       const ledgerSha256 = hash(JSON.stringify(installed.ledger));
       assert.equal(ledgerSha256, source.predecessor330.ledgerSha256);
@@ -250,7 +266,7 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
     return { count: final.ledger.length, ledgerSha256: hash(JSON.stringify(final.ledger)), sameIdentity: true };
   };
   return { appOid: setup.appOid, app: plan.appName, tailMaterials, archiveMaterial,
-    paymentRemainderPredecessor, a24Installation, historicalCatalog, expenseFactCatalog, cashVoucherCatalog, readCashVoucher, verifyAfterBusiness };
+    paymentRemainderPredecessor, a24Installation, historicalCatalog, expenseFactCatalog, cashVoucherCatalog, readCashVoucher, operatingCashCatalog, readOperatingCash, verifyAfterBusiness };
 }
 
 function grantApplication(sql, database, app, appPassword) {
@@ -347,7 +363,8 @@ async function main(args) {
   const expenseApproval = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1) === "--approval-round-a04";
   const issue430ApprovalSms = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1) === "--issue430-approval-sms";
   const expenseCashA24Mode = args.length === 12 && args.at(-2) === "--payment-remainder-331" && args.at(-1);
-  const expenseCashVoucher344 = expenseCashA24Mode === "--expense-cash-a24-combined-344";
+  const expenseOperatingCash346 = expenseCashA24Mode === "--expense-cash-a24-combined-346";
+  const expenseCashVoucher344 = expenseOperatingCash346 || expenseCashA24Mode === "--expense-cash-a24-combined-344";
   const expensePending342 = expenseCashVoucher344 || expenseCashA24Mode === "--expense-cash-a24-combined-342";
   const expenseAssignment341 = expensePending342 || expenseCashA24Mode === "--expense-cash-a24-combined-341";
   const a24Profile = expenseCashA24Mode === "--expense-cash-a24"
@@ -360,7 +377,7 @@ async function main(args) {
   assert.ok(args.length === 10 || paymentRemainder);
   const [mode, sha, pgManifest, pgSha, docManifest, docSha, office, officeSha, archiveAdmission, archiveSha] = args;
   assert.ok(["verify", "run"].includes(mode));
-  const source = captureSource(sha, paymentRemainder, a24Profile, expenseCashVoucher344 ? 344 : expensePending342 ? 342 : expenseAssignment341 ? 341 : undefined);
+  const source = captureSource(sha, paymentRemainder, a24Profile, expenseOperatingCash346 ? 346 : expenseCashVoucher344 ? 344 : expensePending342 ? 342 : expenseAssignment341 ? 341 : undefined);
   const normalArchiveRecipeSha = "90b698f5230ae172518e285bf8c4e197eb1d552518c55670c2b3794eb82f1b75";
   file(path.join(__dirname, "task12-normal274-archive-binding.cjs"), normalArchiveRecipeSha);
   const approvalLockRecipeSha = "5d565dc516cd26c64e3fda295b97968be7912abc62f47ab47ffd93be29fd6c2f";
@@ -375,6 +392,7 @@ async function main(args) {
   const a24Assignment = expenseAssignment341 && require("../test-support/task426-a24-native341-assignment.cjs");
   const pendingExpense = expensePending342 && require("../test-support/task426-a24-native342-fact.cjs");
   const cashVoucher = expenseCashVoucher344 && require("../test-support/task426-a24-native344-voucher.cjs");
+  const operatingCash = expenseOperatingCash346 && require("../test-support/task426-a24-native346-operating.cjs");
   const baseA24Plan = a24Acl && a24Acl.a24ColumnPlan(require("@prisma/client").Prisma.dmmf.datamodel.models, expensePending342);
   const a24Plan = cashVoucher ? cashVoucher.addCashVoucherAcl(baseA24Plan) : baseA24Plan;
   if (a24Plan) receipt.a24AclSha256 = hash(JSON.stringify(a24Plan));
@@ -411,8 +429,11 @@ async function main(args) {
       const migration = source.ledger.some(row => row.name === reportedMigration) ? reportedMigration : undefined;
       // Prisma sometimes reports a native-driver error without a P-code.
       // Project only the first database error line and redact all local connection coordinates.
-      const firstErrorProbe = phase === "A24_MIGRATE_342_FIRST_SQL_ERROR" || phase === "A24_MIGRATE_344_FIRST_SQL_ERROR";
-      const firstSqlError = phase === "A24_MIGRATE_344_FIRST_SQL_ERROR" && cashVoucher
+      const firstErrorProbe = ["A24_MIGRATE_342_FIRST_SQL_ERROR", "A24_MIGRATE_344_FIRST_SQL_ERROR",
+        "A24_MIGRATE_346_FIRST_SQL_ERROR"].includes(phase);
+      const firstSqlError = phase === "A24_MIGRATE_346_FIRST_SQL_ERROR" && operatingCash
+        ? operatingCash.projectMigrationError(errorText)
+        : phase === "A24_MIGRATE_344_FIRST_SQL_ERROR" && cashVoucher
         ? cashVoucher.projectMigrationError(errorText)
         : firstErrorProbe && pendingExpense ? pendingExpense.projectMigration342Error(errorText) : undefined;
       const reason = firstErrorProbe ? undefined : /^Error:\s*(?:ERROR:\s*)?([^\n]{1,200})$/mu.exec(errorText)?.[1]
@@ -492,8 +513,8 @@ async function main(args) {
       assert.equal(negative.status, 2);
     }
     const { appOid, app, tailMaterials, archiveMaterial, paymentRemainderPredecessor,
-      a24Installation, historicalCatalog, expenseFactCatalog, cashVoucherCatalog, readCashVoucher, verifyAfterBusiness } =
-      await migrate({ source, archive, database, directory, sql, url: ownerUrl, run, stage, runId, port, a24Profile, pendingExpense, cashVoucher });
+      a24Installation, historicalCatalog, expenseFactCatalog, cashVoucherCatalog, readCashVoucher, operatingCashCatalog, readOperatingCash, verifyAfterBusiness } =
+      await migrate({ source, archive, database, directory, sql, url: ownerUrl, run, stage, runId, port, a24Profile, pendingExpense, cashVoucher, operatingCash });
     receipt.tailMaterials = tailMaterials;
     receipt.archiveInstallation = archiveMaterial;
     if (expenseCashA24) {
@@ -503,6 +524,7 @@ async function main(args) {
     if (historicalCatalog) receipt.a24HistoricalCatalog = historicalCatalog.snapshots;
     if (pendingExpense) receipt.a24ExpenseFactCatalog = expenseFactCatalog;
     if (cashVoucher) receipt.a24CashVoucherCatalog = cashVoucherCatalog;
+    if (operatingCash) receipt.a24OperatingCashCatalog = operatingCashCatalog;
     if (paymentRemainder) {
       assert.ok(paymentRemainderPredecessor);
       receipt.paymentRemainderPredecessor = paymentRemainderPredecessor;
@@ -723,14 +745,20 @@ async function main(args) {
       stage("A24_CASH_VOUCHER_ACL_AFTER_BUSINESS");
       receipt.a24CashVoucherAclAfterBusiness = checkCashVoucherAcl();
     }
+    if (operatingCash) {
+      stage("A24_OPERATING_CASH_CATALOG_AFTER_BUSINESS");
+      const result = operatingCash.verifyCatalog(346, readOperatingCash(346), operatingCashCatalog[345]);
+      assert.deepEqual(result, operatingCashCatalog[346], "NATIVE_A24_346_OPERATING_CATALOG_DRIFT");
+      operatingCashCatalog.afterBusiness = result;
+    }
     assert.equal(tracked(), "");
     file(runtime.document, runtime.documentSha);
     receipt.status = "PASSED";
   } catch (error) {
     receipt.status = "FAILED";
     const tail = localTailFailureDiagnostic(error);
-    const catalogReason = phase.startsWith("A24_CASH_VOUCHER_CATALOG_")
-      ? /^NATIVE_A24_34[34]_[A-Z_]{1,45}$/mu.exec(error.message)?.[0] : undefined;
+    const catalogReason = (phase.startsWith("A24_CASH_VOUCHER_CATALOG_") || phase.startsWith("A24_OPERATING_CASH_CATALOG_"))
+      ? /^NATIVE_A24_34[3456]_[A-Z_]{1,45}$/mu.exec(error.message)?.[0] : undefined;
     receipt.firstFailure = firstFailure ?? { stage: phase, code: typeof error.code === "string" && /^[A-Z0-9_]{1,50}$/u.test(error.code) ? error.code : "CHECK_FAILED",
       ...(catalogReason ? { catalogReason } : {}), ...(tail ? { tail } : {}) };
   } finally {

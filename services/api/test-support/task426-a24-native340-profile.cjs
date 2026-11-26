@@ -20,9 +20,11 @@ const prefixDigests = Object.freeze({
   341: "30da81d2089c941e912b0149969a508d6df8ccab1d501b78b1aedc6ff8f2832f",
   342: "0c2efc93da4e924216f7282cf573065cc8688171f83559ea5fd3ad5973070f23",
   343: "17c4d2d98cf19b6f3e7fd2581165940b0f803c5e306bc68adfe018ac52048307",
-  344: "463c30fe22a863396c707d28c7cae08bd6291cf8c2d5175a43856bac3e9bb5a3"
+  344: "463c30fe22a863396c707d28c7cae08bd6291cf8c2d5175a43856bac3e9bb5a3",
+  345: "ac2a34d707b306acd25ae3fa03fa46b0331c0b5301ff0575d55f8c283e8c88f4",
+  346: "2e0a1a7e3a31d91dba32778b621b873f4161fad5549e06102d82a8a633193832"
 });
-const prefixes = [332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343, 344];
+const prefixes = [332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343, 344, 345, 346];
 const digest = rows => createHash("sha256").update(JSON.stringify(rows)).digest("hex");
 
 function verifyA24Prefix(size, ledger) {
@@ -33,7 +35,7 @@ function verifyA24Prefix(size, ledger) {
 }
 
 function qualifyA24Source(candidate, sourceTree, ledger, terminal = 340) {
-  assert.ok([340, 341, 342, 344].includes(terminal));
+  assert.ok([340, 341, 342, 344, 346].includes(terminal));
   assert.match(candidate, /^[a-f0-9]{40}$/u);
   assert.match(sourceTree, /^[a-f0-9]{40}$/u);
   assert.equal(ledger.length, terminal, "NATIVE_A24_" + terminal + "_COUNT");
@@ -70,14 +72,14 @@ function createHistoricalCatalogCheck(read) {
       settlement.assertCatalog(result.settlement, snapshots.predecessor333.settlement);
       snapshots.predecessor334 = result;
     }
-    if ([340, 341, 342, 343, 344].includes(size)) {
+    if ([340, 341, 342, 343, 344, 345, 346].includes(size)) {
       const result = observe();
       assert.deepEqual(result, snapshots.predecessor334, "NATIVE_A24_340_HISTORICAL_CATALOG");
       snapshots["beforeBusiness" + size] = result;
     }
   }
   function verifyAfterBusiness() {
-    const beforeBusiness = snapshots.beforeBusiness344 ?? snapshots.beforeBusiness342 ?? snapshots.beforeBusiness341 ?? snapshots.beforeBusiness340;
+    const beforeBusiness = snapshots.beforeBusiness346 ?? snapshots.beforeBusiness344 ?? snapshots.beforeBusiness342 ?? snapshots.beforeBusiness341 ?? snapshots.beforeBusiness340;
     assert.ok(beforeBusiness, "NATIVE_A24_340_HISTORICAL_CATALOG_MISSING");
     const result = observe();
     assert.deepEqual(result, beforeBusiness, "NATIVE_A24_340_HISTORICAL_CATALOG_AFTER_BUSINESS");
