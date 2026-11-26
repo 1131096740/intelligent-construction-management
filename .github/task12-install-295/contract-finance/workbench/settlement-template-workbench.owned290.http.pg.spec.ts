@@ -62,7 +62,8 @@ describePg("结算模板工作台公开HTTP / PG16", () => {
       const textDirect = process.env.TASK_POL115_WORKBENCH_TEXT_DIRECT_330 === "1";
       const paymentRemainder = process.env.TASK_POL115_WORKBENCH_PAYMENT_REMAINDER_331 === "1";
       const upwardArchive = process.env.TASK_POL115_WORKBENCH_UPWARD_ARCHIVE_332 === "1";
-      const count = upwardArchive ? 332 : paymentRemainder ? 331 : textDirect ? 330 : current320 ? 329 : 295;
+      const historicalSettlement = process.env.TASK_POL115_WORKBENCH_HISTORICAL_SETTLEMENT_334 === "1";
+      const count = historicalSettlement ? 334 : upwardArchive ? 332 : paymentRemainder ? 331 : textDirect ? 330 : current320 ? 329 : 295;
       const [witness] = await app.get(PrismaService).$queryRaw<Array<{ accepted: boolean }>>`
         SELECT (d.datname = ${url.pathname.slice(1)} AND d.datdba = 10 AND
           current_user = 'jg_task01_owner' AND current_user::regrole::oid = 10 AND current_user = session_user AND
@@ -87,7 +88,14 @@ describePg("结算模板工作台公开HTTP / PG16", () => {
             AND checksum = '67593637957ba372cbba7633334fb9896ba6adf472b0c1b9b6f1482c0d645fc2')) AND
           (NOT ${upwardArchive} OR EXISTS (SELECT FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
             AND migration_name = '20261129001000_contract_upward_archive_verifier_pin_forward'
-            AND checksum = '4e8e6e23267f525ca2bff68719e2989126fff82e5bd0d0ba344abc2c4c8d4da3'))) AS accepted
+            AND checksum = '4e8e6e23267f525ca2bff68719e2989126fff82e5bd0d0ba344abc2c4c8d4da3')) AND
+          (NOT ${historicalSettlement} OR (
+            EXISTS (SELECT FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+              AND migration_name = '20261129002000_contract_takeover_no_grade_handover_checks'
+              AND checksum = '4e41179d32a8e46eae83685eb8c071a112de5426e9ec5f6a6e6d320b4ef95f77') AND
+            EXISTS (SELECT FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+              AND migration_name = '20261129003000_historical_signed_settlement_continuation'
+              AND checksum = '9df6dc654b8b0ea21713cc1c1dbcc73a8a74fd49f0df84da3b1556e85215ad5f')))) AS accepted
         FROM pg_catalog.pg_database d WHERE d.datname = current_database()
       `;
       if (witness?.accepted !== true) throw new Error("POL115_WORKBENCH_OWNED_282_DATABASE");

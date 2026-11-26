@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 umask 077
-[[ $# == 5 && ( $1 == pol113 || $1 == pol114 ) ]]
+[[ ( $# == 5 || ( $# == 6 && $6 == --host-only ) ) && ( $1 == pol113 || $1 == pol114 ) ]]
 mode=$1
 generated=$(cd "$2" && pwd -P)
 prepared=$(cd "$3" && pwd -P)
@@ -12,25 +12,35 @@ plan=$(cd "$(dirname "$0")" && pwd -P)
 node - "$generated/context/candidate-admission.json" "$prepared/source.json" "$ref" "$plan" <<'JS'
 const [candidateFile,sourceFile,sha,plan]=process.argv.slice(2);
 const a=require(candidateFile),s=require(sourceFile);
-const upwardArchive=s.mode==='upward-archive-332';
+const historicalSettlement=s.mode==='historical-settlement-334';
+const upwardArchive=historicalSettlement||s.mode==='upward-archive-332';
 const paymentRemainder=upwardArchive||s.mode==='payment-remainder-331';
 const textDirect=s.mode==='text-direct-330'||paymentRemainder;
 const current320=textDirect||s.mode==='current-320';
-const count=upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
+const count=historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
 if(a.candidateSha!==sha||s.sourceSha!==sha||s.migrationCount!==count||a.migrationCount!==count||
   a.ledger295!==(current320?s.predecessor.ledgerSha256:s.ledgerSha256))process.exit(65);
-if(current320&&((upwardArchive?a.ledger332:a.ledger320)!==s.ledgerSha256||a.sourceTree!==s.sourceTree||
+if(current320&&((historicalSettlement?a.ledger334:upwardArchive?a.ledger332:a.ledger320)!==s.ledgerSha256||a.sourceTree!==s.sourceTree||
   JSON.stringify(a.tails)!==JSON.stringify(s.tails)))process.exit(65);
 if(textDirect&&a.ledger329!=="3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2")process.exit(65);
 if(paymentRemainder){
   const finance=plan+'/../contract-finance';
   const profile=upwardArchive?'upward-archive-332':'payment-remainder-331';
-  require(finance+'/'+profile+'-profile.cjs').assertSource(s,sha,require(finance+'/common/multi-witness.cjs').final);
+  const base=require(finance+'/common/multi-witness.cjs').final;
+  if(historicalSettlement){
+    require(finance+'/historical-settlement-334-profile.cjs').assertSource(s,base);
+    if(a.ledger332!==s.predecessor332.ledgerSha256||a.ledger333!==s.predecessor333.ledgerSha256)process.exit(65);
+  } else require(finance+'/'+profile+'-profile.cjs').assertSource(s,sha,base);
   if(a.ledger330!==s.predecessor330.ledgerSha256)process.exit(65);
   if(upwardArchive&&a.ledger331!==s.predecessor331.ledgerSha256)process.exit(65);
 }
 JS
 (cd "$generated/context" && shasum -a 256 -c ../context.sha256 >/dev/null)
+if [[ ${6-} == --host-only ]]; then
+  [[ $(node -p 'require(process.argv[1]).migrationCount' "$prepared/source.json") == 334 ]] || exit 64
+  printf 'NAMED_334_HOST_READY mode=%s sha=%s context=%s\n' "$mode" "$ref" "$(shasum -a 256 "$generated/context.sha256" | cut -d' ' -f1)"
+  exit 0
+fi
 [[ -z $(docker ps -q) ]]
 if pgrep -x postgres >/dev/null; then exit 65; fi
 mkdir "$evidence"

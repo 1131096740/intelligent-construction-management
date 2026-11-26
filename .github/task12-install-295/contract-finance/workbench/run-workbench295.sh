@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 ) ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -14,6 +14,7 @@ case ${5-} in
   --text-direct-330) mode_args=(--text-direct-330); count=330 ;;
   --payment-remainder-331) mode_args=(--payment-remainder-331); count=331 ;;
   --upward-archive-332) mode_args=(--upward-archive-332); count=332 ;;
+  --historical-settlement-334) mode_args=(--historical-settlement-334); count=334 ;;
 esac
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -22,11 +23,12 @@ common="$base/common"
 scope=pol115-workbench
 
 node -e '
-  const [file,sha,count]=process.argv.slice(1);
+  const [file,sha,count,base]=process.argv.slice(1);
   const source=require(file);
-  const modes={"329":"current-320","330":"text-direct-330","331":"payment-remainder-331","332":"upward-archive-332"};
+  const modes={"329":"current-320","330":"text-direct-330","331":"payment-remainder-331","332":"upward-archive-332","334":"historical-settlement-334"};
   if(source.sourceSha!==sha||source.migrationCount!==Number(count)||(modes[count]&&source.mode!==modes[count]))process.exit(1);
-' "$prepared/source.json" "$sha" "$count"
+  if(count==="334") require(base+"/historical-settlement-334-profile.cjs").assertSource(source,require(base+"/common/multi-witness.cjs").final);
+' "$prepared/source.json" "$sha" "$count" "$base"
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -46,9 +48,18 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
   --mount "type=bind,src=$plan/workbench-entry.cjs,dst=/qualification/workbench-entry.cjs,readonly"
   --mount "type=bind,src=$plan/workbench-inputs.cjs,dst=/qualification/workbench-inputs.cjs,readonly")
-for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
+for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
+installer="$common/installer.cjs"
+if [[ $count == 334 ]]; then
+  node "$base/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
+  installer="$work/installer.cjs"
+  for profile_file in historical-settlement-334-profile.cjs historical-takeover-333-profile.cjs upward-archive-332-profile.cjs; do
+    args+=(--mount "type=bind,src=$base/$profile_file,dst=/qualification/$profile_file,readonly")
+  done
+fi
+args+=(--mount "type=bind,src=$installer,dst=/qualification/installer.cjs,readonly")
 args+=(--mount "type=bind,src=$base/task12-pol109-stage-browser.cjs,dst=/qualification/task12-pol109-stage-browser.cjs,readonly")
 for file in browser-preflight.cjs task12-pol115-workbench-ci.cjs issue430-approval-sms-ci.cjs; do
   args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")

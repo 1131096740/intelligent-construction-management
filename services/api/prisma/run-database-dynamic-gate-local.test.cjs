@@ -234,6 +234,20 @@ test("334 routes Line A, A28, finance and Remaining and rejects other groups bef
   assert.equal(resolvedRemaining.command, "bash");
   assert.match(resolvedRemaining.args[0], /contract-finance\/run-remaining[.]sh$/u);
   assert.deepEqual(resolvedRemaining.args.slice(1), [sha, "--historical-settlement-334"]);
+  for (const [id, lane, count] of [["employee_onboarding", "onboarding", 59], ["general_procurement", "procurement", 27]]) {
+    const group = manifest.coveredGroups.find(item => item.id === id);
+    assert.equal(group.pendingTests, count);
+    assert.deepEqual(resolveGroupCommand(group, { candidateSha: sha, migrationCount: 334 }).args.slice(1),
+      [sha, lane, "--historical-settlement-334"]);
+  }
+  const named = manifest.coveredGroups.find(group => group.id === "pol113_pol115_business_entries");
+  assert.equal(named.pendingTests, 191);
+  const pol113Pol114 = resolveGroupCommand({ ...named, pol113Pol115Shard: "pol113_pol114" }, { candidateSha: sha, migrationCount: 334 });
+  assert.match(pol113Pol114.args[0], /named-pol113-pol114\/run-matrix334[.]sh$/u);
+  assert.deepEqual(pol113Pol114.args.slice(1), [sha, "pol113_pol114"]);
+  for (const shard of [undefined, "pol115_workbench", "unknown"]) {
+    assert.throws(() => resolveGroupCommand({ ...named, pol113Pol115Shard: shard }, { candidateSha: sha, migrationCount: 334 }), /未接入/u);
+  }
   assert.throws(() => resolveGroupCommand(historical, { candidateSha: sha, migrationCount: 332 }), /A28.*334/u);
   const drift = structuredClone(manifest);
   drift.coveredGroups.find(group => group.id === historical.id).runner.path = original.runner.path;
