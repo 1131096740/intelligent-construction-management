@@ -3,10 +3,11 @@ set -euo pipefail
 umask 077
 
 plan=$(cd "$(dirname "$0")" && pwd -P)
-ordered_issue=false
+issue_lane=false
 if [[ ${2:-} == issue* ]]; then
   [[ $# == 3 ]] || exit 64
   case "$2:$3" in
+    issue403:--expense-witness-346|issue404:--expense-witness-346|issue417:--expense-witness-346) ;;
     issue400_346:--expense-witness-346|issue405_346:--expense-witness-346) ;;
     issue411_346:--expense-witness-346|issue413_346:--expense-witness-346|issue414_346:--expense-witness-346) ;;
     issue416_handover_346:--expense-witness-346|issue416_his_346:--expense-witness-346) ;;
@@ -16,7 +17,7 @@ if [[ ${2:-} == issue* ]]; then
       node -e 'const p=require(process.argv[1]).profileFor(process.argv[2]); if(p.requiredMigrationCount) process.exit(65)' "$plan/issue-ordered/profiles.cjs" "$2" >/dev/null 2>&1 || exit 64 ;;
     *) exit 64 ;;
   esac
-  ordered_issue=true
+  issue_lane=true
 fi
 
 [[ $# == 2 || ( $# == 3 && ( $3 == --current-320 || $3 == --text-direct-330 ) && $2 != pol275 ) ||
@@ -30,14 +31,14 @@ fi
   ( $# == 3 && $3 == --upward-archive-332 && ( $2 == line-a || $2 == pol115-workbench || $2 == onboarding || $2 == procurement || $2 == cash-handover || $2 == principal-return ||
     $2 == settlement || $2 == template || $2 == draft || $2 == v7 || $2 == invoice || $2 == pol279 || $2 == pol280 || $2 == company-proxy || $2 == expense-execution || $2 == expense-finance || $2 == expense-receipt || $2 == payment-execution ||
     $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts || $2 == pol109 || $2 == task398-standard || $2 == task398-ledger-loss || $2 == browser-partial || $2 == browser-completion || $2 == pfq || $2 == cash-transfer || $2 == project-advance ) ) ||
-  ( $# == 3 && ( $2 == historical-takeover-a28 || $2 == line-a || $2 == onboarding || $2 == procurement || $2 == pol115-workbench || $2 == pol115-full || $ordered_issue == true ) && $3 == --historical-settlement-334 ) ||
+  ( $# == 3 && ( $2 == historical-takeover-a28 || $2 == line-a || $2 == onboarding || $2 == procurement || $2 == pol115-workbench || $2 == pol115-full || $issue_lane == true ) && $3 == --historical-settlement-334 ) ||
   ( $# == 3 && ( $2 == line-a || $2 == onboarding || $2 == pol115-workbench || $2 == pol115-full || $2 == payment-execution ||
     $2 == task398-ledger-loss || $2 == task398-competition || $2 == historical-takeover-a28 || $2 == historical-takeover-a29 ||
     $2 == browser-partial || $2 == browser-completion || $2 == procurement ||
     $2 == settlement || $2 == template || $2 == draft || $2 == v7 || $2 == invoice || $2 == pol279 || $2 == pol280 ||
     $2 == expense-execution || $2 == expense-finance || $2 == expense-receipt || $2 == cash-handover || $2 == principal-return || $2 == company-proxy ||
     $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts || $2 == pol109 ||
-    $2 == pfq || $2 == task398-standard || $2 == cash-transfer || $2 == project-advance || $ordered_issue == true ) && $3 == --expense-witness-346 ) ||
+    $2 == pfq || $2 == task398-standard || $2 == cash-transfer || $2 == project-advance || $issue_lane == true ) && $3 == --expense-witness-346 ) ||
   ( $# == 4 && ( $2 == payment-execution || $2 == task398-competition || $2 == pol109 || $2 == cash-transfer || $2 == project-advance ) &&
     $3 == --expense-witness-346 && $4 == --host-only ) ||
   ( $# == 4 && $2 == pol275 && ( $3 == --historical-settlement-334 || $3 == --expense-witness-346 ) && $4 == a187dc73a133114e1cfbbc891a4aec923abe2545 ) ||
@@ -45,7 +46,7 @@ fi
 sha=$1
 lane=$2
 mode_args=()
-if [[ $ordered_issue == true ]]; then
+if [[ $issue_lane == true ]]; then
   mode_args=("$3")
 elif (( $# >= 3 )); then
   case "$lane" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|cash-handover|principal-return|payment-execution|task398-standard|task398-ledger-loss|task398-competition|expense-execution|expense-finance|expense-receipt|company-proxy|onboarding|procurement|pfq|browser-partial|browser-completion|pol115-workbench|pol115-full|pol275|line-a|cash-transfer|project-advance|historical-takeover-a28|historical-takeover-a29) mode_args=("$3") ;; *) exit 64;; esac
@@ -97,10 +98,14 @@ bash "$plan/prepare.sh" "$root" "$sha" "$work/source" ${mode_args[@]+"${mode_arg
 profile=browser
 case "$lane" in pol115-workbench|pol115-full|onboarding|procurement) profile=mobile ;; line-a|historical-takeover-a28|historical-takeover-a29) profile=api ;; esac
 if [[ ( $lane == task398-ledger-loss || $lane == task398-competition ) && $3 == --expense-witness-346 ]]; then profile=api; fi
-if [[ $ordered_issue == true ]]; then profile=api; fi
+if [[ $issue_lane == true ]]; then profile=api; fi
 bash "$plan/build.sh" "$work/source" "$sha" "$profile" "$work/browser"
-if [[ $ordered_issue == true ]]; then
-  bash "$plan/issue-ordered/run.sh" "$root" "$work/source" "$sha" "$work/browser" "$lane"
+if [[ $issue_lane == true ]]; then
+  if [[ $lane == issue417 ]]; then
+    bash "$plan/expense-witness/run.sh" "$root" "$work/source" "$sha" "$work/browser" --issue417-history-expense
+  else
+    bash "$plan/issue-ordered/run.sh" "$root" "$work/source" "$sha" "$work/browser" "$lane"
+  fi
   exit 0
 fi
 case "$lane" in
