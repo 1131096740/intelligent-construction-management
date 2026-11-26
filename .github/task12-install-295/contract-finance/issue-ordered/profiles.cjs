@@ -186,7 +186,7 @@ const profiles = {
   },
   issue418_cash_attribution: {
     file: 'src/database/issue418-cash-attribution.pg.spec.ts',
-    sourceDigest: '9bf976085cc8a160586bb947c4221388651e2bb135e766d321a324a521f0d345',
+    sourceDigest: '64ab782f28fbafd5d80542d89283b80b6d4ef88025d534d2d99962552d9d2872',
     orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
     databaseUrlKey: 'ISSUE418_CASH_ATTRIBUTION_DATABASE_URL',
     enableKey: 'ISSUE418_CASH_ATTRIBUTION_RUN',
@@ -196,6 +196,7 @@ const profiles = {
     requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
     requiresOperatingLedgerWriteSecret: true,
     titles: [
+      '成本归属读侧分列承担公司、待归属与公共现金来源',
       'G4 公共现金待归属确认后转正、幂等且不新增成本',
       'G5 资金流水与经营事实一致，支持类型过滤与导出'
     ]
