@@ -5,29 +5,36 @@ const {sourceSha} = source;
 const current320=source.mode==='current-320';
 const textDirect=source.mode==='text-direct-330';
 const paymentRemainder=source.mode==='payment-remainder-331';
+const historical=source.mode==="historical-settlement-334"?require("./historical-settlement-334-profile.cjs"):null;
 const upwardArchive=source.mode==='upward-archive-332';
-const count=upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
+const count=historical?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
 const standard=process.argv[2]===`standard-${count}`;
-const ledgerLoss=process.argv[2]===`ledger-loss-${count}`;
-const competition=count>=331&&process.argv[2]===`competition-${count}`;
+const ledgerLoss=!historical&&process.argv[2]===`ledger-loss-${count}`;
+const competition=!historical&&count>=331&&process.argv[2]===`competition-${count}`;
 assert.ok(process.argv.length===2||(process.argv.length===3&&count>=330&&(standard||ledgerLoss||competition)));
 const textFinance=count>=330&&!standard&&!ledgerLoss&&!competition;
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive} = require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement} = require('./installer.cjs');
 const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run-task398-shared-standard-local.cjs');
 
 const receipt = {schemaVersion:1,sourceSha,purpose:textFinance?`TASK425_TEXT_DIRECT_FINANCE_${count}`:ledgerLoss?`TASK398_LEDGER_LOSS_EXACT_${count}`:competition?`TASK398_COMPETITION_EXACT_${count}`:'TASK398_STANDARD_EXACT_'+count,business:'NOT_ENTERED',stages:[]};
 async function run(){
   assert.equal(source.migrationCount,count);
+  if(historical){
+    const {readFileSync}=require('node:fs'),{createHash}=require('node:crypto');
+    assert.equal(createHash('sha256').update(readFileSync('/qualification/installer.cjs')).digest('hex'),historical.installerSha256);
+    historical.assertSource(source,require('./multi-witness.cjs').final);
+  }
   const validate332=upwardArchive?require('./upward-archive-332-profile.cjs'):undefined;
   const consume=context=>{
     validate332?.assertInstallation(receipt,source);
+    historical?.assertFinanceInstallation(receipt,source);
     return runTask398Owned282Voucher(context,textFinance?`text-direct-${count}`:process.argv[2]??'standard-'+count,receipt);
   };
   if(count>=329){
     const baseLedgerSha256=require('./multi-witness.cjs').final;
     assert.equal(source.predecessor.ledgerSha256,baseLedgerSha256);
     validate332?.assertSource(source,sourceSha,baseLedgerSha256);
-    const install=upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
+    const install=historical?withCombined334HistoricalSettlement:upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
     await install(receipt,consume,{
       sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
     });
@@ -57,6 +64,11 @@ async function run(){
   assert.equal(receipt.combinedAfterBusiness?.exactB7,true);
   assert.equal(receipt.combinedAfterBusiness?.balance.keyUnprovisioned,true);
   assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);
+  if(historical){
+    assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
+    assert.equal(receipt.historicalTakeoverCatalogAfterBusiness,true);
+    assert.equal(receipt.historicalSettlementCatalogAfterBusiness,true);
+  }
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
   receipt.status = receipt.purpose+'_PASSED';
 }
