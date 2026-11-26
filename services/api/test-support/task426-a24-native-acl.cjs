@@ -11,7 +11,7 @@ const claimUpdate = ["status", "submittedAt", "approvedAt", "approvalInstanceId"
   "fundedAmountCents", "costBearingCompanySpecified", "costBearingCompanyEntityId", "updatedAt"];
 const attributionInsert = ["id", "projectId", "operatingFactId", "operatingFactProjectId", "sourceDedupKey", "expenseCashCostLinkId",
   "attributedAmountCents", "status", "activeKey", "companyEntityId", "companyEntityVersionId", "companyNameSnapshot",
-  "companyCreditCodeSnapshot", "reason", "requestedByUserId", "idempotencyKey", "updatedAt"];
+  "companyCreditCodeSnapshot", "reason", "requestedByUserId", "requestedAt", "idempotencyKey", "createdAt", "updatedAt"];
 const attributionUpdate = ["status", "activeKey", "reviewedByUserId", "reviewedAt", "reviewReason", "revision", "updatedAt"];
 const linkedColumns = ["id", "operationalPaymentId", "costImpactId", "amountCents"];
 // FileObject INSERT runs the historical correction, direct-review and direct-archive
