@@ -146,14 +146,18 @@ async function runOriginal(context) {
   receipt.ownerIdentityVerified = true;
   const roleInventory = "SELECT jsonb_agg(to_jsonb(r) - 'rolpassword' ORDER BY r.rolname) FROM pg_roles r;";
   const rolesBefore = (await context.sql(roleInventory)).stdout;
-  url.searchParams.delete('connection_limit');
   if (scope === 'spot') {
+    // The payment detail reads in parallel. Leave room on the 16-session fixture server
+    // for reserved slots and installer clients while retaining concurrent review requests.
+    url.searchParams.set('connection_limit', '8');
     const { stdout: budget } = await context.sql(`SELECT json_build_object(
       'maxConnections', current_setting('max_connections')::int,
       'superuserReservedConnections', current_setting('superuser_reserved_connections')::int);`);
     receipt.spotConnectionBudget = {
       ...JSON.parse(budget), prismaConnectionLimit: url.searchParams.get('connection_limit')
     };
+  } else {
+    url.searchParams.delete('connection_limit');
   }
 
   const browser = scope === 'notification' ? null : prepareBrowser(workDir);
