@@ -82,6 +82,6 @@ for name in sorted(partial_pins.keys() | completion_pins.keys()):
             expense_witness = Path(__file__).with_name('completion346.patch')
             subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent',
                             str(target), str(expense_witness)], check=True)
-            check(target.read_bytes(), '6f03abf510a9adbde35dbcfa2a911af319e2ab50ead519e0e439bd1d9b963fd8', target.name)
+            check(target.read_bytes(), 'ec9a8975c923fd8e68d1c0fd0c60999ebfc04b7b6bddc6827b888e1d762df7d8', target.name)
     target.chmod(0o644)
     print(name)
