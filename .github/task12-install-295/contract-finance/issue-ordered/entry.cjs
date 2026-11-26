@@ -13,14 +13,13 @@ const source = require('./contract-finance-source.json');
 
 const root = '/qualification';
 const api = path.join(root, 'workspace/services/api');
-const file = 'src/database/issue420-approval-center.http.pg.spec.ts';
-const titles = [
-  '我方可查看只对管理读取岗位开放，查看权不等于办理权',
-  '办理中可下载当前轮审批单：已签显示签字、未签留空、带水印并记下载审计',
-  '驳回后重提只保留最新轮审批单，旧轮签字不进入新PDF'
-];
-const receipt = { schemaVersion: 1, purpose: 'ISSUE420_ORIGINAL_334',
-  sourceSha: source.sourceSha, stages: ['INPUTS'], status: 'STOPPED' };
+const { profileFor } = require('./issue-ordered-profiles.cjs');
+const scope = process.argv[2];
+const profile = profileFor(scope);
+const { file, titles } = profile;
+const purpose = scope.toUpperCase() + '_ORIGINAL_334';
+const receipt = { schemaVersion: 1, purpose, sourceSha: source.sourceSha,
+  stages: ['INPUTS'], status: 'STOPPED' };
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 
 async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql }) {
@@ -42,18 +41,18 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
     host(inet_client_addr()) = '127.0.0.1' AND host(inet_server_addr()) = '127.0.0.1' AND
     EXISTS(SELECT FROM pg_stat_ssl WHERE pid=pg_backend_pid() AND ssl)
   )::text;`);
-  assert.equal(stdout.trim(), 'true', 'ISSUE420_ISOLATED_OWNER_TLS');
+  assert.equal(stdout.trim(), 'true', 'ISSUE_ORDERED_ISOLATED_OWNER_TLS');
   receipt.isolatedFixtureOwnerVerified = true;
-  const work = fs.mkdtempSync(path.join(workDir, 'issue420-'));
+  const work = fs.mkdtempSync(path.join(workDir, scope + '-'));
   const reportFile = path.join(work, 'jest.json');
   const secret = () => randomBytes(32).toString('hex');
-  receipt.stages.push('ORIGINAL_HTTP_PDF_JEST');
+  receipt.stages.push(profile.stage);
   const child = spawnSync(process.execPath, [path.join(api, 'node_modules/jest/bin/jest.js'),
     '--runInBand', '--runTestsByPath', file, '--json', '--outputFile', reportFile], {
     cwd: api, encoding: 'utf8', timeout: 600_000, maxBuffer: 8 * 1024 * 1024,
     env: { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: workDir, TMPDIR: workDir,
-      NODE_ENV: 'test', CI: 'true', DATABASE_URL: ownerUrl, JG_ISSUE420_ORDERED_DATABASE: database,
-      RUN_ISSUE420_REAL_DB: '1', FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: path.join(work, 'files'),
+      NODE_ENV: 'test', CI: 'true', DATABASE_URL: ownerUrl, [profile.orderedDatabaseKey]: database,
+      [profile.enableKey]: '1', FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: path.join(work, 'files'),
       FILE_DOWNLOAD_SECRET: secret(), JWT_ACCESS_SECRET: secret(), JWT_REFRESH_SECRET: secret(),
       APPROVAL_SMS_ENABLED: 'false', SMS_ENABLED: 'false' }
   });
@@ -70,13 +69,13 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
 }
 
 async function main() {
-  assert.equal(process.argv.length, 2);
+  assert.equal(process.argv.length, 3);
   assert.notEqual(process.getuid(), 0);
   assert.equal(process.env.DATABASE_URL, undefined);
   historical.assertSource(source, final);
   assert.equal(sha256(fs.readFileSync(path.join(root, 'installer.cjs'))), historical.installerSha256);
   assert.equal(sha256(fs.readFileSync(path.join(api, file))),
-    'fe8b03de2fec47e42152497301ab0100a1e9cc4424195b7d901d5bc27fd23a12');
+    profile.fixtureDigest ?? profile.sourceDigest);
   const schema = require(path.join(api, 'prisma/migration-baseline.cjs')).loadCanonicalMigrationBaseline();
   assert.equal(schema.expectedDirectoryCount, 334);
   assert.equal(schema.terminalMigration, historical.terminal.name);
@@ -93,12 +92,12 @@ async function main() {
   assert.equal(receipt.historicalTakeoverCatalogAfterBusiness, true);
   assert.equal(receipt.historicalSettlementCatalogAfterBusiness, true);
   assert.equal(receipt.cleanup, 'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
-  assert.equal(receipt.suite?.complete, true, 'ISSUE420_ORIGINAL_COVERAGE');
-  receipt.status = 'ISSUE420_ORIGINAL_334_PASSED';
+  assert.equal(receipt.suite?.complete, true, 'ISSUE_ORDERED_ORIGINAL_COVERAGE');
+  receipt.status = purpose + '_PASSED';
 }
 main().catch(error => {
   receipt.failure = { stage: receipt.stages.at(-1),
-    code: /^[A-Z0-9_]+$/u.test(error.message) ? error.message : 'ISSUE420_FAILED',
+    code: /^[A-Z0-9_]+$/u.test(error.message) ? error.message : 'ISSUE_ORDERED_FAILED',
     sqlstate: error.sqlstate, prismaCode: error.prismaCode };
   process.exitCode = 1;
 }).finally(() => process.stdout.write(JSON.stringify(receipt) + '\n'));
