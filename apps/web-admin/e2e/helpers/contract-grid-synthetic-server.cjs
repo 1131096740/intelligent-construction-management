@@ -142,8 +142,34 @@ db.contractTakeoverCorrection.groupBy = async ({ by, orderBy, where, take }) => 
   return [...new Set(projectIds)].sort().slice(0, take).map(projectId => ({ projectId }));
 };
 db.$transaction = async run => { const previous = clone(state); try { return await run(db); } catch (error) { state = previous; throw error; } };
+const fileBindingQueryTables = new Map([
+  ['SELECT "versionId" FROM public."SpotProcurementAttachment" WHERE "fileId" = $1', "spotProcurementAttachment"],
+  ['SELECT "paymentId", "executedByUserId", "voidedAt" FROM public."SpotProcurementPaymentExecution" WHERE "voucherFileId" = $1', "spotProcurementPaymentExecution"],
+  ['SELECT "paymentId", "uploadedByUserId", "invalidatedByUserId" FROM public."SpotProcurementPaymentInvoice" WHERE "fileId" = $1', "spotProcurementPaymentInvoice"],
+  ['SELECT "paymentExecutionId" FROM public."SpotProcurementPaymentExecutionVoucher" WHERE "fileId" = $1', "spotProcurementPaymentExecutionVoucher"],
+  ['SELECT "archiveId" FROM public."SpotProcurementPaymentArchiveFile" WHERE "fileId" = $1', "spotProcurementPaymentArchiveFile"],
+  ['SELECT "contractVersionId" FROM public."ContractOfflineRevision" WHERE "fileId" = $1 OR "previewPdfFileId" = $2 LIMIT 1', "contractOfflineRevision"],
+  ['SELECT "expenseClaimId", "attachedByUserId", "removedAt" FROM public."ExpenseClaimAttachment" WHERE "fileId" = $1 LIMIT 1', "expenseClaimAttachment"],
+  ['SELECT "projectId" FROM public."ContractBankVerificationRequest" WHERE "evidenceFileId" = $1 OR "holderEvidenceFileId" = $2 LIMIT 1', "contractBankVerificationRequest"],
+  ['SELECT "projectId" FROM public."ContractProxyExecution" WHERE "evidenceFileId" = $1 LIMIT 1', "contractProxyExecution"],
+  ['SELECT "projectId" FROM public."UpwardContractAmountRevision" WHERE "evidenceFileId" = $1 LIMIT 1', "upwardContractAmountRevision"],
+  ['SELECT "projectId" FROM public."ProjectAffiliateContractFact" WHERE "evidenceFileId" = $1 OR "confirmationSignatureFileId" = $2 LIMIT 1', "projectAffiliateContractFact"],
+  ['SELECT "projectId" FROM public."ProjectAffiliateSettlementFact" WHERE "evidenceFileId" = $1 OR "confirmationSignatureFileId" = $2 LIMIT 1', "projectAffiliateSettlementFact"],
+  ['SELECT "projectId" FROM public."ProjectAffiliatePaymentFact" WHERE "evidenceFileId" = $1 OR "confirmationSignatureFileId" = $2 LIMIT 1', "projectAffiliatePaymentFact"],
+  ['SELECT "projectId", "businessType" FROM public."ProjectAffiliateBusinessEvidence" WHERE "fileId" = $1 LIMIT 1', "projectAffiliateBusinessEvidence"],
+  ['SELECT "projectId" FROM public."ProjectAffiliateCompanyContract" WHERE "fileId" = $1 OR "confirmationSignatureFileId" = $2 LIMIT 1', "projectAffiliateCompanyContract"],
+  ['SELECT reserve."projectId" FROM public."ProjectNecessaryExpenseReserveEntry" entry JOIN public."ProjectNecessaryExpenseReserve" reserve ON reserve.id = entry."reserveId" WHERE entry."evidenceFileId" = $1 LIMIT 1', "projectNecessaryExpenseReserveEntry"],
+  ['SELECT dispute."projectId" FROM public."ProjectFundDisputeEntry" entry JOIN public."ProjectFundDispute" dispute ON dispute.id = entry."disputeId" WHERE entry."evidenceFileId" = $1 LIMIT 1', "projectFundDisputeEntry"]
+]);
 db.$queryRaw = async query => {
   const text = query.strings?.join(" ") ?? "";
+  const fileBindingSql = query.text?.replace(/\s+/gu, " ").trim()
+    .replace(/^\/\* private_file_(?:project|offline_revision|expense_attachment)_binding \*\/ /u, "");
+  const bindingTable = fileBindingQueryTables.get(fileBindingSql);
+  // Simulate only known empty binding tables and keep the application's ACL checks in the request path.
+  if (bindingTable && state[bindingTable]?.length === 0) {
+    return [];
+  }
   // This fixture has no PostgreSQL catalog or registered-payment binding.
   if (text.trimStart().startsWith("/* registered_payment_voucher_catalog */") && query.values.length === 0) {
     return [{ state: "absent", ownerSettlementVoucher: false, signedContractFileBindings: "absent" }];
