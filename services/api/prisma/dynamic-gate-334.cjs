@@ -9,6 +9,9 @@ const restorePredecessor = "a187dc73a133114e1cfbbc891a4aec923abe2545";
 const historicalTakeoverGroup = "historical_takeover_a28";
 const lanes = Object.freeze({
   line_a_real_db: "line-a",
+  contract_settlement_v2: "settlement",
+  contract_template_scenario: "template",
+  settlement_draft_lifecycle: "draft",
   employee_onboarding: "onboarding",
   general_procurement: "procurement",
   pol113_pol115_business_entries: "named",
