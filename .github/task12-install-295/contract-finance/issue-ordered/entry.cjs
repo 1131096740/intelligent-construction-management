@@ -66,6 +66,14 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
       report?.testResults?.length === 1 && report.testResults[0].name === path.join(api, file) &&
       counts.registered === titles.length && counts.passed === titles.length && counts.skipped === 0 &&
       rows.length === titles.length && rows.every((row, index) => row.title === titles[index] && row.status === 'passed') };
+  const firstFailed = rows.find(row => row.status === 'failed');
+  if (firstFailed) {
+    const diagnostic = (firstFailed.failureMessages ?? []).join('\n');
+    const codes = [...diagnostic.matchAll(
+      /\b(P\d{4})\b|\b(?:SQLSTATE|Code:)\s*`?([0-9A-Z]{5})\b/gu
+    )].map(match => match[1] ?? match[2]);
+    receipt.suite.firstFailureCodes = [...new Set(codes)].slice(0, 6);
+  }
 }
 
 async function main() {
