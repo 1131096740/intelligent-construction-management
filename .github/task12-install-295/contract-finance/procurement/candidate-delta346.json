@@ -110,6 +110,16 @@
     "candidate": "0e02e927ddf67d392a9f953ba0b159f83c1a4f3821e6bc1cbfe269b65e7f8da8"
   },
   {
+    "path": "services/api/scripts/business-zeroing-policy.cjs",
+    "expected": "42722a432f8e03ab1cc15339439b49af9953454438fd18d75c93e5505b5d6195",
+    "candidate": "67637189fc360b54d45aa2e5df82e7472890bb19389620c3e86c2c7934751dce"
+  },
+  {
+    "path": "services/api/scripts/business-zeroing-tool.test.cjs",
+    "expected": "d44e510d9ce7d8a545886d5dd398e1c99fac613debfb2b8af72846194947b2e1",
+    "candidate": "e0a99fb3c7d70b89ca2aea2e8c78c08b2ffd97cd92e3de607fa8825f6d7b28c6"
+  },
+  {
     "path": "services/api/src/auth/guards/permission.guard.ts",
     "expected": "8ccc2c3808ddd45837ed115202395a4f87dcc51aa4e015f4590b4f97e40021f1",
     "candidate": "29e0cfff77048273ae232a7b52e01113eada5aa43d747d41687be86104571d61"

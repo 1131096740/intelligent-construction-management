@@ -21,6 +21,8 @@
   "services/api/prisma/run-task398-shared-standard-local.test.cjs": "92ceec5a67e890fb7ad0c3c17e5ed783189b3b7436e09ab2eea5fbeddd367251",
   "services/api/prisma/schema.prisma": "385f217a8e5cef9fa92e1ca69532405e4078b98f17194e1762bcdc3b25a92144",
   "services/api/prisma/task12-current259-q2-seed.cjs": "0e02e927ddf67d392a9f953ba0b159f83c1a4f3821e6bc1cbfe269b65e7f8da8",
+  "services/api/scripts/business-zeroing-policy.cjs": "67637189fc360b54d45aa2e5df82e7472890bb19389620c3e86c2c7934751dce",
+  "services/api/scripts/business-zeroing-tool.test.cjs": "e0a99fb3c7d70b89ca2aea2e8c78c08b2ffd97cd92e3de607fa8825f6d7b28c6",
   "services/api/src/auth/guards/permission.guard.ts": "29e0cfff77048273ae232a7b52e01113eada5aa43d747d41687be86104571d61",
   "services/api/src/company-transfer/company-transfer-legacy-balances.ts": "be597915fb510fa35c6ccb24075c7bba6f889b2d22ffd5dad9439e42d53e4196",
   "services/api/src/company-transfer/company-transfer-legacy.ts": "07140eec7e8c4a4721efdd0a5c48960cd8f69877821bac03294ed635c7dc8d89",
