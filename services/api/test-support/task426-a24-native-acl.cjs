@@ -75,6 +75,9 @@ function a24ColumnPlan(models, combined342 = false) {
     ProjectCloseAggregate: CASH_RUNTIME_READS.ProjectCloseAggregate,
     ProjectCloseImpact: CASH_RUNTIME_READS.ProjectCloseImpact,
     ProjectCloseStageVersion: CASH_RUNTIME_READS.ProjectCloseStageVersion,
+    // Project projection preflights both possible restriction-replacement sources.
+    ProjectNecessaryExpenseReserveReplacement: ["id", "reserveEntryId", "operatingImpactEntryId", "amountCents"],
+    ProjectFundDisputeReplacement: ["id", "disputeEntryId", "operatingImpactEntryId", "amountCents"],
     ...Object.fromEntries([
       "Position", "UserPosition", "Project", "ProjectMember", "ProjectRosterMember", "CompanyEntity",
       "CompanyEntityVersion", "ProjectParticipatingCompany", "BusinessParty", "BusinessPartyVersion", "ProjectAffiliateAssignment",
