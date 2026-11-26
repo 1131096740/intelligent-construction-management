@@ -110,6 +110,16 @@
     "candidate": "1c040a22066693f2a88426bdddcb11c833f139841a03b339d45af65b7976627b"
   },
   {
+    "path": "services/api/src/file/file.service.spec.ts",
+    "expected": "40c5addfc6f940ba2fbfd091a094e520b954b1712d4a4edb87592189b2dd2f02",
+    "candidate": "f9db3fd212539160b39e7d1f4753d5127364b8b41ce95e2106e1c7ada3c2c03f"
+  },
+  {
+    "path": "services/api/src/file/file.service.ts",
+    "expected": "ee4604a5117ad40f14a27739633a265b37881702bd610ae45781a99ff389a7dd",
+    "candidate": "0b10452f51643beeb91905a3ec93ff6f13f51d96d7c5c051d6572bb32e8ef9f2"
+  },
+  {
     "path": "services/api/src/me/me.service.ts",
     "expected": "439db3745de0160d9db7dc5819bdf2f73c2ac0c595d8f8b5250e83d54aba5b25",
     "candidate": "cf2572a6db6c31241f9610d6b68b23dc5ec1c1fdfb55bd30964d1ec7dacc81bd"
