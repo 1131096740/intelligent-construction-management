@@ -3,7 +3,8 @@ set -euo pipefail
 umask 077
 
 [[ ( ( $# == 3 || ( $# == 4 && $4 == --host-only ) ) &&
-  ${2-} == --historical-settlement-334 && $3 == a187dc73a133114e1cfbbc891a4aec923abe2545 ) ||
+  ( ${2-} == --historical-settlement-334 || ${2-} == --expense-witness-346 ) &&
+  $3 == a187dc73a133114e1cfbbc891a4aec923abe2545 ) ||
   $# == 1 || ( $# == 3 && $2 == --current-320 && $3 =~ ^[a-f0-9]{40}$ ) ||
   ( ( ${2-} == --text-direct-330 || ${2-} == --payment-remainder-331 || ${2-} == --upward-archive-332 ) && ( $# == 2 ||
     ( $# == 3 && ( $3 == --host-only || $3 =~ ^[a-f0-9]{40}$ ) ) ||
@@ -27,7 +28,8 @@ prepare_predecessor() {
 }
 mode=${2-}
 restore_predecessor=
-if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 || $mode == --historical-settlement-334 ]]; then
+if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 ||
+  $mode == --historical-settlement-334 || $mode == --expense-witness-346 ]]; then
   [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
   plan_status=$(git -C "$root" status --porcelain --untracked-files=all -- "$plan")
   [[ -z $plan_status ]] || exit 65
@@ -38,12 +40,17 @@ if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode ==
     prepare_predecessor "$restore_predecessor"
   fi
   if [[ ${3-} == --host-only || ${4-} == --host-only ]]; then
-    if [[ $mode == --historical-settlement-334 ]]; then
+    if [[ $mode == --historical-settlement-334 || $mode == --expense-witness-346 ]]; then
       export RUNNER_TEMP="$work"
       bash "$plan/run-bank-restore.sh" "$work/source" "$sha" --host-only bank "$mode" --host-only
       bash "$plan/run-bank-restore.sh" "$work/predecessor-source" "$restore_predecessor" --host-only restore "$mode" "$work/source" --host-only
-      bash "$plan/run-core-payment.sh" "$work/source" "$sha" --host-only core
-      bash "$plan/run-core-payment.sh" "$work/source" "$sha" --host-only payment
+      if [[ $mode == --expense-witness-346 ]]; then
+        bash "$plan/run-core-payment.sh" "$work/source" "$sha" --host-only core "$mode"
+        bash "$plan/run-payment-execution.sh" "$root" "$work/source" "$sha" --host-only --host-only
+      else
+        bash "$plan/run-core-payment.sh" "$work/source" "$sha" --host-only core
+        bash "$plan/run-core-payment.sh" "$work/source" "$sha" --host-only payment
+      fi
       exit 0
     fi
     node - "$plan" "$work/source/source.json" "$sha" <<'JS'
@@ -75,7 +82,8 @@ trap 'cleanup "$?"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 || $mode == --historical-settlement-334 ]]; then
+if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 ||
+  $mode == --historical-settlement-334 || $mode == --expense-witness-346 ]]; then
   bash "$plan/build.sh" "$work/source" "$sha" browser "$work/browser"
   if [[ -n $restore_predecessor ]]; then
     bash "$plan/build.sh" "$work/predecessor-source" "$restore_predecessor" restore "$work/restore"
@@ -87,8 +95,13 @@ if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode ==
   else
     printf 'CONTRACT_FINANCE_%s_RESTORE_PREDECESSOR_NOT_SUPPLIED\n' "${mode##*-}"
   fi
-  bash "$plan/run-core-payment.sh" "$work/source" "$sha" "$work/browser" core
-  bash "$plan/run-core-payment.sh" "$work/source" "$sha" "$work/browser" payment
+  if [[ $mode == --expense-witness-346 ]]; then
+    bash "$plan/run-core-payment.sh" "$work/source" "$sha" "$work/browser" core "$mode"
+    bash "$plan/run-payment-execution.sh" "$root" "$work/source" "$sha" "$work/browser"
+  else
+    bash "$plan/run-core-payment.sh" "$work/source" "$sha" "$work/browser" core
+    bash "$plan/run-core-payment.sh" "$work/source" "$sha" "$work/browser" payment
+  fi
   exit 0
 fi
 
