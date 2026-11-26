@@ -31,7 +31,7 @@ const profiles = {
   issue411: {
     file: 'src/database/issue411-third-company-repayment.pg.spec.ts',
     sourceDigest: '46f2bf46d6b1de968da67fd60fea9d90e249870db283210c330c9f59e4c4d86e',
-    fixtureDigest: 'aaa48d5b3a6d64dc8a79140d7ec1c854096c534720dada45544cb84ddc77b738',
+    fixtureDigest: '3f1268ce742078f27bf0ae4c77ad2f99c86a7e60bdf5a439e40fa194b783ca21',
     orderedDatabaseKey: 'JG_ISSUE411_ORDERED_DATABASE',
     enableKey: 'RUN_ISSUE411_THIRD_COMPANY_REPAYMENT',
     stage: 'ORIGINAL_THIRD_COMPANY_REPAYMENT_JEST',
