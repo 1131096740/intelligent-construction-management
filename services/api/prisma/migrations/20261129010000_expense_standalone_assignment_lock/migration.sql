@@ -46,15 +46,13 @@ BEGIN
 
   IF NEW."projectId" IS NULL OR NEW."claimType" NOT IN ('reimbursement', 'incidental_expense')
     OR NEW."actualPurchaseBatchId" IS NOT NULL OR NEW."generalProcurementId" IS NOT NULL
+    OR NEW."voidedAt" IS NOT NULL
+    OR NOT (
+      NEW."status" IN ('approved_pending_payment', 'partially_paid', 'paid')
+      OR (NEW."claimType" = 'reimbursement' AND NEW."status" = 'offset_completed')
+    )
   THEN
     RAISE EXCEPTION 'EXPENSE_STANDALONE_ASSIGNMENT_LOCK_SOURCE' USING ERRCODE = '42501';
-  END IF;
-
-  IF NEW."voidedAt" IS NOT NULL OR NEW."status" NOT IN (
-    'approved_pending_payment', 'partially_paid', 'paid',
-    'approved_pending_disbursement', 'partially_disbursed', 'disbursed', 'offset_completed'
-  ) THEN
-    RETURN NEW;
   END IF;
 
   fact_day := COALESCE(NEW."approvedAt", NEW."createdAt")::date;
@@ -95,6 +93,10 @@ CREATE TRIGGER "ExpenseClaim_lock_construction_enterprise"
   FOR EACH ROW WHEN (NOT (
     NEW."projectId" IS NOT NULL AND NEW."claimType" IN ('reimbursement', 'incidental_expense')
     AND NEW."actualPurchaseBatchId" IS NULL AND NEW."generalProcurementId" IS NULL
+    AND NEW."voidedAt" IS NULL AND (
+      NEW."status" IN ('approved_pending_payment', 'partially_paid', 'paid')
+      OR (NEW."claimType" = 'reimbursement' AND NEW."status" = 'offset_completed')
+    )
   )) EXECUTE FUNCTION public."lockProjectConstructionEnterpriseFromFormalFact"();
 
 CREATE TRIGGER "ExpenseClaim_lock_standalone_assignment"
@@ -102,6 +104,10 @@ CREATE TRIGGER "ExpenseClaim_lock_standalone_assignment"
   FOR EACH ROW WHEN (
     NEW."projectId" IS NOT NULL AND NEW."claimType" IN ('reimbursement', 'incidental_expense')
     AND NEW."actualPurchaseBatchId" IS NULL AND NEW."generalProcurementId" IS NULL
+    AND NEW."voidedAt" IS NULL AND (
+      NEW."status" IN ('approved_pending_payment', 'partially_paid', 'paid')
+      OR (NEW."claimType" = 'reimbursement' AND NEW."status" = 'offset_completed')
+    )
   ) EXECUTE FUNCTION public.jg_lock_standalone_expense_assignment_v1();
 
 COMMIT;
