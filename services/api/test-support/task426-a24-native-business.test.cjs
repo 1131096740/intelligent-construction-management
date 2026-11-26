@@ -34,7 +34,7 @@ function fixture({ companyCents = "300", netCents = "600" } = {}) {
     [201, { id: "previous", revision: 1 }], [201], [409], [201],
     [201, { status: "pending_review", attributedAmountCents: netCents }]
   ];
-  const snapshots = [original, original, afterPay, { ...afterPay, acceptedAttributions: 1 }];
+  const snapshots = [original, original, afterPay, afterPay, afterPay, { ...afterPay, acceptedAttributions: 1 }];
   const requests = [];
   const input = { primary, refundCase: async () => refund, snapshot: async () => snapshots.shift(),
     send: async (actor, request) => {
@@ -73,4 +73,22 @@ test("a failed 409 gate identifies its fixed phase and does not send later reque
 test("refuses a whole-cost projection or an old refund gross amount", async () => {
   await assert.rejects(proveA24CashAttribution(fixture({ companyCents: "800" }).input));
   await assert.rejects(proveA24CashAttribution(fixture({ netCents: "800" }).input));
+});
+
+test("checks financial state before reporting an unexpected foreign replay status", async () => {
+  const { input } = fixture();
+  const originalSend = input.send;
+  const originalSnapshot = input.snapshot;
+  let observed = 0;
+  input.snapshot = async () => {
+    observed++;
+    return originalSnapshot();
+  };
+  input.send = async (...args) => {
+    const result = await originalSend(...args);
+    return args[1].cashPhase === "FOREIGN_VOUCHER_REPLAY" ? { status: 400 } : result;
+  };
+  await assert.rejects(proveA24CashAttribution(input), error =>
+    error.message.split("\n", 1)[0] === "FOREIGN_VOUCHER_REPLAY" && error.actual === 400 && error.expected === 409);
+  assert.equal(observed, 4);
 });

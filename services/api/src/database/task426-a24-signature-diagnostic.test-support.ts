@@ -136,6 +136,18 @@ export function projectA24CashFailure(error: unknown, operation?: Operation) {
       error.message === "公共现金经营后果必须关联同一正式实付及无公司资金容器，不能用客户端标记替代") {
     return { ...detail, node: "CASH_OPERATING_SOURCE_AUTHORITY" };
   }
+  if (error instanceof BadRequestException) {
+    const refusal = {
+      "当前密码不正确，请重新输入": "CASH_REPLAY_PASSWORD",
+      "当前费用申请不可登记实际支付": "CASH_REPLAY_PAYMENT_STATE",
+      "补付凭证必须由登记人本人上传": "CASH_REPLAY_VOUCHER_UPLOADER",
+      "补付金额超过当前待付金额": "CASH_REPLAY_PAYABLE",
+      "补付登记需要当前登录密码确认": "CASH_REPLAY_PASSWORD_REQUIRED",
+      "提交内容格式不正确，请检查后重试": "CASH_REPLAY_REQUEST_VALIDATION"
+    } as const;
+    const message = error.message as keyof typeof refusal;
+    if (Object.hasOwn(refusal, message)) return { ...detail, node: refusal[message] };
+  }
   if (detail.node !== "CASH_TRANSACTION_QUERY") return detail;
 
   // Prisma middleware receives a prepared Sql object or the tagged template's literal segments.

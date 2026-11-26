@@ -7,9 +7,10 @@ const voucher = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0l
 
 async function proveA24CashAttribution({ send, snapshot, primary, refundCase, voucherBoundary, key = randomUUID }) {
   const steps = [];
-  const request = async (phase, actor, path, status, command = {}) => {
+  const request = async (phase, actor, path, status, command = {}, verifyState) => {
     const result = await send(actor, { path, ...command, cashPhase: phase });
     steps.push({ phase, status: result.status });
+    await verifyState?.();
     assert.equal(result.status, status, phase);
     return result.body;
   };
@@ -53,11 +54,13 @@ async function proveA24CashAttribution({ send, snapshot, primary, refundCase, vo
   assert.equal(paid.registeredFunding.actualPayerKind, "public_cash");
   assert.equal(paid.registeredFunding.actualPayerCompanyId, null);
   assert.equal(paid.registeredFunding.relationshipEntryId, null);
-  await request("FOREIGN_VOUCHER_REPLAY", "otherComprehensive", expense(primary) + "/payments", 409, exact);
-  assert.deepEqual(await request("EXACT_PAYMENT_REPLAY", "keeper", expense(primary) + "/payments", 201, exact), paid);
   const afterPay = await snapshot(primary);
   assert.deepEqual(afterPay, { ...source, paymentExecutions: 1, cashDebits: 1, paidCents: "800",
     cashBalanceYuan: primary.balanceAfter }, "A24_ONE_COST_ONE_CASH_DEBIT");
+  await request("FOREIGN_VOUCHER_REPLAY", "otherComprehensive", expense(primary) + "/payments", 409, exact,
+    async () => assert.deepEqual(await snapshot(primary), afterPay, "A24_FOREIGN_REPLAY_STATE"));
+  assert.deepEqual(await request("EXACT_PAYMENT_REPLAY", "keeper", expense(primary) + "/payments", 201, exact), paid);
+  assert.deepEqual(await snapshot(primary), afterPay, "A24_EXACT_REPLAY_STATE");
 
   const candidate = (await request("LINKED_COST_CANDIDATES", "requester", attributions(primary), 200)).candidates
     .find(row => row.factId === primary.factId && row.expenseCashCostLinkId);

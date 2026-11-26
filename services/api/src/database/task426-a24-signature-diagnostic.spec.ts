@@ -115,3 +115,13 @@ it("projects the frozen public-cash ledger authority refusal on the cash path on
   });
   expect(projectA24ApprovalFailure(failure)).not.toHaveProperty("node");
 });
+
+it("classifies fixed replay refusal causes and never carries request validation fields", () => {
+  expect(projectA24CashFailure(new BadRequestException("当前费用申请不可登记实际支付")))
+    .toHaveProperty("node", "CASH_REPLAY_PAYMENT_STATE");
+  expect(projectA24CashFailure(new BadRequestException("当前密码不正确，请重新输入")))
+    .toHaveProperty("node", "CASH_REPLAY_PASSWORD");
+  expect(projectA24CashFailure(new BadRequestException({
+    message: "提交内容格式不正确，请检查后重试", errors: ["private-value"]
+  }))).toEqual({ serverErrorKind: "OTHER_NATIVE_ERROR", node: "CASH_REPLAY_REQUEST_VALIDATION" });
+});
