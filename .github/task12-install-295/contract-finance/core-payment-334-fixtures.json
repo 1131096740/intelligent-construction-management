@@ -1,0 +1,10 @@
+{
+  "materials": {
+    "payment-execution-334-contract-finance-owned.test-support.ts.patch": "ca6baab31253d718a40654fd368175d79279455f09152d191d5a09fecf0023a6",
+    "payment-execution-334-payment-execution-concurrency.spec.ts.patch": "4561f3cb3d604dc5beccaeb4b4ad0ddb3ac3ad59708e4bb0fafa7c86383ea92c"
+  },
+  "fixtures": {
+    "contract-finance-owned.test-support.ts": "ea661769e7cf8b120e87b0b70c683162d94a854fff742529152c9d2d944d7234",
+    "payment-execution-concurrency.spec.ts": "c05508c54bfc50c5c708cedcbca703b252eed2ccd9b92ab714c7e92f3b59d96f"
+  }
+}

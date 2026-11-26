@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const {randomBytes} = require('node:crypto');
 const {admitSource} = require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive} = require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement} = require('./installer.cjs');
 const {final, digest} = require('./multi-witness.cjs');
 const {verify} = require('./workspace/services/api/prisma/core-payment-runner.cjs');
 
@@ -14,11 +14,13 @@ const current320=source.mode==='current-320';
 const textDirect330=source.mode==='text-direct-330';
 const upwardArchive332=source.mode==='upward-archive-332';
 const paymentRemainder331=source.mode==='payment-remainder-331';
-const forward=current320||textDirect330||paymentRemainder331||upwardArchive332;
+const historicalSettlement334=source.mode==='historical-settlement-334';
+const historical=historicalSettlement334?require('./historical-settlement-334-profile.cjs'):undefined;
+const forward=current320||textDirect330||paymentRemainder331||upwardArchive332||historicalSettlement334;
 const profile=upwardArchive332?require('./upward-archive-332-profile.cjs'):
   paymentRemainder331?require('./payment-remainder-331-profile.cjs'):
   textDirect330?require('./text-direct-330-profile.cjs'):undefined;
-const count=upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
+const count=historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
 const receipt = {schemaVersion:1,purpose:'CONTRACT_FINANCE_CORE_OR_PAYMENT_EXACT_'+count,
   scope:mode,sourceSha:source.sourceSha,migrationSha256:forward?source.tails.at(-1).sha256:digest,stages:['INPUTS'],status:'STOPPED'};
 
@@ -31,6 +33,7 @@ async function main() {
   assert.equal(source.migrationCount,count);
   assert.equal(forward?source.predecessor.ledgerSha256:source.ledgerSha256,final);
   profile?.assertSource(source,source.sourceSha,final);
+  historical?.assertSource(source,final);
   const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
   assert.equal(baseline.expectedDirectoryCount,count);
   assert.equal(baseline.terminalMigration,source.tails.at(-1).name);
@@ -40,6 +43,7 @@ async function main() {
     assert.equal(context.database,'jg_task01_'+context.runId.replaceAll('-',''));
     receipt.stages.push(mode==='core'?'ORIGINAL_AGGREGATE_THEN_COMPANY_TRANSFER':'ORIGINAL_PAYMENT_CONCURRENCY');
     profile?.assertInstallation(receipt,source);
+    historical?.assertFinanceInstallation(receipt,source);
     if(forward&&mode==='core'){
       const key=randomBytes(32).toString('hex');
       const table='public.jg_signed_settlement_attachment_witness_key';
@@ -83,7 +87,7 @@ async function main() {
     }
   };
   if(forward){
-    const install=upwardArchive332?withCombined332UpwardArchive:paymentRemainder331?withCombined331PaymentRemainder:
+    const install=historicalSettlement334?withCombined334HistoricalSettlement:upwardArchive332?withCombined332UpwardArchive:paymentRemainder331?withCombined331PaymentRemainder:
       textDirect330?withCombined330TextAgreement:withCombined320ContractPayment;
     await install(receipt,consume,{sourceTree:source.sourceTree,
       migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails});
@@ -101,6 +105,10 @@ async function main() {
   assert.equal(receipt.combinedAfterBusiness.sameIdentity,true);
   assert.equal(receipt.combinedAfterBusiness.exactB7,true);
   assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);
+  if(historicalSettlement334) {
+    assert.equal(receipt.historicalTakeoverCatalogAfterBusiness,true);
+    assert.equal(receipt.historicalSettlementCatalogAfterBusiness,true);
+  }
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
   receipt.status='CONTRACT_FINANCE_'+mode.toUpperCase()+'_'+count+'_PASSED';

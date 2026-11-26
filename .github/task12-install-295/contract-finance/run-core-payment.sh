@@ -5,7 +5,7 @@ umask 077
 [[ $# == 4 ]] || exit 64
 prepared=$(cd "$1" && pwd -P)
 sha=$2
-build=$(cd "$3" && pwd -P)
+build=$3
 scope=$4
 case "$scope" in
   core|payment) ;;
@@ -19,7 +19,10 @@ workspace="$prepared/prepared/context/workspace"
 mode=$(node - "$prepared/source.json" "$sha" "$plan" <<'JS'
 const [file,sha,plan]=process.argv.slice(2);
 const source=require(file);
-if(source.mode==='upward-archive-332') {
+if(source.mode==='historical-settlement-334') {
+  if(source.sourceSha!==sha) process.exit(1);
+  require(plan+'/historical-settlement-334-profile.cjs').assertSource(source,require(plan+'/common/multi-witness.cjs').final);
+} else if(source.mode==='upward-archive-332') {
   require(plan+'/upward-archive-332-profile.cjs').assertSource(source,sha,require(plan+'/common/multi-witness.cjs').final);
 } else if(source.mode==='payment-remainder-331') {
   require(plan+'/payment-remainder-331-profile.cjs').assertSource(source,sha,require(plan+'/common/multi-witness.cjs').final);
@@ -31,11 +34,6 @@ if(source.mode==='upward-archive-332') {
 process.stdout.write(source.mode??'legacy');
 JS
 )
-image=$(cat "$build/image.id")
-fingerprint=$(cat "$build/context.sha256")
-[[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
-[[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
-[[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 tests=(
@@ -44,6 +42,24 @@ tests=(
   services/api/src/database/payment-execution-concurrency.spec.ts
 )
 bash "$plan/stage-core-payment.sh" "$workspace" "$work" "$mode"
+
+installer="$common/installer.cjs"
+if [[ $mode == historical-settlement-334 ]]; then
+  node "$plan/stage-historical-takeover-333.cjs" "$work" "$mode"
+  installer="$work/installer.cjs"
+fi
+if [[ $build == --host-only ]]; then
+  [[ $mode == historical-settlement-334 ]] || exit 64
+  printf 'CONTRACT_FINANCE_%s_334_HOST_READY sha=%s\n' "$(printf '%s' "$scope" | tr '[:lower:]' '[:upper:]')" "$sha"
+  exit 0
+fi
+build=$(cd "$build" && pwd -P)
+image=$(cat "$build/image.id")
+fingerprint=$(cat "$build/context.sha256")
+[[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
+[[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
+[[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $fingerprint" ]] || exit 65
+
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
   --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory 4g
@@ -55,22 +71,27 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003600_fund_balance_notice_lock/migration.sql,dst=/qualification/terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
-  --mount "type=bind,src=$plan/core-payment-entry.cjs,dst=/qualification/core-payment-entry.cjs,readonly")
+  --mount "type=bind,src=$plan/core-payment-entry.cjs,dst=/qualification/core-payment-entry.cjs,readonly"
+  --mount "type=bind,src=$installer,dst=/qualification/installer.cjs,readonly")
 if [[ $mode == text-direct-330 ]]; then
   args+=(--mount "type=bind,src=$plan/text-direct-330-profile.cjs,dst=/qualification/text-direct-330-profile.cjs,readonly")
+elif [[ $mode == historical-settlement-334 ]]; then
+  for profile in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs; do
+    args+=(--mount "type=bind,src=$plan/$profile,dst=/qualification/$profile,readonly")
+  done
 elif [[ $mode == upward-archive-332 ]]; then
   args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 elif [[ $mode == payment-remainder-331 ]]; then
   args+=(--mount "type=bind,src=$plan/payment-remainder-331-profile.cjs,dst=/qualification/payment-remainder-331-profile.cjs,readonly")
 fi
-for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
+for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
 for file in core-payment-runner.cjs contract-finance-stage-web.cjs task12-pol109-stage-browser.cjs; do
   args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/workspace/services/api/prisma/$file,readonly")
 done
 ledger_support="$plan/contract-finance-owned.test-support.ts"
-if [[ $mode == payment-remainder-331 || $mode == upward-archive-332 ]]; then
+if [[ $mode == payment-remainder-331 || $mode == upward-archive-332 || $mode == historical-settlement-334 ]]; then
   ledger_support="$work/services/api/src/database/contract-finance-owned.test-support.ts"
 fi
 args+=(--mount "type=bind,src=$ledger_support,dst=/qualification/workspace/services/api/src/database/contract-finance-owned.test-support.ts,readonly"

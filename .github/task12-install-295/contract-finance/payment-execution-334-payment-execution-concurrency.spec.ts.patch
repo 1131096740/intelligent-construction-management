@@ -1,0 +1,14 @@
+--- payment-execution-concurrency.spec.ts
++++ payment-execution-concurrency.spec.ts
+@@ -197,9 +197,9 @@
+ async function assertFullyMigrated(client: PrismaClientType) {
+   const target = new URL(process.env.DATABASE_URL!);
+   if (isOwned280ContractDatabase(target)) {
+-    if (process.env.JG_CONTRACT_FINANCE_LEDGER === "332") {
++    if (["332", "334"].includes(process.env.JG_CONTRACT_FINANCE_LEDGER ?? "")) {
+       if (!await assertOwnedContractFinanceLedger(client, "payment")) {
+-        throw new Error("PAYMENT_CONCURRENCY_OWNED_332_IDENTITY");
++        throw new Error("PAYMENT_CONCURRENCY_OWNED_LEDGER_IDENTITY");
+       }
+       return;
+     }

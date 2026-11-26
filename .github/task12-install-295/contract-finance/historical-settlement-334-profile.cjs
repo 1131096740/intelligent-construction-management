@@ -64,4 +64,30 @@ function assertSource(source, predecessor295) {
   }, predecessor295);
 }
 
-module.exports = { mode, installerSha256, ledgerSha256, terminal, catalogSql, assertCatalog, assertSource, predecessor332: previous.predecessor332 };
+function assertFinanceInstallation(receipt, source) {
+  const upward = require('./upward-archive-332-profile.cjs');
+  const anchor = receipt.historicalTakeoverPredecessor;
+  previous.assertCatalog(anchor.catalog, false);
+  upward.assertInstallation({
+    ...receipt,
+    forward320: {
+      count: anchor.count, ledgerSha256: anchor.ledgerSha256,
+      sourceTree: receipt.forward320.sourceTree,
+      sameIdentity: anchor.sameIdentity, sameBaseB7: anchor.sameBaseB7,
+      tails: receipt.forward320.tails.slice(0, 37)
+    }
+  }, { ...source, tails: source.tails.slice(0, 37) });
+  previous.assertCatalog(receipt.historicalTakeover333Catalog, true);
+  assert.equal(receipt.historicalSettlementPredecessor.count, 333);
+  assert.equal(receipt.historicalSettlementPredecessor.ledgerSha256, previous.ledgerSha256);
+  assertCatalog(receipt.historicalSettlementPredecessor.routineCatalog);
+  assertCatalog(receipt.historicalSettlement334Catalog, receipt.historicalSettlementPredecessor.routineCatalog);
+  assert.equal(receipt.forward320.count, 334);
+  assert.equal(receipt.forward320.ledgerSha256, ledgerSha256);
+  assert.equal(receipt.forward320.sameIdentity, true);
+  assert.equal(receipt.forward320.sameBaseB7, true);
+  assert.deepEqual(receipt.forward320.tails, source.tails.map(({name, sha256}) => ({name, sha256})));
+}
+
+module.exports = { mode, installerSha256, ledgerSha256, terminal, catalogSql, assertCatalog, assertSource, assertFinanceInstallation,
+  predecessor332: previous.predecessor332 };
