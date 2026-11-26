@@ -27,6 +27,7 @@ const protectedTables = Object.freeze({
   PaymentExecutionCorrection: "实付更正记录",
   PaymentExecutionRefund: "实付退款记录",
   OperatingCostAttributionConfirmation: "经营成本主体归属确认",
+  ExpensePublicCashCostLink: "报销公共现金实付成本绑定",
   ProjectParticipatingCompanyMutationFence: "项目参与公司变更围栏",
   ProjectCloseAggregate: "项目收口汇总",
   ProjectCloseStageVersion: "项目收口阶段版本",
