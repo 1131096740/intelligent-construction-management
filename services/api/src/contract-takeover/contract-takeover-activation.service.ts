@@ -234,6 +234,26 @@ export class ContractTakeoverActivationService {
       }
     }
 
+    if (historicalSettlementAuthority?.status === "verified" && historicalSettlementAuthority.relationship === "inside") {
+      const { counterpartyVersionId } = historicalSettlementAuthority;
+      const selection = { contractVersionId: takeover.contractVersionId, roleKey: "party_b" };
+      const originals = await tx.contractPartySnapshot.findMany({
+        where: selection, select: { businessPartyVersionId: true }, take: 2
+      });
+      if (originals.length > 1 || (originals[0] && originals[0].businessPartyVersionId !== counterpartyVersionId)) {
+        throw new ConflictException("原合同相对方版本与已保存的签约快照不一致");
+      }
+      if (!originals.length) {
+        const original = await tx.businessPartyVersion.findUniqueOrThrow({
+          where: { id: counterpartyVersionId }, select: { snapshot: true }
+        });
+        await tx.contractPartySnapshot.create({
+          data: { ...selection, displayOrder: 0, businessPartyVersionId: counterpartyVersionId,
+            snapshot: original.snapshot as Prisma.InputJsonValue }
+        });
+      }
+    }
+
     const activatedAt = new Date();
     let historicalInitialSettlementId: string | null = null;
     if (isSettlementContract && historicalSettledCents > 0n) {
