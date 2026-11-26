@@ -493,7 +493,7 @@ it("records and confirms only an exact A24 public cash slice with separate datab
           ? { expectedCashSnapshot: projectA24CashSnapshot(assertion.expected) } : {})
       } : {})
     }) + "\n");
-    throw new Error(stage + " " + message);
+    throw new Error(`A24 验收失败（${stage} ${message}）`);
   } finally {
     await app?.close();
     await observer.$disconnect();
