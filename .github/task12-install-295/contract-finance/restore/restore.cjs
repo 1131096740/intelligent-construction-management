@@ -7,7 +7,7 @@ const {spawnSync}=require('node:child_process');
 const {createHash}=require('node:crypto');
 const {pgDumpArgs,classifyArchive}=require('./archive-contract.cjs');
 const {key,operatingVerifier,operatingContext}=require('./technical-relations.json');
-const {legacy,successor,textDirect}=require('./restore-profile.cjs');
+const {legacy,successor,textDirect,expense346}=require('./restore-profile.cjs');
 const {paymentRowsSql,paymentRows,paymentCatalogChecks}=require('./text-direct-330.cjs');
 const {scope,exactCatalog,catalogSql}=require('./successor.cjs');
 const notice=require('./terminal.cjs');
@@ -295,8 +295,10 @@ function importAsNamedBackup(sql,invoke,tables,sequences,dataArchive,dataList,pr
 }
 
 async function restoreBusinessDatabase(context,credentials,enter,forward320,textDirectInputs) {
-  const profile=textDirectInputs?textDirect:forward320?successor:legacy;
-  assert.equal([330,331,332,334].includes(forward320?.count),Boolean(textDirectInputs),'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
+  const expenseSource=textDirectInputs?.expenseSource;
+  const profile=expenseSource?expense346:textDirectInputs?textDirect:forward320?successor:legacy;
+  assert.equal([330,331,332,334,346].includes(forward320?.count),Boolean(textDirectInputs),'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
+  assert.equal(forward320?.count===346,Boolean(expenseSource),'BACKUP346_SOURCE_REQUIRED');
   const expectedTree=forward320?.sourceTree ?? scope.tree;
   assert.match(expectedTree,/^[a-f0-9]{40}$/u);
   const {technical}=profile;
@@ -323,7 +325,9 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
   }
   const paymentProof=paymentChecks?readTextDirect330(source):undefined;
   const paymentRemainderProof=textDirectInputs?.paymentRemainder?readPaymentRemainder331(source):undefined;
-  const historical=forward320?.count===334?require('./historical-settlement-334-profile.cjs'):undefined;
+  const historical=[334,346].includes(forward320?.count)?require('./historical-settlement-334-profile.cjs'):undefined;
+  const exact=expenseSource?require('./exact-346.cjs'):undefined;
+  const expense=expenseSource?require('./expense-witness-346-profile.cjs'):undefined;
   function readUpwardArchive332(db) {
     const ledger = JSON.parse(sql(owner,db,`SELECT jsonb_agg(jsonb_build_object(
       'name',migration_name,'sha256',checksum,'finished',finished_at IS NOT NULL,
@@ -332,6 +336,7 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
     const digest=rows=>createHash('sha256').update(JSON.stringify(rows)).digest('hex');
     assert.equal(ledger.length,forward320.count,'BACKUP_UPWARD_LEDGER_COUNT');
     assert.equal(digest(ledger),forward320.ledgerSha256,'BACKUP_UPWARD_LEDGER_DIGEST');
+    if(exact) exact.assertLedger(ledger,expenseSource);
     const ledgerSha256=digest(ledger.slice(0,332));
     if(historical) {
       assert.equal(ledgerSha256,historical.predecessor332,'BACKUP334_UPWARD_PREFIX');
@@ -347,7 +352,7 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
     },'BACKUP332_UPWARD_ARCHIVE_POSTIMAGES');
     return {ledgerSha256,postimages};
   }
-  const upwardArchiveProof=[332,334].includes(forward320?.count)?readUpwardArchive332(source):undefined;
+  const upwardArchiveProof=[332,334,346].includes(forward320?.count)?readUpwardArchive332(source):undefined;
   function readHistoricalSettlement334(db) {
     const previous=require('./historical-takeover-333-profile.cjs');
     const checks=JSON.parse(sql(owner,db,previous.catalogSql));
@@ -358,6 +363,13 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
     return {checks,catalog,comparable};
   }
   const historicalProof=historical?readHistoricalSettlement334(source):undefined;
+  function readExpense346(db) {
+    const catalog=JSON.parse(sql(owner,db,expense.catalogSql));
+    const cash=JSON.parse(sql(owner,db,expense.cashSql));
+    expense.assertCash(cash);
+    return {catalog,cash};
+  }
+  const expenseProof=expense?readExpense346(source):undefined;
   function readPaymentRemainder331(db) {
     const proof=JSON.parse(sql(owner,db,`SELECT jsonb_build_object(
       'historicalRowsUnchanged', NOT EXISTS(SELECT FROM public."PaymentRequest" WHERE "remainingWithdrawnCents" IS NOT NULL),
@@ -505,6 +517,12 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
       assert.deepEqual(restored.comparable,historicalProof.comparable,'BACKUP334_RESTORED_SETTLEMENT_CATALOG');
       assert.deepEqual(unchangedSource,historicalProof,'BACKUP334_SOURCE_SETTLEMENT_CATALOG');
     }
+    if(expenseProof) {
+      const restored=readExpense346(restoreDb);
+      assert.deepEqual(exact.portableCatalog(restored.catalog),exact.portableCatalog(expenseProof.catalog),'BACKUP346_RESTORED_CATALOG');
+      assert.deepEqual(restored.cash,expenseProof.cash,'BACKUP346_RESTORED_CASH_WITNESS');
+      assert.deepEqual(readExpense346(source),expenseProof,'BACKUP346_SOURCE_CATALOG_UNCHANGED');
+    }
     if (forward320) {
       for (const role of [backupRole,bankRuntime])
         for (const table of profile.technical)
@@ -524,6 +542,7 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
       ...(paymentRemainderProof?{paymentRemainder331:paymentRemainderProof}:{}),
       ...(upwardArchiveProof?{upwardArchive332:{...upwardArchiveProof,sourceAndRestoredMatched:true}}:{}),
       ...(historicalProof?{historicalSettlement334:{ledgerSha256:historical.ledgerSha256,sourceAndRestoredMatched:true}}:{}),
+      ...(expenseProof?{expense346:{ledgerSha256:forward320.ledgerSha256,sourceAndRestoredMatched:true}}:{}),
       ...(paymentProof?{textDirect330:{...paymentProof,oldColumnProjectionMatched:true,newColumnNull:true,
         sourceAndRestoredCatalogMatched:true,sourceAndRestoredNamedExecutionDenied:true}}:{})};
   } finally {

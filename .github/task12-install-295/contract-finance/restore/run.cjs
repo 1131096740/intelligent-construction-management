@@ -8,7 +8,7 @@ const {runBackup295,prepareBackup295,runBackup320,verifyLease} = require('./back
 const admission=require('./committed-admission.json');
 const {admitSource} = require('./install-only292.cjs');
 const {checkClosure} = require('./verify-behavior.cjs');
-const {withCombined295MultiWitnessForRestore,withCombined320ContractPaymentForRestore,withCombined330ContractPaymentForRestore,withCombined331PaymentRemainderForRestore,withCombined332UpwardArchiveForRestore,withCombined334HistoricalSettlementForRestore} = require('./installer.cjs');
+const {withCombined295MultiWitnessForRestore,withCombined320ContractPaymentForRestore,withCombined330ContractPaymentForRestore,withCombined331PaymentRemainderForRestore,withCombined332UpwardArchiveForRestore,withCombined334HistoricalSettlementForRestore,withCombinedExpenseWitnessForRestore} = require('./installer.cjs');
 const bank = require('./named-roles/contract-finance-owned-ci.cjs');
 const correctionRoot='/qualification/workspace', loanRoot='/qualification/loan-workspace';
 const correction=require(correctionRoot+'/services/api/prisma/run-task398-shared-standard-local.cjs').runTask398Owned282Voucher;
@@ -18,18 +18,21 @@ const current320=args[0]==='--current-320';
 const upwardArchive332=args[0]==='--upward-archive-332';
 const paymentRemainder331=args[0]==='--payment-remainder-331';
 const historicalSettlement334=args[0]==='--historical-settlement-334';
-const historical=historicalSettlement334?require('./historical-settlement-334-profile.cjs'):undefined;
-const textDirect330=historicalSettlement334||upwardArchive332||paymentRemainder331||args[0]==='--text-direct-330';
+const expenseWitness346=args[0]==='--expense-witness-346';
+const exact=expenseWitness346?require('./exact-346.cjs'):undefined;
+const historical=historicalSettlement334||expenseWitness346?require('./historical-settlement-334-profile.cjs'):undefined;
+const textDirect330=expenseWitness346||historicalSettlement334||upwardArchive332||paymentRemainder331||args[0]==='--text-direct-330';
 const forward=current320||textDirect330;
-const count=historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
+const count=expenseWitness346?346:historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
 const runArgs=forward?args.slice(1):args;
 const source=forward?require('./current320-source.json'):undefined;
 const paymentProfile=upwardArchive332?require('./upward-archive-332-profile.cjs'):
   paymentRemainder331?require('./payment-remainder-331-profile.cjs'):
-  textDirect330?require('./text-direct-330-profile.cjs'):undefined;
+  textDirect330&&!exact?require('./text-direct-330-profile.cjs'):undefined;
 const receipt={schemaVersion:1,purpose:'NTF04_NAMED_RESTORE_EXACT_'+count,
   candidateSha:source?.sourceSha??admission.head,...(forward?{fixturePredecessorSha:admission.head}:{}),
   ...(textDirect330?{candidateTree:source.sourceTree,fixturePredecessorSourceSha256:admission.predecessorSourceSha256}:{}),
+  ...(exact?{candidateSourceSha256:admission.currentSourceSha256,installerSha256:exact.installerSha256}:{}),
   operation:'NAMED_BANK_BACKUP_AND_RECOVERY',stages:[]};
 
 function requireNoCrossLinks(root){
@@ -79,7 +82,16 @@ async function main(){
   assert.ok(runArgs.length===0||(runArgs.length===1&&runArgs[0]==='--preflight'));
   if(textDirect330){
     const base=require('./multi-witness.cjs').final;
-    if(historical) historical.assertSource(source,base);
+    if(exact) {
+      assert.equal(admission.head,exact.fixtureSha,'BACKUP346_PREDECESSOR_SHA');
+      assert.equal(admission.predecessorSourceSha256,exact.fixtureSourceSha256,'BACKUP346_PREDECESSOR_BYTES');
+      assert.match(source.sourceSha,/^[a-f0-9]{40}$/u,'BACKUP346_SOURCE_SHA');
+      assert.equal(source.sourceSha,admission.currentSha,'BACKUP346_SOURCE_SHA');
+      assert.equal(exact.hash(fs.readFileSync(__dirname+'/current320-source.json')),admission.currentSourceSha256,'BACKUP346_SOURCE_BYTES');
+      assert.equal(exact.hash(fs.readFileSync(__dirname+'/installer.cjs')),exact.installerSha256,'BACKUP346_INSTALLER_SHA');
+      require('./expense-witness-346-profile.cjs').assertSource(source,base);
+      exact.assertMigrationBytes('/qualification/current320/migrations',source);
+    } else if(historical) historical.assertSource(source,base);
     else paymentProfile.assertSource(source,source.sourceSha,base);
     assert.match(admission.head,/^[a-f0-9]{40}$/u);
     assert.notEqual(source.sourceSha,admission.head);
@@ -119,14 +131,15 @@ async function main(){
     loan:async ctx=>{ await verifyLease(ctx); return loan('affiliate',ctx); },
   };
   if(forward){
-    const install=historicalSettlement334?withCombined334HistoricalSettlementForRestore:upwardArchive332?withCombined332UpwardArchiveForRestore:paymentRemainder331?withCombined331PaymentRemainderForRestore:
+    const install=exact?withCombinedExpenseWitnessForRestore:historicalSettlement334?withCombined334HistoricalSettlementForRestore:upwardArchive332?withCombined332UpwardArchiveForRestore:paymentRemainder331?withCombined331PaymentRemainderForRestore:
       textDirect330?withCombined330ContractPaymentForRestore:withCombined320ContractPaymentForRestore;
     await install(receipt,
       context=>prepareBackup295(context,receipt,admission,{...fixtures,textDirect330}),
       context=>{
-        if(historical) historical.assertFinanceInstallation(receipt,source);
-        else if(textDirect330) paymentProfile.assertInstallation(receipt,source);
-        return runBackup320(context,receipt,{namedRoles:ctx=>namedRoles(ctx,receipt.forward320),
+        const terminal=exact?exact.forward(receipt,source,historical):receipt.forward320;
+        if(historicalSettlement334) historical.assertFinanceInstallation(receipt,source);
+        else if(textDirect330&&!exact) paymentProfile.assertInstallation(receipt,source);
+        return runBackup320(context,receipt,{forward320:terminal,namedRoles:ctx=>namedRoles(ctx,terminal),
           textDirectSource:textDirect330?source:undefined});
       },
       {sourceTree:source.sourceTree,migrations:'/qualification/current320/migrations',tails:source.tails});
@@ -144,10 +157,11 @@ async function main(){
       await runBackup295(context,receipt,admission,{...fixtures,namedRoles});
     });
   }
-  if(historicalSettlement334) {
+  if(historical) {
     assert.equal(receipt.historicalTakeoverCatalogAfterBusiness,true);
     assert.equal(receipt.historicalSettlementCatalogAfterBusiness,true);
   }
+  if(exact) assert.equal(receipt.expenseWitnessCatalogAfterBusiness,true);
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
   receipt.status='BACKUP'+count+'_RESTORED_AND_VERIFIED';
