@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ ( $# == 5 || ( $# == 6 && $6 == --host-only ) ) && ( $5 == issue413 || $5 == issue420 || $5 == issue421 || $5 == issue421b ) ]] || exit 64
+[[ ( $# == 5 || ( $# == 6 && $6 == --host-only ) ) && ( $5 == issue413 || $5 == issue414 || $5 == issue416_his || $5 == issue420 || $5 == issue421 || $5 == issue421b ) ]] || exit 64
 scope=$5
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)

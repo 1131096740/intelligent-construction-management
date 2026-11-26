@@ -13,6 +13,31 @@ const profiles = {
       'allows overpayment, keeps duplicate registration closed, and re-registers a correction'
     ]
   },
+  issue414: {
+    file: 'src/database/issue414-construction-enterprise-deduction.pg.spec.ts',
+    sourceDigest: 'fbf556937ef4b1a5a1a9b496d2810cc78f667966708519dc5fda2e9b8642ac46',
+    fixtureDigest: '7aa536c10c8eb77e845466a1f04a4f302c83bdabebabe47fa2679619fc5a4029',
+    orderedDatabaseKey: 'JG_ISSUE414_ORDERED_DATABASE',
+    enableKey: 'RUN_ISSUE414_CONSTRUCTION_DEDUCTION_DATABASE',
+    stage: 'ORIGINAL_DEDUCTION_JEST',
+    requiresOperatingLedgerWriteSecret: true,
+    titles: [
+      'registers, rejects duplicates, corrects and keeps paid aggregation unchanged'
+    ]
+  },
+  issue416_his: {
+    file: 'src/database/issue416-his-gap.pg.spec.ts',
+    sourceDigest: '2dd17a1119728583b21e158cd282173222a8db66b690e9d93ba0ddcbab9f0f07',
+    orderedDatabaseKey: 'JG_ISSUE416_HIS_ORDERED_DATABASE',
+    databaseUrlKey: 'ISSUE416_HIS_DATABASE_URL',
+    enableKey: 'RUN_ISSUE416_HIS_DATABASE',
+    stage: 'ORIGINAL_HISTORY_GAP_JEST',
+    titles: [
+      'activates a NONE-level history takeover, projects its payments, keeps opening cash untouched and continues 60 + 10 = 70',
+      'relays contract maker -> finance -> contract supervisor and sends both rejections back to the maker',
+      'keeps unknown historical facts in their original stage and only records an explicit zero'
+    ]
+  },
   issue420: {
     file: 'src/database/issue420-approval-center.http.pg.spec.ts',
     sourceDigest: 'd4effcfb32e745737be3278c0556f903c2ae6c55c631016a59a3c0c79588d5a3',

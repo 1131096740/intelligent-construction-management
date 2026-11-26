@@ -52,7 +52,10 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
     cwd: api, encoding: 'utf8', timeout: 600_000, maxBuffer: 8 * 1024 * 1024,
     env: { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: workDir, TMPDIR: workDir,
       NODE_ENV: 'test', CI: 'true', DATABASE_URL: ownerUrl, [profile.orderedDatabaseKey]: database,
-      [profile.enableKey]: '1', FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: path.join(work, 'files'),
+      [profile.enableKey]: '1',
+      ...(profile.databaseUrlKey && { [profile.databaseUrlKey]: ownerUrl }),
+      ...(profile.requiresOperatingLedgerWriteSecret && { OPERATING_LEDGER_DB_WRITE_SECRET: secret() }),
+      FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: path.join(work, 'files'),
       FILE_DOWNLOAD_SECRET: secret(), JWT_ACCESS_SECRET: secret(), JWT_REFRESH_SECRET: secret(),
       APPROVAL_SMS_ENABLED: 'false', SMS_ENABLED: 'false' }
   });
