@@ -6,12 +6,13 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const cases = require('./cases.json');
+const { pol115Scope } = require('./verify-pol115-jest.cjs');
 const historical = require('../historical-settlement-334-profile.cjs');
 const { final } = require('../common/multi-witness.cjs');
 
 const [prepared, candidateSha, scope, output] = process.argv.slice(2);
 assert.equal(process.argv.length, 6);
-assert.ok(Object.hasOwn(cases, scope));
+const selected = pol115Scope(cases, scope);
 assert.match(candidateSha, /^[a-f0-9]{40}$/u);
 const source = require(path.join(prepared, 'source.json'));
 assert.equal(source.sourceSha, candidateSha);
@@ -24,9 +25,8 @@ const { BATCH_FILES, POL113_POL115_GROUP } = require(path.join(api, 'prisma/pol1
 const group = coveredGroups.find(entry => entry.id === POL113_POL115_GROUP);
 assert.equal(group.pendingTests, 191);
 const registered = new Map(group.testFiles.map(({ path: file, pendingTests }) => [file, pendingTests]));
-assert.deepEqual(cases[scope].map(({ file }) => file), BATCH_FILES[scope]);
-assert.equal(cases[scope].reduce((sum, row) => sum + row.declared, 0), scope === 'pol115' ? 138 : 13);
-assert.equal(cases[scope].reduce((sum, row) => sum + row.reported, 0), scope === 'pol115' ? 140 : 13);
+const batch = scope === 'spot' ? 'spot' : 'pol115';
+assert.deepEqual(cases[batch].map(({ file }) => file), BATCH_FILES[batch]);
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 function read(file) {
@@ -52,11 +52,11 @@ const browserSpecs = new Set([
   'expense-claim-entry.http.pg.spec.ts', 'fund-execution-entry.http.pg.spec.ts',
   'operating-takeover-entry.http.pg.spec.ts', 'spot-procurement-entry.http.pg.spec.ts'
 ]);
-for (const row of cases[scope]) {
+for (const row of selected) {
   const { file, declared, reported, skipped, candidateSha256 } = row;
   assert.equal(declared, registered.get('services/api/' + file));
   assert.equal(reported - declared, file.startsWith('src/expense-claim/') ? 2 : 0);
-  assert.equal(skipped.length, scope === 'pol115' ? 0 : 1);
+  assert.equal(skipped.length, scope === 'spot' ? 1 : 0);
   const original = read(path.join(api, file));
   assert.equal(hash(original), candidateSha256, file);
   const name = path.basename(file);
@@ -106,7 +106,7 @@ for (const row of cases[scope]) {
 execFileSync(process.execPath, [path.join(__dirname, '../stage-historical-takeover-333.cjs'), output, historical.mode], { stdio: 'inherit' });
 const receipt = { sourceSha: candidateSha, sourceTree: source.sourceTree, scope, ledgerSha256: source.ledgerSha256,
   installerSha256: historical.installerSha256, fixtureSha256: fixtureHashes,
-  declared: cases[scope].reduce((sum, row) => sum + row.declared, 0),
-  currentCases: cases[scope].reduce((sum, row) => sum + row.reported, 0) };
+  declared: selected.reduce((sum, row) => sum + row.declared, 0),
+  currentCases: selected.reduce((sum, row) => sum + row.reported, 0) };
 fs.writeFileSync(path.join(output, 'pol115-334-inputs.json'), JSON.stringify(receipt) + '\n', { flag: 'wx', mode: 0o644 });
 console.log(JSON.stringify({ status: 'POL115_334_HOST_READY', ...receipt }));

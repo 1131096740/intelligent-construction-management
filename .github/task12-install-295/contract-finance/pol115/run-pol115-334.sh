@@ -2,7 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ ( $# == 5 || ( $# == 6 && $6 == --host-only ) ) && ( $5 == pol115 || $5 == spot ) ]] || exit 64
+[[ ( $# == 5 || ( $# == 6 && $6 == --host-only ) ) &&
+  ( $5 == pol115 || $5 == pol115-main || $5 == notification || $5 == spot ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -13,6 +14,51 @@ base="$plan/.."
 common="$base/common"
 [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$common/installer.cjs"   "$base/stage-historical-takeover-333.cjs" "$base/historical-takeover-333-profile.cjs"   "$base/historical-settlement-334-profile.cjs" "$base/upward-archive-332-profile.cjs"   "$base/historical-takeover-333-installer.patch" "$base/historical-settlement-334-installer.patch"   "$base/task12-pol109-stage-browser.cjs") ]] || exit 65
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-pol115-334-$scope.XXXXXXXX")
+if [[ $scope == pol115 ]]; then
+  child_status=0
+  for shard in notification pol115-main; do
+    RUNNER_TEMP="$work" bash "$0" "$repo" "$prepared" "$sha" "$4" "$shard" "${@:6}" || child_status=$?
+  done
+  (( child_status == 0 )) || exit "$child_status"
+  node - "$work" "$prepared/source.json" "$plan" "${6-}" <<'JS'
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const [work, sourceFile, plan, mode] = process.argv.slice(2);
+const { aggregatePol115Shards } = require(path.join(plan, 'verify-pol115-jest.cjs'));
+const cases = require(path.join(plan, 'cases.json'));
+const source = require(sourceFile);
+const shards = ['notification', 'pol115-main'];
+const hostOnly = mode === '--host-only';
+const receipts = shards.map(scope => {
+  const matching = fs.readdirSync(work).filter(name => name.startsWith('jg-pol115-334-' + scope + '.'));
+  assert.equal(matching.length, 1);
+  return require(path.join(work, matching[0], hostOnly ? 'pol115-334-inputs.json' : 'receipt.json'));
+});
+let combined;
+if (hostOnly) {
+  for (const [index, scope] of shards.entries()) {
+    const receipt = receipts[index];
+    assert.equal(receipt.scope, scope);
+    assert.equal(receipt.sourceSha, source.sourceSha);
+    assert.equal(receipt.sourceTree, source.sourceTree);
+    assert.equal(receipt.ledgerSha256, source.ledgerSha256);
+  }
+  const declared = receipts.reduce((sum, item) => sum + item.declared, 0);
+  const currentCases = receipts.reduce((sum, item) => sum + item.currentCases, 0);
+  assert.deepEqual([declared, currentCases], [138, 140]);
+  combined = { status: 'POL115_334_HOST_READY', sourceSha: source.sourceSha, sourceTree: source.sourceTree,
+    scope: 'pol115', ledgerSha256: source.ledgerSha256, declared, currentCases,
+    shards: Object.fromEntries(receipts.map(receipt => [receipt.scope, receipt.currentCases])) };
+} else {
+  combined = aggregatePol115Shards({ cases, source, receipts });
+}
+const file = path.join(work, hostOnly ? 'host-receipt.json' : 'receipt.json');
+fs.writeFileSync(file, JSON.stringify(combined) + '\n', { flag: 'wx', mode: 0o600 });
+console.log(JSON.stringify({ receipt: file, ...combined }));
+JS
+  exit 0
+fi
 node "$plan/stage-pol115-334.cjs" "$prepared" "$sha" "$scope" "$work"
 if [[ ${6-} == --host-only ]]; then exit 0; fi
 
@@ -56,12 +102,9 @@ status=0
 docker run "${args[@]}" --entrypoint node "$image" /qualification/pol115-334-entry.cjs "$scope"   >"$work/receipt.json" 2>"$work/private.stderr" || status=$?
 [[ ! -s $work/receipt.json ]] || cat "$work/receipt.json"
 (( status == 0 )) || exit "$status"
-node - "$work/receipt.json" "$sha" "$scope" <<'JS'
-const assert=require('node:assert/strict');
-const [file,sha,scope]=process.argv.slice(2),r=require(file);
-assert.equal(r.sourceSha,sha);
-assert.equal(r.scope,scope);
-assert.equal(r.status,'POL115_334_ORIGINAL_'+scope.toUpperCase()+'_PASSED');
-assert.deepEqual(r.coverage,scope==='pol115'?{declared:138,currentPassed:140,independentSmsCounted:0}:
-  {declared:13,currentPassed:13,independentSmsCounted:0});
+node - "$work/receipt.json" "$prepared/source.json" "$plan" "$scope" <<'JS'
+const path = require('node:path');
+const [file, sourceFile, plan, scope] = process.argv.slice(2);
+const { verifyPol115ChildReceipt } = require(path.join(plan, 'verify-pol115-jest.cjs'));
+verifyPol115ChildReceipt({ cases: require(path.join(plan, 'cases.json')), source: require(sourceFile), scope, receipt: require(file) });
 JS

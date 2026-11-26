@@ -11,7 +11,7 @@ const { withCombined334HistoricalSettlement } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
 const historical = require('./historical-settlement-334-profile.cjs');
 const { stageWebWorkspace } = require('./task12-pol109-stage-browser.cjs');
-const { verifyJestCoverage } = require('./verify-pol115-jest.cjs');
+const { pol115Scope, verifyJestCoverage } = require('./verify-pol115-jest.cjs');
 const { summarizeBrowserWitness } = require('./browser-witness.cjs');
 const recipes = require('./pol115-334-cases.json');
 const inputs = require('./pol115-334-inputs.json');
@@ -21,6 +21,7 @@ const root = '/qualification';
 const workspace = path.join(root, 'workspace');
 const api = path.join(workspace, 'services/api');
 const scope = process.argv[2];
+const selected = pol115Scope(recipes, scope);
 const receipt = { schemaVersion: 1, purpose: 'ORIGINAL_POL115_SPOT_334', sourceSha: source.sourceSha, scope,
   stages: ['INPUTS'], status: 'STOPPED' };
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -132,7 +133,7 @@ async function runOriginal(context) {
   const rolesBefore = (await context.sql(roleInventory)).stdout;
   url.searchParams.delete('connection_limit');
 
-  const browser = prepareBrowser(workDir);
+  const browser = scope === 'notification' ? null : prepareBrowser(workDir);
   const files = path.join(workDir, 'pol115-files');
   const cache = path.join(workDir, 'pol115-cache');
   fs.mkdirSync(files, { mode: 0o700 });
@@ -141,14 +142,15 @@ async function runOriginal(context) {
   receipt.stages.push('ORIGINAL_PUBLIC_JEST');
   const result = spawnSync(process.execPath, [
     path.join(api, 'node_modules/jest/bin/jest.js'), '--runInBand', '--runTestsByPath',
-    ...recipes[scope].map(row => row.file), '--json', '--outputFile', reportFile
+    ...selected.map(row => row.file), '--json', '--outputFile', reportFile
   ], { cwd: api, encoding: 'utf8', timeout: 900_000, maxBuffer: 32 * 1024 * 1024,
     env: { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: workDir, TMPDIR: workDir, XDG_CACHE_HOME: cache,
       NODE_ENV: 'test', CI: 'true', COREPACK_HOME: '/opt/corepack', COREPACK_ENABLE_NETWORK: '0',
-      PLAYWRIGHT_BROWSERS_PATH: '/opt/jg-playwright', DATABASE_URL: url.href,
-      [scope === 'pol115' ? 'RUN_POL115_ENTRY_PG16' : 'RUN_POL115_SPOT_ENTRY_PG16']: '1',
-      RUN_POL115_BROWSER: '1', APPROVAL_SMS_ENABLED: 'false', SMS_ENABLED: 'false',
-      JG_POL115_334_SCOPE: scope, JG_POL115_334_RUN_ID: runId.replaceAll('-', ''), JG_POL115_334_WEB_ROOT: browser,
+      DATABASE_URL: url.href,
+      [scope === 'spot' ? 'RUN_POL115_SPOT_ENTRY_PG16' : 'RUN_POL115_ENTRY_PG16']: '1',
+      ...(browser && { PLAYWRIGHT_BROWSERS_PATH: '/opt/jg-playwright', RUN_POL115_BROWSER: '1', JG_POL115_334_WEB_ROOT: browser }),
+      APPROVAL_SMS_ENABLED: 'false', SMS_ENABLED: 'false',
+      JG_POL115_334_SCOPE: scope, JG_POL115_334_RUN_ID: runId.replaceAll('-', ''),
       FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: files, FILE_DOWNLOAD_SECRET: randomUUID(),
       JWT_ACCESS_SECRET: randomUUID(), JWT_REFRESH_SECRET: randomUUID(), OPERATING_LEDGER_DB_WRITE_SECRET: randomUUID() }
   });
@@ -171,7 +173,7 @@ async function runOriginal(context) {
     return;
   }
   try {
-    receipt.jest = { exit: result.status, files: verifyJestCoverage(report, recipes[scope], api) };
+    receipt.jest = { exit: result.status, files: verifyJestCoverage(report, selected, api) };
   } catch (error) {
     receipt.jest = { exit: result.status, coverageError: error.message.split("\n")[0] };
   }
@@ -181,14 +183,13 @@ async function main() {
   assert.equal(process.argv.length, 3);
   assert.notEqual(process.getuid(), 0);
   assert.equal(process.env.DATABASE_URL, undefined);
-  assert.ok(Object.hasOwn(recipes, scope));
   assert.equal(inputs.scope, scope);
   assert.equal(inputs.sourceSha, source.sourceSha);
   assert.equal(inputs.sourceTree, source.sourceTree);
   assert.equal(inputs.ledgerSha256, source.ledgerSha256);
   historical.assertSource(source, final);
   assert.equal(sha256(fs.readFileSync(path.join(root, 'installer.cjs'))), historical.installerSha256);
-  const expectedFiles = ['src/database/pol115-owned-334.test-support.ts', ...recipes[scope].map(row => row.file)];
+  const expectedFiles = ['src/database/pol115-owned-334.test-support.ts', ...selected.map(row => row.file)];
   assert.deepEqual(Object.keys(inputs.fixtureSha256), expectedFiles);
   for (const [file, digest] of Object.entries(inputs.fixtureSha256)) {
     assert.equal(sha256(fs.readFileSync(path.join(api, file))), digest, 'POL115_334_FIXTURE_DIGEST');
