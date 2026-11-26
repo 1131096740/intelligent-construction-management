@@ -20,6 +20,11 @@
     "candidate": "d562a197176e23244707bade3ad19782fc2cadd119020ac2748cc6989802d819"
   },
   {
+    "path": "apps/web-admin/e2e/project-close-profit.e2e.ts",
+    "expected": "23b6784cf8f944d22d9f779240871befc1b7d4bef96fc405f32d31a79894ed56",
+    "candidate": "65530c8905be0e71ecd6bb6ddb740d22b3ba7ddc14f2a68500a5b0be694e6ce6"
+  },
+  {
     "path": "apps/web-admin/playwright.pol115-real.config.ts",
     "expected": "264c4b2606fb1e97fccfbdac49f22e0a187a4a15c18b5058a6930dd5c1733f83",
     "candidate": "98cb4601ebb1f075d001e67647056cce342847d909e66e9675be2a1178847eca"
@@ -52,7 +57,12 @@
   {
     "path": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
     "expected": "d407ee01a3f21c2a94805c9b6a0c1be27187170a73965b521c57267a4c81cde6",
-    "candidate": "e3a38d80afc7ded14ae339f582b44681dc1670b1cef1cd62396e3c736d5eaa02"
+    "candidate": "c020f6b8cfc48be4c07c65b6e410fa1589c88a0d7169d32cb30f81cb47cab481"
+  },
+  {
+    "path": "apps/web-admin/src/pages/projects/project-operating-overview.structure.test.ts",
+    "expected": "20f3a4986501b193e47f9138a15c228bd23e4b2dd441c46122e13b7586f963c3",
+    "candidate": "fff5d8017b5aa5883369a6f3219648606964211262b263c6ea9fd60c2edc028f"
   },
   {
     "path": "packages/shared-domain/src/permissions.ts",
@@ -63,6 +73,11 @@
     "path": "services/api/prisma/general-procurement-runtime-grants.sql",
     "expected": "c6ed1b2f8a3d1ba7c5a4aa38087cd2425a8a2e5441c39790eeed3734f4412b09",
     "candidate": "1160b6af200aeda110c7c82d13f37658721d888d39f3edbf8d1305a44b5d9680"
+  },
+  {
+    "path": "services/api/prisma/run-task398-shared-standard-local.test.cjs",
+    "expected": "e9fd90ec7b28e04e73b24a526742e77e2cff6fa6b7ee470445e7437cececf53e",
+    "candidate": "92ceec5a67e890fb7ad0c3c17e5ed783189b3b7436e09ab2eea5fbeddd367251"
   },
   {
     "path": "services/api/prisma/schema.prisma",
@@ -193,6 +208,11 @@
     "path": "services/api/src/operating-projection/operating-projection.service.ts",
     "expected": "584d3bdc230749b81dd07064640ced8d79835dacb2a76b581c847ee0034dcf0e",
     "candidate": "8414bcc970461a0ba92b5a6e2f885ef282c80189bf073b3201b6714c67f70508"
+  },
+  {
+    "path": "services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts",
+    "expected": "47b5f78892b32c5a64aa0308a03c079eff4551a2806eb8416a210c31c7d1325c",
+    "candidate": "613b74c8b21ee2a37511a455046b45eb712f9e26f3551ed94171a737aa3638bf"
   },
   {
     "path": "services/api/src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
