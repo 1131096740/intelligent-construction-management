@@ -1,0 +1,13 @@
+{
+  "scope": "issue414",
+  "file": "src/database/issue414-construction-enterprise-deduction.pg.spec.ts",
+  "sourceDigest": "fbf556937ef4b1a5a1a9b496d2810cc78f667966708519dc5fda2e9b8642ac46",
+  "fixtureDigest": "7aa536c10c8eb77e845466a1f04a4f302c83bdabebabe47fa2679619fc5a4029",
+  "orderedDatabaseKey": "JG_ISSUE414_ORDERED_DATABASE",
+  "enableKey": "RUN_ISSUE414_CONSTRUCTION_DEDUCTION_DATABASE",
+  "stage": "ORIGINAL_DEDUCTION_JEST",
+  "requiresOperatingLedgerWriteSecret": true,
+  "titles": [
+    "registers, rejects duplicates, corrects and keeps paid aggregation unchanged"
+  ]
+}
