@@ -146,6 +146,18 @@ const profiles = {
       'G9 总览按合同钻取：审批中与已批待付分列，跨合同不抵扣'
     ]
   },
+  issue418_guard: {
+    file: 'src/database/issue418-settlement-guard.pg.spec.ts',
+    sourceDigest: '71ba45e4ae1722b5c8fbc52178c1216fdabfc29731c41e65f7a7529443ee365b',
+    orderedDatabaseKey: 'JG_ORDERED_ISSUE333_DATABASE',
+    databaseUrlKey: 'ISSUE418_SETTLEMENT_GUARD_DATABASE_URL',
+    enableKey: 'ISSUE418_SETTLEMENT_GUARD_RUN',
+    stage: 'ORDERED_CROSS_SOURCE_SETTLEMENT_GUARD_JEST',
+    requiredMigrationCount: 346,
+    requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+    requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a',
+    titles: ['拒绝合同同版本同期次跨入口登记，允许不同期次']
+  },
   issue420: {
     file: 'src/database/issue420-approval-center.http.pg.spec.ts',
     sourceDigest: 'd4effcfb32e745737be3278c0556f903c2ae6c55c631016a59a3c0c79588d5a3',
