@@ -1,0 +1,72 @@
+{
+  "pol115": [
+    {
+      "file": "src/operating-takeover/operating-takeover-entry.http.pg.spec.ts",
+      "declared": 3,
+      "reported": 3,
+      "skipped": [],
+      "candidateSha256": "75a6078bfb0ca5903dafd28bbbbb2a1d0aa0b781e139eb4cc221ee524ce7efbf",
+      "namesSha256": "548b8ec34d28d06b29b2fd2966b445e945bb9d95429e724c5bfcf9f6c1102457"
+    },
+    {
+      "file": "src/database/approval-v6-independent-http-postgres.spec.ts",
+      "declared": 9,
+      "reported": 9,
+      "skipped": [],
+      "candidateSha256": "dd00686963eee7e98345f832e38dac2fd71c5a0f91ffcb14694cc48fd9fef971",
+      "namesSha256": "a206fe8a1733fa8d5be4ca470f2b98a7a8c2e4e122d4a34340a70584b47ec14a"
+    },
+    {
+      "file": "src/expense-claim/expense-claim-entry.http.pg.spec.ts",
+      "declared": 61,
+      "reported": 63,
+      "skipped": [],
+      "candidateSha256": "197895045e62eef3f351e5bdbe625a4a4542f1d7c6ae1bc75b1599039e430b27",
+      "namesSha256": "cc7765488bc5249555c907ac306de05f1cefc71122b9316d734c274ca9b5e7fd"
+    },
+    {
+      "file": "src/fund-execution/fund-execution-entry.http.pg.spec.ts",
+      "declared": 2,
+      "reported": 2,
+      "skipped": [],
+      "candidateSha256": "b94cfaa472544e8591658a300ae43440cee263f8a219f9240980f25bdb01c306",
+      "namesSha256": "f3d19515ae238e40cc9e987e5681f837d0ca9021c52757258a94178b655ab147"
+    },
+    {
+      "file": "src/approval/issue430-notification.pg.spec.ts",
+      "declared": 4,
+      "reported": 4,
+      "skipped": [],
+      "candidateSha256": "27769a74d48825fcd16549263391821eea08998175995aff359c43fb16701856",
+      "namesSha256": "bdf2cbc54399e4223ef906ab65c54b94121d91b06faa513623201489613077fd"
+    },
+    {
+      "file": "src/database/draft-hard-deletion.pg.spec.ts",
+      "declared": 57,
+      "reported": 57,
+      "skipped": [],
+      "candidateSha256": "a3ce2f4b1882799d0611af91d8f7c1cf5280f39a216731e5ea6f0d826bbf120c",
+      "namesSha256": "9d27ed8291adaece91dd176b88db987bf7c806b61b47e87ba2e0d48f45ba549c"
+    },
+    {
+      "file": "src/database/draft-deletion-numbering.pg.spec.ts",
+      "declared": 2,
+      "reported": 2,
+      "skipped": [],
+      "candidateSha256": "9b1772e07cd70d986e661f6253249aa18747f03ed31152df29a46900d85e9f42",
+      "namesSha256": "33f2de14f4b1e1ab70a9d22722617441bf544f3ae646ab1f388e17773e437b2e"
+    }
+  ],
+  "spot": [
+    {
+      "file": "src/spot-procurement/spot-procurement-entry.http.pg.spec.ts",
+      "declared": 13,
+      "reported": 13,
+      "skipped": [
+        "#115 零星采购申请生命周期真实 HTTP 与 PostgreSQL 16 登记账户零采异公司实付并按原键只扣一次"
+      ],
+      "candidateSha256": "bf0e8aed897ef6d0442d40e6726176cc1457b499b874cecbfca7164f2a218524",
+      "namesSha256": "dc9041cf7b7fa8c8cd4d478160bc8e5e6e85e13fad8787dcbed2fd754ddd7a13"
+    }
+  ]
+}

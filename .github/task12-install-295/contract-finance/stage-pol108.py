@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 historical, archive, common, out, shard, count = sys.argv[1:]
-if count not in {'295', '329', '330', '331', '332'}:
+if count not in {'295', '329', '330', '331', '332', '334'}:
     raise SystemExit('POL108_MIGRATION_COUNT')
 historical,archive,common,out=map(Path,(historical,archive,common,out))
 plan=Path(__file__).parent
@@ -42,7 +42,16 @@ if shard=='core':
             raise SystemExit('POL108_320_LEDGER_COUNT_ANCHOR')
         cases.write_text(text.replace(original, original.removesuffix('295') + count))
 installer=out/'installer.cjs'
-shutil.copyfile(common/'installer.cjs',installer)
+if count == '334':
+    subprocess.run(['node', str(plan/'stage-historical-takeover-333.cjs'), str(out), 'historical-settlement-334'],check=True)
+else:
+    shutil.copyfile(common/'installer.cjs',installer)
 patch(installer,plan/'pol108-installer.patch')
+if count == '334':
+    if digest(installer) != 'e3a90eb052cce82cd3baa6ed10475e2e793995226a96719164fb66dab52d9fe9':
+        raise SystemExit('POL108_334_INSTALLER_PREIMAGE')
+    patch(installer,plan/'pol108-334-installer.patch')
+    if digest(installer) != '6e5ac94e0bf949e315baca0a56e4489c969700e7009c8898140a13e3dae295d2':
+        raise SystemExit('POL108_334_INSTALLER_POSTIMAGE')
 for file in out.iterdir():
     file.chmod(0o644)

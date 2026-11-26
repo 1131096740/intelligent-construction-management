@@ -16,11 +16,12 @@ scope=expense-$lane
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const count=source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
   if(count===332) require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
+  if(count===334) require(process.argv[5]).assertSource(source,require(process.argv[4]).final);
   console.log(count);
-'  "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs")
+'  "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs")
 image=$(cat "$build/image.id")
 fingerprint=$(cat "$build/context.sha256")
 [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -29,7 +30,9 @@ fingerprint=$(cat "$build/context.sha256")
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 material="$work/material"
-python3 "$plan/stage-expense.py" "$repo/.github/task12-install-290/expense" "$common" "$material"
+stage_args=()
+if [[ $count == 334 ]]; then stage_args=(--historical-settlement-334); fi
+python3 "$plan/stage-expense.py" "$repo/.github/task12-install-290/expense" "$common" "$material" ${stage_args[@]+"${stage_args[@]}"}
 
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
   --security-opt no-new-privileges --user postgres --init --pids-limit 256 --memory 4g
@@ -45,6 +48,11 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
+if [[ $count == 334 ]]; then
+  for file in upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
+    args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
+  done
+fi
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 modes=(app valid negative)
@@ -90,11 +98,17 @@ for mode in "${modes[@]}"; do
       if(row.paymentRemainderPredecessor.ledgerSha256!==predecessor330.ledgerSha256)process.exit(1);
     }
     if(count==="332"&&mode!=="negative") require(process.argv[8]).assertInstallation(row,require(sourceFile));
+    if(count==="334"&&mode!=="negative") {
+      require(process.argv[9]).assertFinanceInstallation(row,require(sourceFile));
+      if(row.combinedAfterBusiness?.sameIdentity!==true||
+        row.combinedAfterBusiness?.ledgerSha256!==require(sourceFile).ledgerSha256||
+        row.historicalTakeoverCatalogAfterBusiness!==true||row.historicalSettlementCatalogAfterBusiness!==true)process.exit(1);
+    }
     const status={app:"ORIGINAL_EXPENSE_"+count+"_APPLICATION_PASSED",valid:"ORIGINAL_EXPENSE_"+count+"_RETAINED_VALID_PASSED",
       negative:"ORIGINAL_EXPENSE_HISTORICAL_NEGATIVES_PASSED",recovery:"ORIGINAL_EXPENSE_"+count+"_SAME_INSTANCE_RECOVERY_PASSED"}[mode];
     if(code!=="0"||row.status!==status||row.lane!==lane||row.sourceSha!==sha||
       row.cleanup!=="POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT"||
       (mode!=="negative"&&(row.installOnly295?.count!==295||row.combinedAfterBusiness?.count!==Number(count)||row.combinedAfterBusiness?.exactB7!==true)))process.exit(1);
-  ' "$work/$mode.json" "$mode" "$lane" "$sha" "$exit_code" "$count" "$prepared/source.json" "$plan/upward-archive-332-profile.cjs" ||
+  ' "$work/$mode.json" "$mode" "$lane" "$sha" "$exit_code" "$count" "$prepared/source.json" "$plan/upward-archive-332-profile.cjs" "$plan/historical-settlement-334-profile.cjs" ||
     { printf 'EXPENSE_%s_STOPPED %s %s %s\n' "$count" "$lane" "$mode" "$work" >&2; exit 1; }
 done

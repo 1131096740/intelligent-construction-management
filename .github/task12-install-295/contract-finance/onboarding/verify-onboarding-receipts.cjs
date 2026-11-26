@@ -8,11 +8,12 @@ const current320=source?.mode==='current-320';
 const textDirect330=source?.mode==='text-direct-330';
 const paymentRemainder331=source?.mode==='payment-remainder-331';
 const upwardArchive332=source?.mode==='upward-archive-332';
-const forward=current320||textDirect330||paymentRemainder331||upwardArchive332;
+const historical=source?.mode==='historical-settlement-334'?require('../historical-settlement-334-profile.cjs'):undefined;
+const forward=current320||textDirect330||paymentRemainder331||upwardArchive332||historical;
 const profile=upwardArchive332?require('../upward-archive-332-profile.cjs'):
   paymentRemainder331?require('../payment-remainder-331-profile.cjs'):
   textDirect330?require('../text-direct-330-profile.cjs'):undefined;
-const count=upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
+const count=historical?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
 const scopes=require(path.join(old,'lanes.json'));
 const {lanes}=require(path.join(old,'pins.json'));
 const scope={tree:'67644d9465a0ab4ee80ede099139d9c129d66f14',expectedLedgerSha256:'b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d'};
@@ -35,6 +36,14 @@ function verifyLane(lane,receipt) {
   assert.equal(receipt.releaseTree,scope.tree);
   assert.equal(receipt.installOnly295.count,295);
   assert.equal(receipt.installOnly295.ledgerSha256,scope.expectedLedgerSha256);
+  if(historical) {
+    assert.equal(source.sourceSha,process.argv[5]);
+    historical.assertSource(source,scope.expectedLedgerSha256);
+    historical.assertFinanceInstallation(receipt,source);
+    assert.equal(receipt.multiWitnessCatalogAfterBusiness,true);
+    assert.equal(receipt.historicalTakeoverCatalogAfterBusiness,true);
+    assert.equal(receipt.historicalSettlementCatalogAfterBusiness,true);
+  }
   if(profile) {
     profile.assertSource(source,process.argv[5],scope.expectedLedgerSha256);
     profile.assertInstallation(receipt,source);

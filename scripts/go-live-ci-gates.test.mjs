@@ -436,8 +436,13 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
     ["historical_takeover_a28", "", 0, "historical-takeover-a28"],
     ["contract_finance_acceptance", "", 0, "contract-finance"],
     ["remaining_dynamic_postgresql16", "", 0, "remaining"],
-    ["payment_execution", "", 65],
-    ["pol113_pol115_business_entries", "pol113_pol114", 65],
+    ["payment_execution", "", 0, "payment-execution"],
+    ["employee_onboarding", "", 0, "onboarding"],
+    ["general_procurement", "", 0, "procurement"],
+    ["pol113_pol115_business_entries", "pol113_pol114", 0, "named"],
+    ["pol113_pol115_business_entries", "pol115_workbench", 65],
+    ["pol113_pol115_business_entries", "", 65],
+    ["pol113_pol115_business_entries", "unknown", 65],
     ["issue403_actual_purchase_batch", "", 65],
     ["line_a_real_db", "unexpected", 65]
   ]) {
@@ -447,6 +452,9 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
     const plan = ".github/task12-install-295/contract-finance/";
     if (lane === "contract-finance") assert.deepEqual(result.stdout.trim().split("\n"), [
       plan + "run.sh", sha, "--historical-settlement-334", "a187dc73a133114e1cfbbc891a4aec923abe2545"
+    ]);
+    else if (lane === "named") assert.deepEqual(result.stdout.trim().split("\n"), [
+      ".github/task12-install-295/named-pol113-pol114/run-matrix334.sh", sha, shard
     ]);
     else if (lane === "remaining") assert.deepEqual(result.stdout.trim().split("\n"), [plan + "run-remaining.sh", sha, "--historical-settlement-334"]);
     else if (status === 0) assert.deepEqual(result.stdout.trim().split("\n"), [

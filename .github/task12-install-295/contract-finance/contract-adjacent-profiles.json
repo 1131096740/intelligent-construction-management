@@ -24,6 +24,12 @@
       ]
     }
   },
+  "candidateFixtures334": {
+    "contract-bill-batch-replace-concurrency.spec.ts": "de320c8bcc192a010f61611b70a8de50913daf3b28e6ee46fff4cafe1c98f6c3",
+    "contract-bill-transition-confirm-concurrency.spec.ts": "0b14c6883ab16be0d1777c8d8a24225aae3e4bf6be5cba92b07d8a3a7b933607",
+    "contract-template-scenario-concurrency.spec.ts": "93c99028452994a14d5f2a74767cb6cf2c354e8aa819ee618e19d10fd01eacd0",
+    "settlement-draft-lifecycle-concurrency.spec.ts": "aa2cc248ff7b9becb8653021624e253cae78d282e6b6e64e6e13ab1ed2e019c5"
+  },
   "fixtures": {
     "task12-owned-280.test-support.ts": "0653380689b72c974ab8abf63aa19dcd2fda7e8dc48114ccdd7a6d38793d5ba7",
     "contract-bill-batch-replace-concurrency.spec.ts": "224758ab9e34ec43fba6ecadf30b5b000c94d8305af7c11ec135569b7ae6c375",

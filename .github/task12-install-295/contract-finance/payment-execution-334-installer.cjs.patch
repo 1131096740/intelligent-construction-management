@@ -1,0 +1,5 @@
+--- installer.cjs
++++ installer.cjs
+@@ -200 +200 @@
+- const historicalValid=/^PAYMENT_EXECUTION_ORIGINAL_RETAINED_VALID_(295|329|330|331|332)$/u.test(receipt?.purpose??"");
++ const historicalValid=/^PAYMENT_EXECUTION_ORIGINAL_RETAINED_VALID_(295|329|330|331|332|334)$/u.test(receipt?.purpose??"");

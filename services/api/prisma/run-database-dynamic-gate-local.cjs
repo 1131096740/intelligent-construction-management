@@ -671,7 +671,7 @@ const current330Lanes = Object.freeze({
 
 function resolveGroupCommand(group, options = {}) {
   if (options.migrationCount === 334) {
-    const dispatch = gate334.commandFor334(group.id, options.candidateSha);
+    const dispatch = gate334.commandFor334(group.id, options.candidateSha, group.pol113Pol115Shard);
     if (!dispatch) fail(`334 PostgreSQL 动态组未接入：${group.id}`);
     if (!/^[a-f0-9]{40}$/u.test(options.candidateSha ?? "")) fail("334 运行必须提供完整候选 SHA");
     const [runner, ...args] = dispatch;

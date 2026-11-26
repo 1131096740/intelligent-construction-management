@@ -1,0 +1,90 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { createHash } = require('node:crypto');
+const { execFileSync } = require('node:child_process');
+const cases = require('./cases.json');
+const historical = require('../historical-settlement-334-profile.cjs');
+const { final } = require('../common/multi-witness.cjs');
+
+const [prepared, candidateSha, scope, output] = process.argv.slice(2);
+assert.equal(process.argv.length, 6);
+assert.ok(Object.hasOwn(cases, scope));
+assert.match(candidateSha, /^[a-f0-9]{40}$/u);
+const source = require(path.join(prepared, 'source.json'));
+assert.equal(source.sourceSha, candidateSha);
+historical.assertSource(source, final);
+
+const workspace = path.join(prepared, 'prepared/context/workspace');
+const api = path.join(workspace, 'services/api');
+const { coveredGroups } = require(path.join(api, 'prisma/database-dynamic-gate-manifest.json'));
+const { BATCH_FILES, POL113_POL115_GROUP } = require(path.join(api, 'prisma/pol113-pol115-shards.cjs'));
+const group = coveredGroups.find(entry => entry.id === POL113_POL115_GROUP);
+assert.equal(group.pendingTests, 191);
+const registered = new Map(group.testFiles.map(({ path: file, pendingTests }) => [file, pendingTests]));
+assert.deepEqual(cases[scope].map(({ file }) => file), BATCH_FILES[scope]);
+assert.equal(cases[scope].reduce((sum, row) => sum + row.declared, 0), scope === 'pol115' ? 138 : 13);
+assert.equal(cases[scope].reduce((sum, row) => sum + row.reported, 0), scope === 'pol115' ? 140 : 13);
+
+const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+function read(file) {
+  assert.ok(fs.lstatSync(file).isFile(), file);
+  return fs.readFileSync(file);
+}
+function write(relative, bytes) {
+  assert.match(relative, /^src\/(?:[a-z0-9.-]+\/)*[a-z0-9.-]+$/u);
+  const target = path.join(output, 'fixtures', relative);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, bytes, { flag: 'wx', mode: 0o644 });
+}
+function once(text, before, after) {
+  assert.equal(text.split(before).length, 2, before);
+  return text.replace(before, after);
+}
+
+const support = 'src/database/pol115-owned-334.test-support.ts';
+const helper = read(path.join(__dirname, path.basename(support)));
+write(support, helper);
+const fixtureHashes = { [support]: hash(helper) };
+const browserSpecs = new Set([
+  'expense-claim-entry.http.pg.spec.ts', 'fund-execution-entry.http.pg.spec.ts',
+  'operating-takeover-entry.http.pg.spec.ts', 'spot-procurement-entry.http.pg.spec.ts'
+]);
+for (const row of cases[scope]) {
+  const { file, declared, reported, skipped, candidateSha256 } = row;
+  assert.equal(declared, registered.get('services/api/' + file));
+  assert.equal(reported - declared, file.startsWith('src/expense-claim/') ? 2 : 0);
+  assert.equal(skipped.length, scope === 'pol115' ? 0 : 1);
+  const original = read(path.join(api, file));
+  assert.equal(hash(original), candidateSha256, file);
+  const name = path.basename(file);
+  const namespace = path.dirname(file) === 'src/database' ? '.' : '../database';
+  const importLine = `import { isPol115Owned334 } from "${namespace}/pol115-owned-334.test-support";\n`;
+  const owned = `isPol115Owned334(url, "${scope}")`;
+  let adapted = importLine + original.toString('utf8');
+  if (scope === 'spot') {
+    adapted = once(adapted, 'url.pathname !== expectedDatabase ||',
+      `(url.pathname !== expectedDatabase && (registeredFixture || !${owned})) ||`);
+  } else if (name === 'issue430-notification.pg.spec.ts') {
+    adapted = once(adapted, '|| isOwnedIssue430NativeDatabase(url)).toBe(true)',
+      `|| isOwnedIssue430NativeDatabase(url) || ${owned}).toBe(true)`);
+  } else {
+    const selector = 'url.pathname !== "/jiangkong_pol115_entry_test"';
+    adapted = once(adapted, selector, `(${selector} && !${owned})`);
+  }
+  if (browserSpecs.has(name)) {
+    const cwd = 'cwd: resolve(__dirname, "../../../../apps/web-admin")';
+    adapted = once(adapted, cwd, 'cwd: process.env.JG_POL115_334_WEB_ROOT ?? resolve(__dirname, "../../../../apps/web-admin")');
+  }
+  write(file, adapted);
+  fixtureHashes[file] = hash(adapted);
+}
+execFileSync(process.execPath, [path.join(__dirname, '../stage-historical-takeover-333.cjs'), output, historical.mode], { stdio: 'inherit' });
+const receipt = { sourceSha: candidateSha, sourceTree: source.sourceTree, scope, ledgerSha256: source.ledgerSha256,
+  installerSha256: historical.installerSha256, fixtureSha256: fixtureHashes,
+  declared: cases[scope].reduce((sum, row) => sum + row.declared, 0),
+  currentCases: cases[scope].reduce((sum, row) => sum + row.reported, 0) };
+fs.writeFileSync(path.join(output, 'pol115-334-inputs.json'), JSON.stringify(receipt) + '\n', { flag: 'wx', mode: 0o644 });
+console.log(JSON.stringify({ status: 'POL115_334_HOST_READY', ...receipt }));

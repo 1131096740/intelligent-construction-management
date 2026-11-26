@@ -1,0 +1,76 @@
+--- installer.cjs
++++ installer.cjs
+@@ -287,2 +287,2 @@
+-  const named332=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_332';
+-  const named320=named332||(purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_329');
++  const named334=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_334';
++  const named320=named334||(purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_329');
+@@ -738,4 +738,10 @@
+-        need(named332&&material.migrationCount===332 && /^[0-9a-f]{40}$/u.test(material.sourceTree) &&
+-          Array.isArray(rows) && rows.length===37 && rows.at(-3)?.name==='20261128000000_text_agreement_direct_payment' &&
+-          rows.at(-2)?.name==='20261129000000_payment_remaining_withdrawal' &&
+-          rows.at(-1)?.name==='20261129001000_contract_upward_archive_verifier_pin_forward','NAMED_332_SOURCE');
++        const historical=require('./historical-takeover-333-profile.cjs');
++        const settlement=require('./historical-settlement-334-profile.cjs');
++        need(named334&&material.migrationCount===334 && /^[0-9a-f]{40}$/u.test(material.sourceTree) &&
++          Array.isArray(rows) && rows.length===39 && rows[34]?.name==='20261128000000_text_agreement_direct_payment' &&
++          rows[35]?.name==='20261129000000_payment_remaining_withdrawal' &&
++          rows[36]?.name==='20261129001000_contract_upward_archive_verifier_pin_forward' &&
++          rows[37]?.name===historical.terminal.name && rows[37]?.sha256===historical.terminal.sha256 &&
++          rows[38]?.name===settlement.terminal.name && rows[38]?.sha256===settlement.terminal.sha256 &&
++          material.ledger333===historical.ledgerSha256 && material.ledger334===settlement.ledgerSha256,
++          'NAMED_334_SOURCE');
+@@ -745 +751 @@
+-        for(const batch of [rows.slice(0,34), rows.slice(34,35), rows.slice(35,36), rows.slice(36)]){
++        for(const batch of [rows.slice(0,34), rows.slice(34,35), rows.slice(35,36), rows.slice(36,37), rows.slice(37,38), rows.slice(38)]){
+@@ -758,2 +764,2 @@
+-          const expected=[material.ledger329,material.ledger330,material.ledger331,material.ledger332][count-329];
+-          need(hash(JSON.stringify(consumerLedger))===expected,'NAMED_332_LEDGER_SOURCE');
++          const expected=[material.ledger329,material.ledger330,material.ledger331,material.ledger332,material.ledger333,material.ledger334][count-329];
++          need(hash(JSON.stringify(consumerLedger))===expected,'NAMED_334_LEDGER_SOURCE');
+@@ -762 +768 @@
+-          outside=await verifyLedger(consumerLedger,true,count===332);
++          outside=await verifyLedger(consumerLedger,true,count>=332);
+@@ -766,0 +773,19 @@
++          if(count===332) {
++            const catalog=await jsonSql(historical.catalogSql);
++            historical.assertCatalog(catalog,false);
++            receipt.historicalTakeoverPredecessor={count,ledgerSha256:expected,sameIdentity:true,exactB7:true,catalog};
++          }
++          if(count===333) {
++            const checks=await jsonSql(historical.catalogSql);
++            historical.assertCatalog(checks,true);
++            receipt.historicalTakeover333Catalog=checks;
++            const catalog=await jsonSql(settlement.catalogSql);
++            settlement.assertCatalog(catalog);
++            receipt.historicalSettlementPredecessor={count,ledgerSha256:expected,sameIdentity:true,exactB7:true,catalog};
++          }
++          if(count===334) {
++            need(equal(await jsonSql(historical.catalogSql),receipt.historicalTakeover333Catalog),'NAMED_334_HISTORICAL_CHECKS');
++            const catalog=await jsonSql(settlement.catalogSql);
++            settlement.assertCatalog(catalog,receipt.historicalSettlementPredecessor.catalog);
++            receipt.historicalSettlement334Catalog=catalog;
++          }
+@@ -768 +793 @@
+-        receipt.forward332={count:consumerLedger.length,ledgerSha256:material.ledger332,sourceTree:material.sourceTree,
++        receipt.forward334={count:consumerLedger.length,ledgerSha256:material.ledger334,sourceTree:material.sourceTree,
+@@ -772 +797 @@
+-        outside:await jsonSql(outsideWitnessSql(289,named320,named332)),
++        outside:await jsonSql(outsideWitnessSql(289,named320,named334)),
+@@ -798 +823 @@
+-      enter(named332?'EXACT_332_NAMED_FRESH_CONSUMER':named320?'EXACT_329_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
++      enter(named334?'EXACT_334_NAMED_FRESH_CONSUMER':named320?'EXACT_329_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
+@@ -828 +853 @@
+-          if(named320) receipt.postBehavior332={exactB7:true,sameIdentity:true,
++          if(named320) receipt.postBehavior334={exactB7:true,sameIdentity:true,
+@@ -829,0 +855,7 @@
++          if(named334) {
++            const historical=require('./historical-takeover-333-profile.cjs');
++            const settlement=require('./historical-settlement-334-profile.cjs');
++            need(equal(await jsonSql(historical.catalogSql),receipt.historicalTakeover333Catalog),'NAMED_334_HISTORICAL_AFTER');
++            need(equal(await jsonSql(settlement.catalogSql),receipt.historicalSettlement334Catalog),'NAMED_334_SETTLEMENT_AFTER');
++            receipt.historicalCatalogAfterBusiness=true;
++          }
+@@ -1170 +1202 @@
+-module.exports.withNamedPol113Pol114332=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,332);
++module.exports.withNamedPol113Pol114334=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,334);

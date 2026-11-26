@@ -5,7 +5,7 @@ umask 077
 [[ $# == 4 || $# == 5 ]] || exit 64
 variant=${5-}
 case "$variant" in
-  ''|standard-330|standard-331|standard-332|ledger-loss-330|ledger-loss-331|ledger-loss-332|competition-331|competition-332) ;;
+  ''|standard-330|standard-331|standard-332|standard-334|ledger-loss-330|ledger-loss-331|ledger-loss-332|competition-331|competition-332) ;;
   *) exit 64 ;;
 esac
 [[ $# == 4 || -n $variant ]] || exit 64
@@ -20,11 +20,13 @@ scope=task398-standard
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const count=source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
   if(count===332)require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
+  if(count===334) require(process.argv[5]).assertSource(source,require(process.argv[4]).final);
   console.log(count);
-' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs")
+' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs")
+if [[ $count == 334 && -n $variant && $variant != standard-334 ]]; then exit 64; fi
 variant_args=()
 purpose=TASK398_STANDARD_EXACT_$count
 if [[ -n $variant ]]; then
@@ -86,9 +88,13 @@ if (( count >= 330 )); then
         patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-competition-runner-332.patch"
         [[ $(runner_sha) == 75de360063ce1d7a60abacaf015e2718aab99fc871995bea9e127fe6adeba924 ]] || exit 65
       fi
-    elif [[ $count == 332 ]]; then
+    elif (( count == 332 || count == 334 )); then
       patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-standard-332.patch"
       [[ $(runner_sha) == c6a839367ad8896d95e464a6da9499788338d347f02f21fc76f81bf7500487fc ]] || exit 65
+      if [[ $count == 334 ]]; then
+        patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-standard-334.patch"
+        [[ $(runner_sha) == ca49599d0ff11ab106f211195d3f5c485ce4259d145c538e6c1c38f832535f68 ]] || exit 65
+      fi
       if [[ -z $variant ]]; then
         relative=services/api/src/database/task16-text-agreement-payments.http.pg.spec.ts
         spec="$work/$relative"
@@ -96,6 +102,10 @@ if (( count >= 330 )); then
         [[ $(sha256sum "$spec" | cut -d' ' -f1) == a23a5009503b6683aa545c582ff0e511c85768e417d591555d502a1934686b49 ]] || exit 65
         patch --batch --forward --fuzz=0 --silent "$spec" < "$plan/task398-text-direct-spec-332.patch"
         [[ $(sha256sum "$spec" | cut -d' ' -f1) == a019456b916800c5f9d8356b014182aedfdead1d7e93252a745841d8223b274a ]] || exit 65
+        if [[ $count == 334 ]]; then
+          patch --batch --forward --fuzz=0 --silent "$spec" < "$plan/task398-text-direct-spec-334.patch"
+          [[ $(sha256sum "$spec" | cut -d' ' -f1) == d27353b766c05c16fd1e55d139646902188184e5998cab9a3e9e73f77c6cb6d2 ]] || exit 65
+        fi
         chmod 0644 "$spec"
         overlay_files+=("$relative")
       fi
@@ -115,7 +125,16 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
   --mount "type=bind,src=$plan/task398-standard-entry.cjs,dst=/qualification/task398-standard-entry.cjs,readonly"
   --mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
-for file in installer.cjs install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
+installer="$common/installer.cjs"
+if [[ $count == 334 ]]; then
+  node "$plan/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
+  installer="$work/installer.cjs"
+  for file in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
+    args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
+  done
+fi
+args+=(--mount "type=bind,src=$installer,dst=/qualification/installer.cjs,readonly")
+for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
 for file in "${overlay_files[@]}"; do

@@ -1,0 +1,12 @@
+--- predecessor/fixture
++++ forward/fixture
+@@ -40,7 +40,8 @@
+         WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) AS count,
+         current_setting('jg.task398_run_id', true) AS run
+     `;
+-    const expectedCount = process.env.TASK425_TEXT_FINANCE_332 === "1" ? 332
++    const expectedCount = process.env.TASK425_TEXT_FINANCE_334 === "1" ? 334
++      : process.env.TASK425_TEXT_FINANCE_332 === "1" ? 332
+       : process.env.TASK425_TEXT_FINANCE_331 === "1" ? 331 : 330;
+     expect(identity).toEqual({ count: expectedCount, run: runId });
+     const plan = buildRegisteredPgFixturePlan(runId.slice(0, 12), dateBefore(1), dateBefore(2));

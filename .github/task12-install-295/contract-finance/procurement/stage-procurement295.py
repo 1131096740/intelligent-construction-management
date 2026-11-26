@@ -7,7 +7,7 @@ import sys
 
 plan = Path(__file__).resolve().parent
 lane, repo_name, workspace_name, out_name, *opts = sys.argv[1:]
-profile_count = {'--text-direct-330': 330, '--payment-remainder-331': 331, '--upward-archive-332': 332}
+profile_count = {'--text-direct-330': 330, '--payment-remainder-331': 331, '--upward-archive-332': 332, '--historical-settlement-334': 334}
 qualified_count = profile_count.get(opts[0]) if len(opts) == 2 else None
 if qualified_count is None and opts not in ([], ['--current-320']):
     sys.exit('PROCUREMENT_MODE')
@@ -22,7 +22,7 @@ port = json.loads((plan / 'port-pins.json').read_bytes())
 original = json.loads((prior / 'pins.json').read_bytes())[lane]
 delta_file = 'candidate-delta320.json' if forward else 'candidate-delta.json'
 delta = {row['path']: row for row in json.loads((plan / delta_file).read_bytes())}
-for candidate_count in range(330, count + 1):
+for candidate_count in (version for version in (330, 331, 332, 334) if version <= count):
     delta.update({row['path']: row for row in
                   json.loads((plan / f'candidate-delta{candidate_count}.json').read_bytes())})
 digest = lambda data: sha256(data).hexdigest()
@@ -143,17 +143,20 @@ if qualified_count:
     source = json.loads(read(Path(opts[1])))
     if source['migrationCount'] != count or source['mode'] != opts[0][2:]:
         raise ValueError('PROCUREMENT_SOURCE_COUNT')
-    if count == 332:
-        terminal = source['tails'][-1]
-        migration = workspace / 'services/api/prisma/migrations' / terminal['name'] / 'migration.sql'
-        if digest(read(migration)) != terminal['sha256']:
-            raise ValueError('PROCUREMENT_332_TERMINAL_SOURCE_PIN')
+    if count in (332, 334):
+        for terminal in source['tails'][-(3 if count == 334 else 1):]:
+            migration = workspace / 'services/api/prisma/migrations' / terminal['name'] / 'migration.sql'
+            if digest(read(migration)) != terminal['sha256']:
+                raise ValueError(f'PROCUREMENT_{count}_TERMINAL_SOURCE_PIN')
     installer = out / 'installer.cjs'
     before = read(common / 'installer.cjs')
     relative = (common / 'installer.cjs').relative_to(repo)
     if before != subprocess.check_output(['git', '-C', str(repo), 'show', source['sourceSha'] + ':' + str(relative)]):
         raise ValueError(f'PROCUREMENT_{count}_INSTALLER_SOURCE_PIN')
-    write(installer, before)
+    if count == 334:
+        subprocess.run(['node', str(plan/'../stage-historical-takeover-333.cjs'), str(out), source['mode']], check=True)
+    else:
+        write(installer, before)
     role_patch, marker, old_entry = read(plan / 'installer-procurement.patch').rpartition(b'\n@@ -1388,3 ')
     if not marker or old_entry.count(b'function withProcurement') != 1:
         raise ValueError(f'PROCUREMENT_{count}_INSTALLER_ENTRY_ANCHOR')
@@ -176,7 +179,11 @@ function withProcurement(receipt,consume,lane) {
 }
 module.exports.withCombined295GeneralProcurement=(receipt,consume)=>withProcurement(receipt,consume,'general16');
 module.exports.withCombined295ProjectProcurement=(receipt,consume)=>withProcurement(receipt,consume,'project11');
-""".replace('PROFILE_NAME',profile_name))
+""".replace('PROFILE_NAME',profile_name)
+                 .replace('profile.assertSource(source,source.sourceSha,', 'profile.assertSource(source,' if count == 334 else 'profile.assertSource(source,source.sourceSha,')
+                 .replace('profile.assertInstallation', 'profile.assertFinanceInstallation' if count == 334 else 'profile.assertInstallation'))
+    if count == 334 and digest(read(installer)) != '56e3855710cb8d049a33f02421d85feedf5186a9130c9aa6a52b6cb29648cc16':
+        raise ValueError('PROCUREMENT_334_INSTALLER_POSTIMAGE')
     subprocess.run(['node', '--check', str(installer)], check=True)
 else:
     patch(common / 'installer.cjs', out / 'installer.cjs', port['installer'], 'installer-procurement.patch')

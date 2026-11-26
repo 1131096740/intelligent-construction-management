@@ -4,7 +4,7 @@ umask 077
 
 [[ $# == 5 || ( $# == 6 && $6 == --current-320 ) ||
   ( ( $# == 6 || ( $# == 7 && $7 == --host-only ) ) &&
-    ( $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 ) ) ||
+    ( $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 ) ) ||
   ( $# == 7 && $5 == general16 && $6 == --payment-remainder-331 && $7 == --a05 ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
@@ -18,6 +18,7 @@ case ${6-} in
   --text-direct-330) mode_args=(--text-direct-330); stage_args=("${mode_args[@]}" "$prepared/source.json"); count=330 ;;
   --payment-remainder-331) mode_args=(--payment-remainder-331); stage_args=("${mode_args[@]}" "$prepared/source.json"); count=331 ;;
   --upward-archive-332) mode_args=(--upward-archive-332); stage_args=("${mode_args[@]}" "$prepared/source.json"); count=332 ;;
+  --historical-settlement-334) mode_args=(--historical-settlement-334); stage_args=("${mode_args[@]}" "$prepared/source.json"); count=334 ;;
 esac
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -29,12 +30,15 @@ case $count in
   330) profile="$finance/text-direct-330-profile.cjs" ;;
   331) profile="$finance/payment-remainder-331-profile.cjs" ;;
   332) profile="$finance/upward-archive-332-profile.cjs" ;;
+  334) profile="$finance/historical-settlement-334-profile.cjs" ;;
 esac
 node - "$prepared/source.json" "$sha" "$lane" "$finance" "$count" "$profile" <<'JS'
 const [sourceFile,sha,lane,finance,count,profile]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(finance+'/common/multi-witness.cjs');
 if(source.sourceSha!==sha||source.migrationCount!==Number(count)||!['general16','project11'].includes(lane))process.exit(65);
-if(profile) {
+if(count==='334') {
+  require(profile).assertSource(source,terminal.final);
+} else if(profile) {
   require(profile).assertSource(source,sha,terminal.final);
 } else if(count==='329') {
   if(source.mode!=='current-320'||source.predecessor.ledgerSha256!==terminal.final)process.exit(65);
@@ -57,7 +61,10 @@ const hash=file=>createHash('sha256').update(readFileSync(dir+'/'+file)).digest(
 const files=readdirSync(dir,{withFileTypes:true}).filter(file=>file.isFile()).map(({name})=>name);
 const receipt={status:'PROCUREMENT_'+count+'_HOST_INPUTS_VERIFIED',sourceSha,lane,cases:lane==='general16'?16:11,
   stagedInputs:Object.fromEntries(files.sort().map(file=>[file,hash(file)])),database:'NOT_STARTED'};
-if(count==='332') {
+if(count==='334') {
+  const {ledgerSha256,predecessor332,predecessor333}=require(sourceFile);
+  Object.assign(receipt,{ledgerSha256,predecessor332,predecessor333});
+} else if(count==='332') {
   const {ledgerSha256,predecessor331}=require(sourceFile);
   Object.assign(receipt,{ledgerSha256,predecessor331});
 }
@@ -89,6 +96,11 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
 if [[ -n $profile ]]; then
   args+=(--mount "type=bind,src=$profile,dst=/qualification/${profile##*/},readonly")
 fi
+if [[ $count == 334 ]]; then
+  for profile_file in historical-takeover-333-profile.cjs upward-archive-332-profile.cjs; do
+    args+=(--mount "type=bind,src=$finance/$profile_file,dst=/qualification/$profile_file,readonly")
+  done
+fi
 if [[ ${7-} == --a05 ]]; then
   args+=(--env JG_PROCUREMENT_A05=1)
 fi
@@ -119,7 +131,11 @@ const a05=option==='--a05';
 const expected=a05?'PROCUREMENT_A05_331_PASSED':
   lane==='general16'?'GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1_'+count+'_PASSED':'PROJECT_SCOPE_ORIGINAL_11_'+count+'_PASSED';
 if(r.status!==expected||r.sourceSha!==sha||(a05&&r.approvalA05?.passed!==1))process.exit(1);
-if(profile) {
+if(count==='334') {
+  require(profile).assertFinanceInstallation(r,require(source));
+  if(r.multiWitnessCatalogAfterBusiness!==true||r.historicalTakeoverCatalogAfterBusiness!==true||
+    r.historicalSettlementCatalogAfterBusiness!==true)process.exit(1);
+} else if(profile) {
   require(profile).assertInstallation(r,require(source));
   if(r.multiWitnessCatalogAfterBusiness!==true)process.exit(1);
 }

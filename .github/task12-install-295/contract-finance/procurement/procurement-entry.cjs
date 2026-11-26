@@ -12,11 +12,14 @@ try {
   const textDirect330=process.argv[2]==='--text-direct-330';
   const paymentRemainder331=process.argv[2]==='--payment-remainder-331';
   const upwardArchive332=process.argv[2]==='--upward-archive-332';
-  const forward=current320||textDirect330||paymentRemainder331||upwardArchive332;
+  const historicalSettlement334=process.argv[2]==='--historical-settlement-334';
+  const forward=current320||textDirect330||paymentRemainder331||upwardArchive332||historicalSettlement334;
   assert.equal(process.argv.length,forward?3:2);
-  const count=upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
+  const count=historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
   assert.equal(source.migrationCount,count);
-  if(upwardArchive332) {
+  if(historicalSettlement334) {
+    require('./historical-settlement-334-profile.cjs').assertSource(source,multi.final);
+  } else if(upwardArchive332) {
     require('./upward-archive-332-profile.cjs').assertSource(source,source.sourceSha,multi.final);
   } else if(paymentRemainder331) {
     require('./payment-remainder-331-profile.cjs').assertSource(source,source.sourceSha,multi.final);

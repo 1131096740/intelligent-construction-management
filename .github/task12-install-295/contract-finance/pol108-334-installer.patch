@@ -1,0 +1,14 @@
+--- installer.cjs
++++ installer.cjs
+@@ -375 +375 @@
+-${/^ORIGINAL_POL108_EXACT_(?:295|329|330|331|332)$/.test(receipt.purpose) ? "track_functions='all'\ntrack_io_timing=on\n" : ''}statement_timeout='60s'
++${/^ORIGINAL_POL108_EXACT_(?:295|329|330|331|332|334)$/.test(receipt.purpose) ? "track_functions='all'\ntrack_io_timing=on\n" : ''}statement_timeout='60s'
+@@ -1579,0 +1580,8 @@
++
++module.exports.withPol108At334 = (receipt,shard,material) => {
++  need(receipt.purpose==='ORIGINAL_POL108_EXACT_334' && ['core','facts','impacts'].includes(shard),'POL108_334_SCOPE');
++  return module.exports.withCombined334HistoricalSettlement(receipt,context=>{
++    require('./historical-settlement-334-profile.cjs').assertFinanceInstallation(receipt,require('./contract-finance-source.json'));
++    return require('./pol108-289.cjs').runPol108(context,shard,receipt,runCommand,baseEnv,need);
++  },material);
++};

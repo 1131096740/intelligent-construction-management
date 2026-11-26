@@ -12,6 +12,7 @@ for option in "${@:5}"; do
     --text-direct-330) [[ $mode == 295 ]] || exit 64; mode=330 ;;
     --payment-remainder-331) [[ $mode == 295 ]] || exit 64; mode=331 ;;
     --upward-archive-332) [[ $mode == 295 ]] || exit 64; mode=332 ;;
+    --historical-settlement-334) [[ $mode == 295 ]] || exit 64; mode=334 ;;
     --host-only) [[ -z $host_only ]] || exit 64; host_only=1 ;;
     --*) exit 64 ;;
     *) [[ -z $selected_lane ]] || exit 64; selected_lane=$option ;;
@@ -31,11 +32,15 @@ case $mode in
   330) profile="$plan/../text-direct-330-profile.cjs" ;;
   331) profile="$plan/../payment-remainder-331-profile.cjs" ;;
   332) profile="$plan/../upward-archive-332-profile.cjs" ;;
+  334) profile="$plan/../historical-settlement-334-profile.cjs" ;;
 esac
 node - "$prepared/source.json" "$sha" "$mode" "$plan" "$profile" <<'JS'
 const [file,sha,mode,plan,profile]=process.argv.slice(2);
 const source=require(file);
-if(profile) {
+if(mode==='334') {
+  if(source.sourceSha!==sha) process.exit(65);
+  require(profile).assertSource(source,require(plan+'/../common/multi-witness.cjs').final);
+} else if(profile) {
   require(profile).assertSource(source,sha,require(plan+'/../common/multi-witness.cjs').final);
 } else if(source.sourceSha!==sha||source.migrationCount!==Number(mode)||(mode==='329'&&source.mode!=='current-320')) {
   process.exit(1);
@@ -62,7 +67,10 @@ const receipt={status:'ONBOARDING_'+mode+'_HOST_INPUTS_VERIFIED',sourceSha,
   lanes:Object.fromEntries(lanes.map(name=>[name,profiles[name].caseCount])),
   workspaceInputsSha256:sha('workspace-inputs.json'),installerSha256:sha('installer.cjs'),
   laneProfilesSha256:sha('lanes.json'),database:'NOT_STARTED'};
-if(mode==='332') {
+if(mode==='334') {
+  const {ledgerSha256,predecessor332,predecessor333}=require(sourceFile);
+  Object.assign(receipt,{ledgerSha256,predecessor332,predecessor333});
+} else if(mode==='332') {
   const {ledgerSha256,predecessor331}=require(sourceFile);
   Object.assign(receipt,{ledgerSha256,predecessor331});
 }
@@ -111,6 +119,11 @@ args+=(--mount "type=bind,src=$plan/onboarding-preflight.cjs,dst=/qualification/
 if [[ -n $profile ]]; then
   args+=(--mount "type=bind,src=$profile,dst=/qualification/${profile##*/},readonly")
 fi
+if [[ $mode == 334 ]]; then
+  for profile_file in historical-takeover-333-profile.cjs upward-archive-332-profile.cjs; do
+    args+=(--mount "type=bind,src=$plan/../$profile_file,dst=/qualification/$profile_file,readonly")
+  done
+fi
 while IFS= read -r lane; do
   case "$lane" in
     lifecycle-rest|lifecycle-mobile) pids=256; tmp=512m ;;
@@ -119,7 +132,7 @@ while IFS= read -r lane; do
     *) exit 65 ;;
   esac
   memory=4g
-  if [[ ${GITHUB_ACTIONS-} == true && ( $mode == 331 || $mode == 332 ) && $lane == reset-case12 ]]; then
+  if [[ ${GITHUB_ACTIONS-} == true && ( $mode == 331 || $mode == 332 || $mode == 334 ) && $lane == reset-case12 ]]; then
     memory=6g
   fi
   dir="$material/lanes/$lane"

@@ -234,18 +234,88 @@ test("334 routes Line A, A28, finance and Remaining and rejects other groups bef
   assert.equal(resolvedRemaining.command, "bash");
   assert.match(resolvedRemaining.args[0], /contract-finance\/run-remaining[.]sh$/u);
   assert.deepEqual(resolvedRemaining.args.slice(1), [sha, "--historical-settlement-334"]);
+  for (const [id, lane, count] of [["employee_onboarding", "onboarding", 59], ["general_procurement", "procurement", 27]]) {
+    const group = manifest.coveredGroups.find(item => item.id === id);
+    assert.equal(group.pendingTests, count);
+    assert.deepEqual(resolveGroupCommand(group, { candidateSha: sha, migrationCount: 334 }).args.slice(1),
+      [sha, lane, "--historical-settlement-334"]);
+  }
+  const named = manifest.coveredGroups.find(group => group.id === "pol113_pol115_business_entries");
+  assert.equal(named.pendingTests, 191);
+  const pol113Pol114 = resolveGroupCommand({ ...named, pol113Pol115Shard: "pol113_pol114" }, { candidateSha: sha, migrationCount: 334 });
+  assert.match(pol113Pol114.args[0], /named-pol113-pol114\/run-matrix334[.]sh$/u);
+  assert.deepEqual(pol113Pol114.args.slice(1), [sha, "pol113_pol114"]);
+  for (const shard of [undefined, "pol115_workbench", "unknown"]) {
+    assert.throws(() => resolveGroupCommand({ ...named, pol113Pol115Shard: shard }, { candidateSha: sha, migrationCount: 334 }), /未接入/u);
+  }
   assert.throws(() => resolveGroupCommand(historical, { candidateSha: sha, migrationCount: 332 }), /A28.*334/u);
   const drift = structuredClone(manifest);
   drift.coveredGroups.find(group => group.id === historical.id).runner.path = original.runner.path;
   assert.throws(() => validateManifest(drift), /A28.*固定/u);
 
-  const result = spawnSync(process.execPath, [runnerPath, "--execute", "--group", "payment_execution",
+  const result = spawnSync(process.execPath, [runnerPath, "--execute", "--group", "issue422_archives",
     "--candidate-sha", sha, "--confirm", "LOCAL_PG16_DYNAMIC_GATE"], {
     encoding: "utf8", env: { PATH: "", NODE_ENV: "test" }
   });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /334 PostgreSQL.*payment_execution/u);
+  assert.match(result.stderr, /334 PostgreSQL.*issue422_archives/u);
   assert.doesNotMatch(result.stderr, /ENOENT|spawn|Docker/u);
+});
+
+test("334 routes standalone payment execution without substituting Core Payment", () => {
+  const group = loadManifest().coveredGroups.find(item => item.id === "payment_execution");
+  assert.equal(group.pendingTests, 2);
+  const sha = "e".repeat(40);
+  const resolved = resolveGroupCommand(group, { candidateSha: sha, migrationCount: 334 });
+  assert.equal(resolved.command, "bash");
+  assert.match(resolved.args[0], /run-contract-adjacent-ci[.]sh$/u);
+  assert.deepEqual(resolved.args.slice(1), [sha, "payment-execution", "--historical-settlement-334"]);
+});
+
+test("334 routes the three original POL108 shards with their original case counts", () => {
+  const manifest = loadManifest();
+  const sha = "e".repeat(40);
+  for (const [id, lane, count] of [
+    ["operating_projection_pol108", "pol108-core", 12],
+    ["operating_projection_pol108_facts", "pol108-facts", 1],
+    ["operating_projection_pol108_impacts", "pol108-impacts", 1]
+  ]) {
+    const group = manifest.coveredGroups.find(item => item.id === id);
+    assert.equal(group.pendingTests, count);
+    const resolved = resolveGroupCommand(group, { candidateSha: sha, migrationCount: 334 });
+    assert.equal(resolved.command, "bash");
+    assert.match(resolved.args[0], /run-contract-adjacent-ci[.]sh$/u);
+    assert.deepEqual(resolved.args.slice(1), [sha, lane, "--historical-settlement-334"]);
+  }
+});
+
+test("334 routes the four original finance adjacent groups with their original case counts", () => {
+  const manifest = loadManifest();
+  const sha = "e".repeat(40);
+  for (const [id, lane, count] of [
+    ["fund_execution_v7", "v7", 26], ["invoice_ledger_pol260", "invoice", 10],
+    ["necessary_expense_reserve_pol279", "pol279", 4], ["project_fund_dispute_pol280", "pol280", 5]
+  ]) {
+    const group = manifest.coveredGroups.find(item => item.id === id);
+    assert.equal(group.pendingTests, count);
+    const resolved = resolveGroupCommand(group, { candidateSha: sha, migrationCount: 334 });
+    assert.equal(resolved.command, "bash");
+    assert.match(resolved.args[0], /run-contract-adjacent-ci[.]sh$/u);
+    assert.deepEqual(resolved.args.slice(1), [sha, lane, "--historical-settlement-334"]);
+  }
+});
+
+test("334 routes the three original project expense groups with their original case counts", () => {
+  const manifest = loadManifest();
+  const sha = "e".repeat(40);
+  for (const operation of ["execution", "finance", "receipt"]) {
+    const group = manifest.coveredGroups.find(item => item.id === `project_expense_${operation}`);
+    assert.equal(group.pendingTests, 1);
+    const resolved = resolveGroupCommand(group, { candidateSha: sha, migrationCount: 334 });
+    assert.equal(resolved.command, "bash");
+    assert.match(resolved.args[0], /run-contract-adjacent-ci[.]sh$/u);
+    assert.deepEqual(resolved.args.slice(1), [sha, `expense-${operation}`, "--historical-settlement-334"]);
+  }
 });
 
 test("public inventory distinguishes CI eligible tests from the explicitly manual operator", () => {
