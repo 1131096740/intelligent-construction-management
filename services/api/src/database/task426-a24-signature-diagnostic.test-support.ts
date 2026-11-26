@@ -1,4 +1,4 @@
-import { ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { projectTask16RegistrationError } from "./task16-registration-error-diagnostic";
 
@@ -131,6 +131,10 @@ export function projectA24CashFailure(error: unknown, operation?: Operation) {
     if (error.message === "付款凭证文件绑定暂不可核验，请稍后重试") {
       return { ...detail, node: "CASH_REGISTERED_VOUCHER_CATALOG" };
     }
+  }
+  if (error instanceof BadRequestException &&
+      error.message === "公共现金经营后果必须关联同一正式实付及无公司资金容器，不能用客户端标记替代") {
+    return { ...detail, node: "CASH_OPERATING_SOURCE_AUTHORITY" };
   }
   if (detail.node !== "CASH_TRANSACTION_QUERY") return detail;
 

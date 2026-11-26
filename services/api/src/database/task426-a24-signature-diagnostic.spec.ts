@@ -1,4 +1,4 @@
-import { ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, ServiceUnavailableException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { projectA24ApprovalFailure, projectA24CashFailure, projectA24SignatureFailure,
   projectA24SubmissionFailure } from "./task426-a24-signature-diagnostic.test-support";
@@ -102,4 +102,16 @@ it("distinguishes fixed catalog refusals from unrelated 503 errors without retur
   expect(project("付款凭证文件绑定暂不可核验，请稍后重试 private-value")).toEqual({
     serverErrorKind: "OTHER_NATIVE_ERROR"
   });
+});
+
+it("projects the frozen public-cash ledger authority refusal on the cash path only", () => {
+  const message = "公共现金经营后果必须关联同一正式实付及无公司资金容器，不能用客户端标记替代";
+  const failure = new BadRequestException(message);
+  expect(projectA24CashFailure(failure)).toEqual({
+    serverErrorKind: "OTHER_NATIVE_ERROR", node: "CASH_OPERATING_SOURCE_AUTHORITY"
+  });
+  expect(projectA24CashFailure(new BadRequestException(message + " private-value"))).toEqual({
+    serverErrorKind: "OTHER_NATIVE_ERROR"
+  });
+  expect(projectA24ApprovalFailure(failure)).not.toHaveProperty("node");
 });
