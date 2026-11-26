@@ -57,7 +57,7 @@
   {
     "path": "services/api/prisma/run-database-dynamic-gate-local.test.cjs",
     "expected": "78a8d474a9bef166001372b1e096b4f9b190d1d6fce3988bee01ad7f9b6eb09d",
-    "candidate": "5a1c2f0d13d8845e392444d317a2139a0a0b3a812efda4fdfad05820d5e3c309"
+    "candidate": "60e8e24005c90cb204edb45790013db597734f9a6a3c18cb05c58c1384785846"
   },
   {
     "path": "services/api/src/contract-takeover/contract-takeover-activation.service.spec.ts",
