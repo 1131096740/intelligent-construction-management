@@ -5,7 +5,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-archive, common, stage = map(Path, sys.argv[1:])
+archive, common, stage = map(Path, sys.argv[1:4])
+mode_args = sys.argv[4:]
+assert mode_args in ([], ['--historical-settlement-334'])
 plan = Path(__file__).parent
 pins = json.loads((archive / 'material.json').read_text())
 for mode, scope in pins.items():
@@ -32,6 +34,24 @@ for lane, profile in profiles.items():
     spec = app / lane / profile['spec']
     if hashlib.sha256(spec.read_bytes()).hexdigest() != profile['sha256']:
         raise SystemExit(f'EXPENSE_295_TEST_SOURCE {lane}')
+if mode_args:
+    receipt = app / 'receipt' / profiles['receipt']['spec']
+    overlays = (
+        (installer, 'expense-334-installer.patch',
+         '17b6debf264537c782ab60804d31bce7e3dbe38f938088081fa8a6ada2345916',
+         '72e0d4878f163533debbf90ca7a528381a36d94c88072ab3b89b0b6b56aa8cb2'),
+        (receipt, 'expense-334-receipt.spec.ts.patch', profiles['receipt']['sha256'],
+         'f7e45cce45c77f82992714705e35b5514a744e8645ef35f1fe5f57737ccaafff'),
+    )
+    for target, delta, before, after in overlays:
+        if hashlib.sha256(target.read_bytes()).hexdigest() != before:
+            raise SystemExit(f'EXPENSE_334_PREIMAGE {target.name}')
+        subprocess.run(['patch','--silent','--batch','--forward','--fuzz=0',str(target),str(plan/delta)],check=True)
+        if hashlib.sha256(target.read_bytes()).hexdigest() != after:
+            raise SystemExit(f'EXPENSE_334_POSTIMAGE {target.name}')
+    profiles['receipt']['sha256'] = overlays[-1][-1]
+    (app / 'profiles.json').write_text(json.dumps(profiles, indent=2) + '\n')
+
 for file in stage.rglob('*'):
     if file.is_file():
         file.chmod(0o644)

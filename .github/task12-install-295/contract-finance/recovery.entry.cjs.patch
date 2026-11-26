@@ -6,7 +6,7 @@
  assert.ok(process.argv.length===3 && ['execution','finance'].includes(lane));
 -const receipt={schemaVersion:1,purpose:'ORIGINAL_EXPENSE_290_SAME_INSTANCE_RECOVERY_ONLY',lane,business:'NOT_ENTERED',stages:[]};
 +const source=require('./contract-finance-source.json');
-+const count=source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
++const count=source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
 +const forward=count>295;
 +const material=forward?{mode:source.mode,sourceTree:source.sourceTree,
 +  migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails}:undefined;
