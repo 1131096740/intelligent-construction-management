@@ -308,6 +308,22 @@ profiles.issue420_346 = {
   requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
 };
 
+profiles.issue421_346 = {
+  ...profiles.issue421,
+  fixturePatch: 'issue421.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
+profiles.issue421b_346 = {
+  ...profiles.issue421b,
+  fixturePatch: 'issue421b.fixture.patch',
+  requiredMigrationCount: 346,
+  requiredTerminalMigration: '20261129015000_expense_public_cash_operating_source',
+  requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
+};
+
 profiles.issue422_346 = {
   ...profiles.issue422,
   fixturePatch: 'issue422.fixture.patch',
