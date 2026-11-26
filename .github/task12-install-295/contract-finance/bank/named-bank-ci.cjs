@@ -5,7 +5,7 @@ const path=require('node:path');
 const {createHash}=require('node:crypto');
 const {spawnSync}=require('node:child_process');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness}=require('./installer.cjs');
 const tree=require('./tree-proof.json');
 const titles=require('./original-titles.json');
 const prefix='/qualification';
@@ -18,9 +18,11 @@ const textDirect330=args[0]==='--text-direct-330';
 const upwardArchive332=args[0]==='--upward-archive-332';
 const paymentRemainder331=args[0]==='--payment-remainder-331';
 const historicalSettlement334=args[0]==='--historical-settlement-334';
-const historical=historicalSettlement334?require('./historical-settlement-334-profile.cjs'):undefined;
-const forward=current320||textDirect330||paymentRemainder331||upwardArchive332||historicalSettlement334;
-const count=historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
+const expenseWitness346=args[0]==='--expense-witness-346';
+const historical=historicalSettlement334||expenseWitness346?require('./historical-settlement-334-profile.cjs'):undefined;
+const expense=expenseWitness346?require('./expense-witness-346-profile.cjs'):undefined;
+const forward=current320||textDirect330||paymentRemainder331||upwardArchive332||historicalSettlement334||expenseWitness346;
+const count=expenseWitness346?346:historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
 const runArgs=forward?args.slice(1):args;
 const profile=upwardArchive332?require('./upward-archive-332-profile.cjs'):
   paymentRemainder331?require('./payment-remainder-331-profile.cjs'):
@@ -65,13 +67,26 @@ function verifyJestRegisteredWithoutDb() {
   assert.ok(titles.every(title=>cases.filter(row=>row.title===title).length===1),'BANK_295_ORIGINAL_TITLES');
   assert.equal(report.numPassedTests,1);
   assert.equal(report.numPendingTests,11);
+  if(expense) {
+    assert.deepEqual(cases.map(row=>row.title),titles,'BANK_346_ORIGINAL_TITLE_ORDER');
+    assert.equal(cases.find(row=>row.status==='passed')?.title,titles[0]);
+    assert.equal(report.numFailedTests,0);
+  }
   receipt.preflight={originalRegistered:12,realDatabaseCasesNotEntered:11};
 }
 Promise.resolve().then(async()=>{
   const source=require('./hosted-source.json');
   receipt.candidateSha=source.sourceSha;
   assert.ok(runArgs.length===0||(runArgs.length===1&&runArgs[0]==='--preflight'),'BANK_RUN_MODE');
-  if(historical) {
+  if(expense) {
+    assert.match(process.env.JG_BANK_SOURCE_SHA??'',/^[a-f0-9]{40}$/u,'BANK_346_SOURCE_SHA');
+    assert.equal(source.sourceSha,process.env.JG_BANK_SOURCE_SHA,'BANK_346_SOURCE_SHA');
+    assert.match(source.sourceTree,/^[a-f0-9]{40}$/u,'BANK_346_SOURCE_TREE');
+    assert.equal(process.env.DATABASE_URL,undefined,'BANK_346_EXTERNAL_DATABASE');
+    expense.assertSource(source,require('./multi-witness.cjs').final);
+    require('./migration-inputs-346.cjs')(path.join(workspace,'services/api'),source,expense);
+    assert.equal(sha(fs.readFileSync(path.join(prefix,'installer.cjs'))),expense.installerSha256,'BANK_346_INSTALLER_SHA');
+  } else if(historical) {
     historical.assertSource(source,require('./multi-witness.cjs').final);
   } else if(profile) {
     profile.assertSource(source,source.sourceSha,require('./multi-witness.cjs').final);
@@ -95,7 +110,13 @@ Promise.resolve().then(async()=>{
   }
   const {verifyNamedBank}=require('./workspace/services/api/prisma/contract-finance-owned-ci.cjs');
   const consume=async context=>{
-    if(historical) {
+    if(expense) {
+      historical.assertFinanceInstallation(receipt,{...source,tails:source.tails.slice(0,39)});
+      assert.deepEqual(receipt.expenseWitnessForward,{
+        count,ledgerSha256:source.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
+        tails:source.tails.slice(39).map(({name,sha256})=>({name,sha256}))
+      },'BANK_346_FORWARD_LEDGER');
+    } else if(historical) {
       historical.assertFinanceInstallation(receipt,source);
     } else if(profile) {
       profile.assertInstallation(receipt,source);
@@ -108,7 +129,11 @@ Promise.resolve().then(async()=>{
     }
     return verifyNamedBank(context,receipt,titles,forward?{sourceTree:source.sourceTree,count}:undefined);
   };
-  if(forward) {
+  if(expense) {
+    await withCombinedExpenseWitness(receipt,consume,{
+      sourceTree:source.sourceTree,migrations:path.join(workspace,'services/api/prisma/migrations'),tails:source.tails
+    },count);
+  } else if(forward) {
     const install=historicalSettlement334?withCombined334HistoricalSettlement:upwardArchive332?withCombined332UpwardArchive:paymentRemainder331?withCombined331PaymentRemainder:
       textDirect330?withCombined330TextAgreement:withCombined320ContractPayment;
     await install(receipt,consume,{
@@ -129,6 +154,7 @@ Promise.resolve().then(async()=>{
     assert.equal(receipt.historicalTakeoverCatalogAfterBusiness,true);
     assert.equal(receipt.historicalSettlementCatalogAfterBusiness,true);
   }
+  if(expense) assert.equal(receipt.expenseWitnessCatalogAfterBusiness,true);
   assert.equal(receipt.installOnly295.nonOwnerDenied,true);
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
