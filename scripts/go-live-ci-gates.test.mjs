@@ -442,6 +442,7 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
     ["issue422_archives", "", 0, "issue422"],
     ["issue420_approval_center", "", 0, "issue420"],
     ["issue400_financial_correction_refund", "", 0, "issue400"],
+    ["issue405_other_project_payment", "", 0, "issue405"],
     ["pol113_pol115_business_entries", "pol113_pol114", 0, "named"],
     ["pol113_pol115_business_entries", "pol115_workbench", 65],
     ["pol113_pol115_business_entries", "", 65],
