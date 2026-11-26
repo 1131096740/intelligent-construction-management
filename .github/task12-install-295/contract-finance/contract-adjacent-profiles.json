@@ -1,5 +1,6 @@
 {
   "runnerSha256": "540543e501ff906d07827bf213215e833157a15b635c25dd7d0627bd4ad4df11",
+  "draft346RunnerSha256": "9ff6b7c01aec19a9c95088fc917d7ff7c27c693350614d7d3e3ede6d12147a80",
   "profiles": {
     "settlement": {
       "verifyMode": "--contract-settlement-ci",

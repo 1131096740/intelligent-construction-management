@@ -46,7 +46,7 @@ async function main(){
   const profile=plan.profiles[lane];
   const fs=require('node:fs'),{createHash}=require('node:crypto');
   const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-  assert.equal(hash(root+'/contract-ci.cjs'),plan.runnerSha256);
+  assert.equal(hash(root+'/contract-ci.cjs'),expenseWitness&&lane==='draft'?plan.draft346RunnerSha256:plan.runnerSha256);
   if(historical) assert.equal(hash(root+'/installer.cjs'),(expenseWitness??historical).installerSha256);
   for(const file of ['task12-owned-280.test-support.ts',...profile.specs])
     assert.equal(hash(root+'/workspace/services/api/src/database/'+file),plan.fixtures[file]);
@@ -121,6 +121,7 @@ main().catch(error=>{
   receipt.failure={stage:receipt.stages.at(-1),
     code:typeof code==='string'&&/^[A-Z0-9_]+$/u.test(code)?code:'ORIGINAL_CONTRACT_ADJACENT_295_FAILED',
     sqlstate:error.sqlstate,prismaCode:error.prismaCode,migrationCause:error.migrationCause,
-    prismaOutput:error.prismaOutput,migrationLedger:error.migrationLedger,exit:error.exit};
+    prismaOutput:error.prismaOutput,migrationLedger:error.migrationLedger,exit:error.exit,
+    ...(expenseWitness&&lane==='draft'&&error.draftFailure&&{draftFailure:error.draftFailure})};
   process.exitCode=1;
 }).finally(()=>console.log(JSON.stringify(receipt)));

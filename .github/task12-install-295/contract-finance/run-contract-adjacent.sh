@@ -57,6 +57,15 @@ for(const name of ['task12-owned-280.test-support.ts',...pins.profiles[lane].spe
 }
 JS
 
+contract_runner="$prior/contract-ci.cjs"
+if [[ $lane == draft && ${6:-} == --expense-witness-346 ]]; then
+  contract_runner="$work/contract-ci.cjs"
+  install -m 0644 "$prior/contract-ci.cjs" "$contract_runner"
+  git -C "$work" apply --unidiff-zero "$plan/contract-adjacent-draft-346.runner.patch"
+  draft_runner_digest=$(node -e 'console.log(require(process.argv[1]).draft346RunnerSha256)' "$plan/contract-adjacent-profiles.json")
+  [[ $(sha256sum "$contract_runner" | cut -d' ' -f1) == "$draft_runner_digest" ]] || exit 65
+fi
+
 installer="$common/installer.cjs"
 if [[ ${6:-} == --historical-settlement-334 || ${6:-} == --expense-witness-346 ]]; then
   node "$plan/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
@@ -74,7 +83,7 @@ assert.equal(createHash('sha256').update(readFileSync(installer)).digest('hex'),
 JS
 fi
 if [[ ${7-} == --host-only ]]; then
-  for file in "$installer" "$plan/contract-adjacent-entry.cjs" "$prior/contract-ci.cjs"; do
+  for file in "$installer" "$plan/contract-adjacent-entry.cjs" "$contract_runner"; do
     node --check "$file"
   done
   printf 'CONTRACT_ADJACENT_346_HOST_READY sha=%s lane=%s material=%s\n' "$sha" "$lane" "$work"
@@ -97,7 +106,7 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
   --mount "type=bind,src=$plan/contract-adjacent-entry.cjs,dst=/qualification/contract-adjacent-entry.cjs,readonly"
-  --mount "type=bind,src=$prior/contract-ci.cjs,dst=/qualification/contract-ci.cjs,readonly"
+  --mount "type=bind,src=$contract_runner,dst=/qualification/contract-ci.cjs,readonly"
   --mount "type=bind,src=$plan/contract-adjacent-profiles.json,dst=/qualification/contract-adjacent-profiles.json,readonly")
 if [[ ${6:-} == --historical-settlement-334 || ${6:-} == --expense-witness-346 ]]; then
   for file in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
