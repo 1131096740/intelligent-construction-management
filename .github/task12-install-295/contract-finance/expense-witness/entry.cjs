@@ -85,7 +85,8 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
   assert.equal(url.searchParams.getAll('sslaccept').join(','), 'strict');
   assert.equal(url.searchParams.getAll('sslcert').join(','), path.join(workDir, 'ca.crt'));
   historical.assertFinanceInstallation(receipt, { ...source, tails: source.tails.slice(0, 39) });
-  assert.equal(receipt.expenseWitnessForward.count, 345);
+  assert.equal(receipt.expenseWitnessForward.count, profile.count);
+  assert.equal(receipt.expenseWitnessForward.sameIdentity, true);
   assert.equal(receipt.expenseWitnessForward.ledgerSha256, profile.ledgerSha256);
   const { stdout } = await sql(`SELECT (current_user=session_user AND
     current_user='jg_task01_owner' AND current_user::regrole::oid=10 AND
