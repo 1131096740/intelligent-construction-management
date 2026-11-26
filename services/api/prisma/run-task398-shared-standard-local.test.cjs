@@ -2,7 +2,7 @@
 const {test}=require("node:test");
 const assert=require("node:assert/strict");
 const fs=require("node:fs"),path=require("node:path"),{createHash}=require("node:crypto");
-const {runtimePlan,columnGrants,technicalDeleteGrant,technicalDeleteCheckSql,signatureBindingCheckSql,approvalDependencyCheckSql,cleanupOwnedContainer,containerName}=require("./run-task398-shared-standard-local.cjs");
+const {runtimePlan,columnGrants,technicalDeleteGrant,technicalDeleteCheckSql,signatureBindingCheckSql,approvalDependencyCheckSql,businessReadGrantSql,cleanupOwnedContainer,containerName}=require("./run-task398-shared-standard-local.cjs");
 const {createCiDynamicMigrationFixture}=require("./local-staged-ci-dynamic.cjs");
 
 test("names the uniquely labelled container within the existing staged migration policy",()=>{
@@ -55,7 +55,14 @@ test("the isolated shared role composes existing cash and voucher plans without 
 
 test("the signature guard can read each schema-backed candidate in the migration registry",()=>{
  const plan=runtimePlan(),migrationRoot=path.join(__dirname,"migrations"),schema=fs.readFileSync(path.join(__dirname,"schema.prisma"),"utf8");
- const models=new Set([...schema.matchAll(/^model\s+(\w+)\s*\{/gmu)].map(match=>match[1]));
+ const models=new Map([...schema.matchAll(/^model\s+(\w+)\s*\{([\s\S]*?)^\}/gmu)].map(match=>[match[1],match[2]]));
+ const businessReferences=new Set(["ContractSignedChange.appendixFormalFileId","SignedContractSettlementAttachment.fileId"]);
+ const grant=businessReadGrantSql();
+ const rule=/WHERE n\.nspname='public' AND c\.relkind IN \('r','p'\) AND NOT \(c\.relname = ANY\(ARRAY\[([^\]]+)\]\) OR c\.relname ~\* '([^']+)' OR EXISTS\(SELECT FROM information_schema\.columns col WHERE col\.table_schema=n\.nspname AND col\.table_name=c\.relname AND col\.column_name ~\* '([^']+)'\)\)/u.exec(grant);
+ assert.ok(rule,"runtime business read filter");
+ assert.match(grant,/EXECUTE format\('GRANT SELECT ON TABLE public\.%I TO jg_task01_runtime',r\.relname\)/u);
+ const excludedTables=new Set([...rule[1].matchAll(/'([^']+)'/gu)].map(match=>match[1]));
+ const sensitiveTable=new RegExp(rule[2],"iu"),sensitiveColumn=new RegExp(rule[3],"iu");
  for(const directory of fs.readdirSync(migrationRoot)){
   const file=path.join(migrationRoot,directory,"migration.sql");if(!fs.existsSync(file))continue;
   const source=fs.readFileSync(file,"utf8");if(!source.includes("jg_file_business_binding_columns"))continue;
@@ -70,9 +77,20 @@ test("the signature guard can read each schema-backed candidate in the migration
     assert.ok(!plan.runtime.tables.find(row=>row.table===match[1])?.select.includes(match[2]));
     continue;
    }
-   if(models.has(match[1]))assert.ok(plan.runtime.tables.find(row=>row.table===match[1])?.select.includes(match[2]),`${directory}: ${match[1]}.${match[2]}`);
+   const [,table,column]=match;
+   const reference=table+"."+column;
+   if(directory==="20261119007500_signed_change_and_settlement_attachment_file_binding" && businessReferences.delete(reference)){
+    const model=models.get(table);
+    assert.ok(model,reference);
+    const fields=[...model.matchAll(/^\s+(\w+)\s+\S+/gmu)].map(field=>field[1]);
+    assert.ok(fields.includes(column),reference);
+    assert.ok(!excludedTables.has(table) && !sensitiveTable.test(table) && !fields.some(name=>sensitiveColumn.test(name)),reference);
+    continue;
+   }
+   if(models.has(table))assert.ok(plan.runtime.tables.find(row=>row.table===table)?.select.includes(column),directory+": "+reference);
   }
  }
+ assert.deepEqual([...businessReferences],[],"missing signed archive registry references");
  const original=fs.readFileSync(path.join(migrationRoot,"20260728132000_contract_takeover_correction_ledger","migration.sql"),"utf8");
  const guard=original.slice(original.indexOf("CREATE OR REPLACE FUNCTION jg_has_exclusive_file_business_binding"),original.indexOf("CREATE OR REPLACE FUNCTION jg_enforce_exclusive_file_business_binding"));
  const start=guard.indexOf("AS $$")+5,end=guard.indexOf("$$;",start);
