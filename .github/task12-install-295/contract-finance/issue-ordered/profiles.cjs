@@ -36,7 +36,7 @@ const profiles = {
   issue404: {
     "file": "src/database/issue404-reimbursement.pg.spec.ts",
     "sourceDigest": "f0916a78e40070fef835509251978102531592ec7991c2769942e3feb15dce65",
-    "fixtureDigest": "9c258efa49b32693e9c300bbb6f84507977bd35a1c024fe0ebc6d85a3687b707",
+    "fixtureDigest": "17b83246c6b1ca70ff60d81af0026774843201349803a96edef3b45f8e0e6c88",
     "orderedDatabaseKey": "JG_ISSUE404_ORDERED_344_DATABASE",
     "databaseUrlKey": "ISSUE404_DATABASE_URL",
     "enableKey": "ISSUE404_REIMBURSEMENT_RUN",

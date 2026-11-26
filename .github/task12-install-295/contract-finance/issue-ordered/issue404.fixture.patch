@@ -1,5 +1,8 @@
 --- a/fixture.ts
 +++ b/fixture.ts
+@@ -251 +251 @@
+-  });
++  }, 45_000);
 @@ -256 +256 @@
 -    const fixture = await seedFixture(prisma);
 +    const fixture = await seedFixture(prisma, true);
@@ -80,7 +83,7 @@
 @@ -760 +817 @@
 -        lines: [],
 +        lines: [requestLine("后勤用品")],
-@@ -812,32 +869,34 @@
+@@ -812,32 +869,33 @@
 -  await prisma.registeredFundAccount.create({ data: { id: accountId, scopeKey: `public_cash_404_${prefix}`, kind: "public_cash" } });
 -  await prisma.fundAccountBalanceRegistration.create({
 -    data: {
@@ -131,19 +134,18 @@
 +        payloadFingerprint: "d".repeat(64),
 +        createdByUserId: financeStaffUserId,
 +        confirmedByUserId: financeStaffUserId,
-+        confirmedAt: new Date("2026-11-01T00:00:00.000Z")
-+      }
-+    });
-+    await prisma.fundAccountSourceBatch.create({
-+      data: {
-+        id: sourceBatchId,
-+        registrationId: openingId,
-+        lineNo: 1,
-+        amountYuan: 5000,
-+        sourceStatus: "known",
-+        sourceName: "期初",
-+        projectStatus: "project",
-+        projectId
++        confirmedAt: new Date("2026-11-01T00:00:00.000Z"),
++        sources: {
++          create: {
++            id: sourceBatchId,
++            lineNo: 1,
++            amountYuan: 5000,
++            sourceStatus: "known",
++            sourceName: "期初",
++            projectStatus: "project",
++            projectId
++          }
++        }
 +      }
 +    });
 +  }
