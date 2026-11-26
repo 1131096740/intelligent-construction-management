@@ -285,6 +285,20 @@ test("334 routes both original Task398 browser groups without combining their ev
   }
 });
 
+test("334 routes the original Task410 company proxy repayment group on its own", () => {
+  const group = loadManifest().coveredGroups.find(item => item.id === "task410_company_proxy_repayment");
+  const sha = "e".repeat(40);
+  assert.equal(group.pendingTests, 6);
+  assert.deepEqual(group.testFiles.map(file => [file.path, file.pendingTests]), [
+    ["services/api/src/database/company-proxy-repayment.http.pg.spec.ts", 5],
+    ["services/api/src/expense-claim/expense-claim-registered-payment.http.pg.spec.ts", 1],
+  ]);
+  const resolved = resolveGroupCommand(group, { candidateSha: sha, migrationCount: 334 });
+  assert.equal(resolved.command, "bash");
+  assert.match(resolved.args[0], /run-contract-adjacent-ci[.]sh$/u);
+  assert.deepEqual(resolved.args.slice(1), [sha, "company-proxy", "--historical-settlement-334"]);
+});
+
 test("334 routes the original POL109 database, HTTP and browser lane", () => {
   const group = loadManifest().coveredGroups.find(item => item.id === "project_close_profit_pol109");
   assert.equal(group.pendingTests, 4);
