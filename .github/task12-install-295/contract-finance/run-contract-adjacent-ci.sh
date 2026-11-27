@@ -43,7 +43,7 @@ if [[ ${3-} == --company-history-352 ]]; then
   [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
   [[ $# == 3 || ( $# == 4 && $4 == --host-only ) ]] || exit 64
   company_352=true
-  if [[ $2 != settlement && $2 != template && $2 != draft && $2 != v7 && $2 != invoice && $2 != pol279 && $2 != pol280 ]]; then
+  if [[ $2 != settlement && $2 != template && $2 != draft && $2 != v7 && $2 != invoice && $2 != pol279 && $2 != pol280 && $2 != expense-execution && $2 != expense-finance && $2 != expense-receipt ]]; then
     scopes=$(node - "$plan/issue-ordered/profiles.cjs" "$2" <<'JS'
 const [file,lane]=process.argv.slice(2);
 const {issueOrderedScopes352}=require(file);
@@ -145,6 +145,7 @@ if [[ ${4-} == --host-only || ( $signed_350 == true && $lane == pol275 && ${5-} 
     case "$lane" in
       settlement|template|draft) bash "$plan/run-contract-adjacent.sh" "$root" "$work/source" "$sha" "$work" "$lane" "$3" --host-only ;;
       v7|invoice|pol279|pol280) bash "$plan/run-finance-adjacent.sh" "$root" "$work/source" "$sha" "$work" "$lane" "$3" --host-only ;;
+      expense-execution|expense-finance|expense-receipt) bash "$plan/run-expense.sh" "$root" "$work/source" "$sha" "$work" "${lane#expense-}" "$3" --host-only ;;
     esac
   elif [[ $signed_350 == true ]]; then
     case "$lane" in
