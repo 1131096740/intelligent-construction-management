@@ -246,28 +246,36 @@ CREATE CONSTRAINT TRIGGER "OperatingFact_reimbursement_exact_impacts"
 DO $upgrade$
 DECLARE
   routine oid := 'public."validateOperatingFactReferences"()'::regprocedure;
-  body_before text;
-  definition text;
+  before_row record;
+  body_after text;
   scope_before constant text := 'AND NEW."historicalTakeoverBatchId" IS NULL AND NEW."numericProtocolVersion" = 1';
   amount_before constant text := 'AND expense."requestedAmountCents" = NEW."amountCents"';
 BEGIN
-  SELECT p.prosrc, pg_get_functiondef(p.oid) INTO STRICT body_before, definition
+  SELECT p.prosrc, pg_get_functiondef(p.oid) AS definition, to_jsonb(p) - 'prosrc' AS metadata
+  INTO STRICT before_row
   FROM pg_proc p WHERE p.oid = routine
     AND p.proowner = current_user::regrole::oid;
-  IF encode(sha256(convert_to(body_before, 'UTF8')), 'hex') NOT IN (
-      'bcc05db15d2a1e2679e9887475a110ffc7cc5b08e423e0b737195ee74f63c4a6',
-      '61ea7834175ed793857205130b5cd33b163a4fad7d762d93ef46d45bbedbcaeb',
+  -- The 346 catalog admits two ordinary predecessors and a prepared registered-payment path.
+  IF encode(sha256(convert_to(before_row.prosrc, 'UTF8')), 'hex') NOT IN (
+      '1235c355fa2777269b1920f9922401a357a725039f14e3321e00b5a3d338c973',
+      '92f6f3e2e3e0f58bca1d00b5c631c0dd652b5552992dda991da3564429dc4644',
       'f38dd0f9c476f613c16a73a7d4c52733effe50585bcf5f15b0e4c96a9437a987'
-    ) OR cardinality(string_to_array(body_before, scope_before)) <> 2
-      OR cardinality(string_to_array(body_before, amount_before)) <> 2
+    ) OR cardinality(string_to_array(before_row.prosrc, scope_before)) <> 2
+      OR cardinality(string_to_array(before_row.prosrc, amount_before)) <> 2
+      OR cardinality(string_to_array(before_row.definition, before_row.prosrc)) <> 2
   THEN
     RAISE EXCEPTION 'REIMBURSEMENT_EXACT_COST_BEARER_PREIMAGE' USING ERRCODE = '55000';
   END IF;
-  EXECUTE replace(definition, body_before, replace(replace(body_before, scope_before,
+  body_after := replace(replace(before_row.prosrc, scope_before,
     'AND NEW."historicalTakeoverBatchId" IS NULL AND NEW."numericProtocolVersion" IN (1,2)'), amount_before,
     'AND ((NEW."numericProtocolVersion" = 1 AND expense."requestedAmountCents" = NEW."amountCents")
       OR (NEW."numericProtocolVersion" = 2 AND expense."claimType" = ''reimbursement''
-        AND expense."requestedAmountYuan" = NEW."amountYuan"))'));
+        AND expense."requestedAmountYuan" = NEW."amountYuan"))');
+  EXECUTE replace(before_row.definition, before_row.prosrc, body_after);
+  IF NOT EXISTS (SELECT FROM pg_proc p WHERE p.oid = routine AND p.prosrc = body_after
+    AND (to_jsonb(p) - 'prosrc') = before_row.metadata) THEN
+    RAISE EXCEPTION 'REIMBURSEMENT_EXACT_COST_BEARER_POSTIMAGE' USING ERRCODE = '55000';
+  END IF;
 END;
 $upgrade$;
 
