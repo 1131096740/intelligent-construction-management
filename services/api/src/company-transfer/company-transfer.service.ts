@@ -9,7 +9,7 @@ import { AuditService } from "../audit/audit.service";
 import { ledgerApprovalFacts } from "../approval/ledger-approval-facts";
 import { snapshotApprovalSignature, withApprovalIdentity } from "../approval/approval-signature-snapshot";
 import { resolveApprovalReviewIdentity } from "../approval/approval-review-identity";
-import type { RoleKey } from "@jiangkong/shared-domain";
+import { chinaDateOnly, type RoleKey } from "@jiangkong/shared-domain";
 import { acquireFileBusinessBindingTransactionLock } from "../file/file-business-binding";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
@@ -191,8 +191,16 @@ const r = await tx.contractProxyExecution.findUnique({ where: { id: input.origin
     if (result.status==="approved") void this.notifications?.afterCommit();
     return result;
   }
-  async execute(actor: string, id: string, input: { kind: "outgoing" | "incoming" | "returned"; outgoingEventId?: string; observationId: string; idempotencyKey: string; confirmationPassword: string }) {
-    if (!input || !["outgoing", "incoming", "returned"].includes(input.kind) || !input.observationId || !input.idempotencyKey) throw new BadRequestException("请选择实际银行流水及收付动作"); await this.auth.confirmPassword(actor, input.confirmationPassword);
+  async execute(actor: string, id: string, input: { kind: "outgoing" | "incoming" | "returned" | "settled_return"; outgoingEventId?: string; incomingEventId?: string; reason?: string; observationId: string; idempotencyKey: string; confirmationPassword: string }) {
+    if (!input || !["outgoing", "incoming", "returned", "settled_return"].includes(input.kind) || !input.observationId || !input.idempotencyKey) throw new BadRequestException("请选择实际银行流水及收付动作");
+    const settledReturn = input.kind === "settled_return";
+    const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+    if (settledReturn && (typeof input.observationId !== "string" || typeof input.idempotencyKey !== "string" ||
+      typeof input.incomingEventId !== "string" || !input.incomingEventId ||
+      input.outgoingEventId !== undefined || !reason || reason.length > 2000)) {
+      throw new BadRequestException("请选择原代还到账并填写退款或银行退回原因");
+    }
+    await this.auth.confirmPassword(actor, input.confirmationPassword);
     const result = await this.prisma.$transaction(async tx => {
       const initial = await tx.companyTransfer.findUnique({ where: { id } }); if (!initial) throw new NotFoundException("互转申请不存在"); const canRegisterProxyOutgoing = input.kind === "outgoing" && initial.requiresParallelRepaymentApproval &&
         (await companyTransferRoles(tx, actor)).includes("comprehensive_director") &&
@@ -206,8 +214,23 @@ const r = await tx.contractProxyExecution.findUnique({ where: { id: input.origin
       const thirdPartyPayer = input.kind === "outgoing" && row.kind === "repayment" && !!row.repaymentDebtorCompanyId && row.repaymentDebtorCompanyId !== row.sourceCompanyId;
       await this.company(tx, companyId, project, observation.occurredAt, row.kind === "repayment" && !thirdPartyPayer, !thirdPartyPayer);
       const proof = await tx.contractBankVerificationRequest.findFirst({ where: { observationId: observation.id } });
-      if (!proof || proof.status !== "confirmed" || proof.companyEntityId !== companyId || proof.projectId !== project || proof.accountHash !== (input.kind === "incoming" ? row.destinationAccountHash : row.sourceAccountHash) || observation.direction !== (input.kind === "outgoing" ? "outflow" : "inflow")) throw new BadRequestException("流水开户公司、资金归属、银行账号或方向与批准申请不一致");
+      if (!proof || settledReturn && observation.holderCompanyEntityId !== companyId || proof.status !== "confirmed" || proof.companyEntityId !== companyId || proof.projectId !== project || proof.accountHash !== (input.kind === "incoming" ? row.destinationAccountHash : row.sourceAccountHash) || observation.direction !== (input.kind === "outgoing" ? "outflow" : "inflow")) throw new BadRequestException("流水开户公司、资金归属、银行账号或方向与批准申请不一致");
       const events = await tx.companyTransferEvent.findMany({ where: { transferId: id } });
+      const receipt = settledReturn ? events.find(e => e.kind === "incoming" && e.id === input.incomingEventId) : undefined;
+      if (settledReturn) {
+        if (!receipt || row.kind !== "repayment" || !row.repaymentDebtorCompanyId ||
+          row.repaymentDebtorCompanyId === row.sourceCompanyId) {
+          throw new BadRequestException("请选择该笔第三家公司代还的已到账记录");
+        }
+        if (await tx.paymentExecutionRefund.findUnique({ where: { idempotencyKey: input.idempotencyKey }, select: { id: true } })) {
+          throw new ConflictException("操作凭据已用于其他退款");
+        }
+        const returned = events.filter(e => e.returnedIncomingEventId === receipt.id).reduce((n, e) => n + e.amountCents, 0n);
+        if (observation.occurredAt < receipt.occurredAt || chinaDateOnly(observation.occurredAt) > chinaDateOnly() ||
+          returned + observation.amountCents > receipt.amountCents) {
+          throw new ConflictException("退款或银行退回超过原到账剩余额度，或发生日期不符");
+        }
+      }
       if (input.kind === "outgoing") {
         if (row.kind === "repayment") {
           const [scope] = row.originalTransferId ? await tx.$queryRaw<Array<{ isolated: boolean }>>`
@@ -232,15 +255,47 @@ const r = await tx.contractProxyExecution.findUnique({ where: { id: input.origin
           throw new ConflictException("出款超过批准额度或错误关联原出款");
         }
       }
-      else { const original = events.find(e => e.id === input.outgoingEventId && e.kind === "outgoing"); if (!original || original.recordedByUserId === actor) throw new ForbiddenException("请选择原出款，并由另一位财务独立核对"); if (observation.occurredAt < original.occurredAt || events.filter(e => e.outgoingEventId === original.id).reduce((n, e) => n + e.amountCents, 0n) + observation.amountCents > original.amountCents) throw new ConflictException("到账或退回超过原出款剩余额度，或发生日期早于出款"); }
+      else {
+        const original = events.find(e => e.id === (receipt?.outgoingEventId ?? input.outgoingEventId) && e.kind === "outgoing");
+        if (!original || original.recordedByUserId === actor) throw new ForbiddenException("请选择原出款，并由另一位财务独立核对");
+        const reconciled = events.filter(e => e.outgoingEventId === original.id && !e.returnedIncomingEventId)
+          .reduce((n, e) => n + e.amountCents, 0n);
+        if (!settledReturn && (observation.occurredAt < original.occurredAt || reconciled + observation.amountCents > original.amountCents)) {
+          throw new ConflictException("到账或退回超过原出款剩余额度，或发生日期早于出款");
+        }
+      }
       const claimed = [await tx.bankTransactionClaim.count({ where: { observationId: observation.id } }), await tx.contractBankEventClaim.count({ where: { observationId: observation.id } }), await tx.contractProxyBankClaim.count({ where: { observationId: observation.id } }), await tx.companyTransferBankClaim.count({ where: { observationId: observation.id } })]; if (claimed.some(Boolean)) throw new ConflictException("银行流水已认领，不能重复登记");
       const secret = process.env.OPERATING_LEDGER_DB_WRITE_SECRET; if (!secret) throw new ForbiddenException("互转写入密钥未配置");
-      const payload = JSON.stringify({ transferId: id, kind: input.kind, outgoingEventId: input.outgoingEventId ?? null, observationId: observation.id, amountCents: observation.amountCents.toString(), occurredAt: observation.occurredAt, recordedByUserId: actor, idempotencyKey: input.idempotencyKey, requestFingerprint: fingerprint });
+      const payload = JSON.stringify({ transferId: id, kind: settledReturn ? "returned" : input.kind, outgoingEventId: receipt?.outgoingEventId ?? input.outgoingEventId ?? null, returnedIncomingEventId: receipt?.id ?? null, observationId: observation.id, amountCents: observation.amountCents.toString(), occurredAt: observation.occurredAt, recordedByUserId: actor, idempotencyKey: input.idempotencyKey, requestFingerprint: fingerprint });
       const [event] = await tx.$queryRaw<Array<{id: string; amountCents: bigint}>>`SELECT * FROM public.append_company_transfer_event(${payload}::jsonb, ${secret})`;
       await tx.companyTransferBankClaim.create({ data: { observationId: observation.id, eventId: event.id } });
+      const correction = receipt?.outgoingEventId ? await tx.companyTransferOriginalDebtCorrection.findFirst({
+        where: { outgoingEventId: receipt.outgoingEventId, status: "confirmed" }, select: { id: true },
+      }) : null;
+      const refund = receipt ? await tx.paymentExecutionRefund.create({ data: {
+        idempotencyKey: input.idempotencyKey,
+        executionType: "company_transfer_repayment",
+        companyTransferIncomingEventId: receipt.id,
+        companyTransferReturnEventId: event.id,
+        companyTransferDebtCorrectionId: correction?.id,
+        projectId: project,
+        amountCents: event.amountCents,
+        receivedAt: new Date(chinaDateOnly(observation.occurredAt)),
+        reason,
+        evidenceReference: observation.id,
+        recordedByUserId: actor,
+        payloadFingerprint: fingerprint,
+      } }) : null;
       if (project) { await this.funding.assertPersistedProjectFundingLedgerCoverage(tx, project); await this.replay.appendConfirmedSourceIfEnabledInTransaction(tx, { projectId: project, sourceType: "company_transfer_event", sourceBusinessId: event.id }, actor); }
-      if (input.kind === "incoming" && row.originalFundMovementRelationshipId) { const root = await tx.fundMovementRelationshipEntry.findUniqueOrThrow({ where: { id: row.originalFundMovementRelationshipId } }); for (const leg of await tx.fundMovementLeg.findMany({ where: { movementId: root.movementId } })) { await this.replay.appendConfirmedSourceIfEnabledInTransaction(tx, { projectId: leg.projectId, sourceType: "company_transfer_event", sourceBusinessId: `${event.id}:relationship:${leg.id}` }, actor); } }
-      await this.audit.record(tx, { actorUserId: actor, action: `company_transfer.${input.kind}`, businessType: "company_transfer", businessId: id, metadata: { eventId: event.id, amountCents: event.amountCents.toString() } });
+      if (refund && row.destinationProjectId) {
+        if (row.destinationProjectId !== project) await this.funding.assertPersistedProjectFundingLedgerCoverage(tx, row.destinationProjectId);
+        await this.replay.appendConfirmedSourceIfEnabledInTransaction(tx, {
+          projectId: row.destinationProjectId, sourceType: "company_transfer_event",
+          sourceBusinessId: `${event.id}:refund_destination`,
+        }, actor);
+      }
+      if ((input.kind === "incoming" || refund) && row.originalFundMovementRelationshipId) { const root = await tx.fundMovementRelationshipEntry.findUniqueOrThrow({ where: { id: row.originalFundMovementRelationshipId } }); for (const leg of await tx.fundMovementLeg.findMany({ where: { movementId: root.movementId } })) { await this.replay.appendConfirmedSourceIfEnabledInTransaction(tx, { projectId: leg.projectId, sourceType: "company_transfer_event", sourceBusinessId: `${event.id}:relationship:${leg.id}` }, actor); } }
+      await this.audit.record(tx, { actorUserId: actor, action: `company_transfer.${input.kind}`, businessType: "company_transfer", businessId: id, metadata: { eventId: event.id, amountCents: event.amountCents.toString(), ...(refund && { refundId: refund.id, incomingEventId: receipt?.id, observationId: observation.id }) } });
       if (input.kind==="outgoing") await this.notifications?.queueCashDuty(tx,row,event.id,actor);
       return { id: event.id };
     }, { timeout: 30000 });

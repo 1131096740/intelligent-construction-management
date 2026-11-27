@@ -1,5 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { transferTotals } from "./company-transfer.domain";
 export type LegacyOriginalRef = { originalTransferId?: string | null; originalProxyId?: string | null; originalFundMovementRelationshipId?: string | null; originalInterEntityRelationshipId?: string | null; originalOperationalPaymentId?: string | null };
 export function originalSourceKey(ref: LegacyOriginalRef) {
   if (ref.originalTransferId) return `loan:${ref.originalTransferId}`;
@@ -54,7 +55,7 @@ export async function transferRepaymentUsage(tx: Prisma.TransactionClient, ref: 
     companyRepaymentCorrectionDelta(tx, ref),
   ]);
   return {
-    received: events.filter(e => e.kind === "incoming" && (!at || e.occurredAt <= at)).reduce((a, e) => a + e.amountCents, 0n) + receivedCorrection,
+    received: transferTotals(events.filter(e => !at || e.occurredAt <= at)).netReceived + receivedCorrection,
     reserved: requests.reduce((a, r) => a + r.amountCents, 0n) - events.filter(e => e.kind === "returned").reduce((a, e) => a + e.amountCents, 0n) + reservationCorrection,
   };
 }

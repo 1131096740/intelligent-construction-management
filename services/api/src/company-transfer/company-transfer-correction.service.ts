@@ -9,6 +9,7 @@ import { companyTransferRoles } from "./company-transfer.access";
 import { CompanyTransferReadService } from "./company-transfer-read.service";
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
 import { appendCompanyTransferCanonicalCorrection } from "./company-transfer-canonical-correction";
+import { transferTotals } from "./company-transfer.domain";
 import { originalSourceKey } from "./company-transfer-legacy";
 import { CompanyTransferNotificationService } from "./company-transfer-notification.service";
 
@@ -86,10 +87,14 @@ export class CompanyTransferCorrectionService {
       const own = key ? corrections.find(row =>
         row.requestedByUserId === actor && row.requestKey === key || row.confirmedByUserId === actor && row.confirmKey === key
       ) : undefined;
-      const received = await tx.companyTransferEvent.aggregate({
-        where: { outgoingEventId: eventId, kind: "incoming" }, _sum: { amountCents: true },
+      const events = await tx.companyTransferEvent.findMany({
+        where: { outgoingEventId: eventId },
+        select: { kind: true, amountCents: true, returnedIncomingEventId: true },
       });
-      return { ...context, corrections, confirmed, own, settled: received._sum.amountCents === context.event.amountCents };
+      const totals = transferTotals(events);
+      return { ...context, corrections, confirmed, own, settlingAmountCents: totals.netReceived,
+        settled: totals.received === context.event.amountCents && totals.netReceived > 0n };
+
     });
     const view = await this.reader.list(actor, { projectId: state.projectId });
     const typedSources = [
@@ -106,7 +111,7 @@ export class CompanyTransferCorrectionService {
       row.creditorId === state.transfer.destinationCompanyId &&
       repaymentCorrectionFamily(row.originalSource) === repaymentCorrectionFamily(state.originalSource));
     const candidates = (state.settled && !state.confirmed ? typedSources : [])
-      .filter(row => row.originalSource !== state.originalSource && BigInt(row.availableCents) >= state.event.amountCents)
+      .filter(row => row.originalSource !== state.originalSource && BigInt(row.availableCents) >= state.settlingAmountCents)
       .map(({ originalSource, reference, availableCents }) => ({ originalSource, reference, availableCents }));
     const status = (row: { status: string }) => row.status === "pending" && state.confirmed ? "superseded" : row.status;
     return {

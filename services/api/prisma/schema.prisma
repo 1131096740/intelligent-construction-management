@@ -3740,8 +3740,11 @@ model PaymentExecutionRefund {
   paymentExecutionId                String?
   spotProcurementPaymentExecutionId String?
   expenseClaimPaymentExecutionId    String?
+  companyTransferIncomingEventId    String?
+  companyTransferReturnEventId      String?  @unique
+  companyTransferDebtCorrectionId   String?
   paymentRequestId                  String?
-  projectId                         String
+  projectId                         String?
   accountId                         String?
   fundRegistrationId                String?
   amountCents                       BigInt
@@ -3756,6 +3759,12 @@ model PaymentExecutionRefund {
   spotExecution         SpotProcurementPaymentExecution? @relation("SpotPaymentExecutionRefunds", fields: [spotProcurementPaymentExecutionId], references: [id], onDelete: Restrict)
   expenseClaimExecution ExpenseClaimPaymentExecution?    @relation("ExpenseClaimPaymentExecutionRefunds", fields: [expenseClaimPaymentExecutionId], references: [id], onDelete: Restrict)
 
+  companyTransferIncomingEvent CompanyTransferEvent? @relation("CompanyTransferIncomingRefunds", fields: [companyTransferIncomingEventId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "PaymentExecutionRefund_transfer_incoming_fkey")
+  companyTransferReturnEvent CompanyTransferEvent? @relation("CompanyTransferReturnRefund", fields: [companyTransferReturnEventId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "PaymentExecutionRefund_transfer_return_fkey")
+
+  companyTransferDebtCorrection CompanyTransferOriginalDebtCorrection? @relation(fields: [companyTransferDebtCorrectionId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "PaymentExecutionRefund_transfer_correction_fkey")
+
+  @@index([companyTransferIncomingEventId, receivedAt], map: "PaymentExecutionRefund_transfer_incoming_idx")
   @@index([paymentExecutionId, receivedAt])
   @@index([spotProcurementPaymentExecutionId, receivedAt])
   @@index([expenseClaimPaymentExecutionId, receivedAt])
@@ -7670,6 +7679,11 @@ model CompanyTransferEvent {
   transferId              String
   kind                    String
   outgoingEventId         String?
+  returnedIncomingEventId String?
+  returnedIncomingEvent CompanyTransferEvent? @relation("CompanyTransferSettledReturns", fields: [returnedIncomingEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  settledReturns CompanyTransferEvent[] @relation("CompanyTransferSettledReturns")
+  incomingRefunds PaymentExecutionRefund[] @relation("CompanyTransferIncomingRefunds")
+  returnRefund PaymentExecutionRefund? @relation("CompanyTransferReturnRefund")
   observationId           String                                  @unique
   amountCents             BigInt
   occurredAt              DateTime
@@ -7680,6 +7694,7 @@ model CompanyTransferEvent {
 
   @@index([transferId, kind])
   @@index([outgoingEventId])
+  @@index([returnedIncomingEventId])
 }
 
 model CompanyTransferBankClaim {
@@ -7919,6 +7934,7 @@ model ExpensePublicCashCostLink {
 }
 
 model CompanyTransferOriginalDebtCorrection {
+  settledRefunds PaymentExecutionRefund[]
   id                   String               @id
   outgoingEventId      String
   originalSource       String

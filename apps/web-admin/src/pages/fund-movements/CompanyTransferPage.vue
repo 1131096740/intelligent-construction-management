@@ -158,7 +158,7 @@ async function loadTransferDetail() {
   }
 }
 function originalChanged(){const legacy=data.value?.legacyOptions.find(r=>`${r.legacyType}:${r.id}`===form.original);if(legacy)Object.assign(form,{sourceCompanyId:legacy.sourceCompanyId,destinationCompanyId:legacy.destinationCompanyId,repaymentDebtorCompanyId:legacy.sourceCompanyId,sourceProjectId:legacy.sourceProjectId,destinationProjectId:legacy.destinationProjectId});const [kind,id]=form.original.split(":");const loan=data.value?.originalLoans.find(r=>r.id===id),proxy=data.value?.originalProxies.find(r=>r.id===id);if(kind==="loan"&&loan)Object.assign(form,{sourceCompanyId:loan.destinationCompanyId,destinationCompanyId:loan.sourceCompanyId,repaymentDebtorCompanyId:loan.destinationCompanyId,sourceProjectId:loan.destinationProjectId??"",destinationProjectId:loan.sourceProjectId??""});if(kind==="proxy"&&proxy)Object.assign(form,{sourceCompanyId:proxy.source.debtor.id,destinationCompanyId:proxy.source.actualPayer.id,repaymentDebtorCompanyId:proxy.source.debtor.id,sourceProjectId:proxy.projectId,destinationProjectId:proxy.projectId});}
-async function start(action:string,row:TransferRow|null=null,fromOriginal=false){fixedOriginal.value=fromOriginal;approvalDuty.value=null;selected.value=row;password.value="";comment.value="";bank.value="";outgoing.value="";file.value=null;fileId.value="";form.sourceAccount="";form.destinationAccount="";key=crypto.randomUUID();mode.value=action;if(row&&["outgoing","incoming","returned"].includes(action)){try{banks.value=await fetchCompanyTransferBanks(row.id,action);}catch(e){error.value=formatUnknownApiError(e,"银行流水读取失败");}}}
+async function start(action:string,row:TransferRow|null=null,fromOriginal=false){fixedOriginal.value=fromOriginal;approvalDuty.value=null;selected.value=row;password.value="";comment.value="";bank.value="";outgoing.value="";file.value=null;fileId.value="";form.sourceAccount="";form.destinationAccount="";key=crypto.randomUUID();mode.value=action;if(row&&["outgoing","incoming","returned","settled_return"].includes(action)){try{banks.value=await fetchCompanyTransferBanks(row.id,action);}catch(e){error.value=formatUnknownApiError(e,"银行流水读取失败");}}}
 function choose(e:Event){file.value=(e.target as HTMLInputElement).files?.[0]??null;fileId.value="";}
 async function save() {
   if (busy.value) return;
@@ -202,7 +202,10 @@ async function save() {
       });
     } else {
       await executeCompanyTransferWithCapability(selected.value!.id, {
-        kind: mode.value, observationId: bank.value, outgoingEventId: outgoing.value || undefined,
+        kind: mode.value, observationId: bank.value,
+        ...(mode.value === "settled_return"
+          ? { incomingEventId: outgoing.value, reason: comment.value }
+          : { outgoingEventId: outgoing.value || undefined }),
         idempotencyKey: key, confirmationPassword: password.value,
       });
     }
@@ -321,7 +324,9 @@ async function downloadPrivateFileByTicketWithCapability(arg0: Parameters<typeof
       <t-button v-if="r.canApprove" @click="start('approve',r)">终审通过</t-button><t-button v-if="r.canApprove" variant="outline" @click="start('reject',r)">退回申请</t-button>
       </template>
       <t-button v-if="r.canWithdraw" variant="outline" @click="start('withdraw',r)">撤回申请</t-button>
-      <template v-if="r.canExecute"><t-button v-if="BigInt(r.sentCents)<BigInt(r.amountCents)" @click="start('outgoing',r)">登记实际出款</t-button><t-button v-if="r.events.some(e=>e.canReconcile&&BigInt(e.remainingCents)>0n)" @click="start('incoming',r)">独立确认到账</t-button><t-button v-if="r.events.some(e=>e.canReconcile&&BigInt(e.remainingCents)>0n)" variant="outline" @click="start('returned',r)">登记未到账退回</t-button></template>
+      <template v-if="r.canExecute"><t-button v-if="BigInt(r.sentCents)<BigInt(r.amountCents)" @click="start('outgoing',r)">登记实际出款</t-button><t-button v-if="r.events.some(e=>e.canReconcile&&BigInt(e.remainingCents)>0n)" @click="start('incoming',r)">独立确认到账</t-button><t-button v-if="r.events.some(e=>e.canReconcile&&BigInt(e.remainingCents)>0n)" variant="outline" @click="start('returned',r)">登记未到账退回</t-button>
+        <t-button v-if="r.events.some(e=>e.canRefund&&BigInt(e.remainingCents)>0n)" variant="outline" @click="start('settled_return',r)">登记到账后退回</t-button>
+      </template>
       <MultiDutySmsStatusPanel
         v-if="auth.user?.id && (r.canApprove || r.canExecute)"
         :key="`${auth.user.id}:${r.id}:${r.status}:${r.sentCents}:${r.inTransitCents}`"
@@ -329,7 +334,7 @@ async function downloadPrivateFileByTicketWithCapability(arg0: Parameters<typeof
         :business-id="r.id"
       />
       <div v-for="event in r.events" :key="event.id">
-        <p>{{ event.kind === 'outgoing' ? '出款' : event.kind === 'incoming' ? '到账' : '未到账退回' }}
+        <p>{{ event.kind === 'outgoing' ? '出款' : event.kind === 'incoming' ? '到账' : event.kind === 'settled_return' ? '到账后退回' : '未到账退回' }}
           {{ money(event.amountCents) }} 元 · {{ new Date(event.occurredAt).toLocaleDateString('zh-CN') }}</p>
         <t-button
           v-if="r.canReadOriginalDebtCorrections && r.approvalFlow === 'proxy_repayment_parallel' && event.kind === 'outgoing'"
@@ -375,7 +380,13 @@ async function downloadPrivateFileByTicketWithCapability(arg0: Parameters<typeof
           <t-button v-if="selected?.evidenceFileId" variant="outline" @click="evidence(selected)">查看申请依据</t-button>
         </template>
         <template v-else>
-          <t-form-item v-if="mode!=='outgoing'" label="对应出款（须由另一位财务确认）"><t-select :popup-props="transferSelectPopupProps" v-model="outgoing" :options="(selected?.events??[]).filter(e=>e.canReconcile&&BigInt(e.remainingCents)>0n).map(e=>({value:e.id,label:`${new Date(e.occurredAt).toLocaleDateString('zh-CN')} · 尚待核对 ${money(e.remainingCents)} 元`}))" /></t-form-item>
+          <template v-if="mode==='settled_return'">
+            <t-form-item label="原代还到账">
+              <t-select :popup-props="transferSelectPopupProps" v-model="outgoing" :options="(selected?.events??[]).filter(e=>e.canRefund&&BigInt(e.remainingCents)>0n).map(e=>({value:e.id,label:`${new Date(e.occurredAt).toLocaleDateString('zh-CN')} · 尚可退回 ${money(e.remainingCents)} 元`}))" />
+            </t-form-item>
+            <t-form-item label="退款或银行退回原因"><t-textarea v-model="comment" /></t-form-item>
+          </template>
+          <t-form-item v-else-if="mode!=='outgoing'" label="对应出款（须由另一位财务确认）"><t-select :popup-props="transferSelectPopupProps" v-model="outgoing" :options="(selected?.events??[]).filter(e=>e.canReconcile&&BigInt(e.remainingCents)>0n).map(e=>({value:e.id,label:`${new Date(e.occurredAt).toLocaleDateString('zh-CN')} · 尚待核对 ${money(e.remainingCents)} 元`}))" /></t-form-item>
           <t-form-item label="已核验且未认领的实际银行流水"><t-select :popup-props="transferSelectPopupProps" v-model="bank" :options="banks" /></t-form-item>
         </template>
         <t-form-item label="当前登录密码"><t-input v-model="password" type="password" autocomplete="current-password" /></t-form-item>

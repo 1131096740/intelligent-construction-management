@@ -18,3 +18,20 @@ it("第三家公司代还后原债务人欠代还公司，旧借款应收减少�
   expect(result.find(row => row.companyId === "b")).toMatchObject({ receivableCents: "0", cashChangeCents: "0" });
   expect(result.find(row => row.companyId === "c")).toMatchObject({ receivableCents: "800", onBehalfReceivableCents: "800", cashChangeCents: "-800" });
 });
+
+it("到账后部分退款恢复原借款并冲减代还新债，在途金额不变", () => {
+  const original = { ...loan, id: "original", sourceCompanyId: "b", destinationCompanyId: "a", destinationProjectId: "p" };
+  const repayment = { ...loan, id: "repayment", kind: "repayment", sourceCompanyId: "c", destinationCompanyId: "b",
+    destinationProjectId: "p", repaymentDebtorCompanyId: "a", originalTransferId: "original" };
+  const legs = [
+    { transferId: "original", kind: "outgoing", amountCents: 800n },
+    { transferId: "original", kind: "incoming", amountCents: 800n },
+    { transferId: "repayment", kind: "outgoing", amountCents: 800n },
+    { transferId: "repayment", kind: "incoming", amountCents: 800n },
+    { transferId: "repayment", kind: "returned", returnedIncomingEventId: "receipt", amountCents: 300n },
+  ] as CompanyTransferEvent[];
+  const result = summarizeCompanyTransfers([original, repayment], legs, { includeOwn: false });
+  expect(result.find(row => row.companyId === "a")).toMatchObject({ payableCents: "800", onBehalfPayableCents: "500" });
+  expect(result.find(row => row.companyId === "b")).toMatchObject({ receivableCents: "300", cashChangeCents: "-300" });
+  expect(result.find(row => row.companyId === "c")).toMatchObject({ receivableCents: "500", cashChangeCents: "-500", inTransitCents: "0" });
+});

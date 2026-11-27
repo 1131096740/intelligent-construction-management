@@ -9,10 +9,10 @@ export function summarizeCompanyTransfers(rows: CompanyTransfer[], events: Compa
   for (const r of rows) {
     const t = transferTotals(events.filter(e => e.transferId === r.id)), parties = r.frozenParties as { source: { name: string }; destination: { name: string }; debtor?: { name: string } }, source = side(r.sourceCompanyId, r.sourceProjectId, parties.source.name), dest = side(r.destinationCompanyId, r.destinationProjectId, parties.destination.name);
     const thirdParty = r.kind === "repayment" && !!r.repaymentDebtorCompanyId && r.repaymentDebtorCompanyId !== r.sourceCompanyId;
-    const netReceived = t.received;
+    const netReceived = t.netReceived;
     const debtor = thirdParty ? side(r.repaymentDebtorCompanyId!, r.sourceProjectId, parties.debtor?.name ?? "原债务公司") : source;
     if (source) { source.cashChangeCents += -t.sent + t.returned; source.inTransitCents += t.inTransit; }
-    if (dest) dest.cashChangeCents += t.received;
+    if (dest) dest.cashChangeCents += netReceived;
     if (thirdParty) {
       // The payer settles the old A-B debt and becomes A's new creditor. Only the
       // received amount creates the A-C debt, and the same payment is never

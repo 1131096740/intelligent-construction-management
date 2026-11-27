@@ -23,6 +23,7 @@ const DRAFT_DELETION_ACTION_LABELS: Record<string, string> = {
 };
 
 const AUDIT_ACTION_LABELS: Record<string, string> = {
+  "company_transfer.settled_return": "登记代还到账后退款或退回",
   "fund_account.opening.register": "登记资金期初余额",
   "fund_account.correction.request": "申请余额核对更正",
   "fund_account.correction.withdraw": "撤回余额核对更正",

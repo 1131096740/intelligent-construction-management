@@ -1,6 +1,12 @@
 import "reflect-metadata";
 import { createHash, randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
+import { AuditService } from "../audit/audit.service";
+import { CompanyTransferService } from "../company-transfer/company-transfer.service";
+import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
+import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
+import { OperatingSourceAdapterRegistry } from "../operating-ledger/operating-source-adapter";
+import { OperatingSourceReplayService } from "../operating-ledger/operating-source-replay.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { CompanyTransferReadService } from "../company-transfer/company-transfer-read.service";
 import { CompanyTransferOperatingSourceAdapter } from "../company-transfer/company-transfer-operating-source.adapter";
@@ -159,6 +165,134 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
     await payerVerification(c, "丙合成公司");
   }, 120_000);
   afterAll(async () => { await prisma?.$disconnect(); });
+
+  const settledReturnCase = process.env.RUN_ISSUE435_SETTLED_RETURN === "1" ? it : it.skip;
+  settledReturnCase("issue 435 posts pre-arrival and settled returns, restores both debts, and rolls back a failed posting", async () => {
+    const projectId = a.projectId;
+    const accountA = "6222000011111111", accountB = "6222000022222222", accountC = "6222000033333333";
+    const verification = async (companyId: string) => (await prisma.paymentExecutionPayerVerification.findFirstOrThrow({
+      where: { holderCompanyEntityId: companyId },
+    })).id;
+    const [verificationA, verificationB, verificationC] = await Promise.all([a, b, c].map(company => verification(company.companyId)));
+    for (const [company, name] of [[a, "甲合成公司"], [b, "乙合成公司"], [c, "丙合成公司"]] as const) {
+      const version = await prisma.companyEntityVersion.findFirstOrThrow({ where: { companyEntityId: company.companyId } });
+      await prisma.projectParticipatingCompany.create({ data: {
+        projectId, companyEntityId: company.companyId, companyEntityVersionId: version.id,
+        companyNameSnapshot: name, companyCreditCodeSnapshot: company.companyCreditCode,
+        effectiveFrom: new Date("2026-07-01"), changeReason: "隔离合成项目参与公司", addedByUserId: financeDirector,
+      } });
+    }
+    const visibility = new ProjectVisibilityService(prisma as never);
+    const replay = new OperatingSourceReplayService(prisma as never, new OperatingLedgerService(prisma as never),
+      new OperatingSourceAdapterRegistry([new CompanyTransferOperatingSourceAdapter()]));
+    const audit = new AuditService(prisma as never);
+    const service = new CompanyTransferService(prisma as never, visibility,
+      { confirmPassword: async () => {} } as never, audit, new ProjectFundingAvailabilityService(), replay);
+    const reader = new CompanyTransferReadService(prisma as never, visibility);
+
+    const verifyReturn = (amountCents: bigint, date: string) => prisma.$transaction(tx => observation(tx, {
+      holder: c, name: "丙合成公司", projectId, account: accountC, direction: "inflow",
+      amountCents, occurredAt: new Date(date), actor: financeDirector, payerVerificationId: verificationC,
+    }));
+    const settleLoan = async (amountCents: bigint) => {
+      const loan = await createTransfer({ kind: "loan", source: b, destination: a, amountCents, parallel: false,
+        sourceAccount: accountB, destinationAccount: accountA });
+      const sent = await event(loan, "outgoing", b, accountB, amountCents, new Date("2026-08-01"), financeStaff, verificationB);
+      await event(loan, "incoming", a, accountA, amountCents, new Date("2026-08-02"), financeDirector, verificationA, sent);
+      const transfer = await createTransfer({ kind: "repayment", source: c, destination: b, amountCents, parallel: false,
+        repaymentDebtorCompanyId: a.companyId, original: { originalTransferId: loan }, sourceAccount: accountC, destinationAccount: accountB });
+      const outgoing = await event(transfer, "outgoing", c, accountC, amountCents, new Date("2026-08-10"), financeStaff, verificationC);
+      return { loan, transfer, outgoing };
+    };
+    const original = await settleLoan(800n);
+    const incoming = await event(original.transfer, "incoming", b, accountB, 800n, new Date("2026-08-11"), financeDirector, verificationB, original.outgoing);
+    const password = "synthetic-test";
+    const refundCommand = (observationId: string) => ({
+      kind: "settled_return" as const, observationId, incomingEventId: incoming, reason: "隔离合成到账后退款",
+      confirmationPassword: password, idempotencyKey: randomUUID(),
+    });
+    const paymentCount = await prisma.paymentExecution.count();
+    const first = refundCommand(await verifyReturn(300n, "2026-08-12"));
+    const [applied, replayed] = await Promise.all([
+      service.execute(financeDirector, original.transfer, first),
+      service.execute(financeDirector, original.transfer, first),
+    ]);
+    expect(replayed).toEqual(applied);
+    const recorded = await prisma.paymentExecutionRefund.findUniqueOrThrow({ where: { companyTransferReturnEventId: applied.id } });
+    expect(recorded).toMatchObject({
+      executionType: "company_transfer_repayment", companyTransferIncomingEventId: incoming, amountCents: 300n,
+      paymentExecutionId: null, paymentRequestId: null, evidenceReference: first.observationId,
+    });
+    expect(await prisma.companyTransferBankClaim.findUnique({ where: { observationId: first.observationId } }))
+      .toMatchObject({ eventId: applied.id });
+    await expect(prisma.paymentExecutionRefund.update({
+      where: { id: recorded.id }, data: { reason: "改写已确认退款" },
+    })).rejects.toThrow(/payment_execution_refund_is_append_only/);
+    await expect(prisma.paymentExecutionRefund.delete({ where: { id: recorded.id } }))
+      .rejects.toThrow(/payment_execution_refund_is_append_only/);
+    await expect(prisma.paymentExecutionRefund.create({ data: {
+      ...recorded, id: randomUUID(), idempotencyKey: randomUUID(),
+    } })).rejects.toThrow("正式经营账必须通过受控写入函数登记");
+    const auditRows = await prisma.auditLog.findMany({ where: { action: "company_transfer.settled_return", businessId: original.transfer } });
+    expect(auditRows).toHaveLength(1);
+    expect(auditRows[0]).toMatchObject({ actorUserId: financeDirector, metadata: { eventId: applied.id, refundId: recorded.id, incomingEventId: incoming } });
+
+    const historical = await reader.list(financeDirector, { projectId, asOf: "2026-08-11" });
+    expect(historical.originalLoans.find(row => row.id === original.loan)?.remainingCents).toBe("0");
+    expect(historical.balances.find(row => row.companyId === c.companyId)?.onBehalfReceivableCents).toBe("800");
+    const view = await reader.list(financeDirector, { projectId });
+    expect(view.rows.find(row => row.id === original.transfer)).toMatchObject({ receivedCents: "800", returnedCents: "300", inTransitCents: "0", events: expect.arrayContaining([
+      expect.objectContaining({ id: incoming, canRefund: true, remainingCents: "500" }),
+      expect.objectContaining({ id: applied.id, kind: "settled_return" }),
+    ]) });
+    expect(view.originalLoans.find(row => row.id === original.loan)).toMatchObject({ remainingCents: "300", availableCents: "300" });
+    expect(view.balances.find(row => row.companyId === b.companyId)).toMatchObject({ receivableCents: "300", cashChangeCents: "-300" });
+    expect(view.balances.find(row => row.companyId === c.companyId)).toMatchObject({ receivableCents: "500", cashChangeCents: "-500" });
+
+    const impacts = await prisma.operatingImpactEntry.findMany({
+      where: { sourceType: "company_transfer_event", sourceBusinessId: { in: [applied.id, `${applied.id}:refund_destination`] } },
+    });
+    expect(impacts).toHaveLength(3);
+    expect(impacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ impactKind: "company_project_funds_increase", amountCents: 300n, subjectId: c.companyId }),
+      expect.objectContaining({ impactKind: "company_project_funds_decrease", amountCents: 300n, subjectId: b.companyId }),
+      expect.objectContaining({ impactKind: "inter_subject_balance_decrease", amountCents: 300n, subjectId: c.companyId }),
+    ]));
+
+    await expect(service.execute(financeDirector, original.transfer, refundCommand(first.observationId)))
+      .rejects.toThrow("银行流水已认领");
+    const overRefund = refundCommand(await verifyReturn(501n, "2026-08-13"));
+    await expect(service.execute(financeDirector, original.transfer, overRefund)).rejects.toThrow("超过原到账剩余额度");
+    expect(await prisma.companyTransferBankClaim.count({ where: { observationId: overRefund.observationId } })).toBe(0);
+
+    const balance = refundCommand(await verifyReturn(500n, "2026-08-13"));
+    const rejectAudit = jest.spyOn(audit, "record").mockRejectedValueOnce(new Error("隔离合成审计写入失败"));
+    await expect(service.execute(financeDirector, original.transfer, balance)).rejects.toThrow("隔离合成审计写入失败");
+    rejectAudit.mockRestore();
+    expect(await prisma.paymentExecutionRefund.count({ where: { companyTransferIncomingEventId: incoming } })).toBe(1);
+    expect(await prisma.companyTransferEvent.count({ where: { observationId: balance.observationId } })).toBe(0);
+    expect(await prisma.companyTransferBankClaim.count({ where: { observationId: balance.observationId } })).toBe(0);
+    expect(await prisma.operatingFact.count({
+      where: { sourceSnapshot: { path: ["bankObservationId"], equals: balance.observationId } },
+    })).toBe(0);
+    const full = await service.execute(financeDirector, original.transfer, balance);
+    const restored = await reader.list(financeDirector, { projectId });
+    expect(restored.originalLoans.find(row => row.id === original.loan)).toMatchObject({ remainingCents: "800", availableCents: "800" });
+    expect(restored.balances.find(row => row.companyId === c.companyId)).toMatchObject({ receivableCents: "0", payableCents: "0", cashChangeCents: "0" });
+    expect(restored.rows.find(row => row.id === original.transfer)?.events.find(row => row.id === full.id)?.kind).toBe("settled_return");
+    expect(await prisma.paymentExecution.count()).toBe(paymentCount);
+
+    const pending = await settleLoan(100n);
+    const beforeArrival = await verifyReturn(100n, "2026-08-11");
+    await service.execute(financeDirector, pending.transfer, {
+      kind: "returned", observationId: beforeArrival, outgoingEventId: pending.outgoing,
+      confirmationPassword: password, idempotencyKey: randomUUID(),
+    });
+    expect(await prisma.paymentExecutionRefund.count({ where: { evidenceReference: beforeArrival } })).toBe(0);
+    const pendingView = await reader.list(financeDirector, { projectId });
+    expect(pendingView.originalLoans.find(row => row.id === pending.loan)).toMatchObject({ remainingCents: "100", availableCents: "100" });
+    expect(pendingView.rows.find(row => row.id === pending.transfer)).toMatchObject({ receivedCents: "0", returnedCents: "100", inTransitCents: "0" });
+  });
 
   it("moves A-B debt to A-C with one payment, rejects a duplicate, and keeps the corrected net", async () => {
     const verificationA = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: a.companyId } });

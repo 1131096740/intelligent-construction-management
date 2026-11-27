@@ -12,8 +12,10 @@ export async function repaymentOwnershipDate(
   if (!event) throw new BadRequestException("互转资金事实不存在，请刷新核对");
   const transfer = await tx.companyTransfer.findUniqueOrThrow({ where: { id: event.transferId } });
   if (transfer.kind !== "repayment") return undefined;
-  if (marker && (marker !== "relationship" || !transfer.originalFundMovementRelationshipId || event.kind !== "incoming")) throw new BadRequestException("归还事实来源不正确");
-  const incoming = event.kind === "incoming";
+  const refundDestination = marker === "refund_destination" && !!event.returnedIncomingEventId;
+  if (marker && !refundDestination && (marker !== "relationship" || !transfer.originalFundMovementRelationshipId ||
+    event.kind !== "incoming" && !event.returnedIncomingEventId)) throw new BadRequestException("归还事实来源不正确");
+  const incoming = event.kind === "incoming" || refundDestination;
   const debtorCompanyId = transfer.repaymentDebtorCompanyId ?? transfer.sourceCompanyId;
   const projectId = incoming ? transfer.destinationProjectId : transfer.sourceProjectId;
   if (transfer.status !== "approved" || (marker !== "relationship" && projectId !== locator.projectId)) {
