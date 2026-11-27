@@ -5,16 +5,24 @@ append_remaining_installer() {
   local source_mode=$1
   local retained=${2:-}
   local installer="$common/installer.cjs"
-  if [[ $source_mode == expense-witness-346 ]]; then
+  if [[ $source_mode == expense-witness-346 || $source_mode == expense-witness-349 ]]; then
+    local count=${source_mode##*-}
     node "$plan/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
     installer="$work/installer.cjs"
     (cd "$work" && git apply --unidiff-zero "$plan/expense-witness/installer.patch")
+    if [[ $count == 349 ]]; then
+      (cd "$work" && git apply --unidiff-zero "$plan/expense-witness/installer-349.patch")
+    fi
     local expected
-    expected=$(node -p 'require(process.argv[1]).installerSha256' "$plan/expense-witness-346-profile.cjs")
+    expected=$(node -p 'require(process.argv[1]).installerSha256' "$plan/$source_mode-profile.cjs")
     [[ $(shasum -a 256 "$installer" | cut -d ' ' -f1) == "$expected" ]] || return 65
     if [[ $retained == retained ]]; then
-      (cd "$work" && git apply --unidiff-zero "$plan/remaining-retained-346-installer.patch")
-      expected=56f967b52054cf6d756997316a700324f2a8ac83bda6063f6fde20cd5ca0bb22
+      (cd "$work" && git apply --unidiff-zero "$plan/remaining-retained-$count-installer.patch")
+      if [[ $count == 349 ]]; then
+        expected=8b502a6438c3a8a2f3ea100775c339ddde0602d8ffbe60c197ea0ab3a437b207
+      else
+        expected=56f967b52054cf6d756997316a700324f2a8ac83bda6063f6fde20cd5ca0bb22
+      fi
       [[ $(shasum -a 256 "$installer" | cut -d ' ' -f1) == "$expected" ]] || return 65
     fi
     chmod 0644 "$installer"
@@ -22,6 +30,9 @@ append_remaining_installer() {
     for profile in upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
       args+=(--mount "type=bind,src=$plan/$profile,dst=/qualification/$profile,readonly")
     done
+    if [[ $count == 349 ]]; then
+      args+=(--mount "type=bind,src=$plan/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
+    fi
   elif [[ $source_mode == historical-settlement-334 ]]; then
     local installer_mode=$source_mode
     if [[ $retained == retained ]]; then installer_mode+=-remaining; fi
