@@ -74,6 +74,29 @@ for (const row of selected) {
   if (scope === 'spot') {
     adapted = once(adapted, 'url.pathname !== expectedDatabase ||',
       `(url.pathname !== expectedDatabase && (registeredFixture || !${owned})) ||`);
+    if (company) {
+      adapted = once(adapted, 'import "reflect-metadata";',
+        'import { ProjectService } from "../project/project.service";\nimport "reflect-metadata";');
+      adapted = once(adapted, '  function expectHttpStatus<', [
+        '  async function historicalQuota(projectId: string, session: Session, input: { idempotencyKey: string; amountCents: string; reason: string; attachmentFileId: string }) {',
+        '    const retired = await json(`/projects/${projectId}/financing-quotas`, session, "POST", input);',
+        '    expect(retired).toMatchObject({ status: 410, body: { code: "OLD_WRITE_ENTRY_RETIRED" } });',
+        '    expect(await prisma.projectFinancingQuota.count({ where: { requestIdempotencyKey: input.idempotencyKey } })).toBe(0);',
+        '    return app.get(ProjectService).requestProjectFinancingQuota(projectId, (session.user as { id: string }).id, input);',
+        '  }',
+        '',
+        '  function expectHttpStatus<'
+      ].join('\n'));
+      adapted = once(adapted,
+        'expectHttpStatus(`${label}垫资申请`, await json(`/projects/${projectId}/financing-quotas`, executor, "POST", { idempotencyKey: randomUUID(), amountCents: "100000", reason: `${label}测试垫资`, attachmentFileId: quotaFile.id }), 201).body as unknown as { quotaId: string }',
+        'await historicalQuota(projectId, executor, { idempotencyKey: randomUUID(), amountCents: "100000", reason: `${label}测试垫资`, attachmentFileId: quotaFile.id })');
+      adapted = once(adapted,
+        'const quotaRequest = expectHttpStatus("项目垫资申请", await json(`/projects/${projectIds.api}/financing-quotas`, finance, "POST", {',
+        'const quotaRequest = { body: await historicalQuota(projectIds.api, finance, {');
+      adapted = once(adapted,
+        'attachmentFileId: quotaAttachment.id\n    }), 201);',
+        'attachmentFileId: quotaAttachment.id\n    }) };');
+    }
   } else if (name === 'issue430-notification.pg.spec.ts') {
     adapted = once(adapted, '|| isOwnedIssue430NativeDatabase(url)).toBe(true)',
       `|| isOwnedIssue430NativeDatabase(url) || ${owned}).toBe(true)`);
