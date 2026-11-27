@@ -1965,6 +1965,11 @@ const businessItems = computed(() => {
   ];
 });
 
+function formatReceivable(yuan: string | null | undefined, cents: string | null | undefined) {
+  if (yuan !== undefined) return yuan === null ? "暂无数据" : `¥${yuan}`;
+  return formatCents(cents ?? null);
+}
+
 const receivablePayableItems = computed(() => {
   const operating = overview.value?.operatingProjection.operating;
   const attribution = overview.value?.operatingProjection.costAttribution;
@@ -1972,7 +1977,7 @@ const receivablePayableItems = computed(() => {
     { label: "已确认收入", value: formatCents(operating?.confirmedIncomeCents ?? null) },
     { label: "已确认成本", value: operating?.confirmedCostYuan ? `¥${operating.confirmedCostYuan}` : formatCents(operating?.confirmedCostCents ?? null) },
     ...(overview.value?.operatingProjection.relationshipTotals ?? []).filter((row) => ["inside", "outside", "unclassified", "non_contract"].includes(row.relationship)).map((row) => ({ label: `${row.label}确认成本`, value: row.confirmedCostYuan != null ? `¥${row.confirmedCostYuan}` : formatCents(row.confirmedCostCents) })),
-    { label: "对上内部应收（项目合并抵销）", value: formatCents(operating?.internalReceivableCents ?? null) },
+    { label: "对上内部应收（项目合并抵销）", value: formatReceivable(operating?.internalReceivableYuan, operating?.internalReceivableCents) },
     ...(overview.value?.operatingProjection.costAttribution?.byBearingCompany ?? []).map((row) => ({
       label: `${row.name ?? "成本承担公司"}确认成本`,
       value: row.costYuan != null ? `¥${row.costYuan}` : formatCents(row.costCents)
@@ -1985,7 +1990,7 @@ const receivablePayableItems = computed(() => {
       label: "公共现金支付成本",
       value: formatCents(overview.value?.operatingProjection.costAttribution?.publicCashCostCents ?? null)
     },
-    { label: "业主及其他应收", value: formatCents(operating?.receivableCents ?? null) },
+    { label: "业主及其他应收", value: formatReceivable(operating?.receivableYuan, operating?.receivableCents) },
     { label: "下游及其他应付", value: formatCents(operating?.payableCents ?? null) }
   ];
 });

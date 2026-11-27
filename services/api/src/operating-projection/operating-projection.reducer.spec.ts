@@ -71,6 +71,159 @@ describe("经营金额双协议", () => {
     expect(paged.commitments.contractCommitmentYuan).toBe("0.0000");
   });
 
+  it("preserves signed settlement cost and internal receivable while folding whole-cent payable separately", () => {
+    const company = { kind: "participating_company", id: "company-v1" };
+    const legacy = fact({
+      id: "baseline", amountCents: 101n, factKind: "downstream_settlement", costBearingCompanySubject: company,
+      sourceSnapshot: { contractId: "contract-1", contractRelationship: "inside" },
+      impacts: [
+        { id: "baseline-cost", impactKind: "confirmed_cost", direction: "increase", amountCents: 101n },
+        { id: "baseline-payable", impactKind: "payable_increase", direction: "increase", amountCents: 101n }
+      ]
+    });
+    const signed = (id: string, signedAmountYuan: string, relationship: "inside" | "outside" | "upward",
+      cumulativeBeforeYuan: string, cumulativeAfterYuan: string, payableDeltaCents = "0"): ProjectionV2FactInput => {
+      const amountYuan = signedAmountYuan.replace(/^-/, "");
+      const direction = signedAmountYuan.startsWith("-") ? "decrease" : "increase";
+      return {
+        ...fact({ id, sourceType: "signed_contract_settlement", factKind: "downstream_settlement",
+          ...(relationship === "upward" ? { operatingLevel: "participating_company", creditorSubject: company,
+            debtorSubject: { kind: "construction_enterprise", id: "enterprise-v1" } } : { costBearingCompanySubject: company }),
+          sourceSnapshot: { formalStatus: "confirmed",
+            contractKind: relationship === "inside" ? "downstream" : relationship === "outside" ? "outside_fact" : "upward",
+            relationship, contractId: relationship === "inside" ? "contract-1" : relationship, signedAmountYuan,
+            operatingNumericFacts: { protocolVersion: 2, cumulativeBeforeYuan, cumulativeAfterYuan, payableDeltaCents }
+          }
+        }),
+        numericProtocolVersion: 2, amountCents: null, amountYuan,
+        impacts: [
+          { id: `${id}-primary`, numericProtocolVersion: 2, amountCents: null, amountYuan, direction,
+            impactKind: relationship === "upward" ? "receivable_increase" : "confirmed_cost",
+            ...(relationship === "upward" ? { subjectKind: company.kind, subjectId: company.id, subjectRole: "creditor",
+              impactSnapshot: { relationship, projectConsolidation: "exclude_internal" } } : {}) },
+          ...(payableDeltaCents === "0" ? [] : [{
+            id: `${id}-payable`, numericProtocolVersion: 2 as const, amountCents: null, amountYuan: "0.0100",
+            direction: "decrease", impactKind: "payable_decrease"
+          }])
+        ]
+      };
+    };
+    const facts = [legacy,
+      signed("first-half", "-0.0050", "inside", "1.0100", "1.0050"),
+      signed("second-half", "-0.0050", "inside", "1.0050", "1.0000", "-1"),
+      signed("sub-cent", "-0.0001", "inside", "1.0000", "0.9999"),
+      signed("outside", "0.0020", "outside", "0.0000", "0.0020"),
+      signed("upward", "-0.0001", "upward", "1.0000", "0.9999")];
+    const context = { numericProtocolVersion: 2 as const, scope: { kind: "project" as const, projectIds: ["project-1"] },
+      cutoffAt: "2026-10-19T00:00:00.000Z", readAt: "2026-10-19T00:00:00.000Z", riskByProject: [] };
+    const stream = new OperatingProjectionStreamAccumulator(context);
+    for (const row of facts) {
+      stream.startFacts([row]);
+      stream.addImpacts(row.impacts.map(impact => ({ ...impact, factId: row.id })));
+      stream.finishFacts();
+    }
+    const direct = reduceOperatingProjection({ ...context, facts });
+    const paged = reduceOperatingProjection({ ...context, facts: [], ...stream.result() });
+    for (const result of [direct, paged]) {
+      expect(result.operating).toMatchObject({ confirmedCostCents: null, confirmedCostYuan: "1.0019",
+        payableCents: "100", confirmedIncomeYuan: "0.0000", receivableYuan: "0.0000",
+        internalReceivableCents: null, internalReceivableYuan: "-0.0001" });
+      expect(result.relationshipTotals).toEqual(expect.arrayContaining([
+        expect.objectContaining({ relationship: "inside", confirmedCostYuan: "0.9999", payableCents: "100" }),
+        expect.objectContaining({ relationship: "outside", confirmedCostYuan: "0.0020", payableCents: "0" }),
+        expect.objectContaining({ relationship: "upward", confirmedCostYuan: "0.0000", receivableYuan: "-0.0001" })
+      ]));
+      expect(result.contractDrilldown).toContainEqual({ contractKey: "contract-1", settledCents: "100", paidCents: "0", unpaidCents: "100" });
+      expect(result.profitAndLoss.currentOperatingProfitYuan).toBe("-1.0019");
+      expect(result.distribution.cashCeilingCents).toBe("0");
+      expect(result.actualFunds.confirmedProjectInflowsCents).toBe("0");
+      expect(result.costAttribution.byBearingCompany).toContainEqual(expect.objectContaining({ id: "company-v1", costYuan: "1.0019" }));
+    }
+    expect(direct.details).toEqual(expect.arrayContaining([
+      expect.objectContaining({ impactId: "second-half-primary", signedImpactYuan: "-0.0050" }),
+      expect.objectContaining({ impactId: "second-half-payable", signedImpactYuan: "-0.0100" }),
+      expect.objectContaining({ impactId: "upward-primary", signedImpactYuan: "-0.0001", subjectId: "company-v1" })
+    ]));
+    const companyView = reduceOperatingProjection({ ...context, facts,
+      scope: { ...context.scope, kind: "company", filters: { companyEntityId: "company-v1", contractRelationship: "upward" } } });
+    expect(companyView.operating).toMatchObject({ receivableYuan: "-0.0001", confirmedCostYuan: "0.0000", payableCents: "0" });
+  });
+
+  it.each(["inside", "upward"] as const)("reads totals larger than one stored signed settlement (%s)", relationship => {
+    const amountYuan = "60000000000000000000.0001";
+    const totalYuan = "120000000000000000000.0002";
+    const upward = relationship === "upward";
+    const creditor = { kind: "participating_company", id: "company-v1" };
+    const facts: ProjectionV2FactInput[] = ["first", "second"].map((id, index) => ({
+      ...fact({
+        id, sourceType: "signed_contract_settlement", factKind: "downstream_settlement",
+        sourceBusinessId: id, operatingLevel: upward ? "participating_company" : "project",
+        ...(upward ? { creditorSubject: creditor, debtorSubject: { kind: "construction_enterprise", id: "enterprise-v1" } }
+          : { costBearingCompanySubject: creditor }),
+        sourceSnapshot: {
+          formalStatus: "confirmed", relationship, contractId: "contract-1",
+          contractKind: upward ? "upward" : "downstream", signedAmountYuan: amountYuan,
+          operatingNumericFacts: {
+            protocolVersion: 2, cumulativeBeforeYuan: index === 0 ? "0.0000" : amountYuan,
+            cumulativeAfterYuan: index === 0 ? amountYuan : totalYuan,
+            payableDeltaCents: upward ? "0" : "6000000000000000000000"
+          }
+        }
+      }),
+      numericProtocolVersion: 2, amountCents: null, amountYuan,
+      impacts: [
+        { id: `${id}-primary`, numericProtocolVersion: 2, amountCents: null, amountYuan, direction: "increase",
+          impactKind: upward ? "receivable_increase" : "confirmed_cost",
+          ...(upward ? { subjectKind: creditor.kind, subjectId: creditor.id,
+            impactSnapshot: { relationship: "upward", projectConsolidation: "exclude_internal" } } : {}) },
+        ...(!upward ? [
+          { id: `${id}-payable`, numericProtocolVersion: 2 as const, amountCents: null, amountYuan: "60000000000000000000.0000",
+            direction: "increase", impactKind: "payable_increase" }
+        ] : [])
+      ]
+    }));
+    const context = { numericProtocolVersion: 2 as const, scope: { kind: "project" as const, projectIds: ["project-1"] },
+      cutoffAt: "2026-10-19T00:00:00.000Z", readAt: "2026-10-19T00:00:00.000Z", riskByProject: [] };
+    const stream = new OperatingProjectionStreamAccumulator(context);
+    for (const row of facts) {
+      stream.startFacts([row]);
+      stream.addImpacts(row.impacts.map(impact => ({ ...impact, factId: row.id })));
+      stream.finishFacts();
+    }
+    const direct = reduceOperatingProjection({ ...context, facts });
+    const paged = reduceOperatingProjection({ ...context, facts: [], ...stream.result() });
+    for (const projection of [direct, paged]) {
+      const aggregate = toOperatingProjectionAggregate(projection);
+      expect(aggregate.integrity.moneyComplete).toBe(true);
+      expect(aggregate.evidence.A).toMatchObject({ factCount: 2, amountYuan: totalYuan });
+      expect(aggregate.sources).toContainEqual(expect.objectContaining({
+        sourceTypeLabel: "已签结算", factCount: 2, impactCount: upward ? 2 : 4,
+        amountYuan: upward ? totalYuan : "240000000000000000000.0002"
+      }));
+      if (upward) {
+        expect(aggregate.operating).toMatchObject({ internalReceivableCents: null, internalReceivableYuan: totalYuan,
+          receivableYuan: "0.0000", confirmedCostYuan: "0.0000", payableCents: "0" });
+        expect(aggregate.relationshipTotals).toContainEqual(expect.objectContaining({ relationship, receivableYuan: totalYuan }));
+      } else {
+        expect(aggregate.operating).toMatchObject({ confirmedCostCents: null, confirmedCostYuan: totalYuan,
+          payableCents: "12000000000000000000000" });
+        expect(aggregate.relationshipTotals).toContainEqual(expect.objectContaining({ relationship, confirmedCostYuan: totalYuan }));
+        expect(aggregate.costAttribution.byBearingCompany).toContainEqual(expect.objectContaining({ id: creditor.id, costYuan: totalYuan }));
+        expect(aggregate.profitAndLoss).toMatchObject({
+          currentOperatingProfitYuan: "-120000000000000000000.0002",
+          currentEstimatedProfitYuan: "-120000000000000000000.0002"
+        });
+        expect(aggregate.distribution).toMatchObject({
+          cashCeilingCents: "0", projectedProfitCeilingCents: "-12000000000000000000001"
+        });
+        expect(aggregate.contractDrilldown).toContainEqual({ contractKey: "contract-1",
+          settledCents: "12000000000000000000000", paidCents: "0", unpaidCents: "12000000000000000000000" });
+      }
+    }
+    expect(direct.details.filter(row => row.impactId.endsWith("-primary")).map(row => row.signedImpactYuan))
+      .toEqual([amountYuan, amountYuan]);
+  });
+
   it.each(["decimal","legacy-uncapped"] as const)("%s所选追溯事实在直读与分页只累计一次",kind=>{
     const selected=kind==="decimal"?fact({id:"after-cutoff",sourceType:"contract_version",factKind:"downstream_contract",numericProtocolVersion:2,amountCents:null,amountYuan:"0.0050",confirmedAt:"2026-02-01T00:00:00.000Z",sourceSnapshot:{contractRelationship:"inside"},impacts:[{id:"selected-impact",impactKind:"contract_commitment_reference",numericProtocolVersion:2,amountCents:null,amountYuan:"0.0050",direction:"increase"}]} as never):fact({id:"after-cutoff",sourceType:"contract_version",factKind:"downstream_contract",amountCents:500n,confirmedAt:"2026-02-01T00:00:00.000Z",sourceSnapshot:{amountNature:"uncapped",contractRelationship:"inside"},impacts:[{id:"selected-impact",impactKind:"contract_commitment_reference",amountCents:500n,direction:"decrease"}]});
     const before=fact({id:"before-cutoff",sourceType:"contract_version",factKind:"downstream_contract",amountCents:0n,sourceSnapshot:{amountNature:"fixed"},impacts:[{id:"known-zero",impactKind:"contract_commitment_reference",amountCents:0n,direction:"increase"}]});
@@ -1625,6 +1778,46 @@ describe("跨来源结算去重：同一合同版本同一期次只计一次成�
       expect(result.integrity.moneyComplete).toBe(complete);
       expect(result.integrity.notices.join("\n")).toContain("多来源");
     }
+  });
+
+  it("keeps a same-period V2 amount with a fractional difference pending reconciliation", () => {
+    const company = { kind: "participating_company", id: "cost-v2-only" };
+    const precise: ProjectionV2FactInput = {
+      ...signed,
+      numericProtocolVersion: 2, amountCents: null, amountYuan: "60.0001",
+      sourceSnapshot: {
+        ...(signed.sourceSnapshot as Record<string, unknown>), formalStatus: "confirmed", signedAmountYuan: "60.0001",
+        operatingNumericFacts: { protocolVersion: 2, cumulativeBeforeYuan: "0.0000", cumulativeAfterYuan: "60.0001", payableDeltaCents: "6000" }
+      },
+      costBearingCompanySubject: company,
+      impacts: signed.impacts.map(impact => ({
+        ...impact, numericProtocolVersion: 2, amountCents: null,
+        amountYuan: impact.impactKind === "confirmed_cost" ? "60.0001" : "60.0000"
+      }))
+    };
+    const facts = [legacy, precise];
+    const settings = { ...context, numericProtocolVersion: 2 as const };
+    const candidates = new SettlementProjectionCandidates();
+    for (const row of facts) candidates.add(row);
+    const stream = new OperatingProjectionStreamAccumulator({ ...settings, settlementDeduplication: candidates.resolve() });
+    for (const row of facts) {
+      stream.startFacts([row]);
+      stream.addImpacts(row.impacts.map(impact => ({ ...impact, factId: row.id })));
+      stream.finishFacts();
+    }
+    const direct = reduceOperatingProjection({ ...settings, facts });
+    const bounded = reduceOperatingProjection({ ...settings, facts: [], ...stream.result() });
+    for (const result of [direct, bounded]) {
+      expect(result.integrity.moneyComplete).toBe(false);
+      expect(result.asOf.crossSourceDedupedFactCount).toBe(0);
+      expect(result.operating).toMatchObject({ confirmedCostYuan: null, payableCents: null });
+      expect(result.costAttribution.byBearingCompany).toContainEqual(expect.objectContaining({
+        id: company.id, costCents: null, costYuan: null
+      }));
+      expect(result.contractDrilldown).toContainEqual({ contractKey: "contract-1", settledCents: null, paidCents: "0", unpaidCents: null });
+    }
+    expect(direct.details.filter(row => row.impactKind === "confirmed_cost").map(row => row.signedImpactYuan))
+      .toEqual(["60.0000", "60.0001"]);
   });
 
   it("V2 直读和分页保留四位收入，且待核对成本不转换为零元", () => {

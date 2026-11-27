@@ -208,6 +208,55 @@ describe("OperatingProjectionService", () => {
     await expect(service.getProjectView("finance", request)).rejects.toThrow("公共现金归属金额超过原确认费用");
   });
 
+  it("reads and exports the original signed settlement cost and the separate payable amount", async () => {
+    const readAt = new Date("2026-11-26T02:00:00Z");
+    const occurredAt = new Date("2026-11-20T00:00:00Z");
+    const fact = {
+      id: "settlement-fact", projectId: project.id, sourceType: "signed_contract_settlement",
+      sourceBusinessId: "signed-1", sourceBusinessCode: "JS-0001", sourceVersion: 1,
+      occurredAt, confirmedAt: occurredAt, affiliateBusinessPartyVersionId: "enterprise-v1", affiliateNameSnapshot: "施工单位",
+      factKind: "downstream_settlement", operatingLevel: "project", evidenceLevel: "A", direction: "neutral", entryKind: "original",
+      numericProtocolVersion: 2, amountCents: null, amountYuan: new Prisma.Decimal("0.0050"), subjectSnapshot: {},
+      sourceSnapshot: {
+        formalStatus: "confirmed", contractKind: "downstream", relationship: "inside", contractId: "contract-1",
+        signedAmountYuan: "-0.0050", numericFacts: { protocolVersion: 2, amountState: "known", amountYuan: "0.0050" },
+        operatingNumericFacts: { protocolVersion: 2, cumulativeBeforeYuan: "1.0050", cumulativeAfterYuan: "1.0000", payableDeltaCents: "-1" }
+      }
+    };
+    const impacts = [["confirmed_cost", "0.0050"], ["payable_decrease", "0.0100"]].map(([impactKind, amount]) => ({
+      id: impactKind, factId: fact.id, fact, sourceType: fact.sourceType, sourceBusinessId: fact.sourceBusinessId,
+      sourceImpactKey: impactKind, impactKind, direction: "decrease", subjectRole: null, subjectKind: null,
+      subjectId: null, costCategoryCode: impactKind === "confirmed_cost" ? "material" : null, fundPurpose: null,
+      numericProtocolVersion: 2, amountCents: null, amountYuan: new Prisma.Decimal(amount), impactSnapshot: {}
+    }));
+    const tx = emptyProjectionTx(readAt, [project]);
+    tx.operatingFact.findMany.mockResolvedValue([fact]);
+    tx.operatingImpactEntry.findMany.mockResolvedValue(impacts);
+    const visibility = overviewVisibility([project.id]);
+    visibility.effectiveRoleKeysByProjectInTransaction.mockResolvedValue(new Map([[project.id, ["finance_staff"]]]));
+    const service = new OperatingProjectionService(
+      { $transaction: jest.fn((work) => work(tx)) } as never, visibility as never, zeroRiskReader() as never,
+      { record: jest.fn() } as never, { confirmPassword: jest.fn() } as never
+    );
+    await expect(service.readProjectInTransaction(tx as never, "finance", { projectId: project.id }))
+      .rejects.toThrow("已签结算含不足一分的金额");
+    const request = { projectId: project.id, numericProtocolVersion: 2 as const };
+    const read = await service.getProjectDetailPage("finance", request);
+    expect(read.projection.operating).toMatchObject({ confirmedCostYuan: "-0.0050", payableCents: "-1" });
+    expect(read.projection.profitAndLoss).toMatchObject({ currentOperatingProfitYuan: "0.0050" });
+    expect(read.items).toEqual([
+      expect.objectContaining({ amountYuan: "0.0050", signedImpactYuan: "-0.0050", signedImpactCents: null }),
+      expect.objectContaining({ amountYuan: "0.0100", signedImpactYuan: "-0.0100", signedImpactCents: null })
+    ]);
+    const exported = await service.exportView("finance", { ...request, scopeKind: "project" },
+      "current-password", "project_operating_ledger_detail");
+    const rows = (await readUtf8Stream(exported.stream)).split("\n").filter(row => row.includes('"JS-0001"'));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toContain('"正式成本（四位元）"');
+    expect(rows[0]).toContain('"-0.0050"');
+    expect(rows[1]).toContain('"-0.0100"');
+  });
+
   it.each([
     [20_000n, 100_000n, 67_108_864n, false],
     [20_001n, 1n, 1n, true],

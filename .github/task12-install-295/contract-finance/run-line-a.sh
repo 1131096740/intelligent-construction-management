@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 3 || ( $# == 4 && ( $4 == original || $4 == --a28-continuation || $4 == --a29-opening || $4 == --a28-unknown-overpay ) ) ||
-  ( $# == 5 && ( $4 == original || $4 == --a28-continuation || $4 == --a29-opening ) && $5 == --host-only ) ]] || exit 64
+[[ $# == 3 || ( $# == 4 && ( $4 == original || $4 == --a28-continuation || $4 == --a29-opening || $4 == --a28-unknown-overpay || $4 == --a01-signed-subcent-350 ) ) ||
+  ( $# == 5 && ( $4 == original || $4 == --a28-continuation || $4 == --a29-opening || $4 == --a01-signed-subcent-350 ) && $5 == --host-only ) ]] || exit 64
 prepared=$(cd "$1" && pwd -P)
 sha=$2
 build=$(cd "$3" && pwd -P)
@@ -14,12 +14,15 @@ source="$prepared/source.json"
 
 node -e '
   const source=require(process.argv[1]);
-  const count=({"current-320":329,"text-direct-330":330,"payment-remainder-331":331,"upward-archive-332":332,"historical-takeover-333":333,"historical-settlement-334":334,"expense-witness-346":346,"expense-witness-349":349})[source.mode];
+  const count=({"current-320":329,"text-direct-330":330,"payment-remainder-331":331,"upward-archive-332":332,"historical-takeover-333":333,"historical-settlement-334":334,"expense-witness-346":346,"expense-witness-349":349,"signed-settlement-350":350})[source.mode];
   if(!count||source.migrationCount!==count||source.sourceSha!==process.argv[2])process.exit(65);
 ' "$source" "$sha"
 entry=line-a-entry.cjs
 mode=$(node -p 'require(process.argv[1]).mode' "$source")
 case "$mode:${4:-}:${5:-}" in
+  signed-settlement-350:original:|signed-settlement-350:original:--host-only|\
+  signed-settlement-350:--a01-signed-subcent-350:|signed-settlement-350:--a01-signed-subcent-350:--host-only)
+    [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64 ;;
   expense-witness-349:original:|expense-witness-349:original:--host-only) ;;
   expense-witness-349:--a28-continuation:|expense-witness-349:--a28-continuation:--host-only)
     entry=historical-takeover-333-entry.cjs ;;
@@ -29,18 +32,18 @@ case "$mode:${4:-}:${5:-}" in
   historical-settlement-334::|historical-settlement-334:--a29-opening:|historical-settlement-334:--a28-unknown-overpay:|\
   historical-takeover-333::)
     entry=historical-takeover-333-entry.cjs ;;
-  expense-witness-346:*|expense-witness-349:*|historical-settlement-334:*|historical-takeover-333:*) exit 64 ;;
+  expense-witness-346:*|expense-witness-349:*|signed-settlement-350:*|historical-settlement-334:*|historical-takeover-333:*) exit 64 ;;
   *::) ;;
   *) exit 64 ;;
 esac
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-line-a.XXXXXXXX")
 installer="$common/installer.cjs"
-if [[ "$mode" == expense-witness-346 || "$mode" == expense-witness-349 ]]; then
-  if [[ "$mode" == expense-witness-349 ]]; then
+if [[ "$mode" == expense-witness-346 || "$mode" == expense-witness-349 || "$mode" == signed-settlement-350 ]]; then
+  if [[ "$mode" != expense-witness-346 ]]; then
     root=$(git -C "$plan" rev-parse --show-toplevel)
     [[ $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
     [[ -z $(git -C "$root" status --porcelain --untracked-files=all -- "$plan") ]] || exit 65
-    cmp -s "$source" <(node "$plan/check-ledger.cjs" "$root" "$sha" --expense-witness-349) || exit 65
+    cmp -s "$source" <(node "$plan/check-ledger.cjs" "$root" "$sha" "--$mode") || exit 65
   fi
   node - "$plan" "$source" "$prepared" "$work" "$4" <<'JS'
 const assert = require('node:assert/strict');
@@ -56,10 +59,11 @@ profile.assertSource(source, final);
 
 const workspace = path.join(prepared, 'prepared/context/workspace');
 const api = path.join(workspace, 'services/api');
-if (lane !== 'original' || profile.count === 349) {
+const signedSubcent = source.mode === 'signed-settlement-350';
+if (lane !== 'original' || profile.count === 349 || signedSubcent) {
   profile.assertRuntimeBaseline(require(path.join(api, 'prisma/migration-baseline.cjs')));
 }
-if (lane !== 'original') {
+if (lane !== 'original' && !signedSubcent) {
   assert.ok(fs.statSync(path.join(api, 'src/contract-takeover/contract-takeover-a28.http.pg.spec.ts')).isFile());
   process.exit(0);
 }
@@ -71,15 +75,33 @@ assert.equal(sha256(original), '2b6ce431862fe986dce8aee61f68b8509510977e117faafe
 const before = '{ count: 334n, terminal: "' + historical.terminal.name + '" }';
 const after = '{ count: ' + profile.count + 'n, terminal: "' + profile.terminal.name + '" }';
 assert.equal(original.split(before).length, 2, 'LINE_A_334_LEDGER_ANCHOR');
-const fixture = original.replace(before, after);
+let fixture = original.replace(before, after);
+if (signedSubcent) {
+  const anchor = '  it("rounds the confirmed cumulative once and reads a paid balance without a tail (A02)"';
+  assert.equal(fixture.split(anchor).length, 2, 'LINE_A_A01_FIXTURE_ANCHOR');
+  const fragment = fs.readFileSync(path.join(plan, 'line-a-a01-signed-subcent-350.fixture'), 'utf8');
+  assert.equal(sha256(fragment), '5edfdfb9a0e124935cbdabb9fb79a21c6ac3a41237d9ca9ca29950366a49dc76');
+  fixture = fixture.replace(anchor, fragment + '\n' + anchor);
+  const fixtureSha256 = sha256(fixture);
+  assert.equal(fixtureSha256, 'cdba722cd3d8ae6fbc8bdef72be4201fc717f0bfe9a2319bb451471e365d715d');
+  fs.writeFileSync(path.join(work, 'a01-admission.json'), JSON.stringify({
+    status: 'HOST_MATERIAL_ONLY', sourceSha: source.sourceSha, sourceTree: source.sourceTree,
+    predecessor349: source.predecessor349, migrationCount: profile.count, ledgerSha256: source.ledgerSha256,
+    terminal: source.tails.at(-1), originalCaseCount: 18, overlayCaseCount: 19,
+    ...(lane === 'original' ? {} : { selectedCase: 'A01 已签结算不足一分冲减在确认后保留经营原值' }), fixtureSha256
+  }) + '\n', { flag: 'wx' });
+}
 const output = path.join(work, path.basename(spec));
 fs.writeFileSync(output, fixture, { flag: 'wx' });
 fs.chmodSync(output, 0o644);
 JS
   node "$plan/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
   git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer.patch"
-  if [[ "$mode" == expense-witness-349 ]]; then
+  if [[ "$mode" != expense-witness-346 ]]; then
     git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer-349.patch"
+  fi
+  if [[ "$mode" == signed-settlement-350 ]]; then
+    git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer-350.patch"
   fi
   chmod 644 "$work/installer.cjs"
   node -e '
@@ -126,14 +148,17 @@ if [[ "$mode" == historical-takeover-333 || "$mode" == historical-settlement-334
   fi
 fi
 
-if [[ "$mode" == expense-witness-346 || "$mode" == expense-witness-349 ]]; then
+if [[ "$mode" == expense-witness-346 || "$mode" == expense-witness-349 || "$mode" == signed-settlement-350 ]]; then
   for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
-  if [[ "$mode" == expense-witness-349 ]]; then
+  if [[ "$mode" != expense-witness-346 ]]; then
     args+=(--mount "type=bind,src=$plan/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
   fi
-  if [[ $4 == original ]]; then
+  if [[ "$mode" == signed-settlement-350 ]]; then
+    args+=(--mount "type=bind,src=$plan/signed-settlement-350-profile.cjs,dst=/qualification/signed-settlement-350-profile.cjs,readonly")
+  fi
+  if [[ $4 == original || $4 == --a01-signed-subcent-350 ]]; then
     args+=(--mount "type=bind,src=$work/line-a-real-db.http.pg.spec.ts,dst=/qualification/workspace/services/api/src/database/line-a-real-db.http.pg.spec.ts,readonly")
   fi
   printf '%s\n' "$work"
@@ -144,13 +169,34 @@ case ${4:-} in
 esac
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
+entry_args=()
+if [[ "$mode" == signed-settlement-350 && ${4:-} == original ]]; then entry_args=(original); fi
 exit_code=0
-docker run "${args[@]}" --entrypoint node "$image" /qualification/"$entry" > "$work/receipt.json" 2> "$work/private.stderr" || exit_code=$?
+docker run "${args[@]}" --entrypoint node "$image" /qualification/"$entry" ${entry_args[@]+"${entry_args[@]}"} > "$work/receipt.json" 2> "$work/private.stderr" || exit_code=$?
 [[ ! -s "$work/receipt.json" ]] || cat "$work/receipt.json"
 (( exit_code == 0 )) || exit "$exit_code"
 node -e '
+  const assert=require("node:assert/strict");
   const proof=require(process.argv[1]);
   const source=require(process.argv[3]);
+  if (source.mode === "signed-settlement-350") {
+    const full = process.argv[4] === "original";
+    assert.equal(proof.status, full ? "LINE_A_SIGNED_SETTLEMENT_350_PASSED" : "LINE_A_A01_SIGNED_SUBCENT_350_PASSED");
+    assert.equal(proof.lineA.registered, 19);
+    assert.equal(proof.lineA.passed, full ? 19 : 1);
+    assert.equal(proof.lineA.skipped, full ? 0 : 18);
+    assert.equal(proof.sourceSha, process.argv[2]);
+    assert.equal(proof.signedSettlementForward.count, 350);
+    assert.equal(proof.signedSettlementForward.ledgerSha256, source.ledgerSha256);
+    assert.equal(proof.signedSettlementForward.sameIdentity, true);
+    assert.equal(proof.signedSettlementCatalogAfterBusiness, true);
+    assert.equal(proof.combinedAfterBusiness.sameIdentity, true);
+    assert.equal(proof.combinedAfterBusiness.exactB7, true);
+    assert.equal(proof.a01.confirmationHttpStatus, 201);
+    assert.equal(proof.a01.repeatReviewHttpStatus, 409);
+    assert.equal(proof.cleanup, "POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT");
+    process.exit(0);
+  }
   const expected=({"current-320":"LINE_A_EXACT_329_PASSED","text-direct-330":"LINE_A_TEXT_DIRECT_330_PASSED",
     "payment-remainder-331":"LINE_A_PAYMENT_REMAINDER_331_PASSED",
     "upward-archive-332":"LINE_A_UPWARD_ARCHIVE_332_PASSED","historical-takeover-333":"HISTORICAL_TAKEOVER_A28_333_PASSED","historical-settlement-334":"HISTORICAL_TAKEOVER_A28_334_PASSED"})[source.mode];

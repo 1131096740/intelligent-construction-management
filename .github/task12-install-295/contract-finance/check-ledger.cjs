@@ -5,10 +5,12 @@ const {createHash}=require('node:crypto');
 const path=require('node:path');
 const {ledgerSha256: textDirectLedgerSha256}=require('./text-direct-330-profile.cjs');
 const [root,sha,mode]=process.argv.slice(2);
-assert.ok(process.argv.length===4||(process.argv.length===5&&['--current-320','--text-direct-330','--payment-remainder-331','--upward-archive-332','--historical-takeover-333','--historical-settlement-334','--expense-witness-345','--expense-witness-346','--expense-witness-349'].includes(mode)),
+assert.ok(process.argv.length===4||(process.argv.length===5&&['--current-320','--text-direct-330','--payment-remainder-331','--upward-archive-332','--historical-takeover-333','--historical-settlement-334','--expense-witness-345','--expense-witness-346','--expense-witness-349','--signed-settlement-350'].includes(mode)),
   'CONTRACT_FINANCE_HOSTED_LEDGER_MODE');
 const textDirect=mode==='--text-direct-330';
-const expenseWitness349=mode==='--expense-witness-349' ? require('./expense-witness-349-profile.cjs') : null;
+const signedSettlement350=mode==='--signed-settlement-350' ? require('./signed-settlement-350-profile.cjs') : null;
+if (signedSettlement350) assert.notEqual(process.env.GITHUB_ACTIONS,'true','SIGNED_SETTLEMENT_350_LOCAL_ONLY');
+const expenseWitness349=mode==='--expense-witness-349' || signedSettlement350 ? require('./expense-witness-349-profile.cjs') : null;
 const expenseWitness=expenseWitness349 ?? (mode==='--expense-witness-346' ? require('./expense-witness-346-profile.cjs')
   : mode==='--expense-witness-345' ? require('./expense-witness-345-profile.cjs') : null);
 const historicalSettlement=mode==='--historical-settlement-334'||Boolean(expenseWitness);
@@ -33,7 +35,7 @@ const ledger=git('ls-tree','-r','--name-only','-z',sha,'--',migrationsPath).toSt
 const digest=ledgerHash(ledger);
 const predecessor295Sha256='b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d';
 if(current320) {
-  assert.equal(ledger.length,expenseWitness?expenseWitness.count:historicalSettlement?334:historicalTakeover?333:upwardArchive?332:paymentRemainder?331:textDirect?330:329,'CONTRACT_FINANCE_CURRENT_320_LEDGER_COUNT');
+  assert.equal(ledger.length,signedSettlement350?.count ?? (expenseWitness?expenseWitness.count:historicalSettlement?334:historicalTakeover?333:upwardArchive?332:paymentRemainder?331:textDirect?330:329),'CONTRACT_FINANCE_CURRENT_320_LEDGER_COUNT');
   assert.equal(ledgerHash(ledger.slice(0,295)),predecessor295Sha256,'CONTRACT_FINANCE_CURRENT_320_PREDECESSOR');
   assert.equal(ledgerHash(ledger.slice(0,329)),'3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2',
     'CONTRACT_FINANCE_CURRENT_320_LEDGER_DIGEST');
@@ -47,7 +49,10 @@ if(current320) {
     'CONTRACT_FINANCE_HISTORICAL_TAKEOVER_333_LEDGER_DIGEST');
   if(historicalSettlement) assert.equal(ledgerHash(ledger.slice(0,334)),historicalSettlementProfile.ledgerSha256,
     'CONTRACT_FINANCE_HISTORICAL_SETTLEMENT_334_LEDGER_DIGEST');
-  if(expenseWitness) for(let size=335;size<=expenseWitness.count;size++) expenseWitness.assertPrefix(size,ledgerHash(ledger.slice(0,size)));
+  if(expenseWitness) {
+    const profile=signedSettlement350 ?? expenseWitness;
+    for(let size=335;size<=profile.count;size++) profile.assertPrefix(size,ledgerHash(ledger.slice(0,size)));
+  }
 } else {
   assert.ok(ledger.length===294||ledger.length===295,'CONTRACT_FINANCE_HOSTED_LEDGER_COUNT');
 }
@@ -58,7 +63,8 @@ if(ledger.length===295) {
 }
 const {migrationBaseline}=JSON.parse(blob('services/api/prisma/database-dynamic-gate-manifest.json'));
 const admittedCount=migrationBaseline.expectedDirectoryCount;
-assert.ok(admittedCount===ledger.length || (expenseWitness?.count===346 && admittedCount===334),
+assert.ok(admittedCount===ledger.length || (expenseWitness?.count===346 && admittedCount===334) ||
+  (signedSettlement350 && admittedCount===expenseWitness349.count),
   'CONTRACT_FINANCE_RELEASE_SCOPE');
 const terminal=ledger[admittedCount-1];
 assert.equal(migrationBaseline.terminalMigration,terminal.name);
@@ -74,9 +80,10 @@ if (current320) {
     ...(historicalSettlement?{predecessor333:{migrationCount:333,ledgerSha256:historicalTakeoverProfile.ledgerSha256}}:{}),
     ...(expenseWitness?{predecessor334:{migrationCount:334,ledgerSha256:historicalSettlementProfile.ledgerSha256}}:{}),
     ...(expenseWitness349?{predecessor346:{migrationCount:346,ledgerSha256:ledgerHash(ledger.slice(0,346))}}:{}),
+    ...(signedSettlement350?{predecessor349:{migrationCount:349,ledgerSha256:ledgerHash(ledger.slice(0,349))}}:{}),
     tails:ledger.slice(295)
   };
-  if (expenseWitness349) expenseWitness349.assertSource(source, predecessor295Sha256);
+  if (expenseWitness349) (signedSettlement350 ?? expenseWitness349).assertSource(source, predecessor295Sha256);
   console.log(JSON.stringify(source));
 } else {
   console.log(JSON.stringify({sourceSha:sha,migrationCount:ledger.length,ledgerSha256:digest,tails:ledger.slice(292)}));

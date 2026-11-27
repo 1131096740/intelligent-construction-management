@@ -189,6 +189,40 @@ describe("OperatingLedgerService", () => {
     expect(read[0].impacts[0].amountYuan?.toFixed(4)).toBe("1.5340");
   });
 
+  it("keeps an exact signed-settlement cost with zero cumulative payable delta and refuses a forged delta", async () => {
+    const prisma = createPrismaMock({ user: { id: "actor-1", isActive: true },
+      projectMembers: [{ positionKey: "finance_staff" }], project: projectRecord(),
+      assignment: assignmentRecord(), persistControlledRows: true });
+    const service = new OperatingLedgerService(prisma as never);
+    const debtor = { kind: "participating_company", id: "company-1" };
+    const operatingNumericFacts = { protocolVersion: 2, cumulativeBeforeYuan: "1.0100",
+      cumulativeAfterYuan: "1.0050", payableDeltaCents: "0" };
+    const input = {
+      ...baseInput(),
+      sourceType: "signed_contract_settlement", sourceBusinessId: "signed-settlement-1",
+      factKind: "downstream_settlement", direction: "neutral", numericProtocolVersion: 2,
+      amountCents: null, amountYuan: "0.0050",
+      sourceSnapshot: { formalStatus: "confirmed", contractKind: "downstream",
+        relationship: "inside", signedAmountYuan: "-0.0050", operatingNumericFacts },
+      subjects: { debtor, creditor: { kind: "downstream_counterparty", id: "counterparty-version-1" } },
+      impacts: [{ idempotencyKey: "signed-settlement-1:confirmed_cost", sourceImpactKey: "confirmed_cost",
+        impactKind: "confirmed_cost", direction: "decrease", subjectRole: "debtor", subject: debtor,
+        costCategoryCode: "crew_and_labor", numericProtocolVersion: 2, amountCents: null, amountYuan: "0.0050" }]
+    } as const;
+    const wrongDelta = { ...input, sourceSnapshot: { ...input.sourceSnapshot,
+      operatingNumericFacts: { ...operatingNumericFacts, payableDeltaCents: "-1" } } };
+    await expect(service.appendFromSource(wrongDelta as never, "actor-1")).rejects.toThrow("冻结的累计付款口径不一致");
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+
+    await expect(service.appendFromSource(input as never, "actor-1")).resolves.toMatchObject({ created: true });
+    await expect(service.appendFromSource(input as never, "actor-1")).resolves.toMatchObject({ created: false });
+    const [fact] = await service.readFacts("project-1", "actor-1");
+    expect(fact).toMatchObject({ numericProtocolVersion: 2, amountCents: null });
+    expect(fact.impacts).toHaveLength(1);
+    expect(fact.impacts[0]).toMatchObject({ numericProtocolVersion: 2, amountCents: null, direction: "decrease" });
+    expect(fact.impacts[0].amountYuan?.toFixed(4)).toBe("0.0050");
+  });
+
   it("公开持久化重读区分待确定合同总价与已知零元，重放不互换", async () => {
     for (const amountYuan of [null, "0.0000"]) {
       const prisma = createPrismaMock({ user: { id: "actor-1", isActive: true }, projectMembers: [{ positionKey: "finance_staff" }], project: projectRecord(), assignment: assignmentRecord(), persistControlledRows: true });
@@ -1095,7 +1129,19 @@ function createPrismaMock(options: {
         const written = syntheticOperatingWrite(query);
         if (written.kind === "Fact") { storedFact = { ...written.row, impacts: storedImpacts }; return [{ id: written.row.id, projectId: written.row.projectId, sourceType: written.row.sourceType, sourceBusinessId: written.row.sourceBusinessId }]; }
         if (written.row.numericProtocolVersion === 2) {
-          if (!storedFact || storedFact.numericProtocolVersion !== 2 || written.row.factId !== storedFact.id || written.row.sourceType !== storedFact.sourceType || written.row.sourceBusinessId !== storedFact.sourceBusinessId || written.row.sourceImpactKey !== "contract_commitment_reference" || written.row.impactKind !== "contract_commitment_reference" || (written.row.amountYuan === null ? written.row.direction !== "notice" : !["increase", "decrease"].includes(String(written.row.direction))) || written.row.subjectRole !== "debtor" || written.row.subjectKind !== storedFact.debtorSubjectKind || written.row.subjectId !== storedFact.debtorSubjectId || (written.row.amountYuan === null ? storedFact.amountYuan !== null : storedFact.amountYuan === null || !new Prisma.Decimal(String(written.row.amountYuan)).equals(String(storedFact.amountYuan)))) throw new Error("合成持久层拒绝不对应原合同承诺的影响");
+          if (!storedFact || storedFact.numericProtocolVersion !== 2 || written.row.factId !== storedFact.id ||
+              written.row.sourceType !== storedFact.sourceType || written.row.sourceBusinessId !== storedFact.sourceBusinessId) {
+            throw new Error("合成持久层拒绝来自不同事实的四位分录");
+          }
+          if (storedFact.sourceType === "signed_contract_settlement") {
+            if (written.row.sourceImpactKey !== "confirmed_cost" || written.row.impactKind !== "confirmed_cost" ||
+                written.row.direction !== "decrease" || written.row.subjectRole !== "debtor" ||
+                written.row.subjectKind !== storedFact.debtorSubjectKind || written.row.subjectId !== storedFact.debtorSubjectId ||
+                written.row.amountYuan === null || storedFact.amountYuan === null ||
+                !new Prisma.Decimal(String(written.row.amountYuan)).equals(String(storedFact.amountYuan))) {
+              throw new Error("合成持久层拒绝不对应已签结算的成本冲减");
+            }
+          } else if (written.row.sourceImpactKey !== "contract_commitment_reference" || written.row.impactKind !== "contract_commitment_reference" || (written.row.amountYuan === null ? written.row.direction !== "notice" : !["increase", "decrease"].includes(String(written.row.direction))) || written.row.subjectRole !== "debtor" || written.row.subjectKind !== storedFact.debtorSubjectKind || written.row.subjectId !== storedFact.debtorSubjectId || (written.row.amountYuan === null ? storedFact.amountYuan !== null : storedFact.amountYuan === null || !new Prisma.Decimal(String(written.row.amountYuan)).equals(String(storedFact.amountYuan)))) throw new Error("合成持久层拒绝不对应原合同承诺的影响");
         }
         storedImpacts.push(written.row);
         if (storedFact) storedFact.impacts = storedImpacts;

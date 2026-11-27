@@ -8,7 +8,7 @@ const { spawnSync } = require('node:child_process');
 const { admitSource } = require('./install-only292.cjs');
 const {
   withCombined320ContractPayment, withCombined330TextAgreement, withCombined331PaymentRemainder, withCombined332UpwardArchive,
-  withCombined334HistoricalSettlement, withCombinedExpenseWitness, withCombinedExpenseWitness349
+  withCombined334HistoricalSettlement, withCombinedExpenseWitness, withCombinedExpenseWitness349, withCombinedSignedSettlement350
 } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
 const source = require('./contract-finance-source.json');
@@ -16,17 +16,25 @@ const source = require('./contract-finance-source.json');
 const root = '/qualification';
 const api = path.join(root, 'workspace/services/api');
 const spec = 'src/database/line-a-real-db.http.pg.spec.ts';
-const precision = source.mode === 'expense-witness-349';
+const signedSubcent = source.mode === 'signed-settlement-350';
+const fullSignedSuite = signedSubcent && process.argv[2] === 'original';
+const signedSubcentOnly = signedSubcent && !fullSignedSuite;
+const signedProfile = signedSubcent ? require('./signed-settlement-350-profile.cjs') : null;
+const signedSubcentTitle = 'line A contract candidate on real PostgreSQL and HTTP A01 已签结算不足一分冲减在确认后保留经营原值';
+const signedSubcentFixture = 'cdba722cd3d8ae6fbc8bdef72be4201fc717f0bfe9a2319bb451471e365d715d';
+const precision = source.mode === 'expense-witness-349' || signedSubcent;
 const expenseWitness = precision ? require('./expense-witness-349-profile.cjs')
   : source.mode === 'expense-witness-346' ? require('./expense-witness-346-profile.cjs') : null;
 const historicalSettlement = source.mode === 'historical-settlement-334' || expenseWitness !== null;
 const upwardArchive = source.mode === 'upward-archive-332' || historicalSettlement;
 const paymentRemainder = source.mode === 'payment-remainder-331' || upwardArchive;
 const textDirect = source.mode === 'text-direct-330' || paymentRemainder;
-const migrationCount = expenseWitness ? expenseWitness.count
-  : historicalSettlement ? 334 : upwardArchive ? 332 : paymentRemainder ? 331 : textDirect ? 330 : 329;
+const migrationCount = signedProfile?.count ?? (expenseWitness ? expenseWitness.count
+  : historicalSettlement ? 334 : upwardArchive ? 332 : paymentRemainder ? 331 : textDirect ? 330 : 329);
 const tests = paymentRemainder ? 18 : textDirect ? 17 : 16;
-const purpose = expenseWitness ? 'LINE_A_EXPENSE_WITNESS_' + migrationCount
+const purpose = fullSignedSuite ? 'LINE_A_SIGNED_SETTLEMENT_350'
+  : signedSubcentOnly ? 'LINE_A_A01_SIGNED_SUBCENT_350'
+  : expenseWitness ? 'LINE_A_EXPENSE_WITNESS_' + migrationCount
   : historicalSettlement ? 'LINE_A_HISTORICAL_SETTLEMENT_334'
   : upwardArchive ? 'LINE_A_UPWARD_ARCHIVE_332' : paymentRemainder ? 'LINE_A_PAYMENT_REMAINDER_331'
   : textDirect ? 'LINE_A_TEXT_DIRECT_330' : 'LINE_A_EXACT_329';
@@ -56,6 +64,12 @@ const insertTables = [
   'AuthRateLimit', 'RefreshToken', 'AuditLog', 'FileObject',
   'PaymentRequest', 'PaymentRequestAgreementSnapshot', 'ApprovalInstance', 'ApprovalActionLog',
   'BusinessEntrySubmissionSnapshot'
+];
+const exactOperatingTypes = ['OperatingLedgerFactWritePayloadV2', 'OperatingLedgerImpactWritePayloadV2']
+  .map(name => 'public."' + name + '"');
+const exactOperatingFunctions = [
+  'public."appendOperatingFactThroughService"(' + exactOperatingTypes[0] + ',text,text)',
+  'public."appendOperatingImpactThroughService"(' + exactOperatingTypes[1] + ',text,text)'
 ];
 const functions = [
   'jg_read_effective_contract_change_amount_v1', 'jg_read_payment_contract_agreement_detail_v1',
@@ -170,6 +184,10 @@ async function consume(context) {
     // FOR UPDATE needs a column grant. The origin guard keeps createdAt immutable.
     'GRANT UPDATE ("createdAt") ON public."ContractWorkCompletion"' + toRole,
     'GRANT EXECUTE ON FUNCTION ' + functions.map(name => 'public.' + name).join(', ') + toRole,
+    ...(signedSubcent ? [
+      'GRANT USAGE ON TYPE ' + exactOperatingTypes.join(', ') + toRole,
+      'GRANT EXECUTE ON FUNCTION ' + exactOperatingFunctions.join(', ') + toRole
+    ] : []),
     ...insertions, 'COMMIT;'
   ].join('\n'));
   try {
@@ -180,6 +198,13 @@ async function consume(context) {
         AND NOT (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls OR rolinherit)
       )
       AND NOT has_schema_privilege('${role}','public','CREATE')
+      ${signedSubcent ? [
+        ...exactOperatingTypes.map(type => `AND has_type_privilege('${role}','${type}','USAGE')`),
+        ...exactOperatingFunctions.map(fn => `AND has_function_privilege('${role}','${fn}','EXECUTE')`),
+        ...['OperatingFact', 'OperatingImpactEntry'].map(table =>
+          `AND NOT has_table_privilege('${role}','public."${table}"','INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER')
+           AND NOT has_any_column_privilege('${role}','public."${table}"','INSERT,UPDATE')`)
+      ].join('\n') : ''}
       AND NOT EXISTS (
         SELECT FROM pg_catalog.pg_class c
         WHERE c.relnamespace=to_regnamespace('public') AND c.relkind IN ('r','p')
@@ -208,11 +233,12 @@ async function consume(context) {
     });
     assert.ok(login.status === 0 && login.stdout.trim() === 'true', 'LINE_A_TLS_FIXTURE_LOGIN');
     receipt.runtime = { originalConnectionLimit: 1, fixtureConnectionLimit: 4, tls: true };
-    receipt.stages.push('LINE_A_ORIGINAL_HTTP_SUITE');
+    receipt.stages.push(signedSubcentOnly ? 'LINE_A_A01_SIGNED_SUBCENT_HTTP' : 'LINE_A_ORIGINAL_HTTP_SUITE');
     const directory = fs.mkdtempSync(path.join(workDir, 'line-a-'));
     const file = path.join(directory, 'jest.json');
     const result = spawnSync(process.execPath, [path.join(api, 'node_modules/jest/bin/jest.js'),
-      '--runInBand', '--runTestsByPath', spec, '--json', '--outputFile=' + file], {
+      '--runInBand', '--runTestsByPath', spec, '--json', '--outputFile=' + file,
+      ...(signedSubcentOnly ? ['--testNamePattern=^' + signedSubcentTitle + '$'] : [])], {
       cwd: api, encoding: 'utf8', timeout: 600_000, maxBuffer: 16 * 1024 * 1024,
       env: {
         PATH: '/usr/local/bin:/usr/bin:/bin', HOME: workDir, TMPDIR: workDir, NODE_ENV: 'test', CI: 'true',
@@ -267,10 +293,27 @@ async function consume(context) {
       sqlstates: [...new Set([...messages.matchAll(/SQLSTATE\s+([0-9A-Z]{5})|Code: `([0-9A-Z]{5})`/gu)]
         .map(match => match[1] ?? match[2]))].slice(0, 8)
     };
-    assert.ok(result.status === 0 && report?.success && report.testResults.length === 1 &&
-      report.testResults[0].name === path.join(api, spec) && report.numTotalTests === tests &&
-      report.numPassedTests === tests && report.numPendingTests === 0 && cases.length === tests &&
-      cases.every(test => test.status === 'passed'), 'LINE_A_ORIGINAL_HTTP_COVERAGE');
+    if (signedSubcent) {
+      const passed = cases.filter(test => test.status === 'passed');
+      const expectedPassed = fullSignedSuite ? tests + 1 : 1;
+      assert.ok(result.status === 0 && report?.success === true && report.testResults.length === 1 &&
+        report.testResults[0].name === path.join(api, spec) && report.numTotalTests === tests + 1 &&
+        report.numPendingTests === (fullSignedSuite ? 0 : tests) && report.numPassedTests === expectedPassed &&
+        cases.length === tests + 1 && passed.length === expectedPassed &&
+        passed.filter(test => test.fullName === signedSubcentTitle).length === 1,
+        'LINE_A_A01_SIGNED_SUBCENT_HTTP_COVERAGE');
+      receipt.a01 = {
+        ...(fullSignedSuite ? {} : { selectedCase: signedSubcentTitle }),
+        originalCaseCount: tests, registeredCaseCount: tests + 1, passedCaseCount: expectedPassed,
+        confirmationHttpStatus: 201, signedYuan: '-0.0001', confirmedCostDecreaseYuan: '0.0001',
+        payableImpactCount: 0, paymentCapCents: '101', repeatReviewHttpStatus: 409, duplicateWrites: false
+      };
+    } else {
+      assert.ok(result.status === 0 && report?.success && report.testResults.length === 1 &&
+        report.testResults[0].name === path.join(api, spec) && report.numTotalTests === tests &&
+        report.numPassedTests === tests && report.numPendingTests === 0 && cases.length === tests &&
+        cases.every(test => test.status === 'passed'), 'LINE_A_ORIGINAL_HTTP_COVERAGE');
+    }
   } finally {
     const deletions = witnesses.map(({ table, key }) => 'DELETE FROM public.' + table
       + ' WHERE "key"=decode(\'' + key + '\',\'hex\');');
@@ -284,7 +327,7 @@ async function consume(context) {
 }
 
 async function main() {
-  assert.equal(process.argv.length, 2);
+  assert.equal(process.argv.length, fullSignedSuite ? 3 : 2);
   assert.notEqual(process.getuid(), 0);
   assert.equal(process.env.DATABASE_URL, undefined);
   assert.match(source.sourceSha, /^[a-f0-9]{40}$/u);
@@ -292,16 +335,17 @@ async function main() {
   assert.equal(source.migrationCount, migrationCount);
   assert.equal(source.predecessor.ledgerSha256, final);
   if (historicalSettlement) {
-    const profile = expenseWitness ?? require('./historical-settlement-334-profile.cjs');
+    const profile = signedProfile ?? expenseWitness ?? require('./historical-settlement-334-profile.cjs');
     profile.assertSource(source, final);
     const installerHash = createHash('sha256').update(fs.readFileSync(path.join(root, 'installer.cjs'))).digest('hex');
     assert.equal(installerHash, profile.installerSha256, 'LINE_A_' + migrationCount + '_INSTALLER_FINGERPRINT');
   }
   const baseline = require(path.join(api, 'prisma/migration-baseline.cjs'));
   if (expenseWitness) {
-    expenseWitness.assertRuntimeBaseline(baseline);
+    (signedProfile ?? expenseWitness).assertRuntimeBaseline(baseline);
     const fixtureHash = createHash('sha256').update(fs.readFileSync(path.join(api, spec))).digest('hex');
-    const expected = precision ? '076382343c2fb3712ad7e8512b58b4442ac146ee0f12d343e7000c85df3c22fc'
+    const expected = signedSubcent ? signedSubcentFixture
+      : precision ? '076382343c2fb3712ad7e8512b58b4442ac146ee0f12d343e7000c85df3c22fc'
       : '48bdef111ee82b8a6a622578eaac69586c0cae68f0851d17c1d60fe2921ea1e6';
     assert.equal(fixtureHash, expected, 'LINE_A_' + migrationCount + '_FIXTURE_FINGERPRINT');
     receipt.fixtureSha256 = fixtureHash;
@@ -316,7 +360,9 @@ async function main() {
     : upwardArchive ? withCombined332UpwardArchive : paymentRemainder ? withCombined331PaymentRemainder
     : textDirect ? withCombined330TextAgreement : withCombined320ContractPayment;
   const material = { sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails };
-  if (precision) {
+  if (signedSubcent) {
+    await withCombinedSignedSettlement350(receipt, consume, { ...source, ...material });
+  } else if (precision) {
     await withCombinedExpenseWitness349(receipt, consume, { ...source, ...material });
   } else if (expenseWitness) {
     await withCombinedExpenseWitness(receipt, consume, material, expenseWitness.count);
@@ -331,7 +377,7 @@ async function main() {
       count: 329, ledgerSha256: '3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2',
       sameIdentity: true, sameBaseB7: true
     });
-    assert.equal(installed.count, migrationCount);
+    assert.equal(installed.count, signedSubcent ? source.predecessor349.migrationCount : migrationCount);
     assert.equal(receipt.combinedAfterBusiness.count, migrationCount);
   }
   if (paymentRemainder) {
@@ -348,14 +394,25 @@ async function main() {
     });
   }
   assert.equal(installed.sourceTree, source.sourceTree);
-  assert.equal(installed.ledgerSha256, source.ledgerSha256);
+  assert.equal(installed.ledgerSha256, signedSubcent ? source.predecessor349.ledgerSha256 : source.ledgerSha256);
   assert.equal(installed.sameIdentity, true);
   if (expenseWitness) {
     const historical = require('./historical-settlement-334-profile.cjs');
     historical.assertFinanceInstallation(receipt, { ...source, tails: legacyTails });
     const tails = source.tails.map(({ name, sha256 }) => ({ name, sha256 }));
     const boundary = precision ? source.predecessor346.migrationCount - source.predecessor.migrationCount : 39;
-    assert.deepEqual(installed.tails, tails.slice(boundary));
+    const precisionBoundary = signedSubcent ? source.predecessor349.migrationCount - source.predecessor.migrationCount : tails.length;
+    assert.deepEqual(installed.tails, tails.slice(boundary, precisionBoundary));
+    if (signedSubcent) {
+      assert.equal(receipt.combinedAfterBusiness.count, migrationCount);
+      assert.deepEqual(receipt.signedSettlementForward, {
+        count: migrationCount, ledgerSha256: source.ledgerSha256, sameIdentity: true, sourceTree: source.sourceTree,
+        tails: tails.slice(precisionBoundary)
+      });
+      assert.equal(receipt.signedSettlementCatalogAfterBusiness, true);
+      assert.equal(receipt.a01?.confirmationHttpStatus, 201);
+      assert.equal(receipt.fixtureRoleCleared, true);
+    }
     if (precision) {
       assert.deepEqual(receipt.expenseWitnessForward, {
         count: source.predecessor346.migrationCount, ledgerSha256: source.predecessor346.ledgerSha256,

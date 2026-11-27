@@ -293,6 +293,7 @@ export class SignedContractSettlementService {
         if (marker.includes("SIGNED_SETTLEMENT_REVIEW_LEGACY")) throw new ConflictException("历史结算起点或方向待核对");
         if (marker.includes("SIGNED_SETTLEMENT_REVIEW_CONFLICT")) throw new ConflictException("当前结算不可复核，请刷新");
         if (marker.includes("SIGNED_SETTLEMENT_REVIEW_CAPACITY")) throw new ConflictException("本次冲减后累计结算不得小于零，请核对已确认金额");
+        if (marker.includes("SIGNED_SETTLEMENT_REVIEW_OPERATING_RANGE")) throw new BadRequestException("本次结算的累计待付变化超出可登记范围，请核对原始金额");
         if (marker.includes("SIGNED_SETTLEMENT_REVIEW_FILE")) throw new BadRequestException("请上传可用的已签附件，原件变更时须重新上传");
         if (marker.includes("SIGNED_SETTLEMENT_REVIEW_REQUIRED")) throw new BadRequestException("请填写结算编号和非零本期金额");
       }
