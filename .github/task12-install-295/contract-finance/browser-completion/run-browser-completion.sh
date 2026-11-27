@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 ) ) ||
-  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 ) && $6 == --host-only ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --company-history-352 ) ) ||
+  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --company-history-352 ) && $6 == --host-only ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -15,11 +15,11 @@ common="$base/common"
 scope=task398-browser-completion
 mode=${5-}
 tree=
-if [[ $mode == --expense-witness-346 || $mode == --expense-witness-349 ]]; then
+if [[ $mode == --expense-witness-346 || $mode == --expense-witness-349 || $mode == --company-history-352 ]]; then
   [[ $plan == "$base/browser-completion" && $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
   [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$base") ]] || exit 65
   tree=$(git -C "$repo" rev-parse "$sha^{tree}")
-  if [[ $mode == --expense-witness-349 ]]; then
+  if [[ $mode == --expense-witness-349 || $mode == --company-history-352 ]]; then
     cmp -s "$prepared/source.json" <(node "$base/check-ledger.cjs" "$repo" "$sha" "$mode") || exit 65
   fi
 fi
@@ -28,11 +28,11 @@ count=$(node -e '
   const [file,sha,base,mode,tree]=process.argv.slice(1);
   const source=require(file);
   const {final}=require(base+"/common/multi-witness.cjs");
-  const count=source.mode==="expense-witness-349"?349:source.mode==="expense-witness-346"?346:source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const count=source.mode==="company-history-352"?352:source.mode==="expense-witness-349"?349:source.mode==="expense-witness-346"?346:source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==sha||source.migrationCount!==count||(count>=346?mode!=="--"+source.mode:Boolean(mode)))process.exit(1);
   if(count===332) require(base+"/upward-archive-332-profile.cjs").assertSource(source,sha,final);
   if(count===334) require(base+"/historical-settlement-334-profile.cjs").assertSource(source,final);
-  if(count===346||count===349){
+  if(count===346||count===349||count===352){
     require("node:assert/strict").equal(source.sourceTree,tree);
     require(base+"/"+source.mode+"-profile.cjs").assertSource(source,final);
   }
@@ -54,7 +54,7 @@ elif [[ $count == 332 ]]; then
   stage_args=(--upward-archive-332)
 elif [[ $count == 334 ]]; then
   stage_args=(--historical-settlement-334)
-elif [[ $count == 346 || $count == 349 ]]; then
+elif [[ $count == 346 || $count == 349 || $count == 352 ]]; then
   stage_args=("$mode")
 fi
 python3 "$plan/stage-completion.py" \
@@ -64,14 +64,18 @@ while IFS= read -r file; do overlay_files+=("$file"); done < "$work/overlay-file
 [[ ${#overlay_files[@]} == 8 ]] || exit 65
 
 installer="$common/installer.cjs"
-if [[ $count == 334 || $count == 346 || $count == 349 ]]; then
+if [[ $count == 334 || $count == 346 || $count == 349 || $count == 352 ]]; then
   node "$base/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
   installer="$work/installer.cjs"
 fi
-if [[ $count == 346 || $count == 349 ]]; then
+if [[ $count == 346 || $count == 349 || $count == 352 ]]; then
   git -C "$work" apply --unidiff-zero "$base/expense-witness/installer.patch"
-  if [[ $count == 349 ]]; then
+  if [[ $count == 349 || $count == 352 ]]; then
     git -C "$work" apply --unidiff-zero "$base/expense-witness/installer-349.patch"
+  fi
+  if [[ $count == 352 ]]; then
+    git -C "$work" apply --unidiff-zero "$base/expense-witness/installer-350.patch"
+    git -C "$work" apply --unidiff-zero "$base/expense-witness/installer-352.patch"
   fi
   node - "$base" "$prepared" "$installer" <<'JS'
 const assert=require("node:assert/strict");
@@ -112,18 +116,23 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$base/task398-browser-diagnostics.cjs,dst=/qualification/task398-browser-diagnostics.cjs,readonly"
   --mount "type=bind,src=$plan/task398-completion-entry.cjs,dst=/qualification/task398-completion-entry.cjs,readonly"
   --mount "type=bind,src=$base/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
-if [[ $count == 334 || $count == 346 || $count == 349 ]]; then
+if [[ $count == 334 || $count == 346 || $count == 349 || $count == 352 ]]; then
   for file in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
     args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
   done
 fi
-if [[ $count == 346 || $count == 349 ]]; then
+if [[ $count == 346 || $count == 349 || $count == 352 ]]; then
   for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
     args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
   done
 fi
-if [[ $count == 349 ]]; then
+if [[ $count == 349 || $count == 352 ]]; then
   args+=(--mount "type=bind,src=$base/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
+fi
+if [[ $count == 352 ]]; then
+  for file in signed-settlement-350-profile.cjs company-history-352-profile.cjs; do
+    args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
+  done
 fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
@@ -143,6 +152,7 @@ node -e '
   if(row.status.endsWith("_PASSED")){
     if(process.argv[3]==="346"&&row.expenseWitnessForward?.sourceTree!==process.argv[4])process.exit(1);
     if(process.argv[3]==="349"&&row.expenseWitnessPrecisionForward?.sourceTree!==process.argv[4])process.exit(1);
+    if(process.argv[3]==="352"&&row.companyHistoryForward?.sourceTree!==process.argv[4])process.exit(1);
   }
   console.log(JSON.stringify(row));
 ' "$work/receipt.json" "$sha" "$count" "$tree" || { printf 'TASK398_BROWSER_COMPLETION_295_NO_RECEIPT %s\n' "$work" >&2; exit 1; }

@@ -9,7 +9,7 @@ const read=name=>JSON.parse(readFileSync(path.join(dir,name),'utf8'));
 const terminal=read('receipt-complete.json');
 const markers=['receipt.json','receipt-stage2.json'].map(read);
 const count=Number(process.argv[4]??295);
-assert.ok([295,329,330,331,332,334,346,349].includes(count));
+assert.ok([295,329,330,331,332,334,346,349,352].includes(count));
 assert.equal(outer.status,'TASK398_BROWSER_COMPLETION_EXACT_'+count+'_PASSED');
 if(count!==295){
   assert.equal(outer.forward320?.count,count>=346?334:count);
@@ -18,7 +18,7 @@ if(count!==295){
   assert.match(outer.forward320?.sourceTree??'',/^[a-f0-9]{40}$/u);
   assert.match(outer.forward320?.ledgerSha256??'',/^[a-f0-9]{64}$/u);
   assert.equal(outer.combinedAfterBusiness?.count,count);
-  assert.equal(outer.combinedAfterBusiness?.ledgerSha256,count===349?outer.expenseWitnessPrecisionForward?.ledgerSha256:count===346?outer.expenseWitnessForward?.ledgerSha256:outer.forward320.ledgerSha256);
+  assert.equal(outer.combinedAfterBusiness?.ledgerSha256,count===352?outer.companyHistoryForward?.ledgerSha256:count===349?outer.expenseWitnessPrecisionForward?.ledgerSha256:count===346?outer.expenseWitnessForward?.ledgerSha256:outer.forward320.ledgerSha256);
   assert.equal(outer.combinedAfterBusiness?.exactB7,true);
   if(count>=330){
     assert.equal(outer.textDirectPredecessor?.count,329);
@@ -64,7 +64,7 @@ if(count!==295){
     });
     assert.equal(outer.expenseWitnessCatalogAfterBusiness,true);
   }
-  if(count===349){
+  if(count>=349){
     const precision=outer.expenseWitnessPrecisionForward;
     assert.equal(precision.count,349);
     assert.equal(precision.sameIdentity,true);

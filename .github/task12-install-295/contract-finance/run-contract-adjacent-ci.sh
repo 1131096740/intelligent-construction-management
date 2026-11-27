@@ -48,7 +48,7 @@ if [[ ${3-} == --company-history-352 ]]; then
   fi
   company_352=true
   if [[ $2 == issue417 ]]; then issue_lane=true; fi
-  if [[ $2 != task398-standard && $2 != pol115-full && $2 != pol115-workbench && $2 != pol115-original && $2 != pol115-spot && $2 != issue417 && $2 != pol275 && $2 != bank && $2 != cash-handover && $2 != principal-return && $2 != company-proxy && $2 != pfq && $2 != pol109 && $2 != pol108-core && $2 != pol108-facts && $2 != pol108-impacts && $2 != onboarding && $2 != procurement && $2 != line-a && $2 != core-payment && $2 != payment-execution && $2 != settlement && $2 != template && $2 != draft && $2 != v7 && $2 != invoice && $2 != pol279 && $2 != pol280 && $2 != expense-execution && $2 != expense-finance && $2 != expense-receipt ]]; then
+  if [[ $2 != browser-partial && $2 != browser-completion && $2 != task398-standard && $2 != pol115-full && $2 != pol115-workbench && $2 != pol115-original && $2 != pol115-spot && $2 != issue417 && $2 != pol275 && $2 != bank && $2 != cash-handover && $2 != principal-return && $2 != company-proxy && $2 != pfq && $2 != pol109 && $2 != pol108-core && $2 != pol108-facts && $2 != pol108-impacts && $2 != onboarding && $2 != procurement && $2 != line-a && $2 != core-payment && $2 != payment-execution && $2 != settlement && $2 != template && $2 != draft && $2 != v7 && $2 != invoice && $2 != pol279 && $2 != pol280 && $2 != expense-execution && $2 != expense-finance && $2 != expense-receipt ]]; then
     scopes=$(node - "$plan/issue-ordered/profiles.cjs" "$2" <<'JS'
 const [file,lane]=process.argv.slice(2);
 const {issueOrderedScopes352}=require(file);
@@ -148,6 +148,9 @@ if [[ ${4-} == --host-only || ( ( $signed_350 == true || $company_352 == true ) 
     done
   elif [[ $company_352 == true ]]; then
     case "$lane" in
+      browser-partial|browser-completion)
+        kind=${lane#browser-}
+        bash "$plan/browser-$kind/run-browser-$kind.sh" "$root" "$work/source" "$sha" "$work" "$3" --host-only ;;
       task398-standard)
         for variant in standard-352 text-direct-352; do
           bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work" "$variant" --host-only
@@ -344,7 +347,7 @@ case "$lane" in
   company-proxy) bash "$plan/run-task410-company-proxy.sh" "$root" "$work/source" "$sha" "$work/browser" ;;
   browser-partial|browser-completion)
     browser_args=()
-    if [[ ${3:-} == --expense-witness-34[69] ]]; then browser_args=("$3"); fi
+    if [[ ${3:-} == --expense-witness-34[69] || $company_352 == true ]]; then browser_args=("$3"); fi
     bash "$plan/$lane/run-$lane.sh" "$root" "$work/source" "$sha" "$work/browser" ${browser_args[@]+"${browser_args[@]}"}
     ;;
   v7|invoice|pol279|pol280) bash "$plan/run-finance-adjacent.sh" "$root" "$work/source" "$sha" "$work/browser" "$lane" ${mode_args[@]+"${mode_args[@]}"} ;;

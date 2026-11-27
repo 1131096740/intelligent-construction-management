@@ -1,0 +1,67 @@
+--- run-task398-shared-standard-local.cjs
++++ run-task398-shared-standard-local.cjs
+@@ -215,12 +215,12 @@
+  const requirements=require("./task16-current259-voucher-acl.requirements.json");
+  const plan=runtimePlan();
+  // The current browser reads use late-migration facts projected by the API.
+- const browserReads=browserScenario&&[329,330,331,332,334,346,349].includes(ownedMigrationBaseline?.expectedDirectoryCount)?{
++ const browserReads=browserScenario&&[329,330,331,332,334,346,349,352].includes(ownedMigrationBaseline?.expectedDirectoryCount)?{
+   PaymentExecutionRefund:["id","paymentRequestId","paymentExecutionId","amountCents","receivedAt","fundRegistrationId"],
+   PaymentExecutionCorrection:["id","paymentRequestId","amountDeltaCents","status"],
+   OperatingCostAttributionConfirmation:["id","projectId","status","operatingFactId","companyEntityVersionId","companyNameSnapshot"]
+  }:{};
+- if(browserScenario&&[346,349].includes(ownedMigrationBaseline?.expectedDirectoryCount)){
++ if(browserScenario&&[346,349,352].includes(ownedMigrationBaseline?.expectedDirectoryCount)){
+   // Filters and relation keys used by the public-cash cost projection.
+   browserReads.OperatingCostAttributionConfirmation.push("expenseCashCostLinkId","reviewedAt","attributedAmountCents");
+   browserReads.PaymentExecutionRefund.push("expenseClaimPaymentExecutionId");
+@@ -364,7 +364,7 @@
+   const knownTitle="rejects a project source gap, then shares three valid instalments and supplements the voucher";
+   const reportFile=path.join(privateLogDir,"standard-290-jest.json");
+   const selection=standard290||browser290?["--json","--outputFile",reportFile]:[];
+-  const browserDiagnostics=browser290 && /_EXACT_(?:329|330|331|332|334|346|349)$/u.test(browser290.purpose)?require("/qualification/task398-browser-diagnostics.cjs"):undefined;
++  const browserDiagnostics=browser290 && /_EXACT_(?:329|330|331|332|334|346|349|352)$/u.test(browser290.purpose)?require("/qualification/task398-browser-diagnostics.cjs"):undefined;
+   browserDiagnostics?.markBrowserPhase(browser290,"JEST_SCENARIO");
+   const output=command("pnpm",["--filter","@jiangkong/api","exec","jest","--runInBand",...scenarios,...selection],{
+    env,timeout:300000,onFailure:browserDiagnostics?result=>browserDiagnostics.recordBrowserJestFailure(browser290,reportFile,scenario,result):undefined
+@@ -538,17 +538,18 @@
+  `);
+ }
+ async function runTask398Owned282Voucher(context, mode="standard", receipt){
+- const modes=new Map([["browser-partial-349",["--browser-real"]],["browser-partial-346",["--browser-real"]],["browser-partial-334",["--browser-real"]],["browser-partial-332",["--browser-real"]],["browser-partial-331",["--browser-real"]],["browser-partial-330",["--browser-real"]],["browser-partial-329",["--browser-real"]],["browser-partial-295",["--browser-real"]],["browser-partial-290",["--browser-real"]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["browser-partial-352",["--browser-real"]],["browser-partial-349",["--browser-real"]],["browser-partial-346",["--browser-real"]],["browser-partial-334",["--browser-real"]],["browser-partial-332",["--browser-real"]],["browser-partial-331",["--browser-real"]],["browser-partial-330",["--browser-real"]],["browser-partial-329",["--browser-real"]],["browser-partial-295",["--browser-real"]],["browser-partial-290",["--browser-real"]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+  const partial295=mode==="browser-partial-295";
+  const paymentRemainder=mode==="browser-partial-331";
+- const precision=mode==="browser-partial-349";
++ const company=mode==="browser-partial-352";
++ const precision=company||mode==="browser-partial-349";
+  const expenseWitness=precision||mode==="browser-partial-346";
+  const historicalSettlement=expenseWitness||mode==="browser-partial-334";
+  const upwardArchive=mode==="browser-partial-332";
+  const current320=historicalSettlement||upwardArchive||paymentRemainder||mode==="browser-partial-329"||mode==="browser-partial-330";
+- const count=precision?349:expenseWitness?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:mode==="browser-partial-330"?330:329;
++ const count=company?352:precision?349:expenseWitness?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:mode==="browser-partial-330"?330:329;
+  const forward=current320?receipt?.forward320:undefined;
+- const installed=precision?receipt?.expenseWitnessPrecisionForward:expenseWitness?receipt?.expenseWitnessForward:forward;
++ const installed=company?receipt?.companyHistoryForward:precision?receipt?.expenseWitnessPrecisionForward:expenseWitness?receipt?.expenseWitnessForward:forward;
+  if(current320&&(receipt?.purpose!=="TASK398_BROWSER_PARTIAL_EXACT_"+count||
+   !/^[a-f0-9]{40}$/u.test(receipt.sourceSha)||forward?.count!==(expenseWitness?334:count)||forward.sameIdentity!==true||
+   forward.sameBaseB7!==true||forward.tails?.length!==forward.count-295))throw Error("TASK398_BROWSER_320_SCOPE");
+@@ -558,14 +559,16 @@
+    .assertFinanceInstallation(receipt,expenseWitness?{...source,tails:source.tails.slice(0,39)}:source);
+   if(expenseWitness){
+    const boundary=precision?source.predecessor346.migrationCount-source.predecessor.migrationCount:39;
++   const finalBoundary=company?source.predecessor350.migrationCount-source.predecessor.migrationCount:boundary;
+    const tails=source.tails.map(({name,sha256})=>({name,sha256}));
+    const assert=require("node:assert/strict");
+    if(precision) assert.deepEqual(receipt.expenseWitnessForward,{
+     count:source.predecessor346.migrationCount,ledgerSha256:source.predecessor346.ledgerSha256,
+     sameIdentity:true,sourceTree:forward.sourceTree,tails:tails.slice(39,boundary)
+    });
++   if(company) require("/qualification/company-history-352-profile.cjs").assertSource(source,require("/qualification/multi-witness.cjs").final);
+    assert.deepEqual(installed,{
+-    count,ledgerSha256:source.ledgerSha256,sameIdentity:true,sourceTree:forward.sourceTree,tails:tails.slice(boundary)
++    count,ledgerSha256:source.ledgerSha256,sameIdentity:true,sourceTree:forward.sourceTree,tails:tails.slice(finalBoundary)
+    });
+   }
+  }

@@ -4,11 +4,12 @@ const {createHash} = require('node:crypto');
 const {readFileSync} = require('node:fs');
 const source = require('./contract-finance-source.json');
 const {browserDiagnostic,markBrowserPhase} = require('./task398-browser-diagnostics.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness,withCombinedExpenseWitness349} = require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness,withCombinedExpenseWitness349,withCombinedCompanyHistory352} = require('./installer.cjs');
 const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run-task398-shared-standard-local.cjs');
 
-const precision=source.mode==='expense-witness-349';
-const expenseWitness=precision?require('./expense-witness-349-profile.cjs'):
+const company=source.mode==='company-history-352';
+const precision=company||source.mode==='expense-witness-349';
+const expenseWitness=company?require('./company-history-352-profile.cjs'):precision?require('./expense-witness-349-profile.cjs'):
   source.mode==='expense-witness-346'?require('./expense-witness-346-profile.cjs'):undefined;
 const historicalSettlement=Boolean(expenseWitness)||source.mode==='historical-settlement-334';
 const upwardArchive=source.mode==='upward-archive-332';
@@ -41,7 +42,8 @@ async function main(){
     const install=historicalSettlement?withCombined334HistoricalSettlement:upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
     const material={sourceTree:source.sourceTree,
       migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails};
-    if(precision) await withCombinedExpenseWitness349(receipt,consume,{...source,...material});
+    if(company) await withCombinedCompanyHistory352(receipt,consume,{...source,...material});
+    else if(precision) await withCombinedExpenseWitness349(receipt,consume,{...source,...material});
     else if(expenseWitness) await withCombinedExpenseWitness(receipt,consume,material,expenseWitness.count);
     else await install(receipt,consume,material);
     assert.equal(receipt.forward320.sourceTree,source.sourceTree);
@@ -53,7 +55,7 @@ async function main(){
       assert.equal(receipt.historicalSettlementCatalogAfterBusiness,true);
     }
     if(expenseWitness){
-      const installed=precision?receipt.expenseWitnessPrecisionForward:receipt.expenseWitnessForward;
+      const installed=company?receipt.companyHistoryForward:precision?receipt.expenseWitnessPrecisionForward:receipt.expenseWitnessForward;
       assert.equal(installed?.count,count);
       assert.equal(installed.sourceTree,source.sourceTree);
       assert.equal(installed.ledgerSha256,source.ledgerSha256);
