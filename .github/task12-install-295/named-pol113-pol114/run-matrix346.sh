@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-[[ ( $# == 2 || ( $# == 3 && $3 == --expense-witness-349 ) ) && $1 =~ ^[a-f0-9]{40}$ ]] || exit 64
+[[ ( $# == 2 || ( $# == 3 && ( $3 == --expense-witness-349 || $3 == --company-history-352 ) ) ) && $1 =~ ^[a-f0-9]{40}$ ]] || exit 64
 export CI_SOURCE_SHA=$1
 mode=${3:---expense-witness-346}
 plan=$(cd "$(dirname "$0")" && pwd -P)

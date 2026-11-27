@@ -1,0 +1,71 @@
+--- install-only.cjs
++++ install-only.cjs
+@@ -5,7 +5,7 @@
+ const path=require('node:path');
+ const {createHash,randomUUID}=require('node:crypto');
+ const {spawnSync}=require('node:child_process');
+-const {withNamedPol113Pol114350}=require('./installer.cjs');
++const {withNamedPol113Pol114352}=require('./installer.cjs');
+ const {scope}=require('./named292/successor.cjs');
+ const {stageBrowser}=require('./stage-named-browser.cjs');
+ const {collectBrowserEvidence,bootSummary}=require('./browser-evidence.cjs');
+@@ -139,7 +139,7 @@
+ 
+ const mode=process.argv[2];
+ const admission=require('./candidate-admission.json');
+-const receipt={schemaVersion:1,purpose:'NAMED_POL113_POL114_EXACT_350',mode,business:'NOT_ENTERED',stages:[],candidateSha:admission.candidateSha};
++const receipt={schemaVersion:1,purpose:'NAMED_POL113_POL114_EXACT_352',mode,business:'NOT_ENTERED',stages:[],candidateSha:admission.candidateSha};
+ Promise.resolve().then(async()=>{
+   assert.ok(process.argv.length===3&&Object.hasOwn(recipes,mode));
+   assert.equal(admission.tree,scope.tree);
+@@ -152,10 +152,10 @@
+   });
+   assert.equal(workspaceProof.status,0,'POL113_POL114_EXACT_WORKSPACE');
+   receipt.workspaceBytesVerified=true;
+-  await withNamedPol113Pol114350(receipt,mode,context=>consume(context,receipt,mode));
++  await withNamedPol113Pol114352(receipt,mode,context=>consume(context,receipt,mode));
+   assert.equal(receipt.releaseTree,scope.tree);
+   assert.equal(receipt.business,'CALLBACK_COMPLETED');
+-  assert.deepEqual(receipt.orderedTails.slice(-28).map(({size})=>size),[290,291,292,293,294,295,329,330,331,332,333,334,...Array.from({length:16},(_,i)=>335+i)]);
++  assert.deepEqual(receipt.orderedTails.slice(-30).map(({size})=>size),[290,291,292,293,294,295,329,330,331,332,333,334,...Array.from({length:18},(_,i)=>335+i)]);
+   assert.equal(receipt.installOnly292?.ledgerSha256,scope.expectedLedgerSha256);
+   assert.deepEqual(receipt.postBehavior292,{catalogPreserved:true,keyUnprovisioned:true});
+   assert.equal(receipt.installOnly295?.ledgerSha256,admission.ledger295);
+@@ -164,7 +164,7 @@
+   assert.deepEqual(receipt.textDirectPredecessor,{count:329,ledgerSha256:admission.ledger329,sameIdentity:true,exactB7:true});
+   assert.deepEqual(receipt.paymentRemainderPredecessor,{count:330,ledgerSha256:admission.ledger330,sameIdentity:true,exactB7:true});
+   assert.deepEqual(receipt.upwardArchivePredecessor,{count:331,ledgerSha256:admission.ledger331,sameIdentity:true,exactB7:true});
+-  assert.deepEqual(receipt.orderedTails.slice(-20,-16),[
++  assert.deepEqual(receipt.orderedTails.slice(-22,-18),[
+     {size:331,ledgerSha256:admission.ledger331},{size:332,ledgerSha256:admission.ledger332},
+     {size:333,ledgerSha256:admission.ledger333},{size:334,ledgerSha256:admission.ledger334}
+   ]);
+@@ -173,7 +173,7 @@
+   assert.equal(receipt.forward334?.sameIdentity,true);
+   assert.equal(receipt.forward334?.exactB7,true);
+   assert.equal(receipt.forward334?.ledgerSha256,admission.ledger334);
+-  assert.deepEqual(receipt.postBehavior350,{exactB7:true,sameIdentity:true,count:350,ledgerSha256:admission.ledger350});
++  assert.deepEqual(receipt.postBehavior352,{exactB7:true,sameIdentity:true,count:352,ledgerSha256:admission.ledger352});
+   const historical=require('./historical-takeover-333-profile.cjs');
+   const settlement=require('./historical-settlement-334-profile.cjs');
+   const prior=receipt.historicalTakeoverPredecessor;
+@@ -186,7 +186,8 @@
+   settlement.assertCatalog(receipt.historicalSettlement334Catalog,boundary.catalog);
+   assert.equal(receipt.historicalCatalogAfterBusiness,true);
+   const signedSettlement=require('./signed-settlement-350-profile.cjs');
+-  for (const {size,ledgerSha256} of receipt.orderedTails.slice(-17)) signedSettlement.assertPrefix(size,ledgerSha256);
++  const company=require('./company-history-352-profile.cjs');
++  for (const {size,ledgerSha256} of receipt.orderedTails.slice(-19)) company.assertPrefix(size,ledgerSha256);
+   assert.equal(receipt.forward346?.sourceTree,admission.sourceTree);
+   assert.equal(receipt.forward346?.count,346);
+   assert.equal(receipt.forward346?.ledgerSha256,admission.ledger346);
+@@ -203,7 +204,8 @@
+     receipt.forward350?.sameIdentity,receipt.forward350?.exactB7],[350,admission.ledger350,true,true]);
+   signedSettlement.assertCatalog(receipt.signedSettlementCatalog,receipt.signedSettlementCatalogBefore);
+   assert.equal(receipt.signedSettlementCatalogAfterBusiness,true);
+-  receipt.status='POL113_POL114_NAMED_EXACT_350_PASSED';
++  assert.deepEqual([receipt.forward352?.count,receipt.forward352?.ledgerSha256,receipt.forward352?.sameIdentity,receipt.forward352?.exactB7],[352,admission.ledger352,true,true]);
++  receipt.status='POL113_POL114_NAMED_EXACT_352_PASSED';
+ }).catch(error=>{
+   const code=error.code??error.message;
+   receipt.status='STOPPED';

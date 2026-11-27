@@ -1,0 +1,73 @@
+--- installer.cjs
++++ installer.cjs
+@@ -284,7 +284,9 @@
+   const exact292=purpose===named292
+     ?verifyNamed292Inputs('/qualification/product/services/api/prisma','/qualification/product291/services/api/prisma','/qualification/named292/successor.sql')
+     :undefined;
+-  const named350=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_350';
++  const named352=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_352';
++  const company=named352?require('./company-history-352-profile.cjs'):undefined;
++  const named350=named352||(purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_350');
+   const signedSettlement=named350?require('./signed-settlement-350-profile.cjs'):undefined;
+   const named349=named350||(purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_349');
+   const precision=named349?require('./expense-witness-349-profile.cjs'):undefined;
+@@ -743,15 +745,16 @@
+         const rows=material.tails;
+         const historical=require('./historical-takeover-333-profile.cjs');
+         const settlement=require('./historical-settlement-334-profile.cjs');
+-        const target=signedSettlement?.count ?? precision?.count ?? expenseWitness?.count ?? 334;
++        const target=company?.count ?? signedSettlement?.count ?? precision?.count ?? expenseWitness?.count ?? 334;
+         if (precision) {
+-          need(material.sourceMode===(signedSettlement?.mode ?? precision.mode) && material.ledger346===expenseWitness.ledgerSha256 &&
++          need(material.sourceMode===(company?.mode ?? signedSettlement?.mode ?? precision.mode) && material.ledger346===expenseWitness.ledgerSha256 &&
+             material.ledger349===precision.ledgerSha256,'NAMED_349_ADMISSION');
+         }
+         if (signedSettlement) {
+-          need(material.ledger350===signedSettlement.ledgerSha256 && equal(rows.at(-1),signedSettlement.terminal),
++          need(material.ledger350===signedSettlement.ledgerSha256 && equal(rows[signedSettlement.count-296],signedSettlement.terminal),
+             'NAMED_350_ADMISSION');
+         }
++        if (company) need(material.ledger352===company.ledgerSha256 && equal(rows.at(-1),company.terminal),'NAMED_352_ADMISSION');
+         need(named334&&material.migrationCount===target && /^[0-9a-f]{40}$/u.test(material.sourceTree) &&
+           Array.isArray(rows) && rows.length===target-295 && rows[34]?.name==='20261128000000_text_agreement_direct_payment' &&
+           rows[35]?.name==='20261129000000_payment_remaining_withdrawal' &&
+@@ -783,7 +786,7 @@
+             const admitted=[material.ledger329,material.ledger330,material.ledger331,material.ledger332,material.ledger333,material.ledger334];
+             need(expected===admitted[count-329],'NAMED_334_LEDGER_SOURCE');
+           }
+-          if (expenseWitness&&count>=334) (signedSettlement ?? precision ?? expenseWitness).assertPrefix(count,expected);
++          if (expenseWitness&&count>=334) (company ?? signedSettlement ?? precision ?? expenseWitness).assertPrefix(count,expected);
+           enter('NAMED_COMPOSED_MIGRATE_'+count);
+           await deploy();
+           const outside=await verifyLedger(consumerLedger,true,count>=332);
+@@ -846,6 +849,7 @@
+               receipt.signedSettlementCatalogBefore=before;
+             }
+           }
++          if (company&&count===company.count) receipt.forward352={count,ledgerSha256:expected,sourceTree:material.sourceTree,sameIdentity:true,exactB7:true,outside};
+           if (signedSettlement&&count===signedSettlement.count) {
+             const after=await jsonSql(signedSettlement.catalogSql);
+             signedSettlement.assertCatalog(after,receipt.signedSettlementCatalogBefore);
+@@ -881,7 +885,7 @@
+         sql:statement => { onlyWhileOwned(); return sql(statement); },
+         readPostgresLog:() => { onlyWhileOwned(); return fs.readFileSync(logPath, 'utf8'); },
+       });
+-      enter(named350?'EXACT_350_NAMED_FRESH_CONSUMER':named349?'EXACT_349_NAMED_FRESH_CONSUMER':named346?'EXACT_346_NAMED_FRESH_CONSUMER':named334?'EXACT_334_NAMED_FRESH_CONSUMER':named320?'EXACT_329_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
++      enter(named352?'EXACT_352_NAMED_FRESH_CONSUMER':named350?'EXACT_350_NAMED_FRESH_CONSUMER':named349?'EXACT_349_NAMED_FRESH_CONSUMER':named346?'EXACT_346_NAMED_FRESH_CONSUMER':named334?'EXACT_334_NAMED_FRESH_CONSUMER':named320?'EXACT_329_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
+       for (const [key,role] of [['runtime','jg_task01_runtime'], ['observer','jg_task01_observer']]) {
+         const observed = await jsonSql(`SELECT jsonb_build_object(
+           'database',current_database(),'role',current_user,'sessionRole',session_user,
+@@ -911,7 +915,7 @@
+         if (named295Tail) {
+           await named295Tail.checkTailCatalogs();
+           receipt.postBehavior295={catalogPreserved:true,keyUnprovisioned:true,exactB7:true,sameIdentity:true};
+-          if(named320) receipt[named350?'postBehavior350':named349?'postBehavior349':named346?'postBehavior346':'postBehavior334']={exactB7:true,sameIdentity:true,
++          if(named320) receipt[named352?'postBehavior352':named350?'postBehavior350':named349?'postBehavior349':named346?'postBehavior346':'postBehavior334']={exactB7:true,sameIdentity:true,
+             count:afterConsumer.ledger.length,ledgerSha256:hash(JSON.stringify(afterConsumer.ledger))};
+           if(named334) {
+             const historical=require('./historical-takeover-333-profile.cjs');
+@@ -1285,3 +1289,4 @@
+ module.exports.withNamedPol113Pol114346=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,346);
+ module.exports.withNamedPol113Pol114349=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,349);
+ module.exports.withNamedPol113Pol114350=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,350);
++module.exports.withNamedPol113Pol114352=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,352);
