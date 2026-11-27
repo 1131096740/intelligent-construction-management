@@ -80,10 +80,10 @@ if (signedSubcent) {
   const anchor = '  it("rounds the confirmed cumulative once and reads a paid balance without a tail (A02)"';
   assert.equal(fixture.split(anchor).length, 2, 'LINE_A_A01_FIXTURE_ANCHOR');
   const fragment = fs.readFileSync(path.join(plan, 'line-a-a01-signed-subcent-350.fixture'), 'utf8');
-  assert.equal(sha256(fragment), '5edfdfb9a0e124935cbdabb9fb79a21c6ac3a41237d9ca9ca29950366a49dc76');
+  assert.equal(sha256(fragment), 'c05defe651512e2d98aaed8cf3d13ba20d5a657e54f0eb811b2cade7165398bf');
   fixture = fixture.replace(anchor, fragment + '\n' + anchor);
   const fixtureSha256 = sha256(fixture);
-  assert.equal(fixtureSha256, 'cdba722cd3d8ae6fbc8bdef72be4201fc717f0bfe9a2319bb451471e365d715d');
+  assert.equal(fixtureSha256, '71d0f8004a04acdf5947ce196c39695983caab36a83afd25aad36ba4670909ea');
   fs.writeFileSync(path.join(work, 'a01-admission.json'), JSON.stringify({
     status: 'HOST_MATERIAL_ONLY', sourceSha: source.sourceSha, sourceTree: source.sourceTree,
     predecessor349: source.predecessor349, migrationCount: profile.count, ledgerSha256: source.ledgerSha256,

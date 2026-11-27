@@ -21,7 +21,7 @@ const fullSignedSuite = signedSubcent && process.argv[2] === 'original';
 const signedSubcentOnly = signedSubcent && !fullSignedSuite;
 const signedProfile = signedSubcent ? require('./signed-settlement-350-profile.cjs') : null;
 const signedSubcentTitle = 'line A contract candidate on real PostgreSQL and HTTP A01 已签结算不足一分冲减在确认后保留经营原值';
-const signedSubcentFixture = 'cdba722cd3d8ae6fbc8bdef72be4201fc717f0bfe9a2319bb451471e365d715d';
+const signedSubcentFixture = '71d0f8004a04acdf5947ce196c39695983caab36a83afd25aad36ba4670909ea';
 const precision = source.mode === 'expense-witness-349' || signedSubcent;
 const expenseWitness = precision ? require('./expense-witness-349-profile.cjs')
   : source.mode === 'expense-witness-346' ? require('./expense-witness-346-profile.cjs') : null;

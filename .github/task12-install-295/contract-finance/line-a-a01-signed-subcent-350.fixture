@@ -1,5 +1,31 @@
   it("A01 已签结算不足一分冲减在确认后保留经营原值", async () => {
-    const initial = await newSignedDraft(ids.contractI, "LINEA-A01-OPENING", "1.0100");
+    const contractId = "linea-contract-a01";
+    const versionId = "linea-contract-a01-v1";
+    const effectiveAt = new Date();
+    effectiveAt.setUTCDate(effectiveAt.getUTCDate() - 1);
+    await owner.contract.create({ data: {
+      id: contractId, projectId: ids.project, code: "LINEA-HT-A01", name: "隔离不足一分冲减合同",
+      counterparty: "隔离相对方", ownerUserId: ids.director, contractTypeKey: "labor_subcontract",
+      companyEntityId: ids.company, companyEntityName: "隔离参与公司"
+    } });
+    await owner.contractVersion.create({ data: {
+      id: versionId, contractId, versionNo: 1, changeType: "original", status: "effective",
+      amountCents: 1_000_000n, numericProtocolVersion: 1, effectiveAt, pricingNature: "fixed_total",
+      amountLimitType: "capped", settlementMode: "settlement_required", settlementModeSource: "contract_director",
+      settlementModeConfirmedByUserId: ids.director, settlementModeConfirmedAt: effectiveAt,
+      signingSubjectType: "our_company", companyEntityIdSnapshot: ids.company,
+      companyEntityVersionId: ids.companyVersion, companyEntityNameSnapshot: "隔离参与公司",
+      companyEntityCreditCodeSnapshot: "91350100LINEA00001", draftData: {}, templateSnapshot: {}, clauseSnapshot: []
+    } });
+    await owner.paymentTermsVersion.create({ data: {
+      id: "linea-terms-a01", contractId, contractVersionId: versionId, versionNo: 1,
+      status: "effective", originalText: "隔离付款约定：结算后三十日支付"
+    } });
+    await owner.contractPartySnapshot.create({ data: {
+      contractVersionId: versionId, roleKey: "party_b", displayOrder: 0,
+      businessPartyVersionId: ids.counterpartyVersion, snapshot: { name: "隔离相对方" }
+    } });
+    const initial = await newSignedDraft(contractId, "LINEA-A01-OPENING", "1.0100");
     const submitted = await call("staff", `${settlementPath}/${initial.id}/submission`, { revision: initial.revision });
     const reviewed = await call("director", `${settlementPath}/${initial.id}/review`, {
       revision: submitted.body.revision, decision: "confirm"
@@ -15,10 +41,10 @@
     ]));
     expect(originalImpacts).toHaveLength(2);
 
-    const reduction = await newSignedDraft(ids.contractI, "LINEA-A01-SUBCENT", "-0.0001");
+    const reduction = await newSignedDraft(contractId, "LINEA-A01-SUBCENT", "-0.0001");
     const pending = await call("staff", `${settlementPath}/${reduction.id}/submission`, { revision: reduction.revision });
     expect(pending).toMatchObject({ status: 201, body: { state: "pending_review", amountYuan: "-0.0001" } });
-    const basisPath = `${settlementPath}/payment-basis?contractKind=downstream&contractId=${ids.contractI}`;
+    const basisPath = `${settlementPath}/payment-basis?contractKind=downstream&contractId=${contractId}`;
     expect((await call("staff", basisPath)).body).toMatchObject({
       confirmedYuan: "1.0100", latestConfirmed: { id: initial.id }, downstreamCapacity: { wholeCentLimit: "101" }
     });
