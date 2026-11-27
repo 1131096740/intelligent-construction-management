@@ -8,14 +8,15 @@ const {consume}=require('./remaining-direct-capacity.cjs');
 
 const root='/qualification';
 const source=require('./contract-finance-source.json');
-const expense=source.mode==='expense-witness-346'?require('./payment-execution-346.cjs'):undefined;
+const expense=['expense-witness-346','expense-witness-349'].includes(source.mode)
+  ?require('./payment-execution-'+source.migrationCount+'.cjs'):undefined;
 const historicalSettlement=source.mode==='historical-settlement-334';
 const historical=historicalSettlement?require('./historical-settlement-334-profile.cjs'):undefined;
 const upwardArchive=source.mode==='upward-archive-332';
 const paymentRemainder=source.mode==='payment-remainder-331';
 const textDirect=source.mode==='text-direct-330';
 const current=expense||historicalSettlement||upwardArchive||paymentRemainder||textDirect||source.mode==='current-320';
-const count=expense?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current?329:295;
+const count=expense?source.migrationCount:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current?329:295;
 const receipt={schemaVersion:1,purpose:'REMAINING_DIRECT_CAPACITY_'+count,
   sourceSha:source.sourceSha,stages:['INPUTS'],status:'STOPPED'};
 
@@ -45,7 +46,7 @@ async function main(){
     await expense.install(receipt,async context=>{
       const before=await readAcl(context);
       await verify(context);
-      assert.deepEqual(await readAcl(context),before,'REMAINING_DIRECT_346_ACL_CHANGED');
+      assert.deepEqual(await readAcl(context),before,'REMAINING_DIRECT_'+count+'_ACL_CHANGED');
       receipt.directCapacityAcl={databaseAndPublicSchemaUnchanged:true};
     },source);
     expense.assertInstallation(receipt,source);

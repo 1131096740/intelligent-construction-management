@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && $5 == --expense-witness-346 ) ||
-  ( $# == 6 && $5 == --expense-witness-346 && $6 == --host-only ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 ) ) ||
+  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 ) && $6 == --host-only ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -13,7 +13,13 @@ plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$plan/common"
 archive="$repo/.github/task12-install-289"
 scope=cleanup
-if [[ ${5:-} == --expense-witness-346 ]]; then
+mode=${5-}
+expense=false
+if [[ $mode == --expense-witness-346 || $mode == --expense-witness-349 ]]; then
+  expense=true
+  if [[ $mode == --expense-witness-349 ]]; then
+    [[ $plan == "$repo/.github/task12-install-295/contract-finance" ]] || exit 65
+  fi
   [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
   [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$archive") ]] || exit 65
   node "$plan/check-ledger.cjs" "$repo" "$sha" "$5" | cmp -s "$prepared/source.json" - || exit 65
@@ -21,13 +27,13 @@ fi
 
 node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="expense-witness-346"?346:source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const count=source.mode==="expense-witness-349"?349:source.mode==="expense-witness-346"?346:source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count||
-    (count===346)!==(process.argv[7]==="--expense-witness-346"))process.exit(1);
-  if(count===346) {
+    (count>=346?process.argv[7]!=="--"+source.mode:Boolean(process.argv[7])))process.exit(1);
+  if(count===346||count===349) {
     const plan=process.argv[6];
     const api=process.argv[8];
-    const profile=require(plan+"/expense-witness-346-profile.cjs");
+    const profile=require(plan+"/"+source.mode+"-profile.cjs");
     profile.assertSource(source,require(process.argv[4]).final);
     require(plan+"/bank/migration-inputs-346.cjs")(api,source,profile);
   }
@@ -44,7 +50,7 @@ fi
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 upward_mount=()
-if [[ ${5-} != --expense-witness-346 ]]; then
+if [[ $expense == false ]]; then
   upward_mount=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 fi
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
@@ -65,14 +71,15 @@ done
 source "$plan/remaining-installer-mounts.sh"
 source_mode=$(node -p 'require(process.argv[1]).mode ?? ""' "$prepared/source.json")
 append_remaining_installer "$source_mode" retained
-if [[ $source_mode == expense-witness-346 ]]; then
-  args+=(--mount "type=bind,src=$plan/payment-execution-346.cjs,dst=/qualification/payment-execution-346.cjs,readonly")
+if [[ $expense == true ]]; then
+  witness=payment-execution-${source_mode##*-}.cjs
+  args+=(--mount "type=bind,src=$plan/$witness,dst=/qualification/$witness,readonly")
 fi
 node - "$archive" "$prepared/source.json" "$work" "$plan" > "$work/cleanup-mounts.tsv" <<'JS'
 const fs=require('node:fs'), path=require('node:path'),{createHash}=require('node:crypto'),assert=require('node:assert/strict');
 const {spawnSync}=require('node:child_process'),{gunzipSync}=require('node:zlib');
 const [archive,sourceFile,work,plan]=process.argv.slice(2);
-const current=['current-320','text-direct-330','payment-remainder-331','upward-archive-332','historical-settlement-334','expense-witness-346'].includes(require(sourceFile).mode);
+const current=['current-320','text-direct-330','payment-remainder-331','upward-archive-332','historical-settlement-334','expense-witness-346','expense-witness-349'].includes(require(sourceFile).mode);
 const lifecycle='fixtures/contract-lifecycle-route.spec.ts';
 const aggregate='fixtures/contract-draft-aggregate-concurrency.spec.ts';
 const oldLifecycle='32b015b36b9093f8354281d4807edb4f304eb657902eeb22faa43a3e952f9d1f';
@@ -144,7 +151,7 @@ done < "$work/cleanup-mounts.tsv"
 if [[ ${6-} == --host-only ]]; then
   node --check "$work/installer.cjs"
   node --check "$plan/remaining-cleanup-entry.cjs"
-  printf 'REMAINING_RETAINED_CLEANUP_346_HOST_READY sha=%s material=%s\n' "$sha" "$work"
+  printf 'REMAINING_RETAINED_CLEANUP_%s_HOST_READY sha=%s material=%s\n' "${source_mode##*-}" "$sha" "$work"
   exit 0
 fi
 

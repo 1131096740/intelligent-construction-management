@@ -40,7 +40,7 @@ async function outerWitness(context, source) {
   assert.equal(identity.tls,true,'FILE_BINDING_CATALOG_OUTER_TLS');
   assert.equal(identity.scratchDatabases,0,'FILE_BINDING_CATALOG_SCRATCH_DATABASE');
   assert.equal(identity.replayRoles,0,'FILE_BINDING_CATALOG_REPLAY_ROLE');
-  assert.equal(ledger.length,346,'FILE_BINDING_CATALOG_OUTER_COUNT');
+  assert.equal(ledger.length,source.migrationCount,'FILE_BINDING_CATALOG_OUTER_COUNT');
   assert.equal(
     sha256(JSON.stringify(ledger.map(({name,sha256,finished,rolledBack}) => ({name,sha256,finished,rolledBack})))),
     source.ledgerSha256,
@@ -81,7 +81,9 @@ async function main(receipt, source) {
   assert.equal(process.env.DATABASE_URL,undefined);
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
   receipt.originalInputs = assertFixture(api);
-  const witness = require('./payment-execution-346.cjs');
+  const count = source.migrationCount;
+  assert.ok([346,349].includes(count), 'FILE_BINDING_CATALOG_MIGRATION_SCOPE');
+  const witness = require('./payment-execution-'+count+'.cjs');
   receipt.input = require('./install-only292.cjs').admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   await witness.install(receipt,async context=>{
     receipt.stages.push('FILE_BINDING_CATALOG_OUTER_BEFORE');
@@ -95,7 +97,7 @@ async function main(receipt, source) {
   witness.assertInstallation(receipt,source);
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
-  receipt.status = 'FILE_BINDING_CATALOG_346_PASSED';
+  receipt.status = 'FILE_BINDING_CATALOG_'+count+'_PASSED';
 }
 
 module.exports = {assertFixture};
