@@ -57,8 +57,10 @@ if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode ==
       fi
       bash "$plan/run-bank-restore.sh" "$work/predecessor-source" "$restore_predecessor" --host-only \
         restore "$mode" "$work/source" --host-only
-      if [[ $signed_finance == true ]]; then
+      if [[ $signed_finance == true || $mode == --company-history-352 ]]; then
         bash "$plan/run-core-payment.sh" "$work/source" "$sha" --host-only core "$mode"
+      fi
+      if [[ $signed_finance == true ]]; then
         bash "$plan/run-payment-execution.sh" "$root" "$work/source" "$sha" --host-only --host-only
       fi
       exit 0
@@ -106,15 +108,19 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 if [[ $mode == --signed-settlement-350 || $mode == --company-history-352 ]]; then
-  if [[ $signed_finance == true ]]; then
+  if [[ $signed_finance == true || $mode == --company-history-352 ]]; then
     bash "$plan/build.sh" "$work/source" "$sha" browser "$work/browser"
+  fi
+  if [[ $signed_finance == true ]]; then
     bash "$plan/run-bank-restore.sh" "$work/source" "$sha" "$work/browser" bank "$mode"
   fi
   bash "$plan/build.sh" "$work/predecessor-source" "$restore_predecessor" restore "$work/restore"
   bash "$plan/run-bank-restore.sh" "$work/predecessor-source" "$restore_predecessor" "$work/restore" \
     restore "$mode" "$work/source"
-  if [[ $signed_finance == true ]]; then
+  if [[ $signed_finance == true || $mode == --company-history-352 ]]; then
     bash "$plan/run-core-payment.sh" "$work/source" "$sha" "$work/browser" core "$mode"
+  fi
+  if [[ $signed_finance == true ]]; then
     bash "$plan/run-payment-execution.sh" "$root" "$work/source" "$sha" "$work/browser"
   fi
   exit 0

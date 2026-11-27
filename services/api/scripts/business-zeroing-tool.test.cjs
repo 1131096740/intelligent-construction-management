@@ -1298,7 +1298,7 @@ test("POL-23 后新增业务模型默认受保护且不扩大归零删除面", (
     (item) => item.disposition === "protected" && !legacyProtected.has(item.name)
   );
 
-  assert.equal(addedProtected.length, 161);
+  assert.equal(addedProtected.length, 164);
   for (const representative of [
     "ActualPurchaseBatch",
     "ActualPurchaseBatchCorrection",
@@ -1321,6 +1321,9 @@ test("POL-23 后新增业务模型默认受保护且不扩大归零删除面", (
     "RegisteredPaymentFunding",
     "RegisteredOperationalPayment",
     "RegisteredOperationalPaymentAllocation",
+    "CompanyHistoryExpenseBatch",
+    "CompanyHistoryExpenseRow",
+    "CompanyHistoryExpenseFact",
     "CompanyTransferOriginalDebtCorrection",
     "RegisteredFundPaymentAllocation",
     "RegisteredFundAdvanceReceipt",
