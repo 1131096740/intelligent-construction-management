@@ -16,7 +16,7 @@
   },
   "bank/execution-files.json": {
     "kind": "execution-manifest",
-    "material": "8dba29b489139444572d70eeea71d0bb84c3d0c9ee8cabcfef451eac57c49427.gz",
-    "sha256": "8000e5379fd7853457d1e81389aa3878eb2bd3c8b802357ec9bc4928de2cdf93"
+    "material": "afb9d0a14138178e3f1903fc51b43839edf818c0e0be6377a1378218dc5acf73.gz",
+    "sha256": "c74434bd830881ea605571a1170f877b36267fd48aafcc1ee0908307cb728d88"
   }
 }

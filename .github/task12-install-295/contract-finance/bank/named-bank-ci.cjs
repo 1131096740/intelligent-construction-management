@@ -40,7 +40,7 @@ function verifyExecutionFiles(source) {
     assert.ok(fs.readFileSync(witness,'utf8').includes(JSON.stringify(source.ledgerSha256)),'BANK_'+count+'_TEST_LEDGER');
   } else assert.equal(sha(raw),current320?'bcd29f1064b9c63b30566a7d3902c40e923bb68c4aab2bd80b703dea7e6aaff7':'ae305b0e93201322da07825b47100c588c056a5a98e0a6ddccec8c62f62ce041','BANK_295_EXECUTION_MANIFEST');
   const files=JSON.parse(raw);
-  assert.equal(files.length,signed?1947:forward?1946:1814,'BANK_295_EXECUTION_COUNT');
+  assert.equal(files.length,signed?1950:forward?1946:1814,'BANK_295_EXECUTION_COUNT');
   for(const [relative,digest] of files) {
     assert.ok(!path.isAbsolute(relative)&&!relative.split('/').includes('..'),'BANK_295_EXECUTION_PATH');
     assert.equal(sha(fs.readFileSync(path.join(workspace,relative))),digest,'BANK_295_EXECUTION_BYTES');
