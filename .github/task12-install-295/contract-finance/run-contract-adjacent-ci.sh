@@ -12,6 +12,7 @@ if [[ ${3-} == --signed-settlement-350 ]]; then
   signed_350=true
   case "$2" in
     line-a|payment-execution|procurement) ;;
+    issue417) issue_lane=true ;;
     *)
       scopes=$(node - "$plan/issue-ordered/profiles.cjs" "$2" <<'JS'
 const [file,lane]=process.argv.slice(2);
@@ -112,6 +113,7 @@ if [[ ${4-} == --host-only ]]; then
     done
   elif [[ $signed_350 == true ]]; then
     case "$lane" in
+      issue417) bash "$plan/expense-witness/run.sh" "$root" "$work/source" "$sha" "$work" --issue417-history-expense --host-only ;;
       line-a) bash "$plan/run-line-a.sh" "$work/source" "$sha" "$work" original --host-only ;;
       payment-execution) bash "$plan/run-payment-execution.sh" "$root" "$work/source" "$sha" "$work" --host-only ;;
       procurement)
