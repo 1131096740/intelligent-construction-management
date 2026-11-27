@@ -134,3 +134,18 @@ JS
   fi
   chmod 0644 "$fixtures/contract-finance-owned.test-support.ts"
 fi
+
+# Retired HTTP entry must stay closed. Keep the downstream historical quota
+# review, PDF and allocation witnesses with an isolated historical fixture.
+case "$precision" in
+  expense-witness-349|signed-settlement-350)
+    guard="$workspace/services/api/src/retired-write-entry/retired-write-entry.guard.ts"
+    retired='  { controller: "ProjectController", handler: "requestProjectFinancingQuota" },'
+    if grep -Fxq "$retired" "$guard"; then
+      fixture="$fixtures/contract-business-entry-http.spec.ts"
+      [[ $(sha256sum "$fixture" | cut -d' ' -f1) == bb8aa70d87355bd4c7c1a7d016a1caea5267980d6bf8ddec57c185175a67dbfc ]] || exit 65
+      patch --batch --forward --fuzz=0 --silent -p0 -d "$fixtures" < "$plan/core-payment-fnd05-history.patch"
+      [[ $(sha256sum "$fixture" | cut -d' ' -f1) == 4661e269520c6c3eb72c16208434127f92102eb03d2a68a203c398c7e3ae0f8a ]] || exit 65
+    fi
+    ;;
+esac
