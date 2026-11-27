@@ -4,7 +4,7 @@ umask 077
 
 signed_350=false
 case $#:${2-}:${3-} in
-  2:--signed-settlement-350:|3:--signed-settlement-350:--host-only)
+  2:--signed-settlement-350:|3:--signed-settlement-350:--host-only|2:--company-history-352:|3:--company-history-352:--host-only)
     [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
     signed_350=true ;;
   *)
