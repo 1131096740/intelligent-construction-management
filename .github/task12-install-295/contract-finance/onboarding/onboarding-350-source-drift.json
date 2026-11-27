@@ -11,7 +11,7 @@
   "services/api/src/database/approval-pdf-acceptance.test-support.ts": "99fc10285a780b0034acc9ca4660595d941185b3565e412daabc30e083ec6ad7",
   "services/api/src/database/general-procurement-http-postgres.spec.ts": "f15a36a770d87d0728a2a2efe770cd07d4a5ffae69252b0f2f77c1e74410bce9",
   "services/api/src/file/bounded-xlsx.ts": "903ceddaab1bd388c8f8f25b096e978c28566ba0bb38f418e0e50a028908cfbb",
-  "services/api/src/history-expense/history-expense-excel.http.spec.ts": "dc45c2d271aaa24effa20071fb3e3ae99e7c682ca95f8fdb10d30d129c76353c",
+  "services/api/src/history-expense/history-expense-excel.http.spec.ts": "22881f0e675e1231b732ea4f7babfd79bdc29aedcf5d2e4bea0271b04ca0810b",
   "services/api/src/history-expense/history-expense-excel.spec.ts": "2bd6e2080ca69f5f4874730783563a67dec0a16d8f72cb6bdcdc221de3626ea5",
   "services/api/src/history-expense/history-expense-excel.ts": "19ab8d59eb4ec5f9175e8982c09e2cec136c8c760ef21113f3419b428ee83ab1",
   "services/api/src/history-expense/history-expense.controller.ts": "995469864c92dd3e50165057f68b6257385178f5686bf2150ba20abb7faa1587",

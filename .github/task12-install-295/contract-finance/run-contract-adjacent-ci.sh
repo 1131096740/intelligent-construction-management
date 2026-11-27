@@ -11,7 +11,7 @@ if [[ ${3-} == --signed-settlement-350 ]]; then
   [[ $# == 3 || ( $# == 4 && $4 == --host-only ) ]] || exit 64
   signed_350=true
   case "$2" in
-    line-a|payment-execution|procurement|onboarding|settlement|template|draft|expense-execution|expense-finance|expense-receipt) ;;
+    line-a|payment-execution|procurement|onboarding|settlement|template|draft|expense-execution|expense-finance|expense-receipt|v7|invoice|pol279|pol280) ;;
     issue417) issue_lane=true ;;
     *)
       scopes=$(node - "$plan/issue-ordered/profiles.cjs" "$2" <<'JS'
@@ -116,6 +116,8 @@ if [[ ${4-} == --host-only ]]; then
       issue417) bash "$plan/expense-witness/run.sh" "$root" "$work/source" "$sha" "$work" --issue417-history-expense --host-only ;;
       line-a) bash "$plan/run-line-a.sh" "$work/source" "$sha" "$work" original --host-only ;;
       payment-execution) bash "$plan/run-payment-execution.sh" "$root" "$work/source" "$sha" "$work" --host-only ;;
+      v7|invoice|pol279|pol280)
+        bash "$plan/run-finance-adjacent.sh" "$root" "$work/source" "$sha" "$work" "$lane" "$3" --host-only ;;
       settlement|template|draft)
         bash "$plan/run-contract-adjacent.sh" "$root" "$work/source" "$sha" "$work" "$lane" "$3" --host-only ;;
       expense-execution|expense-finance|expense-receipt)
