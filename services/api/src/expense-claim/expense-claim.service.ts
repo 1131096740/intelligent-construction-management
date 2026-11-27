@@ -57,6 +57,7 @@ import { DEFAULT_EXPENSE_CATEGORIES, expenseCategoryKey, mergeExpenseCategories,
 import { parseExpenseQuantity } from "./expense-claim-quantity";
 import { exactReimbursementAmounts } from "./expense-claim-amount";
 import { projectClaimPaymentCapacity } from "./other-project-payment";
+import { expenseCashCostBudgetCents } from "./expense-public-cash-cost-link";
 import { recordExpensePublicCashVoucher } from "./expense-public-cash-voucher";
 import { EXPENSE_CLAIM_ENTRY_DEFINITION, REIMBURSEMENT_ENTRY_DEFINITION } from "./expense-claim-entry.definition";
 import type { CreateExpenseClaimDto, ExpenseClaimLineDto } from "./dto/create-expense-claim.dto";
@@ -726,18 +727,18 @@ export class ExpenseClaimService {
     const cashCostImpacts = canRecordPublicCashPayment && claim.projectId
       ? await this.prisma.operatingImpactEntry.findMany({
           where: {
-            projectId: claim.projectId, impactKind: "confirmed_cost", direction: "increase", numericProtocolVersion: 1,
+            projectId: claim.projectId, impactKind: "confirmed_cost", direction: "increase", numericProtocolVersion: { in: [1, 2] },
             fact: { sourceType: EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE, sourceBusinessId: claim.id,
               projectId: claim.projectId, entryKind: "original", status: "confirmed", evidenceLevel: "A",
               isBeforeOperatingLedgerEffectiveDate: false, adjustments: { none: { status: "confirmed" } } }
           },
-          select: { id: true, description: true, amountCents: true, sourceImpactKey: true, impactSnapshot: true,
+          select: { id: true, description: true, amountCents: true, amountYuan: true, sourceImpactKey: true, impactSnapshot: true,
             expensePublicCashCostLinks: { select: { amountCents: true } } },
           orderBy: [{ sourceImpactKey: "asc" }, { id: "asc" }]
         })
       : [];
     const cashCostAllocationOptions = cashCostImpacts.flatMap(impact => {
-      const available = (impact.amountCents ?? 0n) - impact.expensePublicCashCostLinks.reduce((sum, link) => sum + link.amountCents, 0n);
+      const available = expenseCashCostBudgetCents(impact) - impact.expensePublicCashCostLinks.reduce((sum, link) => sum + link.amountCents, 0n);
       if (available <= 0n) return [];
       const lineNumber = /^confirmed_cost:(\d+)$/u.exec(impact.sourceImpactKey)?.[1];
       const purpose = impact.impactSnapshot && typeof impact.impactSnapshot === "object" && !Array.isArray(impact.impactSnapshot)
