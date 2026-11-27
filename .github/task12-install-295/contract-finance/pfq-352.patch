@@ -1,0 +1,183 @@
+--- a/installer.cjs
++++ b/installer.cjs
+@@ -363,7 +363,7 @@
+       {metadataRows:4134, verifiedFiles:318, subsetManifestSha256:subsetManifestSha} : {})}};
+   const runId = randomUUID(), database = 'jg_task01_' + runId.replaceAll('-',''), started = Math.floor(Date.now()/1000);
+   const root = fs.mkdtempSync('/tmp/jg394-'), data = path.join(root,'data');
+-  const pfqMode=['ORIGINAL_PFQ_EXACT_295','ORIGINAL_PFQ_EXACT_329','ORIGINAL_PFQ_EXACT_330','ORIGINAL_PFQ_EXACT_331','ORIGINAL_PFQ_EXACT_332','ORIGINAL_PFQ_EXACT_334','ORIGINAL_PFQ_EXACT_346','ORIGINAL_PFQ_EXACT_349','ORIGINAL_PFQ_EXACT_350'].includes(receipt.purpose)?'--pfq-'+receipt.lane+'-289-local':undefined;
++  const pfqMode=['ORIGINAL_PFQ_EXACT_295','ORIGINAL_PFQ_EXACT_329','ORIGINAL_PFQ_EXACT_330','ORIGINAL_PFQ_EXACT_331','ORIGINAL_PFQ_EXACT_332','ORIGINAL_PFQ_EXACT_334','ORIGINAL_PFQ_EXACT_346','ORIGINAL_PFQ_EXACT_349','ORIGINAL_PFQ_EXACT_350','ORIGINAL_PFQ_EXACT_352'].includes(receipt.purpose)?'--pfq-'+receipt.lane+'-289-local':undefined;
+   const plan = {runId, database, historical, source:{witness:{profile}}, prismaTools:{cli, engine}, limits:{migrationMs:180000},
+     ...(pfqPositiveModes.includes(pfqMode)?{pfqPositive:require(pfqPositiveFixtures)[pfqMode]}:{}),
+     ...(Object.hasOwn(pfqConflicts,pfqMode)?{recoveryProfile:{module:pfqRecoveryModule,kind:pfqConflicts[pfqMode],prefix:114,terminal:115,
+@@ -906,6 +906,7 @@
+       if (a28) batches.push(tails.slice(37,38));
+       const precision = forward320.expenseWitnessPrecision;
+       const signedPrecision = forward320.signedSettlementPrecision;
++      const companyHistory = forward320.companyHistory;
+       const expenseWitness = forward320.expenseWitness;
+       const precisionCatalog = {};
+       let priorExpenseCatalog;
+@@ -914,7 +915,8 @@
+       let observed334LedgerSha256;
+       for (const batch of batches) {
+         for (const row of batch) {
+-          if (signedPrecision && qualifiedLedger.length===precision.count) enter('SIGNED_SETTLEMENT_PRECISION_MIGRATE_350');
++          if (companyHistory && qualifiedLedger.length>=signedPrecision.count) enter('COMPANY_HISTORY_MIGRATE_'+(qualifiedLedger.length+1));
++          else if (signedPrecision && qualifiedLedger.length===precision.count) enter('SIGNED_SETTLEMENT_PRECISION_MIGRATE_350');
+           else if (precision && qualifiedLedger.length>=expenseWitness.count) enter('EXPENSE_PRECISION_MIGRATE_'+(qualifiedLedger.length+1));
+           const index = tails.indexOf(row);
+           const source=tailSources[index];
+@@ -985,7 +987,7 @@
+         if (expenseWitness) {
+           const count=qualifiedLedger.length;
+           if (count===334) observed334LedgerSha256=hash(JSON.stringify(current.ledger));
+-          if (count>=334) (signedPrecision ?? precision ?? expenseWitness).assertPrefix(count,hash(JSON.stringify(qualifiedLedger)));
++          if (count>=334) (companyHistory ?? signedPrecision ?? precision ?? expenseWitness).assertPrefix(count,hash(JSON.stringify(qualifiedLedger)));
+           if ([334,341,342,343,344,345,expenseWitness.count].includes(count)) {
+             const observed=await jsonSql(expenseWitness.catalogSql);
+             expenseWitness.assertCatalog(count,observed,priorExpenseCatalog);
+@@ -1021,12 +1023,17 @@
+               }
+             }
+           }
++          if (companyHistory && count===companyHistory.count) {
++            receipt.companyHistoryForward={count,ledgerSha256:companyHistory.ledgerSha256,sameIdentity:true,sourceTree,
++              tails:tails.slice(signedPrecision.count-295)};
++            receipt.pfqObserved352={rows:current.ledger.length,sha256:hash(JSON.stringify(current.ledger))};
++          }
+           if (signedPrecision && count===signedPrecision.count) {
+             const after=await jsonSql(signedPrecision.catalogSql);
+             signedPrecision.assertCatalog(after,receipt.signedSettlementCatalogBefore);
+             receipt.signedSettlementCatalog=after;
+             receipt.signedSettlementForward={count,ledgerSha256:signedPrecision.ledgerSha256,
+-              sameIdentity:true,sourceTree,tails:tails.slice(precision.count-295)};
++              sameIdentity:true,sourceTree,tails:tails.slice(precision.count-295,signedPrecision.count-295)};
+             receipt.pfqObserved350={rows:current.ledger.length,sha256:hash(JSON.stringify(current.ledger))};
+           }
+         }
+@@ -1153,9 +1160,10 @@
+         const signed=forward320.historicalSettlement ? require('./historical-settlement-334-profile.cjs') : null;
+         const precision=forward320.expenseWitnessPrecision;
+         const signedPrecision=forward320.signedSettlementPrecision;
+-        need(hash(JSON.stringify(qualifiedLedger))===(signedPrecision?.ledgerSha256 ?? precision?.ledgerSha256 ?? forward320.expenseWitness?.ledgerSha256 ?? signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
++        const companyHistory=forward320.companyHistory;
++        need(hash(JSON.stringify(qualifiedLedger))===(companyHistory?.ledgerSha256 ?? signedPrecision?.ledgerSha256 ?? precision?.ledgerSha256 ?? forward320.expenseWitness?.ledgerSha256 ?? signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
+         need(equal(await jsonSql(a28.catalogSql),receipt.historicalTakeover333Catalog),'A28_333_CATALOG_AFTER_CONSUMER');
+-        need(hash(JSON.stringify(afterConsumer.ledger))===(receipt.pfqObserved350?.sha256??receipt.pfqObserved349?.sha256??receipt.pfqObserved346?.sha256??receipt.forward320.observedLedgerSha256),
++        need(hash(JSON.stringify(afterConsumer.ledger))===(receipt.pfqObserved352?.sha256??receipt.pfqObserved350?.sha256??receipt.pfqObserved349?.sha256??receipt.pfqObserved346?.sha256??receipt.forward320.observedLedgerSha256),
+           signedPrecision?'PFQ_350_OBSERVED_LEDGER_AFTER_CONSUMER':precision?'PFQ_349_OBSERVED_LEDGER_AFTER_CONSUMER':
+             forward320.expenseWitness?'PFQ_346_OBSERVED_LEDGER_AFTER_CONSUMER':'PFQ_334_OBSERVED_LEDGER_AFTER_CONSUMER');
+         receipt.historicalTakeoverCatalogAfterBusiness=true;
+@@ -1594,9 +1602,10 @@
+   const upwardArchive=target>=332;
+   const historicalTakeover=target>=333;
+   const historicalSettlement=target>=334;
+-  const signedSettlementPrecision=target===350?require('./signed-settlement-350-profile.cjs'):null;
+-  const expenseWitnessPrecision=[349,350].includes(target)?require('./expense-witness-349-profile.cjs'):null;
+-  const expenseWitness=[346,349,350].includes(target)?require('./expense-witness-346-profile.cjs'):null;
++  const companyHistory=target===352?require('./company-history-352-profile.cjs'):null;
++  const signedSettlementPrecision=[350,352].includes(target)?require('./signed-settlement-350-profile.cjs'):null;
++  const expenseWitnessPrecision=[349,350,352].includes(target)?require('./expense-witness-349-profile.cjs'):null;
++  const expenseWitness=[346,349,350,352].includes(target)?require('./expense-witness-346-profile.cjs'):null;
+   need(typeof sourceTree==='string' && /^[0-9a-f]{40}$/u.test(sourceTree) &&
+     typeof migrations==='string' && path.isAbsolute(migrations) &&
+     Array.isArray(tails) && tails.length===target-295,'FORWARD_320_SOURCE');
+@@ -1635,7 +1644,7 @@
+     need(hash(bytes)===row.sha256,'FORWARD_320_TAIL_DIGEST');
+     return bytes;
+   });
+-  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement,expenseWitness,expenseWitnessPrecision,signedSettlementPrecision};
++  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement,expenseWitness,expenseWitnessPrecision,signedSettlementPrecision,companyHistory};
+ }
+ 
+ module.exports.withCombined320ContractPayment = (receipt,consume,material) => {
+@@ -1757,9 +1766,16 @@
+   signed.assertRuntimeBaseline(require('./workspace/services/api/prisma/migration-baseline.cjs'));
+   return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,signed.count));
+ };
++module.exports.withCombinedCompanyHistory352 = (receipt,consume,material) => {
++  need(typeof consume==='function'&&material&&typeof material==='object','PFQ_352_ARGUMENTS');
++  const company=require('./company-history-352-profile.cjs');
++  company.assertSource(material,require('./multi-witness.cjs').final);
++  company.assertRuntimeBaseline(require('./workspace/services/api/prisma/migration-baseline.cjs'));
++  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,company.count));
++};
+ async function withPfq(receipt,mode,material) {
+   const current320=material!==undefined;
+-  const count={'current-320':329,'text-direct-330':330,'payment-remainder-331':331,'upward-archive-332':332,'historical-settlement-334':334,'expense-witness-346':346,'expense-witness-349':349,'signed-settlement-350':350}[material?.mode]??295;
++  const count={'current-320':329,'text-direct-330':330,'payment-remainder-331':331,'upward-archive-332':332,'historical-settlement-334':334,'expense-witness-346':346,'expense-witness-349':349,'signed-settlement-350':350,'company-history-352':352}[material?.mode]??295;
+   need(!current320||count>295,'PFQ_FORWARD_MODE');
+   need(receipt.purpose==='ORIGINAL_PFQ_EXACT_'+count && mode==='--pfq-'+receipt.lane+'-289-local','PFQ_295_SCOPE');
+   const pfqPositiveMode=pfqPositiveModes.includes(mode)?mode:undefined;
+@@ -1783,7 +1799,7 @@
+           /^[0-9a-f]{64}$/u.test(receipt.pfqObserved346.sha256)&&
+           (receipt.pfqObserved346.sha256===expense.ledgerSha256)===!pfqConflict,'PFQ_346_OBSERVED_LEDGER');
+         if(count>=349) {
+-          const checkpoint=count===350?source.predecessor349:source;
++          const checkpoint=count>=350?source.predecessor349:source;
+           const precisionEnd=checkpoint.migrationCount-source.predecessor.migrationCount;
+           need(equal(receipt.expenseWitnessPrecisionForward,{
+             count:checkpoint.migrationCount,ledgerSha256:checkpoint.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
+@@ -1792,15 +1808,21 @@
+           need(receipt.pfqObserved349?.rows===checkpoint.migrationCount+Number(Boolean(pfqConflict))&&
+             /^[0-9a-f]{64}$/u.test(receipt.pfqObserved349.sha256)&&
+             (receipt.pfqObserved349.sha256===checkpoint.ledgerSha256)===!pfqConflict,'PFQ_349_OBSERVED_LEDGER');
+-          if(count===350) {
++          if(count>=350) {
++            const signedCheckpoint=count===352?source.predecessor350:source;
+             need(receipt.installOnly295.nonOwnerDenied===true,'PFQ_350_PREDECESSOR_NON_OWNER');
+             need(equal(receipt.signedSettlementForward,{
+-              count,ledgerSha256:source.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
+-              tails:source.tails.slice(precisionEnd).map(({name,sha256})=>({name,sha256}))
++              count:signedCheckpoint.migrationCount,ledgerSha256:signedCheckpoint.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
++              tails:source.tails.slice(precisionEnd,signedCheckpoint.migrationCount-295).map(({name,sha256})=>({name,sha256}))
+             }),'PFQ_350_SUCCESSOR');
+-            need(receipt.pfqObserved350?.rows===count+Number(Boolean(pfqConflict))&&
++            need(receipt.pfqObserved350?.rows===signedCheckpoint.migrationCount+Number(Boolean(pfqConflict))&&
+               /^[0-9a-f]{64}$/u.test(receipt.pfqObserved350.sha256)&&
+-              (receipt.pfqObserved350.sha256===source.ledgerSha256)===!pfqConflict,'PFQ_350_OBSERVED_LEDGER');
++              (receipt.pfqObserved350.sha256===signedCheckpoint.ledgerSha256)===!pfqConflict,'PFQ_350_OBSERVED_LEDGER');
++            if(count===352) {
++              need(receipt.pfqObserved352?.rows===count+Number(Boolean(pfqConflict)) &&
++                /^[0-9a-f]{64}$/u.test(receipt.pfqObserved352.sha256) &&
++                (receipt.pfqObserved352.sha256===source.ledgerSha256)===!pfqConflict,'PFQ_352_OBSERVED_LEDGER');
++            }
+           }
+         }
+       }
+@@ -1833,6 +1855,7 @@
+     assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,current320,count>=332))).stdout.trim()));
+     receipt.pfqPostconsume={count,exactB7:true};
+   };
++  if(count===352) return module.exports.withCombinedCompanyHistory352(receipt,consume,material);
+   if(count===350) return module.exports.withCombinedSignedSettlement350(receipt,consume,material);
+   if(count===349) return module.exports.withCombinedExpenseWitness349(receipt,consume,material);
+   if(count===346) return module.exports.withCombinedExpenseWitness(receipt,consume,material,count);
+--- a/entry.cjs
++++ b/entry.cjs
+@@ -3,12 +3,13 @@
+ const {withPfq295,withPfq320}=require('./installer.cjs');
+ const source=require('./contract-finance-source.json');
+ const requestedMode=process.argv[3];
+-const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331,'--upward-archive-332':332,'--historical-settlement-334':334,'--expense-witness-346':346,'--expense-witness-349':349,'--signed-settlement-350':350}[requestedMode]??295;
++const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331,'--upward-archive-332':332,'--historical-settlement-334':334,'--expense-witness-346':346,'--expense-witness-349':349,'--signed-settlement-350':350,'--company-history-352':352}[requestedMode]??295;
+ const current320=count>295;
+ const archiveProfile=count===332?require('./upward-archive-332-profile.cjs'):undefined;
++const company=count===352?require('./company-history-352-profile.cjs'):undefined;
+ const signed=count===350?require('./signed-settlement-350-profile.cjs'):undefined;
+ const precision=count>=349?require('./expense-witness-349-profile.cjs'):undefined;
+-const expenseWitness=signed??precision??(count===346?require('./expense-witness-346-profile.cjs'):undefined);
++const expenseWitness=company??signed??precision??(count===346?require('./expense-witness-346-profile.cjs'):undefined);
+ const historicalProfile=count>=334?require('./historical-settlement-334-profile.cjs'):undefined;
+ const lane=process.argv[2];
+ const expected={
+@@ -57,7 +58,8 @@
+       if(expenseWitness) {
+         assert.equal(receipt.expenseWitnessCatalogAfterBusiness,true);
+         if(precision) assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness,true);
+-        if(signed) signed.assertInstallation(receipt,source);
++        if(company) company.assertInstallation(receipt,source);
++        else if(signed) signed.assertInstallation(receipt,source);
+       } else {
+         historicalProfile.assertFinanceInstallation(receipt,source);
+       }
