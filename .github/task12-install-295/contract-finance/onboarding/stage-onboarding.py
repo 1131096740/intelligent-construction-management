@@ -196,9 +196,9 @@ module.exports.withInstalled295Onboarding = receipt => {
     await verify();
     receipt.sameInstancePostConsume=true;
   };
-  return require('./payment-execution-346.cjs').install(receipt,consume,source);
+  return require('./payment-execution-EXPENSE_COUNT.cjs').install(receipt,consume,source);
 };
-""")
+""".replace('EXPENSE_COUNT',str(count)))
     else:
         profile_name,installer_method={
             330: ('text-direct-330-profile.cjs','withCombined330TextAgreement'),
@@ -235,7 +235,7 @@ if count==334 and hashlib.sha256(installer.read_bytes()).hexdigest() != '12ab29c
     raise SystemExit('ONBOARDING_334_INSTALLER_POSTIMAGE')
 expense_installer_pins = {
     346: '24c6a40b9c09729661eeb8dac4916b8e2c3249489c264b355c3c59d41f4b2e04',
-    349: '505e80c95cb6cd700df244341f0f04775487f590e6f7e58ee49e547a895a87de',
+    349: 'ffc7376f8c65a98b5ddb8b3da01254c10957f306e4abe83531c38221e79b5238',
 }
 if expense_witness and hashlib.sha256(installer.read_bytes()).hexdigest() != expense_installer_pins[count]:
     raise SystemExit(f'ONBOARDING_{count}_INSTALLER_POSTIMAGE')
