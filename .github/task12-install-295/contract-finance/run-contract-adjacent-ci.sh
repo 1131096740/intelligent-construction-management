@@ -8,10 +8,15 @@ signed_350=false
 signed_issue_ordered=false
 if [[ ${3-} == --signed-settlement-350 ]]; then
   [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
-  [[ $# == 3 || ( $# == 4 && $4 == --host-only ) ]] || exit 64
+  if [[ $2 == pol275 ]]; then
+    [[ ( $# == 4 || ( $# == 5 && $5 == --host-only ) ) &&
+      $4 == a187dc73a133114e1cfbbc891a4aec923abe2545 ]] || exit 64
+  else
+    [[ $# == 3 || ( $# == 4 && $4 == --host-only ) ]] || exit 64
+  fi
   signed_350=true
   case "$2" in
-    line-a|payment-execution|procurement|onboarding|settlement|template|draft|expense-execution|expense-finance|expense-receipt|v7|invoice|pol279|pol280|pol109|pol108-core|pol108-facts|pol108-impacts|cash-handover|principal-return|company-proxy|pfq) ;;
+    line-a|payment-execution|procurement|onboarding|settlement|template|draft|expense-execution|expense-finance|expense-receipt|v7|invoice|pol279|pol280|pol109|pol108-core|pol108-facts|pol108-impacts|cash-handover|principal-return|company-proxy|pfq|pol275) ;;
     issue417) issue_lane=true ;;
     *)
       scopes=$(node - "$plan/issue-ordered/profiles.cjs" "$2" <<'JS'
@@ -105,7 +110,7 @@ if [[ $lane == task398-ledger-loss && ${3:-} != --text-direct-330 && ${3:-} != -
 if [[ $lane == task398-competition && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
 root=$(git rev-parse --show-toplevel)
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-contract-adjacent.XXXXXXXX")
-if [[ ${4-} == --host-only ]]; then
+if [[ ${4-} == --host-only || ( $signed_350 == true && $lane == pol275 && ${5-} == --host-only ) ]]; then
   bash "$plan/prepare.sh" "$root" "$sha" "$work/source" "$3"
   if [[ $signed_issue_ordered == true ]]; then
     for scope in "${signed_issue_scopes[@]}"; do
@@ -122,6 +127,16 @@ if [[ ${4-} == --host-only ]]; then
         bash "$plan/run-contract-adjacent.sh" "$root" "$work/source" "$sha" "$work" "$lane" "$3" --host-only ;;
       expense-execution|expense-finance|expense-receipt)
         bash "$plan/run-expense.sh" "$root" "$work/source" "$sha" "$work" "${lane#expense-}" "$3" --host-only ;;
+      pol275)
+        bash "$plan/pol275/run-pol275-cold.sh" "$root" "$work/source" "$sha" "$work" "$3" --host-only
+        git -C "$root" merge-base --is-ancestor "$4" "$sha"
+        git -C "$root" worktree add --detach "$work/predecessor" "$4"
+        trap 'git -C "$root" worktree remove "$work/predecessor"' EXIT
+        bash "$plan/prepare.sh" "$work/predecessor" "$4" "$work/predecessor-source"
+        bash "$plan/pol275/run-pol275.sh" "$work/predecessor" "$work/predecessor-source" "$4" "$work" collision --host-only
+        bash "$plan/pol275/prepare-warm-image.sh" "$root" "$work/source" "$sha" "$work/warm" "$3"
+        bash "$plan/pol275/run-pol275.sh" "$root" "$work/source" "$sha" "$work/warm" warm "$3" --host-only
+        ;;
       pfq)
         bash "$plan/run-pfq.sh" "$root" "$work/source" "$sha" "$work" "$3" --host-only ;;
       company-proxy)
