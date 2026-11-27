@@ -1,7 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 umask 022
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 ) ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --signed-settlement-350 ) ) ]] || exit 64
+if [[ ${5-} == --signed-settlement-350 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 count=295
 case ${5-} in
   --current-320) count=329 ;;
@@ -11,6 +12,7 @@ case ${5-} in
   --historical-settlement-334) count=334 ;;
   --expense-witness-346) count=346 ;;
   --expense-witness-349) count=349 ;;
+  --signed-settlement-350) count=350 ;;
 esac
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
@@ -29,7 +31,7 @@ node -e 'const [file,sha,count,base]=process.argv.slice(1);
     require(base+"/"+source.mode+"-profile.cjs").assertSource(source,sha,require(base+"/common/multi-witness.cjs").final);
   }
 ' "$prepared/source.json" "$sha" "$count" "$base"
-if [[ $count == 346 || $count == 349 ]]; then
+if (( count >= 346 )); then
   bash "$(dirname "$0")/verify-host-346.sh" "$repo" "$prepared" "$sha" "$count"
 fi
 mkdir "$out"

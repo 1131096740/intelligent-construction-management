@@ -2,8 +2,10 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && $5 == warm && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 || $6 == --expense-witness-346 || $6 == --expense-witness-349 ) ) ||
-  ( $# == 7 && $5 == warm && ( $6 == --expense-witness-346 || $6 == --expense-witness-349 ) && $7 == --host-only ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && $5 == collision && $6 == --host-only ) ||
+  ( $# == 6 && $5 == warm && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 || $6 == --expense-witness-346 || $6 == --expense-witness-349 || $6 == --signed-settlement-350 ) ) ||
+  ( $# == 7 && $5 == warm && ( $6 == --expense-witness-346 || $6 == --expense-witness-349 || $6 == --signed-settlement-350 ) && $7 == --host-only ) ]] || exit 64
+if [[ ${6-} == --signed-settlement-350 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 count=295
 mode=()
 case ${6-} in
@@ -14,11 +16,14 @@ case ${6-} in
   --historical-settlement-334) count=334; mode=(--historical-settlement-334) ;;
   --expense-witness-346) count=346; mode=(--expense-witness-346) ;;
   --expense-witness-349) count=349; mode=(--expense-witness-349) ;;
+  --signed-settlement-350) count=350; mode=(--signed-settlement-350) ;;
 esac
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
-if [[ ${7-} != --host-only ]]; then build=$(cd "$4" && pwd -P); else build=$4; fi
+host_only=false
+if [[ ${7-} == --host-only || ( $5 == collision && ${6-} == --host-only ) ]]; then host_only=true; fi
+if [[ $host_only == false ]]; then build=$(cd "$4" && pwd -P); else build=$4; fi
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
 base=$(cd "$plan/.." && pwd -P)
@@ -36,6 +41,12 @@ case "$lane" in
   *) exit 64 ;;
 esac
 scope=pol275-$lane
+if [[ $lane == collision && $host_only == true ]]; then
+  [[ $sha == a187dc73a133114e1cfbbc891a4aec923abe2545 &&
+     $(git -C "$repo" rev-parse HEAD) == "$sha" &&
+     $(git -C "$repo" rev-parse "$sha^{tree}") == e364b444c44ad8bd5c7300894de4bcc0713bb918 ]] || exit 65
+  node "$base/check-ledger.cjs" "$repo" "$sha" | cmp -s "$prepared/source.json" - || exit 65
+fi
 
 node -e '
   const source=require(process.argv[1]);
@@ -49,10 +60,15 @@ node -e '
   if(count===334) require(base+"/historical-settlement-334-profile.cjs").assertSource(source,sealed295);
   if(count===331||count===332)require(base+"/"+source.mode+"-profile.cjs").assertSource(source,process.argv[2],sealed295);
 ' "$prepared/source.json" "$sha" "$count" "$base"
-if [[ $count == 346 || $count == 349 ]]; then
+if (( count >= 346 )); then
   bash "$plan/verify-host-346.sh" "$repo" "$prepared" "$sha" "$count"
 fi
-if [[ ${7-} != --host-only ]]; then
+if [[ $count == 350 && $host_only == true ]]; then
+  fingerprint=$(cat "$build/context.sha256")
+  [[ $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
+  [[ $(node "$base/context-sha.cjs" "$context" "$build/Dockerfile" "$prepared/source.json") == "$fingerprint" ]] || exit 65
+fi
+if [[ $host_only == false ]]; then
   image=$(cat "$build/image.id")
   fingerprint=$(cat "$build/context.sha256")
   [[ $image =~ ^sha256:[a-f0-9]{64}$ && $fingerprint =~ ^[a-f0-9]{64}$ ]] || exit 65
@@ -86,7 +102,7 @@ if [[ $lane == warm ]]; then
 else
   install -m 0644 "$pol/collision-observation.cjs" "$work/collision-observation.cjs"
 fi
-if [[ $count == 346 || $count == 349 ]]; then
+if (( count >= 346 )); then
   bash "$plan/stage-346.sh" "$work" warm "$count"
 else
   if [[ $count == 334 ]]; then
@@ -106,10 +122,15 @@ else
 fi
 chmod 644 "$work/installer.cjs"
 node --check "$work/installer.cjs"
-if [[ ${7-} == --host-only ]]; then
+if [[ $host_only == true ]]; then
   node --check "$plan/pol275-entry.cjs"
-  node --check "$plan/exact-$count.cjs"
-  printf '%s\nPOL275_WARM_%s_HOST_READY sha=%s\n' "$work" "$count" "$sha"
+  if [[ $lane == warm ]]; then
+    node --check "$plan/exact-$count.cjs"
+    printf '%s\nPOL275_WARM_%s_HOST_READY sha=%s\n' "$work" "$count" "$sha"
+  else
+    node --check "$work/collision-observation.cjs"
+    printf '%s\nPOL275_COLLISION_295_HOST_READY sha=%s\n' "$work" "$sha"
+  fi
   exit 0
 fi
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
@@ -139,12 +160,12 @@ if [[ $lane == warm ]]; then
 else
   args+=(--mount "type=bind,src=$work/collision-observation.cjs,dst=/qualification/collision-observation.cjs,readonly")
 fi
-if [[ $count == 334 || $count == 346 || $count == 349 ]]; then
+if (( count >= 334 )); then
   for file in upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
     args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
   done
 fi
-if [[ $count == 346 || $count == 349 ]]; then
+if (( count >= 346 )); then
   for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
     args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
   done
@@ -152,8 +173,12 @@ if [[ $count == 346 || $count == 349 ]]; then
     --mount "type=bind,src=$base/bank/migration-inputs-346.cjs,dst=/qualification/migration-inputs-346.cjs,readonly"
     --mount "type=bind,src=$plan/exact-$count.cjs,dst=/qualification/exact-$count.cjs,readonly")
 fi
-if [[ $count == 349 ]]; then
+if (( count >= 349 )); then
   args+=(--mount "type=bind,src=$base/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
+fi
+if (( count == 350 )); then
+  args+=(--mount "type=bind,src=$base/signed-settlement-350-profile.cjs,dst=/qualification/signed-settlement-350-profile.cjs,readonly"
+    --mount "type=bind,src=$plan/exact-349.cjs,dst=/qualification/exact-349.cjs,readonly")
 fi
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
