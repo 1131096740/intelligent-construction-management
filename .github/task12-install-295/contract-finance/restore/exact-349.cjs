@@ -39,9 +39,12 @@ function portablePrecisionCatalog(snapshot) {
   // The deparsed definition carries the condition without database-local identifiers.
   const constraints = Object.fromEntries(Object.entries(snapshot.constraints).map(([name, { oid, ...row }]) => [name, row]));
   const guards = Object.fromEntries(Object.entries(snapshot.guards).map(([name, guard]) => {
-    const { oid, ...procedure } = guard.procedure;
+    const { oid, proacl, ...procedure } = guard.procedure;
     const { oid: triggerOid, tgrelid, tgfoid, tgconstraint, tgqual, ...wiring } = guard.wiring;
-    return [name, { ...guard, procedure, wiring: { ...wiring, constraintBacked: tgconstraint !== 0 } }];
+    return [name, { ...guard,
+      procedure: { ...procedure, proacl: proacl == null ? proacl : [...proacl].sort() },
+      wiring: { ...wiring, constraintBacked: Number(tgconstraint) > 0 }
+    }];
   }));
   return { ...snapshot, constraints, guards };
 }

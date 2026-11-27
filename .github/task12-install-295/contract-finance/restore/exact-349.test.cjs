@@ -18,7 +18,11 @@ function catalog(oid){
 }
 
 test('restored precision protections retain definitions and ACLs across new database OIDs',()=>{
-  assert.doesNotThrow(()=>assertRestoredCatalog(catalog(10000),catalog(20000)));
+  const source=catalog(10000), restored=catalog(20000);
+  source.guards.cash.procedure.proacl.push('runtime=X/owner');
+  restored.guards.cash.procedure.proacl.unshift('runtime=X/owner');
+  restored.guards.cash.wiring.tgconstraint=String(restored.guards.cash.wiring.tgconstraint);
+  assert.doesNotThrow(()=>assertRestoredCatalog(source,restored));
 });
 
 test('restored precision protections reject changed column, constraint, body, ACL or trigger wiring',()=>{
@@ -29,6 +33,7 @@ test('restored precision protections reject changed column, constraint, body, AC
     row=>{row.guards.cash.body='d'.repeat(64);},
     row=>{row.guards.cash.procedure.proacl=['=X/owner'];},
     row=>{row.guards.cash.wiring.tgdeferrable=false;},
+    row=>{row.guards.cash.wiring.tgconstraint='0';},
     row=>{row.guards.cash.definition+=' WHEN (false)';},
   ]){
     const restored=catalog(20000);
