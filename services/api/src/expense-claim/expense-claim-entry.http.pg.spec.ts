@@ -332,7 +332,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
         voucher.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")],
           { type: "image/png" }), "合成公共现金凭证.png");
         voucher.append("idempotencyKey", randomUUID());
-        const upload = await fetch(baseUrl + path + "/payment-voucher-file-uploads?paymentScope=public_cash", {
+        const upload = await fetch(baseUrl + path + "/payment-voucher-file-uploads?scopeKey=public_cash", {
           method: "POST", headers: { authorization: `Bearer ${keeperToken}` }, body: voucher
         });
         expect(upload.status).toBe(201);
