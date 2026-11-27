@@ -4,7 +4,28 @@ umask 077
 
 plan=$(cd "$(dirname "$0")" && pwd -P)
 issue_lane=false
-if [[ ${2:-} == issue* ]]; then
+signed_issue_ordered=false
+if [[ ${3-} == --signed-settlement-350 ]]; then
+  [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
+  [[ $# == 3 || ( $# == 4 && $4 == --host-only ) ]] || exit 64
+  scopes=$(node - "$plan/issue-ordered/profiles.cjs" "$2" <<'JS'
+const [file,lane]=process.argv.slice(2);
+const {issueOrderedScopes350,issue418OperatingScopes350}=require(file);
+const groups={
+  'issue-matrix-350':issueOrderedScopes350,
+  'issue404_matrix_350':['issue404_350','issue426_a01_350'],
+  'issue418-operating':issue418OperatingScopes350
+};
+const selected=Object.hasOwn(groups,lane)?groups[lane]:issueOrderedScopes350.includes(lane)?[lane]:[];
+if(selected.length===0 || selected.some(scope=>!issueOrderedScopes350.includes(scope))) process.exit(64);
+process.stdout.write(selected.join(' '));
+JS
+  ) || exit 64
+  read -r -a signed_issue_scopes <<< "$scopes"
+  issue_lane=true
+  signed_issue_ordered=true
+fi
+if [[ $issue_lane == false && ${2:-} == issue* ]]; then
   [[ $# == 3 ]] || exit 64
   case "$2:$3" in
     issue404_matrix_349:--expense-witness-349|issue417:--expense-witness-349|issue418-operating:--expense-witness-349) ;;
@@ -23,7 +44,7 @@ if [[ ${2:-} == issue* ]]; then
   issue_lane=true
 fi
 
-[[ $# == 2 || ( $# == 3 && ( $3 == --current-320 || $3 == --text-direct-330 ) && $2 != pol275 ) ||
+[[ $signed_issue_ordered == true || $# == 2 || ( $# == 3 && ( $3 == --current-320 || $3 == --text-direct-330 ) && $2 != pol275 ) ||
   ( $# == 3 && $3 == --payment-remainder-331 && $2 != pol275 ) ||
   ( $# == 3 && $3 == --historical-settlement-334 && ( $2 == settlement || $2 == template || $2 == draft ||
     $2 == task398-standard || $2 == cash-handover || $2 == principal-return ||
@@ -78,7 +99,11 @@ root=$(git rev-parse --show-toplevel)
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-contract-adjacent.XXXXXXXX")
 if [[ ${4-} == --host-only ]]; then
   bash "$plan/prepare.sh" "$root" "$sha" "$work/source" "$3"
-  if [[ $lane == task398-competition ]]; then
+  if [[ $signed_issue_ordered == true ]]; then
+    for scope in "${signed_issue_scopes[@]}"; do
+      bash "$plan/issue-ordered/run.sh" "$root" "$work/source" "$sha" "$work" "$scope" --host-only
+    done
+  elif [[ $lane == task398-competition ]]; then
     bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work" competition-346 --host-only
   elif [[ $lane == pol109 ]]; then
     bash "$plan/run-pol109.sh" "$root" "$work/source" "$sha" "$work" --expense-witness-346 --host-only
@@ -108,6 +133,12 @@ case "$lane" in pol115-workbench|pol115-full|onboarding|procurement) profile=mob
 if [[ ( $lane == task398-ledger-loss || $lane == task398-competition ) && $3 == --expense-witness-346 ]]; then profile=api; fi
 if [[ $issue_lane == true ]]; then profile=api; fi
 bash "$plan/build.sh" "$work/source" "$sha" "$profile" "$work/browser"
+if [[ $signed_issue_ordered == true ]]; then
+  for scope in "${signed_issue_scopes[@]}"; do
+    bash "$plan/issue-ordered/run.sh" "$root" "$work/source" "$sha" "$work/browser" "$scope"
+  done
+  exit 0
+fi
 if [[ $issue_lane == true ]]; then
   case "$lane" in
     issue404_matrix_349)
