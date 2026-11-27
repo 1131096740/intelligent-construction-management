@@ -146,29 +146,128 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
     return id;
   };
 
+  const seedCompanies = async () => {
+    a = await createCompanyTransferFixture(prisma, "甲合成公司");
+    b = await createCompanyTransferFixture(prisma, "乙合成公司");
+    c = await createCompanyTransferFixture(prisma, "丙合成公司");
+    await prisma.project.update({ where: { id: a.projectId }, data: { operatingLedgerEffectiveDate: new Date("2026-07-01") } });
+    await payerVerification(a, "甲合成公司");
+    await payerVerification(b, "乙合成公司");
+    await payerVerification(c, "丙合成公司");
+  };
+
   beforeAll(async () => {
     const target = new URL(process.env.DATABASE_URL ?? "");
     if (process.env.NODE_ENV !== "test" || target.hostname !== "127.0.0.1" || target.pathname !== "/jg_issue411_third_company") {
       throw new Error("只允许本机一次性隔离库 jg_issue411_third_company");
     }
     prisma = new PrismaClient();
-    a = await createCompanyTransferFixture(prisma, "甲合成公司");
-    b = await createCompanyTransferFixture(prisma, "乙合成公司");
-    c = await createCompanyTransferFixture(prisma, "丙合成公司");
-    await prisma.project.update({ where: { id: a.projectId }, data: { operatingLedgerEffectiveDate: new Date("2026-07-01") } });
     applicant = await person("comprehensive_director");
     financeStaff = await person("finance_staff");
     financeDirector = await person("finance_director");
     leader = await person("general_manager");
     evidence = { id: (await file(applicant)).id, contentSha256: "a".repeat(64) };
-    await payerVerification(a, "甲合成公司");
-    await payerVerification(b, "乙合成公司");
-    await payerVerification(c, "丙合成公司");
+    await seedCompanies();
   }, 120_000);
   afterAll(async () => { await prisma?.$disconnect(); });
 
+  it("moves A-B debt to A-C with one payment, rejects a duplicate, and keeps the corrected net", async () => {
+    const verificationA = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: a.companyId } });
+    const verificationB = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: b.companyId } });
+    const verificationC = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: c.companyId } });
+    const aAccount = "6222000011111111", bAccount = "6222000022222222", cAccount = "6222000033333333";
+
+    // A-B loan debt: B actually paid 800 to A.
+    const loan = await createTransfer({ kind: "loan", source: b, destination: a, amountCents: 800n, parallel: false,
+      sourceAccount: bAccount, destinationAccount: aAccount });
+    const loanOutgoing = await event(loan, "outgoing", b, bAccount, 800n, new Date("2026-08-01"), financeStaff, verificationB.id);
+    await event(loan, "incoming", a, aAccount, 800n, new Date("2026-08-02"), financeDirector, verificationA.id, loanOutgoing);
+
+    // C repays B for A: source C, destination B, explicit debtor A.
+    const third = await createTransfer({ kind: "repayment", source: c, destination: b, amountCents: 800n, parallel: false,
+      repaymentDebtorCompanyId: a.companyId, original: { originalTransferId: loan }, sourceAccount: cAccount, destinationAccount: bAccount });
+    const thirdOutgoing = await event(third, "outgoing", c, cAccount, 800n, new Date("2026-08-10"), financeStaff, verificationC.id);
+    const thirdIncoming = await event(third, "incoming", b, bAccount, 800n, new Date("2026-08-11"), financeDirector, verificationB.id, thirdOutgoing);
+
+    const loanUsage = await transferRepaymentUsage(prisma, { originalTransferId: loan });
+    expect(loanUsage.received).toBe(800n);
+    const balances = await prisma.$transaction(tx => readCompanyTransferBalances(tx, [a.projectId], new Date("2100-01-01")));
+    expect(balances.find(row => row.companyId === a.companyId)).toMatchObject({ payableCents: "800", onBehalfPayableCents: "800" });
+    expect(balances.find(row => row.companyId === c.companyId)).toMatchObject({ receivableCents: "800", onBehalfReceivableCents: "800" });
+    expect(balances.find(row => row.companyId === b.companyId)).toMatchObject({ receivableCents: "0" });
+
+    // The same loan debt cannot be repaid twice.
+    await expect(createTransfer({ kind: "repayment", source: c, destination: b, amountCents: 100n, parallel: false,
+      repaymentDebtorCompanyId: a.companyId, original: { originalTransferId: loan }, sourceAccount: cAccount, destinationAccount: bAccount }))
+      .rejects.toThrow(/company_transfer_original_capacity/);
+
+    // The ledger row and the operating adapter both expose the third-party origin.
+    const reader = new CompanyTransferReadService(prisma as never, new ProjectVisibilityService(prisma as never));
+    const view = await reader.list(financeDirector, { projectId: a.projectId });
+    expect(view.rows.find(row => row.id === third)).toMatchObject({
+      repaymentDebtorCompanyId: a.companyId, repaymentDebtorCompany: "甲合成公司", onBehalfRepayment: true,
+    });
+    const adapter = new CompanyTransferOperatingSourceAdapter();
+    const snapshot = await prisma.$transaction(tx => adapter.readSourceSnapshot(tx, {
+      projectId: a.projectId, sourceType: "company_transfer_event", sourceBusinessId: thirdIncoming,
+    }));
+    expect(snapshot).not.toBeNull();
+    const fact = adapter.toOperatingFactInput(snapshot!);
+    expect(fact.input.impacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ impactKind: "inter_subject_balance_increase", sourceImpactKey: "on_behalf_relationship", subject: { kind: "participating_company", id: c.companyId } }),
+    ]));
+    expect(fact.input.impacts.some(impact => String(impact.impactKind).includes("confirmed_cost"))).toBe(false);
+    await expect(prisma.companyTransfer.delete({ where: { id: third } })).rejects.toThrow(/company_transfer_immutable/);
+  });
+
+  it("re-points a settled third-party repayment to the correct original debt and keeps the A-C debt", async () => {
+    const proxy = (amountCents: bigint) => prisma.contractProxyExecution.create({ data: {
+      projectId: a.projectId, sourceRef: `settlement:${randomUUID()}`, entryKind: "payment", amountCents,
+      occurredAt: new Date("2026-08-05"), actualPayerKey: `participating_company:${b.companyId}`, bankReference: randomUUID(),
+      evidenceFileId: evidence.id, evidenceSha256: evidence.contentSha256,
+      reason: "隔离合成原代付", status: "confirmed", recordedByUserId: financeStaff,
+      confirmedByUserId: financeDirector, confirmedAt: new Date("2026-08-05"),
+      frozenSource: { debtor: { kind: "participating_company", id: a.companyId }, actualPayer: { kind: "participating_company", id: b.companyId } },
+      idempotencyKey: randomUUID(), requestFingerprint: randomUUID(),
+    } });
+    const original = await proxy(800n), target = await proxy(1000n);
+    const bAccount = "6222000022222222", cAccount = "6222000033333333";
+    const verificationB = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: b.companyId } });
+    const verificationC = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: c.companyId } });
+    const third = await createTransfer({ kind: "repayment", source: c, destination: b, amountCents: 800n, parallel: true,
+      repaymentDebtorCompanyId: a.companyId, original: { originalProxyId: original.id }, sourceAccount: cAccount, destinationAccount: bAccount });
+    const outgoing = await event(third, "outgoing", c, cAccount, 800n, new Date("2026-08-12"), financeStaff, verificationC.id);
+    await event(third, "incoming", b, bAccount, 800n, new Date("2026-08-13"), financeDirector, verificationB.id, outgoing);
+    expect((await transferRepaymentUsage(prisma, { originalProxyId: original.id })).received).toBe(800n);
+
+    const correctionId = randomUUID();
+    await prisma.companyTransferOriginalDebtCorrection.create({ data: {
+      id: correctionId, outgoingEventId: outgoing, originalSource: `proxy:${original.id}`,
+      targetOriginalSource: `proxy:${target.id}`, reason: "原债引用填错", requestedByUserId: financeStaff, requestKey: randomUUID(),
+    } });
+    await prisma.companyTransferOriginalDebtCorrection.update({ where: { id: correctionId }, data: {
+      status: "confirmed", confirmedByUserId: financeDirector, confirmedAt: new Date(), confirmKey: randomUUID(),
+    } });
+    expect((await transferRepaymentUsage(prisma, { originalProxyId: original.id })).received).toBe(0n);
+    expect((await transferRepaymentUsage(prisma, { originalProxyId: target.id })).received).toBe(800n);
+    // The corrected canonical plan must compile and resolve the third-party debtor
+    // (no operating anchor is seeded in this guard-only fixture, hence zero rows).
+    await expect(prisma.$queryRaw`SELECT * FROM public.jg_company_transfer_canonical_correction_plan(${correctionId})`).resolves.toEqual([]);
+
+    const reader = new CompanyTransferReadService(prisma as never, new ProjectVisibilityService(prisma as never));
+    const view = await reader.list(financeDirector, { projectId: a.projectId });
+    expect(view.originalProxies.find(row => row.id === original.id)).toMatchObject({ remainingCents: "800", availableCents: "800" });
+    expect(view.originalProxies.find(row => row.id === target.id)).toMatchObject({ remainingCents: "200", availableCents: "200" });
+    const balances = await prisma.$transaction(tx => readCompanyTransferBalances(tx, [a.projectId], new Date("2100-01-01")));
+    // The same disposable database also holds the 800 third-party repayment from
+    // the first case; the correction must not change that A-C debt.
+    expect(balances.find(row => row.companyId === a.companyId)?.onBehalfPayableCents).toBe("1600");
+    expect(balances.find(row => row.companyId === c.companyId)?.onBehalfReceivableCents).toBe("1600");
+  });
+
   const settledReturnCase = process.env.RUN_ISSUE435_SETTLED_RETURN === "1" ? it : it.skip;
   settledReturnCase("issue 435 posts pre-arrival and settled returns, restores both debts, and rolls back a failed posting", async () => {
+    await seedCompanies();
     const projectId = a.projectId;
     const accountA = "6222000011111111", accountB = "6222000022222222", accountC = "6222000033333333";
     const verification = async (companyId: string) => (await prisma.paymentExecutionPayerVerification.findFirstOrThrow({
@@ -293,100 +392,6 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
     const pendingView = await reader.list(financeDirector, { projectId });
     expect(pendingView.originalLoans.find(row => row.id === pending.loan)).toMatchObject({ remainingCents: "100", availableCents: "100" });
     expect(pendingView.rows.find(row => row.id === pending.transfer)).toMatchObject({ receivedCents: "0", returnedCents: "100", inTransitCents: "0" });
-  });
-
-  it("moves A-B debt to A-C with one payment, rejects a duplicate, and keeps the corrected net", async () => {
-    const verificationA = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: a.companyId } });
-    const verificationB = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: b.companyId } });
-    const verificationC = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: c.companyId } });
-    const aAccount = "6222000011111111", bAccount = "6222000022222222", cAccount = "6222000033333333";
-
-    // A-B loan debt: B actually paid 800 to A.
-    const loan = await createTransfer({ kind: "loan", source: b, destination: a, amountCents: 800n, parallel: false,
-      sourceAccount: bAccount, destinationAccount: aAccount });
-    const loanOutgoing = await event(loan, "outgoing", b, bAccount, 800n, new Date("2026-08-01"), financeStaff, verificationB.id);
-    await event(loan, "incoming", a, aAccount, 800n, new Date("2026-08-02"), financeDirector, verificationA.id, loanOutgoing);
-
-    // C repays B for A: source C, destination B, explicit debtor A.
-    const third = await createTransfer({ kind: "repayment", source: c, destination: b, amountCents: 800n, parallel: false,
-      repaymentDebtorCompanyId: a.companyId, original: { originalTransferId: loan }, sourceAccount: cAccount, destinationAccount: bAccount });
-    const thirdOutgoing = await event(third, "outgoing", c, cAccount, 800n, new Date("2026-08-10"), financeStaff, verificationC.id);
-    const thirdIncoming = await event(third, "incoming", b, bAccount, 800n, new Date("2026-08-11"), financeDirector, verificationB.id, thirdOutgoing);
-
-    const loanUsage = await transferRepaymentUsage(prisma, { originalTransferId: loan });
-    expect(loanUsage.received).toBe(800n);
-    const balances = await prisma.$transaction(tx => readCompanyTransferBalances(tx, [a.projectId], new Date("2100-01-01")));
-    expect(balances.find(row => row.companyId === a.companyId)).toMatchObject({ payableCents: "800", onBehalfPayableCents: "800" });
-    expect(balances.find(row => row.companyId === c.companyId)).toMatchObject({ receivableCents: "800", onBehalfReceivableCents: "800" });
-    expect(balances.find(row => row.companyId === b.companyId)).toMatchObject({ receivableCents: "0" });
-
-    // The same loan debt cannot be repaid twice.
-    await expect(createTransfer({ kind: "repayment", source: c, destination: b, amountCents: 100n, parallel: false,
-      repaymentDebtorCompanyId: a.companyId, original: { originalTransferId: loan }, sourceAccount: cAccount, destinationAccount: bAccount }))
-      .rejects.toThrow(/company_transfer_original_capacity/);
-
-    // The ledger row and the operating adapter both expose the third-party origin.
-    const reader = new CompanyTransferReadService(prisma as never, new ProjectVisibilityService(prisma as never));
-    const view = await reader.list(financeDirector, { projectId: a.projectId });
-    expect(view.rows.find(row => row.id === third)).toMatchObject({
-      repaymentDebtorCompanyId: a.companyId, repaymentDebtorCompany: "甲合成公司", onBehalfRepayment: true,
-    });
-    const adapter = new CompanyTransferOperatingSourceAdapter();
-    const snapshot = await prisma.$transaction(tx => adapter.readSourceSnapshot(tx, {
-      projectId: a.projectId, sourceType: "company_transfer_event", sourceBusinessId: thirdIncoming,
-    }));
-    expect(snapshot).not.toBeNull();
-    const fact = adapter.toOperatingFactInput(snapshot!);
-    expect(fact.input.impacts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ impactKind: "inter_subject_balance_increase", sourceImpactKey: "on_behalf_relationship", subject: { kind: "participating_company", id: c.companyId } }),
-    ]));
-    expect(fact.input.impacts.some(impact => String(impact.impactKind).includes("confirmed_cost"))).toBe(false);
-    await expect(prisma.companyTransfer.delete({ where: { id: third } })).rejects.toThrow(/company_transfer_immutable/);
-  });
-
-  it("re-points a settled third-party repayment to the correct original debt and keeps the A-C debt", async () => {
-    const proxy = (amountCents: bigint) => prisma.contractProxyExecution.create({ data: {
-      projectId: a.projectId, sourceRef: `settlement:${randomUUID()}`, entryKind: "payment", amountCents,
-      occurredAt: new Date("2026-08-05"), actualPayerKey: `participating_company:${b.companyId}`, bankReference: randomUUID(),
-      evidenceFileId: evidence.id, evidenceSha256: evidence.contentSha256,
-      reason: "隔离合成原代付", status: "confirmed", recordedByUserId: financeStaff,
-      confirmedByUserId: financeDirector, confirmedAt: new Date("2026-08-05"),
-      frozenSource: { debtor: { kind: "participating_company", id: a.companyId }, actualPayer: { kind: "participating_company", id: b.companyId } },
-      idempotencyKey: randomUUID(), requestFingerprint: randomUUID(),
-    } });
-    const original = await proxy(800n), target = await proxy(1000n);
-    const bAccount = "6222000022222222", cAccount = "6222000033333333";
-    const verificationB = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: b.companyId } });
-    const verificationC = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: c.companyId } });
-    const third = await createTransfer({ kind: "repayment", source: c, destination: b, amountCents: 800n, parallel: true,
-      repaymentDebtorCompanyId: a.companyId, original: { originalProxyId: original.id }, sourceAccount: cAccount, destinationAccount: bAccount });
-    const outgoing = await event(third, "outgoing", c, cAccount, 800n, new Date("2026-08-12"), financeStaff, verificationC.id);
-    await event(third, "incoming", b, bAccount, 800n, new Date("2026-08-13"), financeDirector, verificationB.id, outgoing);
-    expect((await transferRepaymentUsage(prisma, { originalProxyId: original.id })).received).toBe(800n);
-
-    const correctionId = randomUUID();
-    await prisma.companyTransferOriginalDebtCorrection.create({ data: {
-      id: correctionId, outgoingEventId: outgoing, originalSource: `proxy:${original.id}`,
-      targetOriginalSource: `proxy:${target.id}`, reason: "原债引用填错", requestedByUserId: financeStaff, requestKey: randomUUID(),
-    } });
-    await prisma.companyTransferOriginalDebtCorrection.update({ where: { id: correctionId }, data: {
-      status: "confirmed", confirmedByUserId: financeDirector, confirmedAt: new Date(), confirmKey: randomUUID(),
-    } });
-    expect((await transferRepaymentUsage(prisma, { originalProxyId: original.id })).received).toBe(0n);
-    expect((await transferRepaymentUsage(prisma, { originalProxyId: target.id })).received).toBe(800n);
-    // The corrected canonical plan must compile and resolve the third-party debtor
-    // (no operating anchor is seeded in this guard-only fixture, hence zero rows).
-    await expect(prisma.$queryRaw`SELECT * FROM public.jg_company_transfer_canonical_correction_plan(${correctionId})`).resolves.toEqual([]);
-
-    const reader = new CompanyTransferReadService(prisma as never, new ProjectVisibilityService(prisma as never));
-    const view = await reader.list(financeDirector, { projectId: a.projectId });
-    expect(view.originalProxies.find(row => row.id === original.id)).toMatchObject({ remainingCents: "800", availableCents: "800" });
-    expect(view.originalProxies.find(row => row.id === target.id)).toMatchObject({ remainingCents: "200", availableCents: "200" });
-    const balances = await prisma.$transaction(tx => readCompanyTransferBalances(tx, [a.projectId], new Date("2100-01-01")));
-    // The same disposable database also holds the 800 third-party repayment from
-    // the first case; the correction must not change that A-C debt.
-    expect(balances.find(row => row.companyId === a.companyId)?.onBehalfPayableCents).toBe("1600");
-    expect(balances.find(row => row.companyId === c.companyId)?.onBehalfReceivableCents).toBe("1600");
   });
 
   settledReturnCase("issue 435 keeps the debt correction net and freezes the target for a later refund", async () => {
