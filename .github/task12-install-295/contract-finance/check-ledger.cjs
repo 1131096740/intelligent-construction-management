@@ -76,7 +76,7 @@ if (current320) {
     ...(expenseWitness349?{predecessor346:{migrationCount:346,ledgerSha256:ledgerHash(ledger.slice(0,346))}}:{}),
     tails:ledger.slice(295)
   };
-  if (expenseWitness349) expenseWitness349.assertSource(source, source.predecessor);
+  if (expenseWitness349) expenseWitness349.assertSource(source, predecessor295Sha256);
   console.log(JSON.stringify(source));
 } else {
   console.log(JSON.stringify({sourceSha:sha,migrationCount:ledger.length,ledgerSha256:digest,tails:ledger.slice(292)}));
