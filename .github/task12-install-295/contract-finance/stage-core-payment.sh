@@ -5,8 +5,9 @@ set -euo pipefail
 workspace=$1
 work=$2
 mode=$3
+precision=$mode
 exact346=false
-if [[ $mode == expense-witness-346 ]]; then
+if [[ $mode == expense-witness-34[69] ]]; then
   exact346=true
   mode=historical-settlement-334
 fi
@@ -123,5 +124,9 @@ const assert=require('node:assert/strict');
 assert.equal(createHash('sha256').update(readFileSync(process.argv[2])).digest('hex'),
   'e2afc9fe3da2262eee0c2cb3d13c113eff125c24fda9f959eb09949639ffa8ff','CORE_346_LEDGER_FIXTURE');
 JS
+  if [[ $precision == expense-witness-349 ]]; then
+    (cd "$fixtures" && git apply -p0 --include=contract-finance-owned.test-support.ts "$plan/payment-execution-349-fixtures.patch")
+    [[ $(sha256sum "$fixtures/contract-finance-owned.test-support.ts" | cut -d' ' -f1) == fc17a8068503366316ef5cba8c86e376d2b8ddb88dd5cf82237e80d2b9229e39 ]] || exit 65
+  fi
   chmod 0644 "$fixtures/contract-finance-owned.test-support.ts"
 fi

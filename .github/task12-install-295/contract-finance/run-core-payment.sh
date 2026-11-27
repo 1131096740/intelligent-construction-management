@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && $5 == --expense-witness-346 ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && $5 == --expense-witness-34[69] ) ]] || exit 64
 prepared=$(cd "$1" && pwd -P)
 sha=$2
 build=$3
@@ -20,11 +20,13 @@ workspace="$prepared/prepared/context/workspace"
 mode=$(node - "$prepared/source.json" "$sha" "$plan" "$requested_profile" "$scope" <<'JS'
 const [file,sha,plan,requestedProfile,scope]=process.argv.slice(2);
 const source=require(file);
-const exact346=source.mode==='expense-witness-346';
-if(exact346!==(requestedProfile==='--expense-witness-346')||source.sourceSha!==sha) process.exit(65);
-if(exact346) {
+const modes=['expense-witness-346','expense-witness-349'];
+const expense=modes.includes(source.mode);
+if(expense!==(modes.includes(requestedProfile.slice(2)))||source.sourceSha!==sha) process.exit(65);
+if(expense) {
+  if(requestedProfile!=='--'+source.mode) process.exit(65);
   if(scope!=='core') process.exit(64);
-  require(plan+'/expense-witness-346-profile.cjs').assertSource(source,require(plan+'/common/multi-witness.cjs').final);
+  require(plan+'/'+source.mode+'-profile.cjs').assertSource(source,require(plan+'/common/multi-witness.cjs').final);
 } else if(source.mode==='historical-settlement-334') {
   require(plan+'/historical-settlement-334-profile.cjs').assertSource(source,require(plan+'/common/multi-witness.cjs').final);
 } else if(source.mode==='upward-archive-332') {
@@ -40,14 +42,14 @@ process.stdout.write(source.mode??'legacy');
 JS
 )
 
-if [[ $mode == expense-witness-346 ]]; then
+if [[ $mode == expense-witness-34[69] ]]; then
   repo=$(git -C "$plan" rev-parse --show-toplevel)
   [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
   [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan") ]] || exit 65
   cmp -s "$prepared/source.json" <(node "$plan/check-ledger.cjs" "$repo" "$sha" "$requested_profile") || exit 65
-  node - "$plan" "$workspace" <<'JS'
-const [plan,workspace]=process.argv.slice(2);
-require(plan+'/expense-witness-346-profile.cjs').assertRuntimeBaseline(
+  node - "$plan" "$workspace" "$mode" <<'JS'
+const [plan,workspace,mode]=process.argv.slice(2);
+require(plan+'/'+mode+'-profile.cjs').assertRuntimeBaseline(
   require(workspace+'/services/api/prisma/migration-baseline.cjs'));
 JS
 fi
@@ -61,29 +63,32 @@ tests=(
 bash "$plan/stage-core-payment.sh" "$workspace" "$work" "$mode"
 
 installer="$common/installer.cjs"
-if [[ $mode == historical-settlement-334 || $mode == expense-witness-346 ]]; then
+if [[ $mode == historical-settlement-334 || $mode == expense-witness-34[69] ]]; then
   node "$plan/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
   installer="$work/installer.cjs"
 fi
-if [[ $mode == expense-witness-346 ]]; then
+if [[ $mode == expense-witness-34[69] ]]; then
   (cd "$work" && git apply --unidiff-zero "$plan/expense-witness/installer.patch")
-  node - "$installer" "$plan" <<'JS'
+  if [[ $mode == expense-witness-349 ]]; then
+    git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer-349.patch"
+  fi
+  node - "$installer" "$plan" "$mode" <<'JS'
 const assert=require('node:assert/strict');
 const {readFileSync}=require('node:fs');
 const {createHash}=require('node:crypto');
-const [installer,plan]=process.argv.slice(2);
+const [installer,plan,mode]=process.argv.slice(2);
 assert.equal(createHash('sha256').update(readFileSync(installer)).digest('hex'),
-  require(plan+'/expense-witness-346-profile.cjs').installerSha256);
+  require(plan+'/'+mode+'-profile.cjs').installerSha256);
 JS
   chmod 0644 "$installer"
   tests=("${tests[@]:0:2}")
 fi
 if [[ $build == --host-only ]]; then
-  if [[ $mode == expense-witness-346 ]]; then
+  if [[ $mode == expense-witness-34[69] ]]; then
     node --check "$installer"
     node --check "$plan/core-payment-entry.cjs"
     node --check "$plan/core-payment-runner.cjs"
-    printf 'CONTRACT_FINANCE_CORE_346_HOST_READY sha=%s material=%s\n' "$sha" "$work"
+    printf 'CONTRACT_FINANCE_CORE_%s_HOST_READY sha=%s material=%s\n' "${mode##*-}" "$sha" "$work"
     exit 0
   fi
   [[ $mode == historical-settlement-334 ]] || exit 64
@@ -112,7 +117,7 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$installer,dst=/qualification/installer.cjs,readonly")
 if [[ $mode == text-direct-330 ]]; then
   args+=(--mount "type=bind,src=$plan/text-direct-330-profile.cjs,dst=/qualification/text-direct-330-profile.cjs,readonly")
-elif [[ $mode == historical-settlement-334 || $mode == expense-witness-346 ]]; then
+elif [[ $mode == historical-settlement-334 || $mode == expense-witness-34[69] ]]; then
   for profile in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs; do
     args+=(--mount "type=bind,src=$plan/$profile,dst=/qualification/$profile,readonly")
   done
@@ -121,10 +126,13 @@ elif [[ $mode == upward-archive-332 ]]; then
 elif [[ $mode == payment-remainder-331 ]]; then
   args+=(--mount "type=bind,src=$plan/payment-remainder-331-profile.cjs,dst=/qualification/payment-remainder-331-profile.cjs,readonly")
 fi
-if [[ $mode == expense-witness-346 ]]; then
+if [[ $mode == expense-witness-34[69] ]]; then
   for profile in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
     args+=(--mount "type=bind,src=$plan/$profile,dst=/qualification/$profile,readonly")
   done
+fi
+if [[ $mode == expense-witness-349 ]]; then
+  args+=(--mount "type=bind,src=$plan/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
 fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
@@ -133,7 +141,7 @@ for file in core-payment-runner.cjs contract-finance-stage-web.cjs task12-pol109
   args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/workspace/services/api/prisma/$file,readonly")
 done
 ledger_support="$plan/contract-finance-owned.test-support.ts"
-if [[ $mode == payment-remainder-331 || $mode == upward-archive-332 || $mode == historical-settlement-334 || $mode == expense-witness-346 ]]; then
+if [[ $mode == payment-remainder-331 || $mode == upward-archive-332 || $mode == historical-settlement-334 || $mode == expense-witness-34[69] ]]; then
   ledger_support="$work/services/api/src/database/contract-finance-owned.test-support.ts"
 fi
 args+=(--mount "type=bind,src=$ledger_support,dst=/qualification/workspace/services/api/src/database/contract-finance-owned.test-support.ts,readonly"
