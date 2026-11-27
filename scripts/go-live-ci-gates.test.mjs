@@ -477,7 +477,7 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
     ]);
     else assert.match(result.stdout, /334 PostgreSQL gate has no admitted runner/u);
   }
-  for (const count of [335, 347, 350, 351, 352]) {
+  for (const count of [335, 347, 350, 351]) {
     const repinned = executable.replace(/^count=.*$/mu, `count=${count}`);
     const result = spawnSync("bash", ["-c", `exec () { exit 99; }\n${repinned}`], {
       cwd: root, encoding: "utf8",
@@ -490,7 +490,8 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
 
 for (const [count, terminal, checksum] of [
   [346, "20261129015000_expense_public_cash_operating_source", "d2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a"],
-  [349, "20261129018000_reimbursement_exact_cash_cost_links", "58b3cc0404a85a97dbb484654245d4bd042e5fb2014f32997244b2597cb5110b"]
+  [349, "20261129018000_reimbursement_exact_cash_cost_links", "58b3cc0404a85a97dbb484654245d4bd042e5fb2014f32997244b2597cb5110b"],
+  [352, "20261129021000_company_history_expense", "8cb43f1ae9a6fb6108280f1ea08df4d2d2edf7c060b39b37dfbeeaff7ae368e5"]
 ]) {
   test(`the hosted ${count} step routes the complete automatic matrix through isolated wrappers`, async () => {
     const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
@@ -521,11 +522,11 @@ for (const [count, terminal, checksum] of [
         const [runner, actualSha, ...args] = result.stdout.trim().split("\n");
         assert.match(runner, /^\.github\/task12-install-295\//u, label);
         assert.equal(actualSha, sha, label);
-        if (shard) assert.deepEqual(args, count === 349 ? [shard, "--expense-witness-349"] : [shard], label);
-        else assert.ok(args.includes(`--expense-witness-${count}`), label);
-        if (count === 349 && runner.endsWith("run-contract-adjacent-ci.sh") &&
+        if (shard) assert.deepEqual(args, count === 352 ? [shard, "--company-history-352"] : count === 349 ? [shard, "--expense-witness-349"] : [shard], label);
+        else assert.ok(args.includes(count === 352 ? "--company-history-352" : `--expense-witness-${count}`), label);
+        if ((count === 349 || count === 352) && runner.endsWith("run-contract-adjacent-ci.sh") &&
             args[0].startsWith("issue") && !["issue417", "issue418-operating"].includes(args[0])) {
-          assert.match(args[0], /_349$/u, label);
+          assert.match(args[0], new RegExp(`_${count}$`, "u"), label);
         }
       }
     }

@@ -25,12 +25,15 @@ const {
 const gate334 = require("./dynamic-gate-334.cjs");
 const gate346 = require("./dynamic-gate-346.cjs");
 const gate349 = require("./dynamic-gate-349.cjs");
+const gate352 = require("./dynamic-gate-352.cjs");
 const exactGates = new Map([
   [334, { commandFor: gate334.commandFor334, unadmittedGroups: gate334.unadmittedGroups334 }],
   [346, { commandFor: gate346.commandFor346, unadmittedGroups: gate346.unadmittedGroups346,
     matchesBaseline: gate346.matchesBaseline346, issue418Tests: gate346.issue418Tests346 }],
   [349, { commandFor: gate349.commandFor349, unadmittedGroups: gate349.unadmittedGroups349,
-    matchesBaseline: gate349.matchesBaseline349, issue418Tests: gate349.issue418Tests349 }]
+    matchesBaseline: gate349.matchesBaseline349, issue418Tests: gate349.issue418Tests349 }],
+  [352, { commandFor: gate352.commandFor352, unadmittedGroups: gate352.unadmittedGroups352,
+    matchesBaseline: gate352.matchesBaseline352, issue418Tests: gate352.issue418Tests352 }]
 ]);
 
 const root = path.resolve(__dirname, "../../..");
