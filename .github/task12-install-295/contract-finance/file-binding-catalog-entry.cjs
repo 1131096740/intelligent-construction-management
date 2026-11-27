@@ -82,7 +82,7 @@ async function main(receipt, source) {
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
   receipt.originalInputs = assertFixture(api);
   const count = source.migrationCount;
-  assert.ok([346,349,350].includes(count), 'FILE_BINDING_CATALOG_MIGRATION_SCOPE');
+  assert.ok([346,349,350,352].includes(count), 'FILE_BINDING_CATALOG_MIGRATION_SCOPE');
   const witness = require('./payment-execution-'+count+'.cjs');
   receipt.input = require('./install-only292.cjs').admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   await witness.install(receipt,async context=>{

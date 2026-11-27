@@ -3,8 +3,8 @@ set -euo pipefail
 umask 077
 
 [[ ( $# == 5 || ( $# == 6 && $6 == --host-only ) ) &&
-  ( $5 == --expense-witness-34[69] || $5 == --signed-settlement-350 ) ]] || exit 64
-if [[ $5 == --signed-settlement-350 ]]; then
+  ( $5 == --expense-witness-34[69] || $5 == --signed-settlement-350 || $5 == --company-history-352 ) ]] || exit 64
+if [[ $5 == --signed-settlement-350 || $5 == --company-history-352 ]]; then
   [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
 fi
 repo=$(cd "$1" && pwd -P)
