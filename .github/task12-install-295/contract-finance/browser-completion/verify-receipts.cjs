@@ -77,6 +77,15 @@ if(count!==295){
     });
     assert.equal(outer.expenseWitnessPrecisionCatalogAfterBusiness,true);
   }
+  if(count===352){
+    assert.equal(outer.signedSettlementForward?.count,350);
+    assert.equal(outer.signedSettlementForward?.ledgerSha256,'6dd4b8f7c484e4afeacd893991256275b087e2ae1ee2c940df87f812dc60a860');
+    assert.equal(outer.companyHistoryForward?.count,352);
+    assert.equal(outer.companyHistoryForward?.ledgerSha256,'155903a7032c978e10b8d73f48a0621bf9561ae69ef58a0128d2455f1ccfa5f8');
+    assert.equal(outer.companyHistoryForward?.sameIdentity,true);
+    assert.equal(outer.companyHistoryForward?.sourceTree,outer.forward320.sourceTree);
+    assert.equal(outer.companyHistoryForward?.tails.length,2);
+  }
 }
 assert.equal(outer.installOnly295.count,295);
 assert.equal(outer.installOnly295.ledgerSha256,'b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d');
