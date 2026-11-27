@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
+import { normalizeBusinessAmount, sumBusinessAmounts } from "@jiangkong/shared-domain";
 import { useAuthStore } from "../../../auth/auth.store";
 import { formatUnknownApiError } from "../../../api/error-message";
 import { localBusinessForm } from "../../../lib/local-business-form";
@@ -15,6 +16,7 @@ import {
   type SelectablePurchaseBatch
 } from "../../../api/expense-claim.api";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../../lib/money";
+import { parseExpenseAmountYuan } from "../expense-claim-money";
 import ExpenseClaimLineEditor, { type ExpenseClaimLineDraft } from "./ExpenseClaimLineEditor.vue";
 import ExpenseClaimApplicationFields from "./ExpenseClaimApplicationFields.vue";
 import ExpenseClaimPayeeFields from "./ExpenseClaimPayeeFields.vue";
@@ -123,9 +125,10 @@ const witnessOptions = computed(() => options.value?.factWitnessUsers.map((item)
 const showFactWitness = computed(() => form.claimType === "reimbursement" && !form.projectId);
 const requiresFactWitness = computed(() => showFactWitness.value && Boolean(form.actualPurchaseBatchId));
 const payeeNameError = computed(() => incidentalPayeeError() && error.value === incidentalPayeeError() ? error.value : "");
-const lineTotalCents = computed(() => {
+const reimbursementDefinition = computed(() => options.value?.reimbursementEntryDefinition ?? options.value?.entryDefinition);
+const lineTotalYuan = computed(() => {
   try {
-    return form.lines.reduce((total, line) => total + BigInt(yuanTextToCentsText(line.amountYuan.trim() || "0")), 0n).toString();
+    return sumBusinessAmounts(form.lines.map((line) => normalizeBusinessAmount(line.amountYuan.trim())));
   } catch { return null; }
 });
 
@@ -271,8 +274,8 @@ function incidentalPayeeError(): string {
   return form.claimType === "incidental_expense" && !form.payeeName.trim() ? "零星费用收款对象必填" : "";
 }
 
-function validateCurrentStep(): string {
-  if (step.value === 0) {
+function validateStep(currentStep: number): string {
+  if (currentStep === 0) {
     if (!form.companyEntityId) return "请选择使用单位";
     if (form.claimType === "incidental_expense" && !form.projectId) return "零星费用申请必须选择项目";
     if (form.claimType === "incidental_expense" && !form.incidentalExpenseCategory) return "请选择零星费用分类";
@@ -280,36 +283,37 @@ function validateCurrentStep(): string {
     if (form.applicantMode === "no_account" && (!form.applicantName.trim() || !form.applicantPhone.trim())) return "请填写无账号人员的姓名和电话";
     if (form.applicantMode !== "no_account" && !form.applicantUserId) return "请选择报销人或借款人";
   }
-  if (step.value === 1 && form.claimType === "reimbursement") {
+  if (currentStep === 1 && form.claimType === "reimbursement") {
     if (!form.reason.trim()) return "请填写事由";
     if (!form.requestedAmountYuan.trim()) return "请填写申请金额";
     try {
-      const requested = BigInt(yuanTextToCentsText(form.requestedAmountYuan.trim()));
-      if (requested <= 0n) return "申请金额必须大于 0";
-      if (lineTotalCents.value === null || BigInt(lineTotalCents.value) !== requested) return "费用明细合计必须等于申请金额";
-      for (const line of form.lines) {
+      const requested = parseExpenseAmountYuan(form.requestedAmountYuan, "申请金额");
+      for (const [index, line] of form.lines.entries()) {
         if (!line.expenseCategory.trim() || !line.occurredOn || !line.purpose.trim()) return "请补全每一行费用类别、发生日期和用途";
         if (!/^\d+$/.test(line.receiptCount) || Number(line.receiptCount) > 10000) return "单据张数必须是 0 到 10000 的整数";
         if (line.quantity.trim() && !/^\d+(?:\.\d{1,4})?$/.test(line.quantity.trim())) return "数量必须为正数，最多 4 位小数";
         if (line.quantity.trim() && /^0(?:\.0*)?$/.test(line.quantity.trim())) return "数量必须大于 0";
-        if (BigInt(yuanTextToCentsText(line.amountYuan.trim())) <= 0n) return "每行费用金额必须大于 0";
+        parseExpenseAmountYuan(line.amountYuan, `第 ${index + 1} 行费用金额`);
         if (line.evidenceType === "none" && !line.noEvidenceReason.trim()) return "无凭证费用必须填写原因";
       }
-    } catch { return "金额必须是非负数字，最多保留两位小数"; }
+      if (lineTotalYuan.value !== requested) return "费用明细合计必须等于申请金额";
+    } catch (error) { return (error as Error).message; }
   }
-  if (step.value === 2) {
+  if (currentStep === 2) {
     if (incidentalPayeeError()) return incidentalPayeeError();
     if (!form.reason.trim()) return "请填写事由";
-    try { if (BigInt(yuanTextToCentsText(form.requestedAmountYuan.trim())) <= 0n) return "申请金额必须大于 0"; } catch { return "金额必须是非负数字，最多保留两位小数"; }
+    if (form.claimType !== "reimbursement") {
+      try { if (BigInt(yuanTextToCentsText(form.requestedAmountYuan.trim())) <= 0n) return "申请金额必须大于 0"; } catch { return "金额必须是非负数字，最多保留两位小数"; }
+    }
   }
   return "";
 }
 
-function next() { error.value = validateCurrentStep(); if (!error.value) step.value += 1; }
+function next() { error.value = validateStep(step.value); if (!error.value) step.value += 1; }
 function previous() { error.value = ""; step.value -= 1; }
 
 function payload(): CreateExpenseClaimPayload {
-  const base: CreateExpenseClaimPayload = {
+  const base: Omit<CreateExpenseClaimPayload, "requestedAmountCents" | "requestedAmountYuan" | "lines"> = {
     claimType: form.claimType,
     actualPurchaseBatchId: form.claimType === "reimbursement" && form.actualPurchaseBatchId ? form.actualPurchaseBatchId : undefined,
     incidentalExpenseCategory: form.claimType === "incidental_expense" && form.incidentalExpenseCategory ? form.incidentalExpenseCategory : undefined,
@@ -322,30 +326,37 @@ function payload(): CreateExpenseClaimPayload {
     applicantName: form.applicantMode === "no_account" ? form.applicantName.trim() : undefined,
     applicantPhone: form.applicantMode === "no_account" ? form.applicantPhone.trim() : undefined,
     reason: form.reason.trim(),
-    requestedAmountCents: yuanTextToCentsText(form.requestedAmountYuan.trim()),
     paymentMethod: form.paymentMethod || undefined,
     payeeName: form.payeeName.trim() || undefined,
     payeeAccountName: form.payeeAccountName.trim() || undefined,
     payeeBankName: form.payeeBankName.trim() || undefined,
     payeeBankAccount: form.payeeBankAccount.trim() || undefined
   };
-  if (form.claimType === "reimbursement") {
-    base.lines = form.lines.map((line) => ({
+  if (form.claimType !== "reimbursement") {
+    return { ...base, requestedAmountCents: yuanTextToCentsText(form.requestedAmountYuan.trim()) };
+  }
+  return {
+    ...base,
+    requestedAmountYuan: parseExpenseAmountYuan(form.requestedAmountYuan, "申请金额"),
+    lines: form.lines.map((line, index) => ({
       expenseCategory: line.expenseCategory.trim(), occurredOn: line.occurredOn, purpose: line.purpose.trim(),
       quantity: line.quantity.trim() || undefined,
-      receiptCount: Number(line.receiptCount), amountCents: yuanTextToCentsText(line.amountYuan.trim()), evidenceType: line.evidenceType,
-      noEvidenceReason: line.evidenceType === "none" ? line.noEvidenceReason.trim() : undefined, remark: line.remark.trim() || undefined
-    }));
-  }
-  return base;
+      receiptCount: Number(line.receiptCount),
+      amountYuan: parseExpenseAmountYuan(line.amountYuan, `第 ${index + 1} 行费用金额`),
+      evidenceType: line.evidenceType,
+      noEvidenceReason: line.evidenceType === "none" ? line.noEvidenceReason.trim() : undefined,
+      remark: line.remark.trim() || undefined
+    }))
+  };
 }
 
 async function save() {
   if (submissionUncertain.value) { error.value = "上次保存的结果尚未确认，请先关闭本窗口，到“我的草稿”核对，避免重复创建。"; return; }
-  // Recovered local forms may open directly at review; enforce the original API requirement here too.
-  if (incidentalPayeeError()) { step.value = 2; error.value = incidentalPayeeError(); return; }
-  error.value = validateCurrentStep();
-  if (error.value || saving.value) return;
+  if (saving.value) return;
+  // A recovered form can reopen at review, so validate the editable amount step too.
+  const amountStep = form.claimType === "reimbursement" ? 1 : 2;
+  error.value = validateStep(amountStep);
+  if (error.value) { step.value = amountStep; return; }
   saving.value = true;
   creationRequestStarted = false;
   try {
@@ -582,7 +593,7 @@ function finishRecovery() {
           >
             <ExpenseClaimApplicationFields
               v-model="applicationFields"
-              :definition="options.entryDefinition"
+              :definition="form.claimType === 'reimbursement' ? (reimbursementDefinition ?? options.entryDefinition) : options.entryDefinition"
             />
             <div
               v-if="form.claimType === 'reimbursement'"
@@ -606,7 +617,7 @@ function finishRecovery() {
             <ExpenseClaimLineEditor
               v-if="form.claimType === 'reimbursement'"
               v-model="form.lines"
-              :definition="options.entryDefinition"
+              :definition="reimbursementDefinition ?? options.entryDefinition"
             />
             <t-alert
               v-else
@@ -646,9 +657,9 @@ function finishRecovery() {
               </t-descriptions-item><t-descriptions-item label="事由">
                 {{ form.reason || '未填写' }}
               </t-descriptions-item><t-descriptions-item label="申请金额">
-                ¥{{ form.requestedAmountYuan || '0.00' }}
+                {{ form.requestedAmountYuan ? `¥${form.requestedAmountYuan}` : "金额待填写" }}
               </t-descriptions-item><t-descriptions-item label="费用明细">
-                {{ form.claimType === 'reimbursement' ? `${form.lines.length} 行；合计 ${lineTotalCents === null ? '金额待核对' : `${centsTextToYuanText(lineTotalCents)} 元`}` : '不适用' }}
+                {{ form.claimType === 'reimbursement' ? `${form.lines.length} 行；合计 ${lineTotalYuan === null ? '金额待核对' : `${lineTotalYuan} 元`}` : '不适用' }}
               </t-descriptions-item><t-descriptions-item
                 v-if="selectedPurchaseBatch"
                 label="原采购批次"

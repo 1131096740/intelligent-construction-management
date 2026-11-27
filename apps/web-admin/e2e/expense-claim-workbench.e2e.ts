@@ -108,6 +108,63 @@ test("费用工作台仅保留报销和零星费用，并办理零星费用草�
   await expect(page.getByRole("cell", { name: "后续追加资料", exact: true })).toBeVisible();
 });
 
+test("普通报销保留错误输入并按四位原值保存费用明细", async ({ page }) => {
+  const posted: unknown[] = [];
+  await mockExpenseClaimSession(page, [], posted);
+  await page.route("**/api/expense-claims/expense-categories?*", route => route.fulfill({ json: { categories: [] } }));
+  await page.route("**/api/expense-claims/selectable-purchase-batches?*", route => route.fulfill({ json: { batches: [] } }));
+  await page.route("**/api/approval-forms/expense_claim/expense-claim-created/capability", route =>
+    route.fulfill({ json: { availableActions: [] } }));
+  await page.route("**/api/expense-claims/expense-claim-created", route => route.fulfill({
+    json: {
+      ...expenseClaim({ id: "expense-claim-created", status: "draft", requestedAmountCents: "1235", requestedAmountYuan: "12.3456" }),
+      approval: null,
+      lines: [{
+        id: "line-four-place", sortOrder: 1, expenseCategory: "车辆使用费", purpose: "油费",
+        occurredOn: "2026-07-22", quantity: null, receiptCount: 0, amountCents: "1235",
+        amountYuan: "12.3456", evidenceType: "invoice", noEvidenceReason: null, remark: null
+      }],
+      attachments: [], paymentExecutions: [], entrySnapshots: []
+    }
+  }));
+  await login(page);
+  await page.goto("/费用与报销工作台");
+  await page.getByRole("button", { name: "新建费用申请" }).click();
+  await page.getByRole("button", { name: "下一步" }).click();
+
+  const drawer = page.locator(".t-drawer");
+  await drawer.getByPlaceholder("请填写事由").fill("四位费用测试");
+  const requestAmount = drawer.getByPlaceholder("请填写申请金额");
+  await requestAmount.fill("12.34567");
+  await drawer.getByRole("button", { name: "下一步" }).click();
+  await expect(drawer.getByText(/申请金额.*4位小数/)).toBeVisible();
+  await expect(requestAmount).toHaveValue("12.34567");
+  expect(posted).toHaveLength(0);
+
+  await requestAmount.fill("12.3456");
+  const grid = drawer.locator("revo-grid");
+  for (const [column, value] of [[0, "车辆使用费"], [2, "油费"], [5, "12.3456"]] as const) {
+    await grid.locator(`revogr-data [data-rgrow="0"][data-rgcol="${column}"]`).dblclick();
+    const editor = grid.locator("revogr-edit input");
+    await editor.fill(value);
+    await editor.press("Enter");
+  }
+  await drawer.getByRole("button", { name: "下一步" }).click();
+  await drawer.getByRole("button", { name: "下一步" }).click();
+  await expect(drawer.getByText("1 行；合计 12.3456 元")).toBeVisible();
+  await drawer.getByRole("button", { name: "保存草稿" }).click();
+  await expect.poll(() => posted).toHaveLength(1);
+  expect(posted[0]).toMatchObject({
+    requestedAmountYuan: "12.3456",
+    lines: [{ expenseCategory: "车辆使用费", purpose: "油费", amountYuan: "12.3456" }]
+  });
+  expect(posted[0]).not.toHaveProperty("requestedAmountCents");
+  expect(posted[0]).not.toHaveProperty("lines.0.amountCents");
+  await expect(page.getByText("¥12.3456", { exact: true })).toBeVisible();
+  await page.getByText("费用明细", { exact: true }).click();
+  await expect(page.getByRole("cell", { name: "¥12.3456", exact: true })).toBeVisible();
+});
+
 test("旧借款草稿显示历史附件且不再显示草稿操作", async ({ page }) => {
   await mockExpenseClaimSession(page, []);
   await page.route("**/api/expense-claims/historical-loan-draft", route => route.fulfill({
@@ -313,17 +370,24 @@ test("手机修改退回报销的明细，金额校验失败后保留输入", as
   await page.getByRole("button", { name: "修改草稿" }).click();
   const lineAmount = page.locator('[data-field="amountYuan"] input, input[data-field="amountYuan"]');
   await expect(lineAmount).toHaveValue("1234.56");
-  await lineAmount.fill("128.50");
   const save = page.getByRole("button", { name: "保存修改" });
+  await lineAmount.fill("128.56789");
+  await save.click();
+  await expect(page.getByText(/第 1 行费用金额.*4位小数/)).toBeVisible();
+  await expect(lineAmount).toHaveValue("128.56789");
+  expect(writes).toEqual([]);
+
+  await lineAmount.fill("128.5678");
   await save.click();
   await expect(page.getByText("请复核原始单据金额", { exact: true })).toBeVisible();
-  await expect(lineAmount).toHaveValue("128.50");
+  await expect(lineAmount).toHaveValue("128.5678");
   await save.click();
   await expect(save).toBeHidden();
+  const { amountCents: _legacyCents, ...line } = savedLine;
   const edit = {
     expectedUpdatedAt,
     reason: "项目现场交通费",
-    lines: [{ ...savedLine, amountCents: "12850" }]
+    lines: [{ ...line, amountYuan: "128.5678" }]
   };
   expect(writes).toEqual([edit, edit]);
 });

@@ -14,6 +14,7 @@ import {
 import { fetchProjects, type ProjectOptionReadModel } from "../../api/core-flow-read.api";
 import { formatUnknownApiError } from "../../api/error-message";
 import { useAuthStore } from "../../auth/auth.store";
+import { displayExpenseAmount } from "./expense-claim-money";
 import {
   normalizeColumnOrder,
   normalizeColumnWidths,
@@ -151,7 +152,7 @@ const mobileRows = computed(() => rows.value.map((row) => ({
   meta: row.projectName,
   status: row.statusLabel,
   tone: statusTone(row.status),
-  amount: `申请 ${amount(row.requestedAmountCents)}`,
+  amount: `申请 ${displayExpenseAmount(row.requestedAmountYuan, row.requestedAmountCents)}`,
   facts: [
     { label: "报销单位", value: row.companyName },
     { label: "收款对象", value: row.payeeName }
@@ -168,10 +169,6 @@ function statusTone(value: string) {
   if (value === "rejected") return "danger" as const;
   if (["approval_pending", "approved_pending_payment", "partially_paid", "approved_pending_disbursement", "partially_disbursed"].includes(value)) return "warning" as const;
   return "default" as const;
-}
-
-function amount(value: string) {
-  return `¥${centsTextToYuanText(value)}`;
 }
 
 function settledAmount(row: ExpenseClaimLedgerRow) {
@@ -475,7 +472,7 @@ onMounted(async () => {
             {{ claimTypeLabel(row.claimType) }}
           </template>
           <template #requestedAmount="{ row }">
-            {{ amount(row.requestedAmountCents) }}
+            {{ displayExpenseAmount(row.requestedAmountYuan, row.requestedAmountCents) }}
           </template>
           <template #settledAmount="{ row }">
             {{ settledAmount(row) }}

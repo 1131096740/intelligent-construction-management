@@ -23,6 +23,7 @@ export interface ExpenseClaimListItemReadModel {
   handledByNameSnapshot: string;
   reason: string;
   requestedAmountCents: string;
+  requestedAmountYuan?: string | null;
   loanOffsetAmountCents: string;
   companyPayableAmountCents: string;
   fundedAmountCents: string;
@@ -62,7 +63,7 @@ export interface ExpenseClaimDetailReadModel extends Omit<ExpenseClaimListItemRe
   loanExpectedClearanceAt: string | null;
   submittedAt: string | null;
   approvedAt: string | null;
-  lines: Array<{ id: string; sortOrder: number; expenseCategory: string; occurredOn: string; purpose: string; quantity: string | null; receiptCount: number; amountCents: string; evidenceType: string; noEvidenceReason: string | null; remark: string | null }>;
+  lines: Array<{ id: string; sortOrder: number; expenseCategory: string; occurredOn: string; purpose: string; quantity: string | null; receiptCount: number; amountCents: string; amountYuan?: string | null; evidenceType: string; noEvidenceReason: string | null; remark: string | null }>;
   sourcePurchase: ExpenseClaimSourcePurchase | null;
   attachments: Array<{
     id: string;
@@ -183,6 +184,7 @@ export interface ExpenseBearingCompanyOption {
 
 export interface ExpenseClaimCreateOptions {
   entryDefinition: BusinessEntrySceneDefinition;
+  reimbursementEntryDefinition?: BusinessEntrySceneDefinition;
   companyEntities: Array<{ id: string; name: string }>;
   projects: Array<{ id: string; code: string; name: string }>;
   selfProjectIds: string[];
@@ -210,7 +212,7 @@ export interface ExpenseClaimActionCapabilityReadModel {
   removableAttachmentIds: string[];
 }
 
-export interface CreateExpenseClaimPayload {
+export type CreateExpenseClaimPayload = {
   actualPurchaseBatchId?: string;
   generalProcurementId?: string;
   generalProcurementRequestKey?: string;
@@ -229,7 +231,6 @@ export interface CreateExpenseClaimPayload {
   applicantName?: string;
   applicantPhone?: string;
   reason: string;
-  requestedAmountCents: string;
   paymentMethod?: string;
   payeeName?: string;
   payeeAccountName?: string;
@@ -242,18 +243,24 @@ export interface CreateExpenseClaimPayload {
     purpose: string;
     quantity?: string;
     receiptCount: number;
-    amountCents: string;
     evidenceType: "invoice" | "receipt_or_other" | "none";
     noEvidenceReason?: string;
     remark?: string;
-  }>;
-}
+  } & (
+    | { amountCents: string; amountYuan?: never }
+    | { amountCents?: never; amountYuan: string }
+  )>;
+} & (
+  | { requestedAmountCents: string; requestedAmountYuan?: never }
+  | { requestedAmountCents?: never; requestedAmountYuan: string }
+);
 
 export interface CreatedExpenseClaim {
   id: string;
   code: string;
   status: string;
   requestedAmountCents: string;
+  requestedAmountYuan?: string | null;
 }
 
 async function ensureOk(response: Response): Promise<void> {
@@ -295,6 +302,7 @@ export interface ExpenseClaimLedgerRow {
   reason: string;
   payeeName: string;
   requestedAmountCents: string;
+  requestedAmountYuan?: string | null;
   loanOffsetAmountCents: string;
   companyPayableAmountCents: string;
   fundedAmountCents: string;

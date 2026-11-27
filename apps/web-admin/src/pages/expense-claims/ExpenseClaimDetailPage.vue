@@ -37,6 +37,7 @@ import { buildApprovalSelfReviewPayload } from "../../components/approval-self-r
 import JgDetailTabs from "../../components/JgDetailTabs.vue";
 import JgPageHeader from "../../components/JgPageHeader.vue";
 import JgResultState from "../../components/JgResultState.vue";
+import { displayExpenseAmount, parseExpenseAmountYuan } from "./expense-claim-money";
 import ExpenseClaimSubmissionHistory from "./components/ExpenseClaimSubmissionHistory.vue";
 import ExpenseClaimLineEditor, { type ExpenseClaimLineDraft } from "./components/ExpenseClaimLineEditor.vue";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
@@ -464,7 +465,7 @@ function openReturnedDraftEditor() {
     purpose: line.purpose,
     quantity: line.quantity ?? "",
     receiptCount: String(line.receiptCount),
-    amountYuan: centsTextToYuanText(line.amountCents).replaceAll(",", ""),
+    amountYuan: line.amountYuan ?? centsTextToYuanText(line.amountCents).replaceAll(",", ""),
     evidenceType: line.evidenceType === "none" || line.evidenceType === "receipt_or_other" ? line.evidenceType : "invoice",
     noEvidenceReason: line.noEvidenceReason ?? "",
     remark: line.remark ?? ""
@@ -473,7 +474,7 @@ function openReturnedDraftEditor() {
   draftForm.value = {
     reason: row.reason,
     costBearingCompany: row.costBearingCompanySpecified ? (row.costBearingCompanyEntityId ?? "pending") : "organization",
-    amountYuan: centsTextToYuanText(row.requestedAmountCents).replaceAll(",", ""),
+    amountYuan: row.requestedAmountYuan ?? centsTextToYuanText(row.requestedAmountCents).replaceAll(",", ""),
     lines
   };
   draftWriteError.value = "";
@@ -503,13 +504,12 @@ async function saveReturnedDraft() {
         if (!line.expenseCategory.trim() || !line.occurredOn || !line.purpose.trim()) throw new Error(`${position}请补全费用类别、发生日期和用途`);
         const receiptCount = Number(line.receiptCount);
         if (!/^\d+$/u.test(line.receiptCount) || receiptCount > 10000) throw new Error(`${position}单据张数须为 0 到 10000 的整数`);
-        const amountCents = yuanTextToCentsText(line.amountYuan.trim());
-        if (BigInt(amountCents) <= 0n) throw new Error(`${position}费用金额必须大于 0`);
+        const amountYuan = parseExpenseAmountYuan(line.amountYuan, `${position}费用金额`);
         if (line.evidenceType === "none" && !line.noEvidenceReason.trim()) throw new Error(`${position}无凭证费用须填写原因`);
         return {
           expenseCategory: line.expenseCategory.trim(), occurredOn: line.occurredOn,
           purpose: line.purpose.trim(), quantity: line.quantity.trim() || undefined,
-          receiptCount, amountCents, evidenceType: line.evidenceType,
+          receiptCount, amountYuan, evidenceType: line.evidenceType,
           noEvidenceReason: line.evidenceType === "none" ? line.noEvidenceReason.trim() : undefined,
           remark: line.remark.trim() || undefined
         };
@@ -834,12 +834,12 @@ onMounted(() => void loadDetail());
         <JgPageHeader
           :business-code="detail.code"
           :title="title"
-          :status="statusLabel(detail.status)"
+          :status="detail.status === 'offset_completed' && detail.requestedAmountYuan && detail.requestedAmountCents === '0' ? '审批通过，无需付款' : statusLabel(detail.status)"
           :status-tone="tone(detail.status)"
           :owner="detail.handledByNameSnapshot"
           :current-node="detail.approval?.currentNodeName ?? (isRetiredLoanDraft ? '历史草稿' : detail.status === 'draft' ? '待提交' : '流程已结束')"
           :next-step="!isRetiredLoanDraft && detail.status === 'draft' ? '经办人提交' : '查看资金或审批进度'"
-          :requested-amount="amount(detail.requestedAmountCents)"
+          :requested-amount="displayExpenseAmount(detail.requestedAmountYuan, detail.requestedAmountCents)"
         >
           <template #actions>
             <ApprovalDocumentDownload
@@ -1372,7 +1372,7 @@ onMounted(() => void loadDetail());
             horizontal-scroll-affixed-bottom
           >
             <template #amount="{ row }">
-              {{ amount(row.amountCents) }}
+              {{ displayExpenseAmount(row.amountYuan, row.amountCents) }}
             </template>
             <template #evidenceType="{ row }">
               {{ evidenceType(row.evidenceType) }}
