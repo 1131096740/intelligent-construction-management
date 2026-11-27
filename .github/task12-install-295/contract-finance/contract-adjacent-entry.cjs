@@ -10,10 +10,12 @@ const source=require('./contract-finance-source.json');
 const root='/qualification';
 const lane=process.argv[2];
 const mode=process.argv[3];
-const signed=mode==='--signed-settlement-350'?require('./payment-execution-350.cjs'):null;
+const signed=mode==='--company-history-352'?require('./payment-execution-352.cjs'):
+  mode==='--signed-settlement-350'?require('./payment-execution-350.cjs'):null;
 const precision=(signed||mode==='--expense-witness-349')?require('./expense-witness-349-profile.cjs'):null;
 const expenseWitness=(precision||mode==='--expense-witness-346')?require('./expense-witness-346-profile.cjs'):null;
-const expenseProfile=signed?require('./signed-settlement-350-profile.cjs'):precision??expenseWitness;
+const expenseProfile=mode==='--company-history-352'?require('./company-history-352-profile.cjs'):
+  signed?require('./signed-settlement-350-profile.cjs'):precision??expenseWitness;
 const historical=mode==='--historical-settlement-334'||expenseWitness?require('./historical-settlement-334-profile.cjs'):null;
 const upwardArchive=mode==='--upward-archive-332';
 const paymentRemainder=mode==='--payment-remainder-331';
