@@ -10,7 +10,7 @@ sha=$3
 plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$plan/common"
 scope=$5
-case "$scope" in cash-handover|principal-return|cash-transfer|project-advance) ;; *) exit 64 ;; esac
+case "$scope" in cash-handover|principal-return|cash-transfer|project-advance|principal-return-a23) ;; *) exit 64 ;; esac
 
 count=$(node -e '
   const source=require(process.argv[1]);
@@ -22,6 +22,10 @@ count=$(node -e '
   if(count===349) require(process.argv[7]).assertSource(source,require(process.argv[4]).final);
   console.log(count);
 ' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan/expense-witness-346-profile.cjs" "$plan/expense-witness-349-profile.cjs")
+if [[ $scope == principal-return-a23 ]]; then
+  [[ $count == 349 && ${GITHUB_ACTIONS:-} != true ]] || exit 64
+  cmp -s "$prepared/source.json" <(node "$plan/check-ledger.cjs" "$repo" "$sha" --expense-witness-349) || exit 65
+fi
 extended=false
 if [[ $scope == cash-transfer || $scope == project-advance ]]; then
   [[ $count == 332 || $count == 346 ]] || exit 64
@@ -76,6 +80,9 @@ if [[ $count == 346 || $count == 349 ]]; then
   if [[ $count == 349 ]]; then
     patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-principal-349.patch"
     [[ $(runner_sha) == c2c17739b6fd52ff369e9d76453dbd30338e52e615da31d3f96650ad092ac626 ]] || exit 65
+    if [[ $scope == principal-return-a23 ]]; then
+      node "$plan/stage-task409-a23.cjs" "$work" "$prepared/source.json"
+    fi
     node --check "$runner"
   fi
 fi
@@ -146,6 +153,9 @@ fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
+if [[ $scope == principal-return-a23 ]]; then
+  args+=(--mount "type=bind,src=$plan/stage-task409-a23.cjs,dst=/qualification/stage-task409-a23.cjs,readonly")
+fi
 for file in "${overlay_files[@]}"; do
   args+=(--mount "type=bind,src=$work/$file,dst=/qualification/workspace/$file,readonly")
 done
@@ -167,4 +177,7 @@ node -e '
   const count=require(process.argv[4]).migrationCount;
   const expected="TASK398_CASH_PRINCIPAL_EXACT_"+count+"_PASSED";
   if(proof.status!==expected||proof.lane!==process.argv[2]||proof.sourceSha!==process.argv[3])process.exit(1);
+  if(proof.lane==="principal-return-a23"&&(!proof.a23||proof.a23.passed!==1||
+     proof.combinedAfterBusiness?.sameIdentity!==true||proof.expenseWitnessPrecisionCatalogAfterBusiness!==true||
+     proof.cleanup!=="POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT"))process.exit(1);
 ' "$work/receipt.json" "$scope" "$sha" "$prepared/source.json"

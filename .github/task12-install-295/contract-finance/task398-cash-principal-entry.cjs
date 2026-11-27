@@ -5,7 +5,7 @@ const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined33
 const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run-task398-shared-standard-local.cjs');
 
 const [lane] = process.argv.slice(2);
-assert.ok(process.argv.length===3&&['cash-handover','principal-return','cash-transfer','project-advance'].includes(lane));
+assert.ok(process.argv.length===3&&['cash-handover','principal-return','cash-transfer','project-advance','principal-return-a23'].includes(lane));
 const textDirect=source.mode==='text-direct-330';
 const precision=source.mode==='expense-witness-349'?require('./expense-witness-349-profile.cjs'):undefined;
 const expense=(precision||source.mode==='expense-witness-346')?require('./expense-witness-346-profile.cjs'):undefined;
@@ -19,6 +19,15 @@ const purpose='TASK398_CASH_PRINCIPAL_EXACT_'+count;
 const receipt = {schemaVersion:1,sourceSha:source.sourceSha,lane,purpose,business:'NOT_ENTERED',stages:[]};
 async function main(){
   assert.equal(source.migrationCount,count);
+  const a23 = lane === 'principal-return-a23' ? require('./stage-task409-a23.cjs') : null;
+  if (a23) {
+    assert.equal(count, 349);
+    const { readFileSync } = require('node:fs');
+    const { createHash } = require('node:crypto');
+    const digest = file => createHash('sha256').update(readFileSync('/qualification/workspace/services/api/' + file)).digest('hex');
+    assert.equal(digest('prisma/run-task398-shared-standard-local.cjs'), a23.runnerSha256);
+    assert.equal(digest('src/database/task27-principal-return.http.pg.spec.ts'), a23.specSha256);
+  }
   const extended=lane==='cash-transfer'||lane==='project-advance';
   if(extended) assert.ok(count===332||count===346);
   assert.equal((current320?source.predecessor:source).ledgerSha256,require('./multi-witness.cjs').final);
@@ -90,6 +99,7 @@ async function main(){
     assert.equal(receipt.historicalSettlementCatalogAfterBusiness,true);
   }
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
+  if (a23) receipt.a23 = { title: a23.title, passed: 1, skipped: 0, specSha256: a23.specSha256 };
   receipt.status = purpose+'_PASSED';
 }
 main().catch(error => {

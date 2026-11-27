@@ -1,0 +1,81 @@
+
+        const siblingIntent = {
+          scopeKey: "public_cash", expectedRegistrationId: individualBalance.id, idempotencyKey: randomUUID(),
+          contributorKind: "construction_enterprise", contributorId: plan.ids.constructionEnterpriseParty,
+          projectId: plan.ids.project, amountYuan: "50000.0001", receivedOn: "2026-11-03",
+          evidenceReference: "合成第二出资方实际到账"
+        };
+        const sibling = await json("/fund-account-advance-receipts", "POST", siblingIntent, keeper);
+        expect(sibling).toMatchObject({ status: 201, body: { amountYuan: "50000.0001" } });
+        expect(await json("/fund-account-advance-receipts", "POST", siblingIntent, keeper)).toEqual(sibling);
+        const origins = await observer.registeredFundAdvanceReceipt.findMany({ where: { projectId: plan.ids.project } });
+        expect(origins).toHaveLength(2);
+        expect(origins).toEqual(expect.arrayContaining([
+          expect.objectContaining({ id: receipt.body.id, contributorKind: "person", sourceBatchId: receipt.body.sourceBatchId }),
+          expect.objectContaining({
+            id: sibling.body.id, contributorKind: "construction_enterprise", contributorId: plan.ids.constructionEnterpriseParty,
+            sourceBatchId: sibling.body.sourceBatchId, accountId: individualBalance.accountId, custodianUserId: seeded.keeper
+          })
+        ]));
+        const originalAccountId = origins.find(origin => origin.id === receipt.body.id)!.accountId;
+        expect(originalAccountId).not.toBe(individualBalance.accountId);
+        expect(receipt.body.sourceBatchId).not.toBe(sibling.body.sourceBatchId);
+
+        const longApplication = apply("60000.0000");
+        const longRequest = await submit(longApplication);
+        expect(longRequest).toMatchObject({ status: 201, body: { status: "recorded" } });
+        expect(await submit(longApplication)).toEqual(longRequest);
+        const longId = longRequest.body.applicationId as string;
+        for (const [token, nodeIndex, revision, password] of [
+          [manager, 1, 1, undefined], [director, 2, 2, undefined],
+          [keeper, 0, 3, secrets[1].password], [leader, 3, 4, undefined]
+        ] as const) {
+          expect((await json(`${applications}/${longId}/actions`, "POST", {
+            action: "approve", expectedRevision: revision, nodeIndex, reason: "同项目原出资归还复核",
+            confirmationPassword: password, idempotencyKey: randomUUID()
+          }, token)).status).toBe(201);
+        }
+
+        const funding = await observer.fundAccountBalanceRegistration.findUniqueOrThrow({
+          where: { id: receipt.body.registrationId }, include: { sources: true }
+        });
+        const openingBatch = funding.sources.find(source => source.previousSourceBatchId === companyOpening.sources[0].id)!;
+        const partialIntent = {
+          expectedRevision: 5, expectedRegistrationId: funding.id, scopeKey: company, paidOn: "2026-11-03",
+          amountYuan: "12000.0001", sourceAllocations: [{ sourceBatchId: openingBatch.id, amountYuan: "12000.0001" }],
+          evidenceReference: "合成公司资金分次归还", confirmationPassword: secrets[0].password, idempotencyKey: randomUUID()
+        };
+        const partialPath = `${applications}/${longId}/payments`;
+        const partial = await json(partialPath, "POST", partialIntent, finance);
+        expect(partial).toMatchObject({ status: 201, body: { status: "recorded" } });
+        expect(await json(partialPath, "POST", partialIntent, finance)).toEqual(partial);
+        expect(await json(`${principalPath}/results/${partialIntent.idempotencyKey}`, "GET", undefined, finance))
+          .toEqual({ status: 200, body: partial.body });
+        expect(await observer.registeredPrincipalReturnPayment.count()).toBe(2);
+        expect(await observer.registeredPrincipalReturnAllocation.count()).toBe(2);
+
+        const boundary = apply("39999.0001");
+        expect((await submit(boundary)).status).toBe(409);
+        expect((await json(`${principalPath}/results/${boundary.idempotencyKey}`, "GET", undefined, keeper)).body.status)
+          .toBe("unconfirmed");
+        const siblingApplication = { ...apply("39999.0001"), sourceId: sibling.body.id };
+        const siblingRequest = await submit(siblingApplication);
+        expect(siblingRequest).toMatchObject({ status: 201, body: { status: "recorded" } });
+        expect(await submit(siblingApplication)).toEqual(siblingRequest);
+        const overSibling = { ...apply("10001.0001"), sourceId: sibling.body.id };
+        expect((await submit(overSibling)).status).toBe(409);
+        const balances = await json(principalPath, "GET", undefined, keeper);
+        expect(balances).toMatchObject({ status: 200, body: { items: expect.arrayContaining([
+          expect.objectContaining({
+            projectId: plan.ids.project, sourceId: receipt.body.id, principalYuan: "100000.0001", paidYuan: "12001.0002",
+            reservedYuan: "47999.9999", availableYuan: "39999.0000"
+          }),
+          expect.objectContaining({
+            projectId: plan.ids.project, sourceId: sibling.body.id, principalYuan: "50000.0001", paidYuan: "0.0000",
+            reservedYuan: "39999.0001", availableYuan: "10001.0000"
+          })
+        ]) } });
+        expect(await observer.registeredPrincipalReturnApplication.count()).toBe(3);
+        expect(await owner.projectFinancingQuota.count({ where: { projectId: plan.ids.project } })).toBe(0);
+        expect(await observer.operatingFact.count()).toBe(0);
+        expect(await observer.operatingImpactEntry.count()).toBe(0);
