@@ -3,16 +3,21 @@
 # These sealed history lanes share exact forward-ledger input checks.
 verify_history_346() {
   local repo=$1 prepared=$2 sha=$3 plan=$4 count=${5:-346}
-  [[ $count == 346 || $count == 349 ]] || return 64
+  local mode
+  case $count in
+    346|349) mode=expense-witness-$count ;;
+    350) mode=signed-settlement-350 ;;
+    *) return 64 ;;
+  esac
   [[ "$plan" == "$repo/.github/task12-install-295/contract-finance" ]] || return 65
   [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || return 65
   [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$repo/.github/task12-install-289") ]] || return 65
-  node "$plan/check-ledger.cjs" "$repo" "$sha" "--expense-witness-$count" | cmp -s "$prepared/source.json" - || return 65
+  node "$plan/check-ledger.cjs" "$repo" "$sha" "--$mode" | cmp -s "$prepared/source.json" - || return 65
   local api="$prepared/prepared/context/workspace/services/api"
   git -C "$repo" show "$sha:services/api/prisma/migration-baseline.cjs" | cmp -s "$api/prisma/migration-baseline.cjs" - || return 65
-  node - "$plan" "$api" "$prepared/source.json" "$count" <<'JS'
-const [plan,api,source,count]=process.argv.slice(2);
-require(plan+'/bank/migration-inputs-346.cjs')(api,require(source),require(plan+'/expense-witness-'+count+'-profile.cjs'));
+  node - "$plan" "$api" "$prepared/source.json" "$mode" <<'JS'
+const [plan,api,source,mode]=process.argv.slice(2);
+require(plan+'/bank/migration-inputs-346.cjs')(api,require(source),require(plan+'/'+mode+'-profile.cjs'));
 JS
 }
 
@@ -33,7 +38,8 @@ const receipt={status:'REMAINING_HISTORY_'+source.migrationCount+'_HOST_READY',l
   sourceSha256:hash(input),ledgerSha256:source.ledgerSha256,predecessor334:source.predecessor334,
   installerSha256:hash(work+'/installer.cjs'),
   files:Object.fromEntries(files.map(file=>[basename(file),hash(file)])),database:'NOT_STARTED'};
-if(source.migrationCount===349) receipt.predecessor346=source.predecessor346;
+if(source.migrationCount>=349) receipt.predecessor346=source.predecessor346;
+if(source.migrationCount===350) receipt.predecessor349=source.predecessor349;
 fs.writeFileSync(work+'/host-receipt.json',JSON.stringify(receipt,null,2)+'\n',{flag:'wx'});
 console.log(work+'/host-receipt.json');
 JS

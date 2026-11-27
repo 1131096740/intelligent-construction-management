@@ -2,8 +2,9 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 ) ) ||
-  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 ) && $6 == --host-only ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --signed-settlement-350 ) ) ||
+  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --signed-settlement-350 ) && $6 == --host-only ) ]] || exit 64
+if [[ ${5-} == --signed-settlement-350 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -24,11 +25,12 @@ count=$(node -e '
   }
   else if(source.mode==="expense-witness-346"&&source.migrationCount===346)console.log(346);
   else if(source.mode==="expense-witness-349"&&source.migrationCount===349)console.log(349);
+  else if(source.mode==="signed-settlement-350"&&source.migrationCount===350)console.log(350);
   else if(source.mode===undefined&&source.migrationCount===295)console.log(295);
   else process.exit(65);
 ' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$plan/common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs")
 mode_args=()
-case "$count" in 329) mode_args=(--current-320);; 330) mode_args=(--text-direct-330);; 331) mode_args=(--payment-remainder-331);; 332) mode_args=(--upward-archive-332);; 334) mode_args=(--historical-settlement-334);; 346|349) mode_args=("--expense-witness-$count");; esac
+case "$count" in 329) mode_args=(--current-320);; 330) mode_args=(--text-direct-330);; 331) mode_args=(--payment-remainder-331);; 332) mode_args=(--upward-archive-332);; 334) mode_args=(--historical-settlement-334);; 346|349) mode_args=("--expense-witness-$count");; 350) mode_args=(--signed-settlement-350);; esac
 if [[ $# -ge 5 && ${mode_args[0]:-} != "$5" ]]; then exit 65; fi
 lane=historical-financial
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
@@ -40,7 +42,7 @@ const [sourceFile,sha,terminalFile,profileFile,workspace,count]=process.argv.sli
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||source.migrationCount!==Number(count))process.exit(65);
 if(count!=='295'){
-  const mode={329:'current-320',330:'text-direct-330',331:'payment-remainder-331',332:'upward-archive-332',334:'historical-settlement-334',346:'expense-witness-346',349:'expense-witness-349'}[count];
+  const mode={329:'current-320',330:'text-direct-330',331:'payment-remainder-331',332:'upward-archive-332',334:'historical-settlement-334',346:'expense-witness-346',349:'expense-witness-349',350:'signed-settlement-350'}[count];
   if(source.mode!==mode||source.predecessor.ledgerSha256!==terminal.final)process.exit(65);
 } else if(source.ledgerSha256!==terminal.final)process.exit(65);
 const {spec,sha:digest}=require(profileFile).financial;
@@ -48,7 +50,7 @@ const bytes=require('node:fs').readFileSync(workspace+'/services/api/'+spec);
 if(require('node:crypto').createHash('sha256').update(bytes).digest('hex')!==digest)process.exit(65);
 JS
 if (( count >= 346 )); then
-  [[ ${5-} == "--expense-witness-$count" ]] || exit 65
+  [[ ${5-} == "${mode_args[0]}" ]] || exit 65
   source "$plan/remaining-history-346.sh"
   verify_history_346 "$root" "$prepared" "$sha" "$plan" "$count"
 fi
@@ -88,7 +90,7 @@ source_mode=$(node -p 'require(process.argv[1]).mode ?? ""' "$prepared/source.js
 if (( count < 346 )); then
   args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 fi
-append_remaining_installer "$source_mode"
+append_remaining_installer "$source_mode" owner
 if (( count >= 346 )); then append_history_346; fi
 if [[ ${6-} == --host-only ]]; then
   spec=$(node -p 'require(process.argv[1]).financial.spec' "$plan/historical-financial-profile.json")
