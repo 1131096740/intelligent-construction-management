@@ -65,7 +65,8 @@ describePg("结算模板工作台公开HTTP / PG16", () => {
       const historicalSettlement = process.env.TASK_POL115_WORKBENCH_HISTORICAL_SETTLEMENT_334 === "1";
       const expenseWitness = process.env.TASK_POL115_WORKBENCH_EXPENSE_WITNESS_346 === "1";
       const precision = process.env.TASK_POL115_WORKBENCH_EXPENSE_WITNESS_349 === "1";
-      const count = precision ? 349 : expenseWitness ? 346 : historicalSettlement ? 334 : upwardArchive ? 332 : paymentRemainder ? 331 : textDirect ? 330 : current320 ? 329 : 295;
+      const company = process.env.TASK_POL115_WORKBENCH_COMPANY_HISTORY_352 === "1";
+      const count = company ? 352 : precision ? 349 : expenseWitness ? 346 : historicalSettlement ? 334 : upwardArchive ? 332 : paymentRemainder ? 331 : textDirect ? 330 : current320 ? 329 : 295;
       const [witness] = await app.get(PrismaService).$queryRaw<Array<{ accepted: boolean }>>`
         SELECT (d.datname = ${url.pathname.slice(1)} AND d.datdba = 10 AND
           current_user = 'jg_task01_owner' AND current_user::regrole::oid = 10 AND current_user = session_user AND
@@ -103,7 +104,14 @@ describePg("结算模板工作台公开HTTP / PG16", () => {
             AND checksum = 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a')) AND
           (NOT ${precision} OR EXISTS (SELECT FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
             AND migration_name = '20261129018000_reimbursement_exact_cash_cost_links'
-            AND checksum = '58b3cc0404a85a97dbb484654245d4bd042e5fb2014f32997244b2597cb5110b'))) AS accepted
+            AND checksum = '58b3cc0404a85a97dbb484654245d4bd042e5fb2014f32997244b2597cb5110b')) AND
+          (NOT ${company} OR (
+            EXISTS (SELECT FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+              AND migration_name = '20261129019000_signed_settlement_exact_operating_cost'
+              AND checksum = '86ad90ea7fad6231f1d8b24dd8e4eb25d5ba0b1696d3544f5999680ebaa4c6e4') AND
+            EXISTS (SELECT FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+              AND migration_name = '20261129021000_company_history_expense'
+              AND checksum = '8cb43f1ae6a6fb6108280f1ea08df4d2d2edf7c060b39b37dfbeeaff7ae368e5')))) AS accepted
         FROM pg_catalog.pg_database d WHERE d.datname = current_database()
       `;
       if (witness?.accepted !== true) throw new Error("POL115_WORKBENCH_OWNED_282_DATABASE");

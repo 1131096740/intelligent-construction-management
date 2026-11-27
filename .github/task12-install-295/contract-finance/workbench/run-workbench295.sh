@@ -2,8 +2,9 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 ) ) ||
-  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 ) && $6 == --host-only ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --company-history-352 ) ) ||
+  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --company-history-352 ) && $6 == --host-only ) ]] || exit 64
+if [[ ${5-} == --company-history-352 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -18,6 +19,7 @@ case ${5-} in
   --historical-settlement-334) mode_args=(--historical-settlement-334); count=334 ;;
   --expense-witness-346) mode_args=("$5"); count=346 ;;
   --expense-witness-349) mode_args=("$5"); count=349 ;;
+  --company-history-352) mode_args=("$5"); count=352 ;;
 esac
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -33,7 +35,7 @@ fi
 node -e '
   const [file,sha,count,base,tree]=process.argv.slice(1);
   const source=require(file);
-  const modes={"329":"current-320","330":"text-direct-330","331":"payment-remainder-331","332":"upward-archive-332","334":"historical-settlement-334","346":"expense-witness-346","349":"expense-witness-349"};
+  const modes={"329":"current-320","330":"text-direct-330","331":"payment-remainder-331","332":"upward-archive-332","334":"historical-settlement-334","346":"expense-witness-346","349":"expense-witness-349","352":"company-history-352"};
   if(source.sourceSha!==sha||source.migrationCount!==Number(count)||(modes[count]&&source.mode!==modes[count]))process.exit(1);
   if(count==="334") require(base+"/historical-settlement-334-profile.cjs").assertSource(source,require(base+"/common/multi-witness.cjs").final);
   if(Number(count)>=346){
@@ -51,8 +53,12 @@ if (( count >= 334 )); then
 fi
 if (( count >= 346 )); then
   git -C "$work" apply --unidiff-zero "$base/expense-witness/installer.patch"
-  if (( count == 349 )); then
+  if (( count >= 349 )); then
     git -C "$work" apply --unidiff-zero "$base/expense-witness/installer-349.patch"
+  fi
+  if (( count == 352 )); then
+    git -C "$work" apply --unidiff-zero "$base/expense-witness/installer-350.patch"
+    git -C "$work" apply --unidiff-zero "$base/expense-witness/installer-352.patch"
   fi
   node - "$plan" "$prepared" "$installer" "$spec" <<'JS'
 const assert=require("node:assert/strict");
@@ -107,8 +113,13 @@ if (( count >= 346 )); then
     args+=(--mount "type=bind,src=$base/$profile_file,dst=/qualification/$profile_file,readonly")
   done
 fi
-if (( count == 349 )); then
+if (( count >= 349 )); then
   args+=(--mount "type=bind,src=$base/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
+fi
+if (( count == 352 )); then
+  for profile_file in signed-settlement-350-profile.cjs company-history-352-profile.cjs; do
+    args+=(--mount "type=bind,src=$base/$profile_file,dst=/qualification/$profile_file,readonly")
+  done
 fi
 args+=(--mount "type=bind,src=$installer,dst=/qualification/installer.cjs,readonly")
 args+=(--mount "type=bind,src=$base/task12-pol109-stage-browser.cjs,dst=/qualification/task12-pol109-stage-browser.cjs,readonly")

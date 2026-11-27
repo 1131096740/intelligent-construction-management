@@ -48,7 +48,7 @@ if [[ ${3-} == --company-history-352 ]]; then
   fi
   company_352=true
   if [[ $2 == issue417 ]]; then issue_lane=true; fi
-  if [[ $2 != pol115-original && $2 != pol115-spot && $2 != issue417 && $2 != pol275 && $2 != bank && $2 != cash-handover && $2 != principal-return && $2 != company-proxy && $2 != pfq && $2 != pol109 && $2 != pol108-core && $2 != pol108-facts && $2 != pol108-impacts && $2 != onboarding && $2 != procurement && $2 != line-a && $2 != core-payment && $2 != payment-execution && $2 != settlement && $2 != template && $2 != draft && $2 != v7 && $2 != invoice && $2 != pol279 && $2 != pol280 && $2 != expense-execution && $2 != expense-finance && $2 != expense-receipt ]]; then
+  if [[ $2 != pol115-workbench && $2 != pol115-original && $2 != pol115-spot && $2 != issue417 && $2 != pol275 && $2 != bank && $2 != cash-handover && $2 != principal-return && $2 != company-proxy && $2 != pfq && $2 != pol109 && $2 != pol108-core && $2 != pol108-facts && $2 != pol108-impacts && $2 != onboarding && $2 != procurement && $2 != line-a && $2 != core-payment && $2 != payment-execution && $2 != settlement && $2 != template && $2 != draft && $2 != v7 && $2 != invoice && $2 != pol279 && $2 != pol280 && $2 != expense-execution && $2 != expense-finance && $2 != expense-receipt ]]; then
     scopes=$(node - "$plan/issue-ordered/profiles.cjs" "$2" <<'JS'
 const [file,lane]=process.argv.slice(2);
 const {issueOrderedScopes352}=require(file);
@@ -148,6 +148,7 @@ if [[ ${4-} == --host-only || ( ( $signed_350 == true || $company_352 == true ) 
     done
   elif [[ $company_352 == true ]]; then
     case "$lane" in
+      pol115-workbench) bash "$plan/workbench/run-workbench295.sh" "$root" "$work/source" "$sha" "$work" "$3" --host-only ;;
       pol115-original|pol115-spot)
         scope=pol115; if [[ $lane == pol115-spot ]]; then scope=spot; fi
         bash "$plan/pol115/run-pol115-334.sh" "$root" "$work/source" "$sha" "$work" "$scope" --host-only ;;
