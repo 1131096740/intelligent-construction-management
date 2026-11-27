@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 archive_arg, common_arg, stage_arg, *options = sys.argv[1:]
-modes = ([], ['--text-direct-330'], ['--payment-remainder-331'], ['--upward-archive-332'], ['--historical-settlement-334'], ['--expense-witness-346'], ['--expense-witness-349'])
+modes = ([], ['--text-direct-330'], ['--payment-remainder-331'], ['--upward-archive-332'], ['--historical-settlement-334'], ['--expense-witness-346'], ['--expense-witness-349'], ['--signed-settlement-350'])
 if options not in modes:
     raise SystemExit('PAYMENT_STAGE_MODE')
 archive, common, stage = map(Path, (archive_arg, common_arg, stage_arg))
@@ -22,7 +22,8 @@ for name, checksum in pins.items():
 
 installer = stage / 'installer.cjs'
 expense_witness = options in modes[5:]
-precision = options == ['--expense-witness-349']
+precision = options in modes[6:]
+signed_settlement = options == ['--signed-settlement-350']
 historical_settlement = options in modes[4:]
 if historical_settlement:
     subprocess.run(['node', str((plan / 'stage-historical-takeover-333.cjs').resolve()),
@@ -37,6 +38,11 @@ if historical_settlement:
                             str((plan / 'expense-witness/installer-349.patch').resolve())], cwd=stage, check=True)
             if hashlib.sha256(installer.read_bytes()).hexdigest() != 'a38d1424c1f096d1ed43cffbdd70f99521281a30d09bf5792261a4bbd3ff540a':
                 raise SystemExit('PAYMENT_349_INSTALLER_PREIMAGE')
+        if signed_settlement:
+            subprocess.run(['git', 'apply', '--unidiff-zero',
+                            str((plan / 'expense-witness/installer-350.patch').resolve())], cwd=stage, check=True)
+            if hashlib.sha256(installer.read_bytes()).hexdigest() != '092c7fc57d3c8c9a065264cee5b0253b2b91497448198ab02ed46362be6ee2c0':
+                raise SystemExit('PAYMENT_350_INSTALLER_PREIMAGE')
 else:
     shutil.copyfile(common / 'installer.cjs', installer)
 subprocess.run(['git', 'apply', '-p0',
@@ -116,7 +122,12 @@ if expense_witness:
     contents = installer.read_bytes()
     if contents.count(old) != 1:
         raise SystemExit('PAYMENT_346_RETAINED_VALID_PREIMAGE')
-    final_modes = b'|334|346|349)' if precision else b'|334|346)'
+    final_modes = b'|334|346'
+    if precision:
+        final_modes += b'|349'
+    if signed_settlement:
+        final_modes += b'|350'
+    final_modes += b')'
     installer.write_bytes(contents.replace(old, old[:-1] + final_modes))
     subprocess.run(['git', 'apply', '-p0',
                     str((plan / 'payment-execution-346-fixtures.patch').resolve())], cwd=stage, check=True)
@@ -143,8 +154,24 @@ if precision:
         'payment-execution-concurrency.spec.ts': '34123b38d07507b6a589980877144bc7c08a14195d118c0a4de17f728da3baa2',
         'contract-finance-owned.test-support.ts': 'fc17a8068503366316ef5cba8c86e376d2b8ddb88dd5cf82237e80d2b9229e39',
     }.items():
+        if signed_settlement and name == 'installer.cjs':
+            continue
         if hashlib.sha256((stage / name).read_bytes()).hexdigest() != digest:
             raise SystemExit(f'PAYMENT_349_POSTIMAGE {name}')
+
+if signed_settlement:
+    subprocess.run(['git', 'apply', '--unidiff-zero', '-p0',
+                    str((plan / 'payment-execution-350-fixtures.patch').resolve()),
+                    str((plan / 'core-payment-350-ledger.patch').resolve())], cwd=stage, check=True)
+    for name, digest in {
+        'installer.cjs': '485b3c7ed1191d6e88c93545c1937dd65726b76f573039ba765d46a1341b458a',
+        'fresh.cjs': '16b69dc37f2f0792c1b6ae9e31333ee0e70bb9c1d5fb606675d7de11ac7e2a74',
+        'valid.cjs': 'bd4f0cee52a630fd2ff9358582ea1bb2ad04c05b79ec076ec5f9cd800d940559',
+        'payment-execution-concurrency.spec.ts': 'd4422a89e7a95046b27ef66318f536072590854d3d18bad4cb1607f50c81c610',
+        'contract-finance-owned.test-support.ts': '87bb2cae10d3cb927c5e2f32c624f57c53e992949bf8ea7efe357cd989c28e7e',
+    }.items():
+        if hashlib.sha256((stage / name).read_bytes()).hexdigest() != digest:
+            raise SystemExit(f'PAYMENT_350_POSTIMAGE {name}')
 
 for file in stage.rglob('*'):
     if file.is_file():
