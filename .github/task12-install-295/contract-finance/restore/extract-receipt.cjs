@@ -2,21 +2,22 @@
 
 const {readFileSync,writeFileSync,statSync}=require('node:fs');
 const {scope}=require('../common/successor.cjs');
-const {legacy,successor,textDirect,expense346}=require('./restore-profile.cjs');
+const {legacy,successor,textDirect,expense346,expense349}=require('./restore-profile.cjs');
 const path=require('node:path');
 const {paymentCatalogChecks}=require('./text-direct-330.cjs');
 const current=process.argv[7]?require(process.argv[7]):undefined;
 const upwardArchive332=current?.mode==='upward-archive-332';
 const historicalSettlement334=current?.mode==='historical-settlement-334';
-const exact=current?.mode==='expense-witness-346'?require('./exact-346.cjs'):undefined;
+const precision=current?.mode==='expense-witness-349';
+const exact=precision?require('./exact-349.cjs'):current?.mode==='expense-witness-346'?require('./exact-346.cjs'):undefined;
 const historical=historicalSettlement334||exact?require('../historical-settlement-334-profile.cjs'):undefined;
 const paymentRemainder331=exact||historicalSettlement334||upwardArchive332||current?.mode==='payment-remainder-331';
 const textDirect330=paymentRemainder331||current?.mode==='text-direct-330';
-const count=exact?346:historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current?329:295;
+const count=precision?349:exact?346:historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current?329:295;
 const paymentProfile=upwardArchive332?require('../upward-archive-332-profile.cjs'):
   paymentRemainder331?require('../payment-remainder-331-profile.cjs'):
   textDirect330?require('../text-direct-330-profile.cjs'):undefined;
-const {technical,businessCount}=exact?expense346:textDirect330?textDirect:current?successor:legacy;
+const {technical,businessCount}=precision?expense349:exact?expense346:textDirect330?textDirect:current?successor:legacy;
 
 const identity=row=>row&&row.schemaVersion===1&&row.purpose==='NTF04_NAMED_RESTORE_EXACT_'+count&&row.candidateSha===(current?.sourceSha??require(process.argv[6]).head)&&
   row.operation==='NAMED_BANK_BACKUP_AND_RECOVERY'&&(!current||row.fixturePredecessorSha===require(process.argv[6]).head)&&
@@ -59,7 +60,7 @@ function qualified(row,mode){
     try {
       const base=require('../common/multi-witness.cjs').final;
       if(exact) {
-        require('../expense-witness-346-profile.cjs').assertSource(current,base);
+        require('../expense-witness-'+count+'-profile.cjs').assertSource(current,base);
         terminalForward=exact.forward(row,current,historical);
       } else if(historical) {
         historical.assertSource(current,base);
@@ -94,9 +95,13 @@ function qualified(row,mode){
   if(historical&&(!exactlyTrue(row,['historicalTakeoverCatalogAfterBusiness','historicalSettlementCatalogAfterBusiness'])||
     data?.historicalSettlement334?.sourceAndRestoredMatched!==true||
     data.historicalSettlement334.ledgerSha256!==historical.ledgerSha256)) return false;
-  if(exact&&(!exactlyTrue(row,['expenseWitnessCatalogAfterBusiness'])||
-    !exactlyTrue(data,['samePostgresInstance'])||data.expense346?.sourceAndRestoredMatched!==true||
-    data.expense346.ledgerSha256!==current.ledgerSha256)) return false;
+  if(exact) {
+    const expenseProof=data?.['expense'+count];
+    if(!exactlyTrue(row,['expenseWitnessCatalogAfterBusiness'])||
+      !exactlyTrue(data,['samePostgresInstance'])||expenseProof?.sourceAndRestoredMatched!==true||
+      expenseProof.ledgerSha256!==current.ledgerSha256) return false;
+    if(precision&&(row.expenseWitnessPrecisionCatalogAfterBusiness!==true||expenseProof.precisionCatalogMatched!==true)) return false;
+  }
   const forwardValid=!current||(terminalForward?.count===count&&terminalForward.sameIdentity===true&&
     terminalForward.sameBaseB7===true&&terminalForward.sourceTree===current.sourceTree&&
     terminalForward.ledgerSha256===current.ledgerSha256&&row.combinedAfterBusiness?.ledgerSha256===current.ledgerSha256&&
