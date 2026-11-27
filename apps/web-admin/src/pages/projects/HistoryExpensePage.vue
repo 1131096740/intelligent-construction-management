@@ -400,8 +400,9 @@ async function submitVerify() {
     );
     verifyDialog.value = false;
     MessagePlugin.success("核实结果已保存");
+    const batchId = detail.value.id;
     await loadProject();
-    await openBatch(detail.value.id);
+    await openBatch(batchId);
   } catch (error) {
     message.value = formatUnknownApiError(error, "保存核实结果失败");
   } finally {
@@ -452,8 +453,9 @@ async function submitCorrection() {
     );
     correctionDialog.value = false;
     MessagePlugin.success("已按反转 + 重登更正，原行与复核事实保留");
+    const batchId = detail.value.id;
     await loadProject();
-    await openBatch(detail.value.id);
+    await openBatch(batchId);
   } catch (error) {
     message.value = formatUnknownApiError(error, "更正已入账历史费用失败");
   } finally {
