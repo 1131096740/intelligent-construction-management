@@ -353,7 +353,7 @@ async function main() {
       count: 329, ledgerSha256: '3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2',
       sameIdentity: true, sameBaseB7: true
     });
-    assert.equal(installed.count, migrationCount);
+    assert.equal(installed.count, signedSubcent ? source.predecessor349.migrationCount : migrationCount);
     assert.equal(receipt.combinedAfterBusiness.count, migrationCount);
   }
   if (paymentRemainder) {
@@ -380,7 +380,6 @@ async function main() {
     const precisionBoundary = signedSubcent ? source.predecessor349.migrationCount - source.predecessor.migrationCount : tails.length;
     assert.deepEqual(installed.tails, tails.slice(boundary, precisionBoundary));
     if (signedSubcent) {
-      assert.equal(installed.count, source.predecessor349.migrationCount);
       assert.equal(receipt.combinedAfterBusiness.count, migrationCount);
       assert.deepEqual(receipt.signedSettlementForward, {
         count: migrationCount, ledgerSha256: source.ledgerSha256, sameIdentity: true, sourceTree: source.sourceTree,
