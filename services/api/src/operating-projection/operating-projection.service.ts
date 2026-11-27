@@ -1,6 +1,7 @@
 import { expenseCashCostAvailable, expenseCashCostEvidenceSelect } from "../operating-ledger/expense-cash-cost-attribution";
 import { requireLegacyOperatingCents } from "../operating-ledger/operating-money-protocol";
 import { SETTLEMENT_SOURCE_TYPES } from "../operating-ledger/settlement-source-dedup";
+import { SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE as SIGNED_SETTLEMENT_SOURCE } from "../settlement/signed-settlement-operating-source.adapter";
 import {readCompanyTransferBalances} from "../company-transfer/company-transfer-summary";
 import { createReadStream } from "node:fs";
 import { mkdtemp, open, rm, type FileHandle } from "node:fs/promises";
@@ -164,7 +165,7 @@ type ProjectionReadContext = {
 };
 
 export class OwnerSettlementBelowCentForCloseError extends ConflictException {
-  constructor(source: "业主结算" | "报销成本" = "业主结算") {
+  constructor(source: "业主结算" | "报销成本" | "已签结算" = "业主结算") {
     super(`${source}含不足一分的金额，当前收口不能准确记账。本次操作已阻止，已冻结的历史仍可查看。`);
   }
 }
@@ -2297,12 +2298,12 @@ async function readSettlementDeduplication(
   const pages = operatingFactPages(projectIds, cutoffAt, readAt, args =>
     tx.operatingFact.findMany({
       ...args,
-      where: { ...args.where, sourceType: { in: [...SETTLEMENT_SOURCE_TYPES] }, numericProtocolVersion: 1 },
-      select: { id: true, projectId: true, sourceType: true, sourceSnapshot: true, amountCents: true }
+      where: { ...args.where, sourceType: { in: [...SETTLEMENT_SOURCE_TYPES] } },
+      select: { id: true, projectId: true, sourceType: true, sourceSnapshot: true, amountCents: true, amountYuan: true }
     })
   );
   for await (const page of pages) {
-    for (const fact of page) candidates.add(fact);
+    for (const fact of page) candidates.add({ ...fact, amountYuan: fact.amountYuan?.toFixed(4) ?? null });
   }
   return candidates.resolve();
 }
@@ -2343,10 +2344,12 @@ function projectCloseExactCentsRow<Row extends {
   sourceType: string; numericProtocolVersion: number; amountCents: bigint | null; amountYuan: Prisma.Decimal | null;
 }>(row: Row): Row {
   if (row.numericProtocolVersion !== 2 ||
-      !["project_owner_settlement_entry", "expense_claim_approval"].includes(row.sourceType)) return row;
+      !["project_owner_settlement_entry", "expense_claim_approval", SIGNED_SETTLEMENT_SOURCE].includes(row.sourceType)) return row;
   const amountYuan = row.amountYuan?.toFixed(4);
   if (row.amountCents !== null || !amountYuan || !/^\d+\.\d{2}00$/u.test(amountYuan)) {
-    throw new OwnerSettlementBelowCentForCloseError(row.sourceType === "expense_claim_approval" ? "报销成本" : "业主结算");
+    const label = row.sourceType === SIGNED_SETTLEMENT_SOURCE ? "已签结算"
+      : row.sourceType === "expense_claim_approval" ? "报销成本" : "业主结算";
+    throw new OwnerSettlementBelowCentForCloseError(label);
   }
   return { ...row, numericProtocolVersion: 1, amountCents: BigInt(amountYuan.slice(0, -2).replace(".", "")), amountYuan: null };
 }
@@ -3002,7 +3005,10 @@ function jsonRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function csvCell(value: string): string {
+type ProjectionCsvCell = string | { exactYuan: string };
+
+function csvCell(value: ProjectionCsvCell): string {
+  if (typeof value !== "string") return `"${value.exactYuan}"`;
   const formulaSafe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
   return `"${formulaSafe.replaceAll('"', '""')}"`;
 }
@@ -3020,7 +3026,7 @@ function projectionExportCsvRow(
   item: Record<string, unknown>,
   exportKind: OperatingProjectionExportKind,
   filters: OperatingProjectionExportFilters
-): string[] | null {
+): ProjectionCsvCell[] | null {
   const metadata = jsonRecord(item._export) as Partial<ProjectionExportMetadata>;
   const sourceType = stringValue(metadata.sourceType);
   const factKind = stringValue(metadata.factKind);
@@ -3060,7 +3066,17 @@ function projectionExportCsvRow(
       catch { throw new ConflictException("经营金额超出可导出精度，请核对原资料"); }
     }
     amountBasis = "合同参考金额（四位元）";
-    if (sourceType === "expense_claim_approval") {
+    if (sourceType === SIGNED_SETTLEMENT_SOURCE) {
+      if (impactKind === "confirmed_cost" && item.amountState === "known") {
+        amountBasis = "正式成本（四位元）";
+      } else if (impactKind === "receivable_increase" && item.amountState === "known") {
+        amountBasis = "内部应收（四位元）";
+      } else if (["payable_increase", "payable_decrease"].includes(impactKind) && /^-?\d+\.\d{2}00$/u.test(amountYuan)) {
+        amountBasis = "正式事实";
+      } else {
+        throw new ConflictException("已签结算导出金额与经营影响不一致，请核对原资料");
+      }
+    } else if (sourceType === "expense_claim_approval") {
       if (impactKind === "confirmed_cost" && item.amountState === "known") {
         amountBasis = "正式成本（四位元）";
       } else if (impactKind === "payable_increase" && /^\d+\.\d{2}00$/u.test(amountYuan)) {
@@ -3098,7 +3114,7 @@ function projectionExportCsvRow(
     nullableStringValue(item.confirmedAt) ?? "",
     stringValue(item.impactKindLabel),
     stringValue(item.directionLabel),
-    amountYuan,
+    metadata.numericProtocolVersion === 2 && sourceType === SIGNED_SETTLEMENT_SOURCE ? { exactYuan: amountYuan } : amountYuan,
     projectionExportCostLabel(item.costCategoryCode),
     nullableStringValue(item.fundPurpose) ?? "",
     subjectLabels.join("；"),
@@ -3171,7 +3187,7 @@ class BoundedProjectionCsvFile {
     }
   }
 
-  async writeRow(row: string[]): Promise<void> {
+  async writeRow(row: ProjectionCsvCell[]): Promise<void> {
     await this.writeChunk(`${row.map(csvCell).join(",")}\n`);
   }
 
