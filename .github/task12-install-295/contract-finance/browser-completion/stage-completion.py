@@ -90,6 +90,6 @@ for name in sorted(partial_pins.keys() | completion_pins.keys()):
         if options == ['--company-history-352']:
             forward352 = Path(__file__).with_name('completion352.patch').resolve()
             subprocess.run(['git', 'apply', '-p0', '--unidiff-zero', str(forward352)], cwd=target.parent, check=True)
-            check(target.read_bytes(), '1f9a3d2152c6ea960ce629392fcfe2833577ab59fabe8538e9c11d1001f5c0cd', target.name)
+            check(target.read_bytes(), 'e2db95a155b02e92e01b6983ae87f71d2c570c83efc5dc78fdd0a45c7b2fe1bb', target.name)
     target.chmod(0o644)
     print(name)
