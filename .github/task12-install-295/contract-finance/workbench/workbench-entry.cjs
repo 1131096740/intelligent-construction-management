@@ -4,18 +4,20 @@ const {createHash}=require('node:crypto');
 const {readFileSync}=require('node:fs');
 const {verifyInputs}=require('./workbench-inputs.cjs');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness,withCombinedExpenseWitness349}=require('./installer.cjs');
 const terminal=require('./multi-witness.cjs');
 const source=require('./contract-finance-source.json');
 const mode=process.argv[2];
-const expenseWitness=mode==='--expense-witness-346'?require('./expense-witness-346-profile.cjs'):undefined;
+const precision=mode==='--expense-witness-349'?require('./expense-witness-349-profile.cjs'):undefined;
+const expenseWitness=precision||mode==='--expense-witness-346'?require('./expense-witness-346-profile.cjs'):undefined;
+const ledgerProfile=precision??expenseWitness;
 const historicalSettlement=Boolean(expenseWitness)||mode==='--historical-settlement-334';
 const historical=historicalSettlement?require('./historical-settlement-334-profile.cjs'):undefined;
 const upwardArchive=historicalSettlement||mode==='--upward-archive-332';
 const paymentRemainder=upwardArchive||mode==='--payment-remainder-331';
 const textDirect=paymentRemainder||mode==='--text-direct-330';
 const current320=textDirect||mode==='--current-320';
-const count=expenseWitness?expenseWitness.count:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
+const count=ledgerProfile?ledgerProfile.count:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
 const receipt={schemaVersion:1,sourceSha:source.sourceSha,purpose:'POL115_WORKBENCH_ORIGINAL_'+count,business:'NOT_ENTERED',stages:['INPUTS']};
 Promise.resolve().then(()=>{
   assert.notEqual(process.getuid(),0);
@@ -29,9 +31,9 @@ Promise.resolve().then(()=>{
   } else assert.equal(source.ledgerSha256,terminal.final);
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
   if(expenseWitness){
-    expenseWitness.assertSource(source,terminal.final);
-    expenseWitness.assertRuntimeBaseline(require('/qualification/workspace/services/api/prisma/migration-baseline.cjs'));
-    assert.equal(createHash('sha256').update(readFileSync('/qualification/installer.cjs')).digest('hex'),expenseWitness.installerSha256);
+    ledgerProfile.assertSource(source,terminal.final);
+    ledgerProfile.assertRuntimeBaseline(require('/qualification/workspace/services/api/prisma/migration-baseline.cjs'));
+    assert.equal(createHash('sha256').update(readFileSync('/qualification/installer.cjs')).digest('hex'),ledgerProfile.installerSha256);
   } else historical?.assertSource(source,terminal.final);
   verifyInputs();
   admitSource('/qualification','/qualification/source/services/api/prisma','/qualification/source-seal.txt');
@@ -43,9 +45,17 @@ Promise.resolve().then(()=>{
       assert.equal(receipt.expenseWitnessForward?.ledgerSha256,expenseWitness.ledgerSha256);
       assert.equal(receipt.expenseWitnessForward?.sameIdentity,true);
     }
+    if(precision){
+      assert.equal(receipt.expenseWitnessPrecisionForward?.count,precision.count);
+      assert.equal(receipt.expenseWitnessPrecisionForward?.ledgerSha256,precision.ledgerSha256);
+      assert.equal(receipt.expenseWitnessPrecisionForward?.sameIdentity,true);
+    }
     await runWorkbench(context,receipt,current320?source:undefined);
     if(paymentRemainder) await require('./issue430-approval-sms-ci.cjs').runIssue430ApprovalSms(context,receipt,source);
   };
+  if(precision) return withCombinedExpenseWitness349(receipt,consume,{
+    ...source,migrations:'/qualification/workspace/services/api/prisma/migrations'
+  });
   if(expenseWitness) return withCombinedExpenseWitness(receipt,consume,{
     sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
   },expenseWitness.count);
@@ -96,6 +106,7 @@ Promise.resolve().then(()=>{
     assert.equal(receipt.historicalSettlementCatalogAfterBusiness,true);
   }
   if(expenseWitness) assert.equal(receipt.expenseWitnessCatalogAfterBusiness,true);
+  if(precision) assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness,true);
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
   receipt.status='POL115_WORKBENCH_ORIGINAL_'+count+'_PASSED';
 }).catch(error=>{

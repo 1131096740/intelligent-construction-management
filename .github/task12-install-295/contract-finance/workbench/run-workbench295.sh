@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 ) ) ||
-  ( $# == 6 && $5 == --expense-witness-346 && $6 == --host-only ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 ) ) ||
+  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 ) && $6 == --host-only ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -16,7 +16,8 @@ case ${5-} in
   --payment-remainder-331) mode_args=(--payment-remainder-331); count=331 ;;
   --upward-archive-332) mode_args=(--upward-archive-332); count=332 ;;
   --historical-settlement-334) mode_args=(--historical-settlement-334); count=334 ;;
-  --expense-witness-346) mode_args=(--expense-witness-346); count=346 ;;
+  --expense-witness-346) mode_args=("$5"); count=346 ;;
+  --expense-witness-349) mode_args=("$5"); count=349 ;;
 esac
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -24,7 +25,7 @@ base="$repo/.github/task12-install-295/contract-finance"
 common="$base/common"
 scope=pol115-workbench
 tree=
-if [[ $count == 346 ]]; then
+if (( count >= 346 )); then
   [[ $plan == "$base/workbench" && $(git -C "$repo" rev-parse HEAD) == "$sha" && -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$base") ]] || exit 65
   tree=$(git -C "$repo" rev-parse "$sha^{tree}")
 fi
@@ -32,24 +33,27 @@ fi
 node -e '
   const [file,sha,count,base,tree]=process.argv.slice(1);
   const source=require(file);
-  const modes={"329":"current-320","330":"text-direct-330","331":"payment-remainder-331","332":"upward-archive-332","334":"historical-settlement-334","346":"expense-witness-346"};
+  const modes={"329":"current-320","330":"text-direct-330","331":"payment-remainder-331","332":"upward-archive-332","334":"historical-settlement-334","346":"expense-witness-346","349":"expense-witness-349"};
   if(source.sourceSha!==sha||source.migrationCount!==Number(count)||(modes[count]&&source.mode!==modes[count]))process.exit(1);
   if(count==="334") require(base+"/historical-settlement-334-profile.cjs").assertSource(source,require(base+"/common/multi-witness.cjs").final);
-  if(count==="346"){
+  if(Number(count)>=346){
     require("node:assert/strict").equal(source.sourceTree,tree);
-    require(base+"/expense-witness-346-profile.cjs").assertSource(source,require(base+"/common/multi-witness.cjs").final);
+    require(base+"/"+modes[count]+"-profile.cjs").assertSource(source,require(base+"/common/multi-witness.cjs").final);
   }
 ' "$prepared/source.json" "$sha" "$count" "$base" "$tree"
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 spec=settlement-template-workbench.owned290.http.pg.spec.ts
 installer="$common/installer.cjs"
-if [[ $count == 334 || $count == 346 ]]; then
+if (( count >= 334 )); then
   node "$base/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
   installer="$work/installer.cjs"
 fi
-if [[ $count == 346 ]]; then
+if (( count >= 346 )); then
   git -C "$work" apply --unidiff-zero "$base/expense-witness/installer.patch"
+  if (( count == 349 )); then
+    git -C "$work" apply --unidiff-zero "$base/expense-witness/installer-349.patch"
+  fi
   node - "$plan" "$prepared" "$installer" "$spec" <<'JS'
 const assert=require("node:assert/strict");
 const {createHash}=require("node:crypto");
@@ -57,7 +61,7 @@ const {readFileSync}=require("node:fs");
 const {join}=require("node:path");
 const [plan,prepared,installer,spec]=process.argv.slice(2);
 const source=require(join(prepared,"source.json"));
-const profile=require(join(plan,"../expense-witness-346-profile.cjs"));
+const profile=require(join(plan,"../"+source.mode+"-profile.cjs"));
 const hash=bytes=>createHash("sha256").update(bytes).digest("hex");
 const installerSha256=hash(readFileSync(installer));
 assert.equal(installerSha256,profile.installerSha256);
@@ -67,7 +71,7 @@ require(join(plan,"workbench-inputs.cjs")).verifyInputs(name=>readFileSync(
   name==="task12-pol109-stage-browser.cjs" ? join(plan,"..",name) :
   name.startsWith("workspace/") ? join(prepared,"prepared/context",name) : join(plan,name)
 ));
-console.log(JSON.stringify({status:"POL115_WORKBENCH_346_HOST_READY",sourceSha:source.sourceSha,sourceTree:source.sourceTree,ledgerSha256:source.ledgerSha256,installerSha256}));
+console.log(JSON.stringify({status:"POL115_WORKBENCH_"+profile.count+"_HOST_READY",sourceSha:source.sourceSha,sourceTree:source.sourceTree,ledgerSha256:source.ledgerSha256,installerSha256}));
 JS
   chmod 0644 "$installer"
   if [[ ${6-} == --host-only ]]; then printf '%s\n' "$work"; exit 0; fi
@@ -93,15 +97,18 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
-if [[ $count == 334 || $count == 346 ]]; then
+if (( count >= 334 )); then
   for profile_file in historical-settlement-334-profile.cjs historical-takeover-333-profile.cjs upward-archive-332-profile.cjs; do
     args+=(--mount "type=bind,src=$base/$profile_file,dst=/qualification/$profile_file,readonly")
   done
 fi
-if [[ $count == 346 ]]; then
+if (( count >= 346 )); then
   for profile_file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
     args+=(--mount "type=bind,src=$base/$profile_file,dst=/qualification/$profile_file,readonly")
   done
+fi
+if (( count == 349 )); then
+  args+=(--mount "type=bind,src=$base/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
 fi
 args+=(--mount "type=bind,src=$installer,dst=/qualification/installer.cjs,readonly")
 args+=(--mount "type=bind,src=$base/task12-pol109-stage-browser.cjs,dst=/qualification/task12-pol109-stage-browser.cjs,readonly")
