@@ -15,11 +15,13 @@ try {
   const historicalSettlement334=process.argv[2]==='--historical-settlement-334';
   const expenseWitness349=process.argv[2]==='--expense-witness-349';
   const expenseWitness346=process.argv[2]==='--expense-witness-346';
-  const expenseProfile=expenseWitness349?require('./expense-witness-349-profile.cjs'):
+  const signedSettlement350=process.argv[2]==='--signed-settlement-350';
+  const expenseProfile=signedSettlement350?require('./signed-settlement-350-profile.cjs'):
+    expenseWitness349?require('./expense-witness-349-profile.cjs'):
     expenseWitness346?require('./expense-witness-346-profile.cjs'):undefined;
-  const forward=current320||textDirect330||paymentRemainder331||upwardArchive332||historicalSettlement334||expenseWitness346||expenseWitness349;
+  const forward=current320||textDirect330||paymentRemainder331||upwardArchive332||historicalSettlement334||expenseWitness346||expenseWitness349||signedSettlement350;
   assert.equal(process.argv.length,forward?3:2);
-  const count=expenseWitness349?349:expenseWitness346?346:historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
+  const count=signedSettlement350?350:expenseWitness349?349:expenseWitness346?346:historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
   assert.equal(source.migrationCount,count);
   if(expenseProfile) {
     expenseProfile.assertSource(source,multi.final);

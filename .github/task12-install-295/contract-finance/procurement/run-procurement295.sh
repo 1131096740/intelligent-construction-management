@@ -2,10 +2,19 @@
 set -euo pipefail
 umask 077
 
+if [[ ${6-} == --signed-settlement-350 ]]; then
+  [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
+  case $# in
+    6) ;;
+    7) [[ $7 == --host-only ]] || exit 64 ;;
+    *) exit 64 ;;
+  esac
+else
 [[ $# == 5 || ( $# == 6 && $6 == --current-320 ) ||
   ( ( $# == 6 || ( $# == 7 && $7 == --host-only ) ) &&
     ( $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 || $6 == --expense-witness-346 || $6 == --expense-witness-349 ) ) ||
   ( $# == 7 && $5 == general16 && $6 == --payment-remainder-331 && $7 == --a05 ) ]] || exit 64
+fi
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -21,6 +30,7 @@ case ${6-} in
   --historical-settlement-334) mode_args=(--historical-settlement-334); stage_args=("${mode_args[@]}" "$prepared/source.json"); count=334 ;;
   --expense-witness-346) mode_args=(--expense-witness-346); stage_args=("${mode_args[@]}" "$prepared/source.json"); count=346 ;;
   --expense-witness-349) mode_args=(--expense-witness-349); stage_args=("${mode_args[@]}" "$prepared/source.json"); count=349 ;;
+  --signed-settlement-350) mode_args=(--signed-settlement-350); stage_args=("${mode_args[@]}" "$prepared/source.json"); count=350 ;;
 esac
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -34,6 +44,7 @@ case $count in
   332) profile="$finance/upward-archive-332-profile.cjs" ;;
   334) profile="$finance/historical-settlement-334-profile.cjs" ;;
   346|349) profile="$finance/expense-witness-$count-profile.cjs" ;;
+  350) profile="$finance/signed-settlement-350-profile.cjs" ;;
 esac
 node - "$prepared/source.json" "$sha" "$lane" "$finance" "$count" "$profile" "$workspace" <<'JS'
 const [sourceFile,sha,lane,finance,count,profile,workspace]=process.argv.slice(2);
@@ -60,11 +71,14 @@ if (( count >= 346 )); then
     [[ -z $(git -C "$root" status --porcelain --untracked-files=all -- "$finance/$file") ]] || exit 65
   done
 fi
-if (( count == 349 )); then
+if (( count >= 349 )); then
   for file in expense-witness-346-profile.cjs expense-witness/installer-349.patch payment-execution-349.cjs; do
     [[ -z $(git -C "$root" status --porcelain --untracked-files=all -- "$finance/$file") ]] || exit 65
   done
-  cmp -s "$prepared/source.json" <(node "$finance/check-ledger.cjs" "$root" "$sha" --expense-witness-349) || exit 65
+  if (( count == 350 )); then
+    [[ -z $(git -C "$root" status --porcelain --untracked-files=all -- "$finance/expense-witness/installer-350.patch") ]] || exit 65
+  fi
+  cmp -s "$prepared/source.json" <(node "$finance/check-ledger.cjs" "$root" "$sha" "${mode_args[0]}") || exit 65
 fi
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-procurement-$lane.XXXXXXXX")
 python3 "$plan/stage-procurement295.py" "$lane" "$root" "$workspace" "$work/runtime" ${stage_args[@]+"${stage_args[@]}"}
@@ -81,12 +95,12 @@ const files=readdirSync(dir,{withFileTypes:true}).filter(file=>file.isFile()).ma
 const receipt={status:'PROCUREMENT_'+count+'_HOST_INPUTS_VERIFIED',sourceSha,lane,cases:lane==='general16'?16:11,
   stagedInputs:Object.fromEntries(files.sort().map(file=>[file,hash(file)])),database:'NOT_STARTED'};
 if(Number(count)>=346) {
-  const {sourceTree,ledgerSha256,predecessor334,predecessor346,tails}=require(sourceFile);
+  const {sourceTree,ledgerSha256,predecessor334,predecessor346,predecessor349,tails}=require(sourceFile);
   const walk=(parent,prefix='')=>readdirSync(parent,{withFileTypes:true}).flatMap(file=>{
     const name=prefix+file.name;
     return file.isDirectory()?walk(parent+'/'+file.name,name+'/'):[name];
   });
-  Object.assign(receipt,{sourceTree,ledgerSha256,predecessor334,predecessor346,terminal:tails.at(-1),
+  Object.assign(receipt,{sourceTree,ledgerSha256,predecessor334,predecessor346,predecessor349,terminal:tails.at(-1),
     browserCases:lane==='project11'?4:0,
     workspaceOverlays:Object.fromEntries(walk(dir+'/workspace','workspace/').sort().map(file=>[file,hash(file)]))});
 } else if(count==='334') {
@@ -134,8 +148,11 @@ if (( count >= 346 )); then
     args+=(--mount "type=bind,src=$finance/$profile_file,dst=/qualification/$profile_file,readonly")
   done
 fi
-if (( count == 349 )); then
+if (( count >= 349 )); then
   args+=(--mount "type=bind,src=$finance/expense-witness-346-profile.cjs,dst=/qualification/expense-witness-346-profile.cjs,readonly")
+fi
+if (( count == 350 )); then
+  args+=(--mount "type=bind,src=$finance/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
 fi
 if [[ ${7-} == --a05 ]]; then
   args+=(--env JG_PROCUREMENT_A05=1)
@@ -167,7 +184,11 @@ const a05=option==='--a05';
 const expected=a05?'PROCUREMENT_A05_331_PASSED':
   lane==='general16'?'GENERAL_PROCUREMENT_ORIGINAL_15_PLUS_1_'+count+'_PASSED':'PROJECT_SCOPE_ORIGINAL_11_'+count+'_PASSED';
 if(r.status!==expected||r.sourceSha!==sha||(a05&&r.approvalA05?.passed!==1))process.exit(1);
-if(Number(count)>=346) {
+if(count==='350') {
+  require(profile).assertInstallation(r,require(source));
+  if(!['multiWitnessCatalogAfterBusiness','historicalTakeoverCatalogAfterBusiness','historicalSettlementCatalogAfterBusiness',
+    'expenseWitnessCatalogAfterBusiness','expenseWitnessPrecisionCatalogAfterBusiness'].every(key=>r[key]===true))process.exit(1);
+} else if(Number(count)>=346) {
   require(finance+'/payment-execution-'+count+'.cjs').assertInstallation(r,require(source));
   if(r.multiWitnessCatalogAfterBusiness!==true)process.exit(1);
 } else if(count==='334') {
