@@ -297,6 +297,10 @@ test("CI fans out independent static and database gates behind one stable summar
     assert.ok(dynamic.includes(`          - ${group}\n`));
   }
   const summary = jobBlock(workflow, "release-gates");
+  assert.ok(dynamic.includes("          - contract_finance_acceptance\n"));
+  assert.ok(dynamic.includes("          - remaining_dynamic_postgresql16\n"));
+  assert.doesNotMatch(workflow, /^  task12-install-28[9]:/mu);
+  assert.doesNotMatch(workflow, /^  task12-install-290:/mu);
 
   for (const independentJob of [quality, tests, build, dynamic]) {
     assert.doesNotMatch(independentJob, /\n\s+needs:/u);
