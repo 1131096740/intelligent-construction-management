@@ -7,7 +7,7 @@ const {spawnSync}=require('node:child_process');
 const {createHash}=require('node:crypto');
 const {pgDumpArgs,classifyArchive}=require('./archive-contract.cjs');
 const {key,operatingVerifier,operatingContext}=require('./technical-relations.json');
-const {legacy,successor,textDirect,expense346,expense349,signed350}=require('./restore-profile.cjs');
+const {legacy,successor,textDirect,expense346,expense349,signed350,company352}=require('./restore-profile.cjs');
 const {paymentRowsSql,paymentRows,paymentCatalogChecks}=require('./text-direct-330.cjs');
 const {scope,exactCatalog,catalogSql}=require('./successor.cjs');
 const notice=require('./terminal.cjs');
@@ -296,11 +296,12 @@ function importAsNamedBackup(sql,invoke,tables,sequences,dataArchive,dataList,pr
 
 async function restoreBusinessDatabase(context,credentials,enter,forward320,textDirectInputs) {
   const expenseSource=textDirectInputs?.expenseSource;
-  const signed=expenseSource?.migrationCount===350;
+  const company=expenseSource?.migrationCount===352;
+  const signed=company||expenseSource?.migrationCount===350;
   const precision=signed||expenseSource?.migrationCount===349;
-  const profile=signed?signed350:precision?expense349:expenseSource?expense346:textDirectInputs?textDirect:forward320?successor:legacy;
-  assert.equal([330,331,332,334,346,349,350].includes(forward320?.count),Boolean(textDirectInputs),'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
-  assert.equal([346,349,350].includes(forward320?.count),Boolean(expenseSource),'BACKUP346_SOURCE_REQUIRED');
+  const profile=company?company352:signed?signed350:precision?expense349:expenseSource?expense346:textDirectInputs?textDirect:forward320?successor:legacy;
+  assert.equal([330,331,332,334,346,349,350,352].includes(forward320?.count),Boolean(textDirectInputs),'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
+  assert.equal([346,349,350,352].includes(forward320?.count),Boolean(expenseSource),'BACKUP346_SOURCE_REQUIRED');
   if(expenseSource) assert.equal(forward320.count,expenseSource.migrationCount,'BACKUP_EXPENSE_SOURCE_COUNT');
   const expectedTree=forward320?.sourceTree ?? scope.tree;
   assert.match(expectedTree,/^[a-f0-9]{40}$/u);
@@ -328,7 +329,7 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
   }
   const paymentProof=paymentChecks?readTextDirect330(source):undefined;
   const paymentRemainderProof=textDirectInputs?.paymentRemainder?readPaymentRemainder331(source):undefined;
-  const historical=[334,346,349,350].includes(forward320?.count)?require('./historical-settlement-334-profile.cjs'):undefined;
+  const historical=[334,346,349,350,352].includes(forward320?.count)?require('./historical-settlement-334-profile.cjs'):undefined;
   const exact=expenseSource?require('./exact-'+expenseSource.migrationCount+'.cjs'):undefined;
   const precisionProfile=precision?require('./expense-witness-349-profile.cjs'):undefined;
   const expense=expenseSource?require('./expense-witness-346-profile.cjs'):undefined;
@@ -357,7 +358,7 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
     },'BACKUP332_UPWARD_ARCHIVE_POSTIMAGES');
     return {ledgerSha256,postimages};
   }
-  const upwardArchiveProof=[332,334,346,349,350].includes(forward320?.count)?readUpwardArchive332(source):undefined;
+  const upwardArchiveProof=[332,334,346,349,350,352].includes(forward320?.count)?readUpwardArchive332(source):undefined;
   function readHistoricalSettlement334(db) {
     const previous=require('./historical-takeover-333-profile.cjs');
     const checks=JSON.parse(sql(owner,db,previous.catalogSql));
@@ -377,6 +378,23 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
   const expenseProof=expense?readExpense346(source):undefined;
   const readPrecision = db => JSON.parse(sql(owner,db,precisionProfile.catalogSql));
   const precisionProof=precision?readPrecision(source):undefined;
+  const readCompanyCatalog = db => JSON.parse(sql(owner,db,`SELECT jsonb_build_object(
+    'constraints', (SELECT coalesce(jsonb_agg(jsonb_build_array(c.relname,k.conname,pg_get_constraintdef(k.oid)) ORDER BY c.relname,k.conname),'[]'::jsonb)
+      FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname='public' AND c.relname IN ('CompanyHistoryExpenseBatch','CompanyHistoryExpenseRow','CompanyHistoryExpenseFact')),
+    'triggers', (SELECT coalesce(jsonb_agg(jsonb_build_array(c.relname,t.tgname,t.tgenabled,pg_get_triggerdef(t.oid)) ORDER BY c.relname,t.tgname),'[]'::jsonb)
+      FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname='public' AND NOT t.tgisinternal AND c.relname IN ('CompanyHistoryExpenseBatch','CompanyHistoryExpenseRow','CompanyHistoryExpenseFact')),
+    'functions', (SELECT coalesce(jsonb_object_agg(p.proname,pg_get_functiondef(p.oid)),'{}'::jsonb)
+      FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public'
+      AND p.proname IN ('jg_company_history_expense_immutable','jg_require_company_transfer_settled_return_refund'))
+  );`));
+  const companyProof=company?readCompanyCatalog(source):undefined;
+  if(company) {
+    assert.equal(Object.keys(companyProof.functions).length,2,'BACKUP352_FUNCTIONS_PRESENT');
+    assert.ok(companyProof.constraints.length>0 && companyProof.triggers.length>=2,'BACKUP352_GUARDS_PRESENT');
+  }
+
   if(precision) assert.deepEqual(precisionProof,textDirectInputs.precisionCatalog,'BACKUP349_SOURCE_PRECISION_CATALOG');
   function readPaymentRemainder331(db) {
     const proof=JSON.parse(sql(owner,db,`SELECT jsonb_build_object(
@@ -540,6 +558,10 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
       exact.assertRestoredSignedCatalog(textDirectInputs.signedCatalog,readSigned(restoreDb));
       assert.deepEqual(readSigned(source),textDirectInputs.signedCatalog,'BACKUP350_SOURCE_SIGNED_CATALOG_UNCHANGED');
     }
+    if(company) {
+      assert.deepEqual(readCompanyCatalog(restoreDb),companyProof,'BACKUP352_RESTORED_COMPANY_CATALOG');
+      assert.deepEqual(readCompanyCatalog(source),companyProof,'BACKUP352_SOURCE_COMPANY_CATALOG_UNCHANGED');
+    }
     if (forward320) {
       for (const role of [backupRole,bankRuntime])
         for (const table of profile.technical)
@@ -561,7 +583,8 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
       ...(historicalProof?{historicalSettlement334:{ledgerSha256:historical.ledgerSha256,sourceAndRestoredMatched:true}}:{}),
       ...(expenseProof?{['expense'+forward320.count]:{ledgerSha256:forward320.ledgerSha256,sourceAndRestoredMatched:true,
         ...(precision?{precisionCatalogMatched:true}:{}),
-        ...(signed?{signedCatalogMatched:true}:{})}}:{}),
+        ...(signed?{signedCatalogMatched:true}:{}),
+        ...(company?{companyCatalogMatched:true}:{})}}:{}),
       ...(paymentProof?{textDirect330:{...paymentProof,oldColumnProjectionMatched:true,newColumnNull:true,
         sourceAndRestoredCatalogMatched:true,sourceAndRestoredNamedExecutionDenied:true}}:{})};
   } finally {

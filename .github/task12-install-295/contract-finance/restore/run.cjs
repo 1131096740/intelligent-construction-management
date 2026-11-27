@@ -8,7 +8,7 @@ const {runBackup295,prepareBackup295,runBackup320,verifyLease} = require('./back
 const admission=require('./committed-admission.json');
 const {admitSource} = require('./install-only292.cjs');
 const {checkClosure} = require('./verify-behavior.cjs');
-const {withCombined295MultiWitnessForRestore,withCombined320ContractPaymentForRestore,withCombined330ContractPaymentForRestore,withCombined331PaymentRemainderForRestore,withCombined332UpwardArchiveForRestore,withCombined334HistoricalSettlementForRestore,withCombinedExpenseWitnessForRestore,withCombinedExpensePrecisionForRestore,withCombinedSignedSettlement350ForRestore} = require('./installer.cjs');
+const {withCombined295MultiWitnessForRestore,withCombined320ContractPaymentForRestore,withCombined330ContractPaymentForRestore,withCombined331PaymentRemainderForRestore,withCombined332UpwardArchiveForRestore,withCombined334HistoricalSettlementForRestore,withCombinedExpenseWitnessForRestore,withCombinedExpensePrecisionForRestore,withCombinedSignedSettlement350ForRestore,withCombinedCompanyHistory352ForRestore} = require('./installer.cjs');
 const bank = require('./named-roles/contract-finance-owned-ci.cjs');
 const correctionRoot='/qualification/workspace', loanRoot='/qualification/loan-workspace';
 const correction=require(correctionRoot+'/services/api/prisma/run-task398-shared-standard-local.cjs').runTask398Owned282Voucher;
@@ -20,10 +20,11 @@ const paymentRemainder331=args[0]==='--payment-remainder-331';
 const historicalSettlement334=args[0]==='--historical-settlement-334';
 const expenseWitness346=args[0]==='--expense-witness-346';
 const expenseWitness349=args[0]==='--expense-witness-349';
-const signedSettlement350=args[0]==='--signed-settlement-350';
-const expenseCount=signedSettlement350?350:expenseWitness349?349:346;
+const companyHistory352=args[0]==='--company-history-352';
+const signedSettlement350=companyHistory352||args[0]==='--signed-settlement-350';
+const expenseCount=companyHistory352?352:signedSettlement350?350:expenseWitness349?349:346;
 const exact=signedSettlement350||expenseWitness349||expenseWitness346?require('./exact-'+expenseCount+'.cjs'):undefined;
-const signedProfile=signedSettlement350?require('./signed-settlement-350-profile.cjs'):undefined;
+const signedProfile=companyHistory352?require('./company-history-352-profile.cjs'):signedSettlement350?require('./signed-settlement-350-profile.cjs'):undefined;
 const historical=historicalSettlement334||exact?require('./historical-settlement-334-profile.cjs'):undefined;
 const textDirect330=Boolean(exact)||historicalSettlement334||upwardArchive332||paymentRemainder331||args[0]==='--text-direct-330';
 const forward=current320||textDirect330;
@@ -136,7 +137,7 @@ async function main(){
     loan:async ctx=>{ await verifyLease(ctx); return loan('affiliate',ctx); },
   };
   if(forward){
-    const install=signedSettlement350?withCombinedSignedSettlement350ForRestore:expenseWitness349?withCombinedExpensePrecisionForRestore:exact?withCombinedExpenseWitnessForRestore:historicalSettlement334?withCombined334HistoricalSettlementForRestore:upwardArchive332?withCombined332UpwardArchiveForRestore:paymentRemainder331?withCombined331PaymentRemainderForRestore:
+    const install=companyHistory352?withCombinedCompanyHistory352ForRestore:signedSettlement350?withCombinedSignedSettlement350ForRestore:expenseWitness349?withCombinedExpensePrecisionForRestore:exact?withCombinedExpenseWitnessForRestore:historicalSettlement334?withCombined334HistoricalSettlementForRestore:upwardArchive332?withCombined332UpwardArchiveForRestore:paymentRemainder331?withCombined331PaymentRemainderForRestore:
       textDirect330?withCombined330ContractPaymentForRestore:withCombined320ContractPaymentForRestore;
     await install(receipt,
       context=>prepareBackup295(context,receipt,admission,{...fixtures,textDirect330}),

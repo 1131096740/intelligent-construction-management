@@ -2,24 +2,25 @@
 
 const {readFileSync,writeFileSync,statSync}=require('node:fs');
 const {scope}=require('../common/successor.cjs');
-const {legacy,successor,textDirect,expense346,expense349,signed350}=require('./restore-profile.cjs');
+const {legacy,successor,textDirect,expense346,expense349,signed350,company352}=require('./restore-profile.cjs');
 const path=require('node:path');
 const {paymentCatalogChecks}=require('./text-direct-330.cjs');
 const current=process.argv[7]?require(process.argv[7]):undefined;
 const upwardArchive332=current?.mode==='upward-archive-332';
 const historicalSettlement334=current?.mode==='historical-settlement-334';
-const signed=current?.mode==='signed-settlement-350';
+const company=current?.mode==='company-history-352';
+const signed=company||current?.mode==='signed-settlement-350';
 const precision=signed||current?.mode==='expense-witness-349';
-const signedProfile=signed?require('../signed-settlement-350-profile.cjs'):undefined;
-const exact=signed?require('./exact-350.cjs'):precision?require('./exact-349.cjs'):current?.mode==='expense-witness-346'?require('./exact-346.cjs'):undefined;
+const signedProfile=company?require('../company-history-352-profile.cjs'):signed?require('../signed-settlement-350-profile.cjs'):undefined;
+const exact=company?require('./exact-352.cjs'):signed?require('./exact-350.cjs'):precision?require('./exact-349.cjs'):current?.mode==='expense-witness-346'?require('./exact-346.cjs'):undefined;
 const historical=historicalSettlement334||exact?require('../historical-settlement-334-profile.cjs'):undefined;
 const paymentRemainder331=exact||historicalSettlement334||upwardArchive332||current?.mode==='payment-remainder-331';
 const textDirect330=paymentRemainder331||current?.mode==='text-direct-330';
-const count=signed?350:precision?349:exact?346:historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current?329:295;
+const count=company?352:signed?350:precision?349:exact?346:historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current?329:295;
 const paymentProfile=upwardArchive332?require('../upward-archive-332-profile.cjs'):
   paymentRemainder331?require('../payment-remainder-331-profile.cjs'):
   textDirect330?require('../text-direct-330-profile.cjs'):undefined;
-const {technical,businessCount}=signed?signed350:precision?expense349:exact?expense346:textDirect330?textDirect:current?successor:legacy;
+const {technical,businessCount}=company?company352:signed?signed350:precision?expense349:exact?expense346:textDirect330?textDirect:current?successor:legacy;
 
 const identity=row=>row&&row.schemaVersion===1&&row.purpose==='NTF04_NAMED_RESTORE_EXACT_'+count&&row.candidateSha===(current?.sourceSha??require(process.argv[6]).head)&&
   row.operation==='NAMED_BANK_BACKUP_AND_RECOVERY'&&(!current||row.fixturePredecessorSha===require(process.argv[6]).head)&&
@@ -105,6 +106,7 @@ function qualified(row,mode){
       expenseProof.ledgerSha256!==current.ledgerSha256) return false;
     if(precision&&(row.expenseWitnessPrecisionCatalogAfterBusiness!==true||expenseProof.precisionCatalogMatched!==true)) return false;
     if(signed&&expenseProof.signedCatalogMatched!==true) return false;
+    if(company&&expenseProof.companyCatalogMatched!==true) return false;
   }
   const forwardValid=!current||(terminalForward?.count===count&&terminalForward.sameIdentity===true&&
     terminalForward.sameBaseB7===true&&terminalForward.sourceTree===current.sourceTree&&

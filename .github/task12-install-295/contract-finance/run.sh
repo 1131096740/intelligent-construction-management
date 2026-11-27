@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 signed_finance=false
-if [[ ${2-} == --signed-settlement-350 ]]; then
+if [[ ${2-} == --signed-settlement-350 || ${2-} == --company-history-352 ]]; then
   [[ ${GITHUB_ACTIONS:-} != true && ${3-} == a187dc73a133114e1cfbbc891a4aec923abe2545 ]] || exit 64
   case "$#:${4-}:${5-}" in
     3::|4:--host-only:) ;;
@@ -39,7 +39,7 @@ prepare_predecessor() {
 mode=${2-}
 restore_predecessor=
 if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 ||
-  $mode == --historical-settlement-334 || $mode == --expense-witness-34[69] || $mode == --signed-settlement-350 ]]; then
+  $mode == --historical-settlement-334 || $mode == --expense-witness-34[69] || $mode == --signed-settlement-350 || $mode == --company-history-352 ]]; then
   [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
   plan_status=$(git -C "$root" status --porcelain --untracked-files=all -- "$plan")
   [[ -z $plan_status ]] || exit 65
@@ -50,7 +50,7 @@ if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode ==
     prepare_predecessor "$restore_predecessor"
   fi
   if [[ ${3-} == --host-only || ${4-} == --host-only || ${5-} == --host-only ]]; then
-    if [[ $mode == --signed-settlement-350 ]]; then
+    if [[ $mode == --signed-settlement-350 || $mode == --company-history-352 ]]; then
       export RUNNER_TEMP="$work"
       if [[ $signed_finance == true ]]; then
         bash "$plan/run-bank-restore.sh" "$work/source" "$sha" --host-only bank "$mode" --host-only
@@ -105,7 +105,7 @@ trap 'cleanup "$?"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if [[ $mode == --signed-settlement-350 ]]; then
+if [[ $mode == --signed-settlement-350 || $mode == --company-history-352 ]]; then
   if [[ $signed_finance == true ]]; then
     bash "$plan/build.sh" "$work/source" "$sha" browser "$work/browser"
     bash "$plan/run-bank-restore.sh" "$work/source" "$sha" "$work/browser" bank "$mode"
