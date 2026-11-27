@@ -22,6 +22,8 @@ function preimage() {
   const refund = read("20261123220000_actual_purchase_batch");
   const eventWriter = read("20261020150000_contract_finance_runtime_boundary");
   const transferOperating = read("20261020130000_company_transfer_repayment_ownership");
+  const transferApproval = read("20261118210000_company_proxy_repayment_approval");
+  const canonicalCorrection = read("20261118212000_company_transfer_canonical_debt_correction");
   return [
     `ALTER TABLE public."PaymentExecutionRefund"
         DROP COLUMN "companyTransferDebtCorrectionId",
@@ -41,6 +43,10 @@ function preimage() {
     section(refund, 'ALTER TABLE "PaymentExecutionRefund"\n  DROP CONSTRAINT', 'CREATE FUNCTION public."jg_actual_purchase_batch_guard"'),
     refund.slice(refund.indexOf('CREATE OR REPLACE FUNCTION public."jg_payment_execution_refund_guard"')),
     transferOperating.slice(transferOperating.indexOf('CREATE FUNCTION public.jg_validate_company_transfer_fact_identity()')).replace(/\nCOMMIT;\s*$/u, ""),
+    section(transferApproval, "CREATE OR REPLACE FUNCTION public.jg_company_repayment_ownership_date(",
+      "CREATE FUNCTION public.jg_registered_operational_payment_exclusive_debit()"),
+    section(canonicalCorrection, "CREATE FUNCTION public.jg_company_transfer_canonical_correction_fact()",
+      "REVOKE ALL ON FUNCTION public.jg_company_transfer_canonical_correction_plan(TEXT)"),
     'INSERT INTO public."OperatingLedgerWriteSecret" ("id", "secretHash") VALUES (1, public.crypt(:\'issue435_secret\', public.gen_salt(\'bf\')));',
   ].join("\n");
 }

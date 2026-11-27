@@ -113,7 +113,7 @@ async function main() {
     const tables = docker(["exec", containerId, "psql", "-X", "-A", "-t", "-U", "jiangkong", "-d", database, "-c",
       `SELECT count(*) FROM information_schema.tables WHERE table_schema='public';`], { quiet: true }).stdout;
     await phase("pg-issue411-spec", () => command(pnpm(), ["--filter", "@jiangkong/api", "exec", "jest", "--runInBand",
-      "--runTestsByPath", specFile, ...(settledReturns ? ["--testNamePattern", "issue 435"] : [])],
+      "--runTestsByPath", specFile],
       env, { timeout: 600_000 }));
     const receipt = {
       schemaVersion: 1, purpose: settledReturns ? "ISSUE435_SETTLED_RETURN" : "ISSUE411_THIRD_COMPANY_REPAYMENT", status: "PASSED",
@@ -126,7 +126,7 @@ async function main() {
       phases, startedAt: startedAt.toISOString(), finishedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAt.getTime(),
       scopeWarning: settledReturns
-        ? "合成流水和审批使用隔离种子，经公司互转服务、真实资金投影、经营账写入、退款与审计；未走 HTTP 登录且未重放完整迁移链"
+        ? "合成流水和审批使用隔离种子，验证 #411 原用例与 #435 退款、更正、资金投影、经营账和审计；未走 HTTP 登录且未重放完整迁移链"
         : "本用例证明真实 PG 上第三家公司代还的 A-B 清结、A-C 债权、同一债务重复入账拒绝、原债更正净额与台账代还来源；Schema 由 db push 建立并安装从既有迁移抽取的公司互转守卫（迁移链未能整体重放）；直接使用 Prisma 写入合成事实，未走 HTTP 登录"
     };
     process.stdout.write(`${settledReturns ? "ISSUE435" : "ISSUE411"}_RECEIPT ${JSON.stringify(receipt)}\n`);

@@ -2,6 +2,7 @@ import "reflect-metadata";
 import { createHash, randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { AuditService } from "../audit/audit.service";
+import { CompanyTransferCorrectionService } from "../company-transfer/company-transfer-correction.service";
 import { CompanyTransferService } from "../company-transfer/company-transfer.service";
 import { ProjectFundingAvailabilityService } from "../project-funding/project-funding-availability.service";
 import { OperatingLedgerService } from "../operating-ledger/operating-ledger.service";
@@ -387,4 +388,99 @@ run("issue 411 third-company repayment on real PostgreSQL", () => {
     expect(balances.find(row => row.companyId === a.companyId)?.onBehalfPayableCents).toBe("1600");
     expect(balances.find(row => row.companyId === c.companyId)?.onBehalfReceivableCents).toBe("1600");
   });
+
+  settledReturnCase("issue 435 keeps the debt correction net and freezes the target for a later refund", async () => {
+    const projectId = a.projectId;
+    const debtDate = new Date("2026-08-05");
+    const debtor = { kind: "participating_company", id: a.companyId };
+    const creditor = { kind: "participating_company", id: b.companyId };
+    const original = await prisma.contractProxyExecution.create({ data: {
+      projectId, sourceRef: `settlement:${randomUUID()}`, entryKind: "payment", amountCents: 800n,
+      occurredAt: debtDate, actualPayerKey: `participating_company:${b.companyId}`, bankReference: randomUUID(),
+      evidenceFileId: evidence.id, evidenceSha256: evidence.contentSha256, reason: "隔离合成原代付",
+      status: "confirmed", recordedByUserId: financeStaff, confirmedByUserId: financeDirector, confirmedAt: debtDate,
+      frozenSource: { debtor, actualPayer: creditor }, idempotencyKey: randomUUID(), requestFingerprint: randomUUID(),
+    } });
+    const target = await prisma.interEntityRelationshipEntry.create({ data: {
+      projectId, entryKind: "proxy_payment", direction: "increase", status: "confirmed", amountCents: 1000n,
+      originalDebtorCompanyId: a.companyId, creditorCompanyId: b.companyId, approvedPayerCompanyId: b.companyId,
+      debtorSnapshot: debtor, creditorSnapshot: creditor, approvedPayerSnapshot: creditor,
+      idempotencyKey: randomUUID(), payloadFingerprint: randomUUID(), createdByUserId: financeStaff,
+      confirmedAt: debtDate, confirmedByUserId: financeDirector,
+    } });
+    const originalRef = { originalProxyId: original.id };
+    const targetRef = { originalInterEntityRelationshipId: target.id };
+    const bAccount = "6222000022222222", cAccount = "6222000033333333";
+    const verificationB = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: b.companyId } });
+    const verificationC = await prisma.paymentExecutionPayerVerification.findFirstOrThrow({ where: { holderCompanyEntityId: c.companyId } });
+    const transfer = await createTransfer({ kind: "repayment", source: c, destination: b, amountCents: 800n, parallel: true,
+      repaymentDebtorCompanyId: a.companyId, original: originalRef, sourceAccount: cAccount, destinationAccount: bAccount });
+    const outgoing = await event(transfer, "outgoing", c, cAccount, 800n, new Date("2026-08-18"), financeStaff, verificationC.id);
+    const incoming = await event(transfer, "incoming", b, bAccount, 800n, new Date("2026-08-19"), financeDirector, verificationB.id, outgoing);
+
+    const db = prisma as never;
+    const ledger = new OperatingLedgerService(db);
+    const visibility = new ProjectVisibilityService(db);
+    const reader = new CompanyTransferReadService(db, visibility);
+    const audit = new AuditService(db);
+    const funding = new ProjectFundingAvailabilityService();
+    const auth = { confirmPassword: async () => {} } as never;
+    const replay = new OperatingSourceReplayService(db, ledger, new OperatingSourceAdapterRegistry([new CompanyTransferOperatingSourceAdapter()]));
+    const service = new CompanyTransferService(db, visibility, auth, audit, funding, replay);
+    const corrections = new CompanyTransferCorrectionService(db, auth, audit, funding, reader, ledger);
+    await prisma.$transaction(tx => replay.appendConfirmedSourceIfEnabledInTransaction(tx, {
+      sourceType: "company_transfer_event", sourceBusinessId: incoming, projectId,
+    }, financeDirector));
+
+    const refund = async (amountCents: bigint, occurredAt: Date) => {
+      const observationId = await prisma.$transaction(tx => observation(tx, {
+        holder: c, name: "丙合成公司", projectId, account: cAccount, actor: financeDirector,
+        direction: "inflow", amountCents, occurredAt, payerVerificationId: verificationC.id,
+      }));
+      return service.execute(financeDirector, transfer, {
+        kind: "settled_return", observationId, incomingEventId: incoming, reason: "隔离合成实际银行退回",
+        confirmationPassword: "synthetic-test", idempotencyKey: randomUUID(),
+      });
+    };
+    const before = await refund(300n, new Date("2026-08-20"));
+    expect(await transferRepaymentUsage(prisma, originalRef)).toEqual({ received: 500n, reserved: 500n });
+
+    const correction = await corrections.request(financeStaff, transfer, outgoing, {
+      targetOriginalSource: `inter_entity:${target.id}`, reason: "隔离合成更正原代付记录", idempotencyKey: randomUUID(),
+    });
+    await expect(corrections.confirm(financeDirector, transfer, outgoing, correction.id, {
+      confirmationPassword: "synthetic-test", idempotencyKey: randomUUID(),
+    })).resolves.toMatchObject({ id: correction.id, status: "confirmed" });
+
+    const correctionFact = await prisma.operatingFact.findFirstOrThrow({
+      where: { sourceType: "company_transfer_debt_correction", sourceBusinessId: `${correction.id}:${incoming}` },
+      include: { impacts: true },
+    });
+    expect(correctionFact).toMatchObject({ amountCents: 500n, debtorSubjectId: a.companyId,
+      actualPayerSubjectId: b.companyId, impacts: [expect.objectContaining({ direction: "increase", amountCents: 500n })] });
+    expect(await transferRepaymentUsage(prisma, originalRef)).toEqual({ received: 0n, reserved: 0n });
+    expect(await transferRepaymentUsage(prisma, targetRef)).toEqual({ received: 500n, reserved: 500n });
+
+    const after = await refund(200n, new Date("2026-08-21"));
+    for (const [returnEvent, expectedCorrection] of [[before.id, null], [after.id, correction.id]] as const) {
+      const fact = await prisma.paymentExecutionRefund.findUniqueOrThrow({ where: { companyTransferReturnEventId: returnEvent } });
+      expect(fact.companyTransferDebtCorrectionId).toBe(expectedCorrection);
+    }
+    const refundDestinationImpacts = await prisma.operatingImpactEntry.findMany({
+      where: { sourceType: "company_transfer_event", sourceBusinessId: { in: [`${before.id}:refund_destination`, `${after.id}:refund_destination`] } },
+    });
+    expect(refundDestinationImpacts.filter(impact => impact.sourceImpactKey === "relationship"))
+      .toEqual([expect.objectContaining({ sourceBusinessId: `${before.id}:refund_destination`, direction: "increase", amountCents: 300n })]);
+    expect(refundDestinationImpacts.filter(impact => impact.sourceImpactKey === "on_behalf_relationship"))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ direction: "decrease", amountCents: 300n }),
+        expect.objectContaining({ direction: "decrease", amountCents: 200n })]));
+    const plan = await prisma.$queryRaw<Array<{ amountCents: bigint }>>`
+      SELECT "amountCents" FROM public.jg_company_transfer_canonical_correction_plan(${correction.id})
+    `;
+    expect(plan).toEqual([{ amountCents: 500n }]);
+    expect(await transferRepaymentUsage(prisma, originalRef)).toEqual({ received: 0n, reserved: 0n });
+    expect(await transferRepaymentUsage(prisma, targetRef, new Date("2026-08-19T23:00:00.000Z"))).toEqual({ received: 800n, reserved: 300n });
+    expect(await transferRepaymentUsage(prisma, targetRef)).toEqual({ received: 300n, reserved: 300n });
+  });
+
 });
