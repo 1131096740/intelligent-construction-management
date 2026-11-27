@@ -37,7 +37,7 @@ import {
   appendRegisteredOperationalPayment,
   readRegisteredOperationalPayment
 } from "../fund-account/registered-operational-payment";
-import { moneyCentsToApi, parseMoneyCentsInput } from "../money/decimal-money";
+import { formatMoneyCentsAsPlainYuan, moneyCentsToApi, parseMoneyCentsInput } from "../money/decimal-money";
 import {
   missingOperatingSourceReplayService,
   type OperatingSourceAppendPort,
@@ -312,11 +312,11 @@ export class ExpenseClaimService {
       rows: rows.map((row) => ({
         ...row,
         projectName: row.projectName,
-        requestedAmountYuan: centsTextToYuanNumber(row.requestedAmountCents),
-        settledAmountYuan:
-          (centsTextToYuanNumber(row.loanOffsetAmountCents) ?? 0) +
-          (centsTextToYuanNumber(row.fundedAmountCents) ?? 0),
-        outstandingAmountYuan: centsTextToYuanNumber(row.companyPayableAmountCents),
+        requestedAmountYuan: formatMoneyCentsAsPlainYuan(BigInt(row.requestedAmountCents)),
+        settledAmountYuan: formatMoneyCentsAsPlainYuan(
+          BigInt(row.loanOffsetAmountCents) + BigInt(row.fundedAmountCents)
+        ),
+        outstandingAmountYuan: formatMoneyCentsAsPlainYuan(BigInt(row.companyPayableAmountCents)),
         updatedAtIso: row.updatedAt
       })),
       columnKeys: normalized.columnKeys,
@@ -2631,13 +2631,6 @@ function expenseLedgerView(value: unknown): ExpenseLedgerView {
 function positiveInteger(value: unknown, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(1, Math.trunc(parsed)) : fallback;
-}
-
-/** 分币文本转元数值；0 是真实已结清/未付，未知保持 null。 */
-function centsTextToYuanNumber(value: string | null | undefined): number | null {
-  if (typeof value !== "string" || value.trim() === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed / 100 : null;
 }
 
 function expenseClaimTypeLabel(value: string): string {

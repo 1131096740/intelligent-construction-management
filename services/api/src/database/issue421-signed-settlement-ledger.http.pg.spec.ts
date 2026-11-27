@@ -70,9 +70,12 @@ run("issue 421a signed settlement ledger and exports on real PostgreSQL and HTTP
     return { status: response.status, body: text ? JSON.parse(text) : null };
   };
 
-  const callWorkbook = async (actor: keyof typeof phones, path: string) => {
+  const callWorkbook = async (actor: keyof typeof phones, path: string, protocol?: string) => {
     const response = await fetch(`${base}${path}`, {
-      headers: { authorization: `Bearer ${tokens.get(actor)}` }
+      headers: {
+        authorization: `Bearer ${tokens.get(actor)}`,
+        ...(protocol ? { "x-contract-numeric-protocol": protocol } : {})
+      }
     });
     if (response.status !== 200) return { status: response.status, sheet: null };
     const buffer = Buffer.from(await response.arrayBuffer());
@@ -380,7 +383,7 @@ run("issue 421a signed settlement ledger and exports on real PostgreSQL and HTTP
     expect(outsider.status).toBe(403);
   });
 
-  it("exports contracts with the current filter, numeric/date cells and unknown amounts kept", async () => {
+  it("exports filtered contracts and preserves original amounts in contract and settlement workbooks", async () => {
     const fixed = await callWorkbook("director", "/contracts/ledger-export?keyword=幕墙");
     expect(fixed.status).toBe(200);
     const fixedHeaders = headersOf(fixed.sheet!);
@@ -423,5 +426,35 @@ run("issue 421a signed settlement ledger and exports on real PostgreSQL and HTTP
     const limitedExport = await callWorkbook("staffA", "/contracts/ledger-export?scope=formal_ledger&keyword=框架");
     expect(limitedExport.status).toBe(200);
     expect(limitedExport.sheet!.rowCount).toBeLessThanOrEqual(2);
+
+    const amountYuan = "1234567890123456.7890";
+    await owner.contractVersion.update({
+      where: { id: ids.versionA },
+      data: {
+        numericProtocolVersion: 2,
+        amountCents: 123_456_789_012_345_679n,
+        amountYuan: new Prisma.Decimal(amountYuan)
+      }
+    });
+    await owner.signedContractSettlement.update({
+      where: { id: ids.signedA },
+      data: { amountYuan: new Prisma.Decimal(amountYuan) }
+    });
+    const cases = [
+      ["director", "/contracts/ledger-export?keyword=幕墙", "合同金额（元）", "2"],
+      ["staffA", "/settlements/signed-ledger-export?keyword=幕墙", "结算金额（元）"]
+    ] as const;
+    for (const [actor, endpoint, header, protocol] of cases) {
+      const exported = await callWorkbook(actor, endpoint, protocol);
+      expect(exported.status).toBe(200);
+      const sheet = exported.sheet!;
+      const column = headersOf(sheet).indexOf(header) + 1;
+      expect(sheet.rowCount).toBe(3);
+      for (const row of [2, 3]) {
+        const cell = sheet.getRow(row).getCell(column);
+        expect(cell.value).toBe(amountYuan);
+        expect(cell.numFmt).toBe("@");
+      }
+    }
   });
 });

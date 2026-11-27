@@ -24,7 +24,7 @@ import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { BusinessNumberingService } from "../business-number/business-numbering.service";
 import { PrismaService } from "../database/prisma.service";
 import { lockMasterDataRow } from "../master-data/master-data-lifecycle";
-import { parseMoneyCentsInput } from "../money/decimal-money";
+import { formatMoneyCentsAsPlainYuan, parseMoneyCentsInput } from "../money/decimal-money";
 import { canReadGeneralProcurement, generalProcurementActor } from "./general-procurement-access";
 import type { ListGeneralProcurementDto, CreateGeneralProcurementDto, ReviewGeneralProcurementDto, UpdateGeneralProcurementDto, WithdrawGeneralProcurementDto, ArchiveGeneralProcurementDto } from "./general-procurement.dto";
 
@@ -125,10 +125,9 @@ export class GeneralProcurementService {
         ...item,
         projectName: item.projectName,
         estimatedAmountYuan: generalLedgerAmountYuan(item),
-        actualAmountYuan:
-          typeof item.actualAmountCents === "string" && item.actualAmountCents.trim() !== ""
-            ? Number(item.actualAmountCents) / 100
-            : null,
+        actualAmountYuan: item.actualAmountCents === null
+          ? null
+          : formatMoneyCentsAsPlainYuan(BigInt(item.actualAmountCents)),
         updatedAtIso: item.updatedAt,
         createdAtIso: item.createdAt
       })),
@@ -552,21 +551,14 @@ const GENERAL_PROCUREMENT_LEDGER_COLUMNS: LedgerExcelColumn<Record<string, unkno
   { header: "更新时间", key: "updatedAtIso", width: 16, kind: "date", numFmt: LEDGER_DATE_FORMAT }
 ];
 
-/** 预计金额优先取真实数值；未知保持空白，不写 0。 */
+/** 预计金额采用业务协议原值，历史申请按原整数分转换。 */
 function generalLedgerAmountYuan(item: {
-  estimatedAmount?: string | null;
-  requestedAmountCents?: string | null;
-  actualAmountCents?: string | null;
-  requestProtocolVersion?: number;
-}): number | null {
-  if (item.requestProtocolVersion === 2) {
-    const estimated = item.estimatedAmount;
-    if (typeof estimated !== "string" || estimated.trim() === "") return null;
-    const value = Number(estimated);
-    return Number.isFinite(value) ? value : null;
-  }
-  const cents = item.requestedAmountCents;
-  if (typeof cents !== "string" || cents.trim() === "") return null;
-  const value = Number(cents);
-  return Number.isFinite(value) ? value / 100 : null;
+  estimatedAmount: string | null;
+  requestedAmountCents: string | null;
+  requestProtocolVersion: number;
+}): string | null {
+  if (item.requestProtocolVersion === 2) return item.estimatedAmount;
+  return item.requestedAmountCents === null
+    ? null
+    : formatMoneyCentsAsPlainYuan(BigInt(item.requestedAmountCents));
 }

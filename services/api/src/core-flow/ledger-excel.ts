@@ -7,12 +7,12 @@ export const XLSX_MIME =
  * 业务台账导出的单元格类型。
  *
  * - `text`：业务文本，写入前做公式注入转义；
- * - `number`：金额/数量，写入数值单元格（可参与合计）；
+ * - `number`：金额/数量，可参与合计；超出 Excel 数值精度时按文本写入；
  * - `date`：日期，写入日期单元格（可排序/筛选）。
  *
  * 未知值（`null`/`undefined`/空串）永远保持空白或原有业务文案，
  * 不在这里被转换成 `0`；无法解析为数字的非空文案按文本写入，
- * 合计只累加真正的数值单元格。
+ * 合计使用已知的原始数值，包括按文本写入的高精度金额。
  */
 export type LedgerCellKind = "text" | "number" | "date";
 
@@ -62,28 +62,53 @@ export function escapeSpreadsheetText(value: string): string {
   return FORMULA_PREFIX.test(value) ? `'${value}` : value;
 }
 
-/** 把金额/数量解析成数值单元格；未知返回 `null`，绝不返回 `0`。 */
+/** 台账排序用的近似数值。工作簿写入与合计使用原始十进制值。 */
 export function ledgerNumericCellValue(value: unknown): number | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (typeof value === "bigint") {
-    const asNumber = Number(value.toString());
-    return Number.isFinite(asNumber) ? asNumber : null;
+  const text = ledgerDecimalText(value);
+  return text === null ? null : Number(text);
+}
+
+function ledgerDecimalText(value: unknown): string | null {
+  if (typeof value === "object" && value !== null && "toFixed" in value && typeof value.toFixed === "function") {
+    value = value.toString();
   }
-  if (typeof value === "object") {
-    const decimalLike = value as { toFixed?: unknown; toString?: unknown };
-    if (typeof decimalLike.toFixed === "function") {
-      const text = String((decimalLike as { toString(): string }).toString());
-      return ledgerNumericCellValue(text);
-    }
-    return null;
+  if (typeof value !== "string" && typeof value !== "number" && typeof value !== "bigint") return null;
+  const text = String(value).trim().replace(/[¥￥,\s]/gu, "");
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/iu.test(text)) return null;
+  return Number.isFinite(Number(text)) ? text : null;
+}
+
+type LedgerDecimal = { units: bigint; scale: number };
+
+function readLedgerDecimal(value: unknown): LedgerDecimal | null {
+  const text = ledgerDecimalText(value);
+  if (text === null) return null;
+  const [mantissa, exponent = "0"] = text.toLowerCase().split("e");
+  const [integer, fraction = ""] = mantissa.split(".");
+  const shift = Number(exponent);
+  // 超出原数值范围的指数不属于台账金额/数量，也不展开成超长文本。
+  if (shift < -324 || shift > 308) return null;
+  const units = BigInt(`${integer}${fraction}`);
+  const scale = fraction.length - shift;
+  return scale >= 0 ? { units, scale } : { units: units * 10n ** BigInt(-scale), scale: 0 };
+}
+
+function writeLedgerDecimal(cell: ExcelJS.Cell, value: LedgerDecimal, numFmt: string) {
+  const { units, scale } = value;
+  const unsignedDigits = (units < 0n ? -units : units).toString();
+  const digits = unsignedDigits.padStart(scale + 1, "0");
+  const magnitude = scale === 0 ? digits : `${digits.slice(0, -scale)}.${digits.slice(-scale)}`;
+  const text = units < 0n ? `-${magnitude}` : magnitude;
+  const significantDigits = unsignedDigits.replace(/0+$/u, "").length;
+  const numeric = Number(text);
+  // 仅写入可以由 Excel 数值单元格精确表示的值。已校验的十进制文本没有公式。
+  if (significantDigits <= 15 && Number.isFinite(numeric) && (numeric !== 0 || units === 0n)) {
+    cell.numFmt = numFmt;
+    cell.value = numeric;
+  } else {
+    cell.numFmt = "@";
+    cell.value = text;
   }
-  if (typeof value !== "string") return null;
-  const normalized = value.trim().replace(/[¥￥,\s]/gu, "");
-  if (normalized.length === 0) return null;
-  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/iu.test(normalized)) return null;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 /** 把 ISO 字符串/Date 解析成日期单元格；无效返回 `null`。 */
@@ -150,7 +175,7 @@ export async function buildLedgerWorkbook<Row extends Record<string, unknown>>(i
   if (input.totals !== false) {
     const sumColumns = input.columns.filter((column) => column.total === "sum");
     if (sumColumns.length > 0) {
-      appendTotalsRow(sheet, input.columns, sumColumns, input.totals ?? {});
+      appendTotalsRow(sheet, input.columns, sumColumns, input.rows, input.totals ?? {});
     }
   }
 
@@ -179,9 +204,9 @@ function applyLedgerCell<Row>(
   if (align) cell.alignment = { vertical: "middle", horizontal: align };
   if (column.kind === "number") {
     cell.numFmt = column.numFmt ?? LEDGER_MONEY_FORMAT;
-    const numeric = ledgerNumericCellValue(raw);
+    const numeric = readLedgerDecimal(raw);
     if (numeric !== null) {
-      cell.value = numeric;
+      writeLedgerDecimal(cell, numeric, cell.numFmt);
       return;
     }
     // 未知值保持原始业务文案（如「待确定」「不设合同总价」），绝不写 0。
@@ -201,23 +226,9 @@ function appendTotalsRow<Row>(
   sheet: ExcelJS.Worksheet,
   columns: readonly LedgerExcelColumn<Row>[],
   sumColumns: readonly LedgerExcelColumn<Row>[],
+  rows: readonly Row[],
   options: LedgerExcelTotalsOptions
 ) {
-  const sums = new Map<string, { total: number; known: number }>();
-  for (const column of sumColumns) {
-    let total = 0;
-    let known = 0;
-    sheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return;
-      const numeric = ledgerNumericCellValue(row.getCell(columnIndex(columns, column)).value);
-      if (numeric !== null) {
-        total += numeric;
-        known += 1;
-      }
-    });
-    sums.set(String(column.key), { total, known });
-  }
-
   const totalsRow = sheet.addRow(columns.map(() => null));
   totalsRow.height = 24;
   totalsRow.font = { bold: true };
@@ -231,12 +242,24 @@ function appendTotalsRow<Row>(
   totalsRow.getCell(1).font = { bold: true };
   for (const column of sumColumns) {
     const index = columnIndex(columns, column);
-    const sum = sums.get(String(column.key));
+    let sum: LedgerDecimal | null = null;
+    for (const row of rows) {
+      const value = readLedgerDecimal(row[column.key as keyof Row]);
+      if (value === null) continue;
+      if (sum === null) {
+        sum = value;
+        continue;
+      }
+      const scale = Math.max(sum.scale, value.scale);
+      sum = {
+        units: sum.units * 10n ** BigInt(scale - sum.scale) + value.units * 10n ** BigInt(scale - value.scale),
+        scale
+      };
+    }
     // 没有任何已知数值时保持空白，不把「未知」写成 0。
-    if (!sum || sum.known === 0) continue;
+    if (sum === null) continue;
     const cell = totalsRow.getCell(index);
-    cell.value = sum.total;
-    cell.numFmt = column.numFmt ?? LEDGER_MONEY_FORMAT;
+    writeLedgerDecimal(cell, sum, column.numFmt ?? LEDGER_MONEY_FORMAT);
     cell.alignment = { vertical: "middle", horizontal: "right" };
     cell.font = { bold: true };
   }

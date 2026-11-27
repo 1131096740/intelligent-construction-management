@@ -552,7 +552,7 @@ run("issue 421b four ledger filters and exports on real PostgreSQL and HTTP", ()
     ).toEqual(["ZHCG-421B-A", "ZHCG-421B-B"]);
   });
 
-  it("filters and exports expense claims for finance cross-project and employees own-only", async () => {
+  it("filters expense claims by access and exports high precision facts in all four ledgers", async () => {
     const managerList = await callJson("manager", "/expense-claims/ledger?keyword=差旅");
     expect(managerList.status).toBe(200);
     expect(managerList.body.rows.map((row: { code: string }) => row.code)).toEqual([
@@ -583,5 +583,56 @@ run("issue 421b four ledger filters and exports on real PostgreSQL and HTTP", ()
     expect(staffExport.status).toBe(200);
     // 项目 B 的借款不在员工本人范围内。
     expect(dataRowTexts(staffExport.sheet!, index("报销编号"), "BX-")).toEqual(["BX-421B-A"]);
+
+    await owner.paymentRequest.update({
+      where: { id: ids.paymentA },
+      data: { requestedAmountCents: 9_007_199_254_740_993n }
+    });
+    await owner.spotProcurementVersion.update({
+      where: { id: ids.spotVersionA },
+      data: { estimatedTotalAmount: new Prisma.Decimal("1234567890123456.7891") }
+    });
+    await owner.generalProcurement.update({
+      where: { id: ids.generalA },
+      data: { estimatedAmount: new Prisma.Decimal("1234567890123456.7890") }
+    });
+    await owner.expenseClaim.update({
+      where: { id: ids.claimA },
+      data: {
+        requestedAmountCents: 9_007_199_254_740_999n,
+        fundedAmountCents: 9_007_199_254_740_901n,
+        loanOffsetAmountCents: 92n,
+        companyPayableAmountCents: 9_007_199_254_740_907n
+      }
+    });
+    const cases = [
+      ["finance", "/payments/ledger-export?view=formal_ledger&keyword=幕墙",
+        { "申请金额（元）": "90071992547409.93" }],
+      ["staffA", "/spot-procurements/ledger-export?keyword=LK-421B-A",
+        { "预计金额（元）": "1234567890123456.7891" }],
+      ["staffA", "/general-procurements/ledger-export?keyword=办公",
+        { "预计金额（元）": "1234567890123456.7890" }],
+      ["manager", "/expense-claims/ledger-export?keyword=差旅",
+        {
+          "申请金额（元）": "90071992547409.99",
+          "已付款/冲销（元）": "90071992547409.93",
+          "待付金额（元）": "90071992547409.07"
+        }]
+    ] as const;
+    for (const [actor, endpoint, amounts] of cases) {
+      const exported = await callWorkbook(actor, endpoint);
+      expect(exported.status).toBe(200);
+      const sheet = exported.sheet!;
+      const headers = headersOf(sheet);
+      expect(sheet.rowCount).toBe(3);
+      for (const [header, expected] of Object.entries(amounts)) {
+        const column = headers.indexOf(header) + 1;
+        for (const row of [2, 3]) {
+          const cell = sheet.getRow(row).getCell(column);
+          expect(cell.value).toBe(expected);
+          expect(cell.numFmt).toBe("@");
+        }
+      }
+    }
   });
 });

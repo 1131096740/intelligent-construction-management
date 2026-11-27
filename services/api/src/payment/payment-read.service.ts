@@ -58,6 +58,7 @@ import { approvalTimelineForBusiness } from "../core-flow/approval-timeline-read
 import { PrismaService } from "../database/prisma.service";
 import {
   dbMoneyToBigInt,
+  formatMoneyCentsAsPlainYuan,
   formatMoneyCentsAsYuan,
   moneyCentsToApi,
   sumDbMoneyToBigInt
@@ -973,8 +974,8 @@ export class PaymentReadService {
     const view = this.paymentLedgerView(rawQuery?.view as PaymentLedgerView | undefined);
     const rows = this.rowsByPaymentView(allRows)[view].map((row) => ({
       ...row,
-      requestedAmountYuan: centsToYuanNumber(row.requestedAmountCents),
-      paidAmountYuan: centsToYuanNumber(row.paidAmountCents),
+      requestedAmountYuan: formatMoneyCentsAsPlainYuan(BigInt(row.requestedAmountCents)),
+      paidAmountYuan: formatMoneyCentsAsPlainYuan(BigInt(row.paidAmountCents)),
       updatedAtIso: row.lifecycleUpdatedAt
     }));
     return exportBusinessLedger({
@@ -3173,8 +3174,3 @@ const PAYMENT_LEDGER_COLUMNS: LedgerExcelColumn<Record<string, unknown>>[] = [
   { header: "下一步动作", key: "nextAction", width: 20 },
   { header: "更新时间", key: "updatedAtIso", width: 16, kind: "date", numFmt: LEDGER_DATE_FORMAT }
 ];
-
-/** 分币转元；0 是真实的「未付款」，不是未知值。 */
-function centsToYuanNumber(value: string): number {
-  return Number(value) / 100;
-}

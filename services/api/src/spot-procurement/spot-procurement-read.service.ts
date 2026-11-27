@@ -1,3 +1,4 @@
+import { formatMoneyCentsAsPlainYuan } from "../money/decimal-money";
 import { currentSpotMaterialRoleKeys } from "./spot-procurement-material-role-scope";
 import {
   hasInvalidLegacySerialCutoverMarker,
@@ -4786,14 +4787,11 @@ const SPOT_PROCUREMENT_LEDGER_COLUMNS: LedgerExcelColumn<Record<string, unknown>
 ];
 
 /** 预计金额优先；历史单退回已批准/当前总额的分币字段。未知保持空白。 */
-function spotLedgerAmountYuan(item: Record<string, unknown>): number | null {
+function spotLedgerAmountYuan(item: Record<string, unknown>): string | null {
   const estimated = item.estimatedTotalAmount;
-  if (typeof estimated === "string" && estimated.trim() !== "") {
-    const value = Number(estimated);
-    return Number.isFinite(value) ? value : null;
-  }
+  if (typeof estimated === "string" && estimated.trim() !== "") return estimated;
   const cents = item.approvedAmountCents ?? item.currentTotalAmountCents;
-  if (typeof cents !== "string" || cents.trim() === "") return null;
-  const value = Number(cents);
-  return Number.isFinite(value) ? value / 100 : null;
+  return typeof cents === "string" && /^-?\d+$/u.test(cents)
+    ? formatMoneyCentsAsPlainYuan(BigInt(cents))
+    : null;
 }

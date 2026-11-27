@@ -36,6 +36,29 @@ describe("ledger-excel", () => {
     expect(updatedAt.numFmt).toBe(LEDGER_DATE_FORMAT);
   });
 
+  it("round-trips high precision amounts and totals through Excel", async () => {
+    const buffer = await buildLedgerWorkbook({
+      sheetName: "合同台账",
+      columns: [
+        { header: "合同名称", key: "name" },
+        { header: "合同金额（元）", key: "amountYuan", kind: "number", total: "sum" }
+      ],
+      rows: [
+        { name: "大额合同", amountYuan: "1234567890123456.7890" },
+        { name: "退款", amountYuan: "-0.0001" },
+        { name: "暂定合同", amountYuan: "待确定" }
+      ]
+    });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+    const sheet = workbook.getWorksheet("合同台账")!;
+    expect(sheet.getCell("B2").value).toBe("1234567890123456.7890");
+    expect(sheet.getCell("B2").numFmt).toBe("@");
+    expect(sheet.getCell("B3").value).toBe(-0.0001);
+    expect(sheet.getCell("B4").value).toBe("待确定");
+    expect(sheet.getCell("B5").value).toBe("1234567890123456.7889");
+  });
+
   it("keeps unknown amounts blank or as business text and never writes 0", async () => {
     const buffer = await buildLedgerWorkbook({
       sheetName: "合同台账",
