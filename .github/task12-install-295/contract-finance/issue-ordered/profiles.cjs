@@ -518,6 +518,11 @@ const issueOrderedScopes352 = Object.freeze(issueOrderedScopes350.map(scope => s
 for (const scope of issueOrderedScopes352) {
   profiles[scope] = { ...profiles[scope.replace(/_352$/u, '_350')], ...companyHistoryBaseline };
 }
+profiles.issue416_his_352 = {
+  ...profiles.issue416_his_352,
+  fixturePatch: 'issue416-his-352.fixture.patch',
+  fixtureDigest: '6024ad2000b10821d56327bcb8c999f2736901ff93b0a2d7c77df63f8dffc466'
+};
 
 profiles.issue411_352 = { ...profiles.issue411_352,
   sourceDigest: 'a8fc660fd21530909405238b2711872509a567041e2a0d86705717d05a485d86',
