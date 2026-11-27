@@ -17,7 +17,7 @@
     "totalVueFileCount": 257,
     "parsedVueFileCount": 257,
     "reachableProductionModuleCount": 408,
-    "templateEventDirectiveCount": 1549,
+    "templateEventDirectiveCount": 1550,
     "propCallbackDirectiveCount": 8,
     "coveredProductionMutationConsumerCount": 426,
     "candidateProductionMutationConsumerCount": 426,
@@ -2155,7 +2155,7 @@
         "event": "call",
         "handler": "createCompanyTransferWithCapability",
         "kind": "background_call",
-        "sourceLine": 243,
+        "sourceLine": 246,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2219,7 +2219,7 @@
         "event": "call",
         "handler": "decideCompanyTransferWithCapability",
         "kind": "background_call",
-        "sourceLine": 249,
+        "sourceLine": 252,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2283,7 +2283,7 @@
         "event": "call",
         "handler": "downloadPrivateFileByTicketWithCapability",
         "kind": "background_call",
-        "sourceLine": 267,
+        "sourceLine": 270,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2403,7 +2403,7 @@
         "event": "call",
         "handler": "executeCompanyTransferWithCapability",
         "kind": "background_call",
-        "sourceLine": 255,
+        "sourceLine": 258,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -2531,7 +2531,7 @@
         "event": "call",
         "handler": "uploadPrivateFileWithCapability",
         "kind": "background_call",
-        "sourceLine": 261,
+        "sourceLine": 264,
         "sourceColumn": 0
       },
       "semantic": "business_write",
