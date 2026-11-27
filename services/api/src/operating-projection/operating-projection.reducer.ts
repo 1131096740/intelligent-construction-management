@@ -1,5 +1,6 @@
 import { EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE } from "../expense-claim/expense-claim-operating-source.adapter";
 import { CONTRACT_WORK_COMPLETION_SOURCE } from "../contract/contract-work-completion-operating-source.adapter";
+import { SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE as SIGNED_SETTLEMENT_SOURCE } from "../settlement/signed-settlement-operating-source.adapter";
 import {
   settlementDedupKey,
   settlementEconomicIdentity
@@ -181,12 +182,13 @@ interface DecimalOwnerSettlementTotals {
 }
 
 export interface ProjectionDecimalSeed {
-  sourceGroups: Partial<Record<"contract_version" | "contract_economic_review" | typeof CONTRACT_WORK_COMPLETION_SOURCE | typeof EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE, ProjectionYuanSummary & { count: number; impactCount?: number }>>;
+  sourceGroups: Partial<Record<"contract_version" | "contract_economic_review" | typeof CONTRACT_WORK_COMPLETION_SOURCE | typeof EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE | typeof SIGNED_SETTLEMENT_SOURCE, ProjectionYuanSummary & { count: number; impactCount?: number }>>;
   count: number; retroactiveFactCount: number; commitment: ProjectionYuanSummary;
   ownerSettlement?: DecimalOwnerSettlementTotals;
+  signedSettlement?: SignedSettlementTotals;
   confirmedCostYuan?: string;
   reimbursementPayableCents?: bigint;
-  reimbursementAttribution?: ExactReimbursementAttribution;
+  reimbursementAttribution?: ExactCostAttribution;
   relationships: Partial<Record<ContractRelationship, ProjectionYuanSummary>>;
   evidence: Record<EvidenceLevel, { count: number; knownSubtotalYuan: string; unknownCount: number }>;
 }
@@ -716,7 +718,7 @@ export function toOperatingProjectionPublicDetail(
 ) {
   if (fact.numericProtocolVersion === 2 || impact.numericProtocolVersion === 2) {
     if (fact.numericProtocolVersion !== 2 || impact.numericProtocolVersion !== 2) throw new Error("经营明细事实与影响使用了不同金额协议");
-    const amountYuan = normalizeBusinessAmount(fact.sourceType === EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE
+    const amountYuan = normalizeBusinessAmount([EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE, SIGNED_SETTLEMENT_SOURCE].includes(fact.sourceType)
       ? impact.projectedCostYuan ?? impact.amountYuan : fact.amountYuan);
     if (fact.sourceType === "contract_economic_review" && (amountYuan === null || amountYuan === "0.0000")) throw new Error("履约复核调整必须保留已确认非零金额");
     if (fact.sourceType === OWNER_SETTLEMENT_SOURCE) {
@@ -725,6 +727,8 @@ export function toOperatingProjectionPublicDetail(
       contractWorkCompletionCost(fact, impact);
     } else if (fact.sourceType === EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE) {
       exactReimbursementImpact(fact, impact);
+    } else if (fact.sourceType === SIGNED_SETTLEMENT_SOURCE) {
+      validateSignedSettlementImpact(fact, impact, signedSettlementSource(fact));
     } else if (!["contract_version", "contract_economic_review"].includes(fact.sourceType) || fact.factKind !== "downstream_contract" || fact.amountCents !== null || impact.amountCents !== null || impact.amountYuan !== amountYuan || impact.impactKind !== "contract_commitment_reference" || (amountYuan === null ? impact.direction !== "notice" : !["increase", "decrease"].includes(impact.direction))) {
       throw new Error("新版合同参考明细金额与状态不一致");
     }
@@ -1481,7 +1485,7 @@ type StreamingFactState = {
 
 type SettlementProjectionCandidate = Pick<
   ProjectionFactInput, "id" | "projectId" | "sourceType" | "sourceSnapshot"
-> & { amountCents: bigint | null };
+> & { amountCents: bigint | null; amountYuan?: string | null };
 
 interface SettlementProjectionDeduplication {
   suppressedFactIds: ReadonlySet<string>;
@@ -1493,9 +1497,9 @@ interface SettlementProjectionDeduplication {
 /** Keeps only the coordinates needed to decide a whole contract/period bucket. */
 export class SettlementProjectionCandidates {
   private readonly buckets = new Map<string, {
-    first: { sourceType: string; signedAmountCents: bigint | null };
+    first: { sourceType: string; signedAmountUnits: bigint | null };
     ids: string[];
-    otherSource?: { signedAmountCents: bigint | null; period: string };
+    otherSource?: { signedAmountUnits: bigint | null; period: string };
   }>();
 
   add(fact: SettlementProjectionCandidate): void {
@@ -1504,19 +1508,25 @@ export class SettlementProjectionCandidates {
     const snapshot = jsonRecord(fact.sourceSnapshot);
     const decreasing = snapshot.effectDirection === "decrease" ||
       (typeof snapshot.amountCents === "string" && /^-\d+$/.test(snapshot.amountCents));
-    const signedAmountCents = decreasing && fact.amountCents !== null ? -fact.amountCents : fact.amountCents;
+    const amountYuan = fact.amountYuan;
+    const signedAmountUnits = fact.amountCents !== null
+      ? (decreasing ? -fact.amountCents : fact.amountCents) * 100n
+      : typeof amountYuan === "string" && /^\d+\.\d{4}$/u.test(amountYuan) &&
+          (snapshot.signedAmountYuan === amountYuan || snapshot.signedAmountYuan === `-${amountYuan}`)
+        ? BigInt(snapshot.signedAmountYuan.replace(".", ""))
+        : null;
     const key = `${fact.projectId}\u0000${settlementDedupKey(identity)}`;
     const bucket = this.buckets.get(key);
     if (!bucket) {
       this.buckets.set(key, {
-        first: { sourceType: fact.sourceType, signedAmountCents },
+        first: { sourceType: fact.sourceType, signedAmountUnits },
         ids: [fact.id]
       });
       return;
     }
     bucket.ids.push(fact.id);
     if (bucket.first.sourceType !== fact.sourceType && !bucket.otherSource) {
-      bucket.otherSource = { signedAmountCents, period: identity.period };
+      bucket.otherSource = { signedAmountUnits, period: identity.period };
     }
   }
 
@@ -1529,7 +1539,7 @@ export class SettlementProjectionCandidates {
       if (ids.length > 2) {
         for (const id of ids) uncertainFactIds.add(id);
         notices.add("同一合同期次存在多来源且有多笔结算，无法确定对应关系。请核对原结算单后确认金额汇总。");
-      } else if (first.signedAmountCents === null || first.signedAmountCents !== otherSource.signedAmountCents) {
+      } else if (first.signedAmountUnits === null || first.signedAmountUnits !== otherSource.signedAmountUnits) {
         for (const id of ids) uncertainFactIds.add(id);
         notices.add("同一合同期次的多来源结算金额不一致或缺失，请核对原结算单后确认金额汇总。");
       } else {
@@ -1551,7 +1561,7 @@ class SettlementProjectionUncertainty {
   unattributedCost = false;
   publicCashCost = false;
 
-  addImpact(fact: ProjectionFactInput, kind: OperatingImpactKind): void {
+  addImpact(fact: ProjectionFactInput | ProjectionV2FactInput, kind: OperatingImpactKind): void {
     this.impactKinds.add(kind);
     const relationship = operatingContractRelationship(fact.sourceType, fact.sourceSnapshot);
     this.relationshipImpacts.add(`${relationship}:${kind}`);
@@ -1579,10 +1589,29 @@ export class OperatingProjectionStreamAccumulator {
     impactCount: number;
     selected: boolean;
     reimbursement?: { source: ExactReimbursementSource; seen: Set<string> };
+    signedSettlement?: { source: SignedSettlementSource; seen: Set<string> };
   }>();
   private readonly decimalSeed: ProjectionDecimalSeed = { sourceGroups: {}, count: 0, retroactiveFactCount: 0, commitment: { amountYuan: "0.0000", knownSubtotalYuan: "0.0000", unknownCount: 0 }, relationships: {}, evidence: { A: { count: 0, knownSubtotalYuan: "0.0000", unknownCount: 0 }, B: { count: 0, knownSubtotalYuan: "0.0000", unknownCount: 0 }, C: { count: 0, knownSubtotalYuan: "0.0000", unknownCount: 0 } } };
 
   private addDecimalImpact(fact: ProjectionV2FactInput, impact: ProjectionV2ImpactInput) {
+    if (fact.sourceType === SIGNED_SETTLEMENT_SOURCE) {
+      const state = this.decimalFacts.get(fact.id)!;
+      const { source, seen } = state.signedSettlement!;
+      const value = validateSignedSettlementImpact(fact, impact, source, seen);
+      state.impactCount += 1;
+      if (this.context.settlementDeduplication?.suppressedFactIds.has(fact.id) ||
+        !matchesFilters(fact, impact, this.context.scope.filters, this.context.constructionEnterpriseSubjectIds, this.context.companyEntityVersionIds)) return;
+      foldSignedSettlementImpact(this.decimalSeed.signedSettlement ??= newSignedSettlementTotals(), fact, impact, source, value,
+        this.context.settlementDeduplication?.uncertainFactIds.has(fact.id) ? this.settlementUncertainty : undefined);
+      const group = this.decimalSeed.sourceGroups[SIGNED_SETTLEMENT_SOURCE] ?? { count: 0, impactCount: 0, amountYuan: "0.0000", knownSubtotalYuan: "0.0000", unknownCount: 0 };
+      if (!state.selected) group.count += 1;
+      state.selected = true;
+      group.impactCount = (group.impactCount ?? 0) + 1;
+      group.knownSubtotalYuan = sumBusinessAmounts([group.knownSubtotalYuan, value.signedAmountYuan])!;
+      group.amountYuan = group.knownSubtotalYuan;
+      this.decimalSeed.sourceGroups[SIGNED_SETTLEMENT_SOURCE] = group;
+      return;
+    }
     if (fact.sourceType === OWNER_SETTLEMENT_SOURCE) {
       const signed = signedOwnerSettlementImpact(fact, impact);
       const state = this.decimalFacts.get(fact.id)!;
@@ -1608,7 +1637,7 @@ export class OperatingProjectionStreamAccumulator {
       this.decimalSeed.sourceGroups[EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE] = group;
       if ("costYuan" in value) {
         this.decimalSeed.confirmedCostYuan = sumBusinessAmounts([this.decimalSeed.confirmedCostYuan ?? "0.0000", value.costYuan])!;
-        foldExactReimbursementAttribution(this.decimalSeed.reimbursementAttribution ??= newExactReimbursementAttribution(), fact, impact, value.costYuan);
+        foldExactCostAttribution(this.decimalSeed.reimbursementAttribution ??= newExactCostAttribution(), fact, impact, value.costYuan);
       } else {
         this.decimalSeed.reimbursementPayableCents = (this.decimalSeed.reimbursementPayableCents ?? 0n) + value.payableCents;
       }
@@ -1717,7 +1746,9 @@ export class OperatingProjectionStreamAccumulator {
         this.decimalFacts.set(fact.id, {
           fact: { ...fact, impacts: [] }, impactCount: 0, selected: false,
           ...(fact.sourceType === EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE
-            ? { reimbursement: { source: exactReimbursementSource(fact), seen: new Set<string>() } } : {})
+            ? { reimbursement: { source: exactReimbursementSource(fact), seen: new Set<string>() } } : {}),
+          ...(fact.sourceType === SIGNED_SETTLEMENT_SOURCE
+            ? { signedSettlement: { source: signedSettlementSource(fact), seen: new Set<string>() } } : {})
         });
         continue;
       }
@@ -1885,8 +1916,8 @@ export class OperatingProjectionStreamAccumulator {
   }
 
   finishFacts(): void {
-    for (const { fact, impactCount, selected, reimbursement } of this.decimalFacts.values()) {
-      const expectedImpactCount = reimbursement?.source.impactCount ??
+    for (const { fact, impactCount, selected, reimbursement, signedSettlement } of this.decimalFacts.values()) {
+      const expectedImpactCount = reimbursement?.source.impactCount ?? signedSettlement?.source.impactCount ??
         (fact.sourceType === OWNER_SETTLEMENT_SOURCE ? 2 : 1);
       if (impactCount !== expectedImpactCount) throw new Error("四位经营事实缺少对应影响分录");
       if (!selected) continue;
@@ -2162,7 +2193,7 @@ export type OperatingProjectionV2ReadModel = Omit<OperatingProjectionReadModel,
   schema: "operating_projection/V2"; numericProtocolVersion: 2;
   commitments: { contractCommitmentCents: string | null; contractCommitmentYuan: string | null; knownContractCommitmentYuan: string; unknownContractCommitmentCount: number };
   evidence: Record<EvidenceLevel, ProjectionYuanSummary & { factCount: number; amountCents: string | null }> & { gapFactCount: number; gapAmountCents: string };
-  relationshipTotals: Array<Omit<NonNullable<OperatingProjectionReadModel["relationshipTotals"]>[number], "contractCommitmentCents"> & { contractCommitmentCents: string | null; contractCommitmentYuan: string | null; knownContractCommitmentYuan: string; unknownContractCommitmentCount: number; confirmedCostYuan: ApiMoney }>;
+  relationshipTotals: Array<Omit<NonNullable<OperatingProjectionReadModel["relationshipTotals"]>[number], "contractCommitmentCents"> & { contractCommitmentCents: string | null; contractCommitmentYuan: string | null; knownContractCommitmentYuan: string; unknownContractCommitmentCount: number; confirmedCostYuan: ApiMoney; receivableYuan?: ApiMoney }>;
   operating: Omit<OperatingProjectionReadModel["operating"], "confirmedIncomeCents" | "receivableCents" | "confirmedCostCents"> & {
     confirmedIncomeCents: string | null;
     receivableCents: string | null;
@@ -2170,6 +2201,7 @@ export type OperatingProjectionV2ReadModel = Omit<OperatingProjectionReadModel,
     confirmedCostCents: string | null;
     confirmedCostYuan: ApiMoney;
     receivableYuan: ApiMoney;
+    internalReceivableYuan?: ApiMoney;
   };
   profitAndLoss: Omit<OperatingProjectionReadModel["profitAndLoss"], "currentOperatingProfitCents" | "currentEstimatedProfitCents"> & {
     currentOperatingProfitCents: string | null;
@@ -2268,7 +2300,7 @@ function exactReimbursementImpact(
   return result;
 }
 
-interface ExactReimbursementAttribution {
+interface ExactCostAttribution {
   byCompany: Map<string, { kind: string; id: string; name: string | null; amountYuan: string }>;
   totalYuan: string | null;
   unassignedYuan: string;
@@ -2276,12 +2308,12 @@ interface ExactReimbursementAttribution {
   needsReview: boolean;
 }
 
-function newExactReimbursementAttribution(): ExactReimbursementAttribution {
+function newExactCostAttribution(): ExactCostAttribution {
   return { byCompany: new Map(), totalYuan: null, unassignedYuan: "0.0000", publicCashCents: 0n, needsReview: false };
 }
 
-function foldExactReimbursementAttribution(
-  totals: ExactReimbursementAttribution,
+function foldExactCostAttribution(
+  totals: ExactCostAttribution,
   fact: ProjectionV2FactInput,
   impact: ProjectionV2ImpactInput,
   costYuan: string
@@ -2290,7 +2322,7 @@ function foldExactReimbursementAttribution(
   const assigned = slices.reduce((sum, slice) => sum + slice.amountCents, 0n);
   const cash = impact.publicCashCostAmountCents ?? 0n;
   const costUnits = BigInt(costYuan.replace(".", ""));
-  if (slices.some(slice => slice.amountCents <= 0n) || cash < 0n || assigned > cash || cash * 100n > costUnits) {
+  if (slices.some(slice => slice.amountCents <= 0n) || cash < 0n || assigned > cash || (cash > 0n && cash * 100n > costUnits)) {
     throw new Error("公共现金归属金额超过原确认费用");
   }
   const unallocated = sumBusinessAmounts([costYuan, businessAmountFromLegacyCents(-assigned)])!;
@@ -2314,27 +2346,32 @@ function foldExactReimbursementAttribution(
 
 function versionedCostAttribution(
   legacy: OperatingProjectionReadModel["costAttribution"],
-  exact: ExactReimbursementAttribution
+  uncertainCompanies: ReadonlySet<string>,
+  ...contributions: ExactCostAttribution[]
 ): OperatingProjectionV2ReadModel["costAttribution"] {
   const byCompany = new Map(legacy.byBearingCompany.map(row => [
     `${row.kind}\u0000${row.id}`, { ...row, costYuan: businessAmountFromLegacyCents(row.costCents) }
   ]));
-  for (const [key, row] of exact.byCompany) {
-    const prior = byCompany.get(key);
-    byCompany.set(key, { kind: row.kind, id: row.id, name: row.name ?? prior?.name ?? null, costCents: null,
-      costYuan: sumBusinessAmounts([prior ? prior.costYuan : "0.0000", row.amountYuan]) });
+  for (const contribution of contributions) {
+    for (const [key, row] of contribution.byCompany) {
+      const prior = byCompany.get(key);
+      byCompany.set(key, { kind: row.kind, id: row.id, name: row.name ?? prior?.name ?? null, costCents: null,
+        costYuan: uncertainCompanies.has(key) ? null : sumBusinessAmounts([prior ? prior.costYuan : "0.0000", row.amountYuan]) });
+    }
   }
+  const unassignedYuan = sumBusinessAmounts(contributions.map(row => row.unassignedYuan))!;
+  const publicCashCents = contributions.reduce((total, row) => total + row.publicCashCents, 0n);
   return {
     ...legacy,
     byBearingCompany: [...byCompany.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id)),
-    unattributedCostCents: exact.unassignedYuan === "0.0000" ? legacy.unattributedCostCents : null,
-    unattributedCostYuan: sumBusinessAmounts([businessAmountFromLegacyCents(legacy.unattributedCostCents), exact.unassignedYuan]),
-    publicCashCostCents: legacy.publicCashCostCents === null ? null : (BigInt(legacy.publicCashCostCents) + exact.publicCashCents).toString(),
-    ...(exact.needsReview ? { needsReview: true } : {})
+    unattributedCostCents: unassignedYuan === "0.0000" ? legacy.unattributedCostCents : null,
+    unattributedCostYuan: sumBusinessAmounts([businessAmountFromLegacyCents(legacy.unattributedCostCents), unassignedYuan]),
+    publicCashCostCents: legacy.publicCashCostCents === null ? null : (BigInt(legacy.publicCashCostCents) + publicCashCents).toString(),
+    ...(contributions.some(row => row.needsReview) ? { needsReview: true } : {})
   };
 }
 
-function distributionWithExactReimbursement(
+function distributionWithExactOperatingAmounts(
   base: OperatingProjectionReadModel,
   payableCents: ApiMoney,
   estimatedProfitYuan: ApiMoney
@@ -2376,6 +2413,118 @@ function addOwnerSettlementImpact(totals: DecimalOwnerSettlementTotals, impact: 
   totals[bucket] = sumBusinessAmounts([totals[bucket], signed])!;
 }
 
+type SignedSettlementSource = {
+  relationship: "inside" | "outside" | "upward";
+  signedAmountYuan: string;
+  payableDeltaCents: bigint;
+  impactCount: number;
+};
+
+type SignedSettlementImpact = {
+  kind: "confirmed_cost" | "receivable_increase" | "payable_increase" | "payable_decrease";
+  signedAmountYuan: string;
+};
+
+interface SignedSettlementTotals {
+  costYuan: string | null;
+  internalReceivableYuan: string | null;
+  payableCents: bigint;
+  payableByKind: Map<string, bigint>;
+  payableByContract: Map<string, bigint>;
+  payableByRelationship: Map<ContractRelationship, bigint>;
+  costByRelationship: Map<ContractRelationship, string>;
+  attribution: ExactCostAttribution;
+}
+
+function newSignedSettlementTotals(): SignedSettlementTotals {
+  return {
+    costYuan: null, internalReceivableYuan: null, payableCents: 0n,
+    payableByKind: new Map(), payableByContract: new Map(), payableByRelationship: new Map(),
+    costByRelationship: new Map(), attribution: newExactCostAttribution()
+  };
+}
+
+function signedSettlementSource(fact: ProjectionV2FactInput): SignedSettlementSource {
+  const snapshot = jsonRecord(fact.sourceSnapshot);
+  const frozen = jsonRecord(snapshot.operatingNumericFacts);
+  const relationship = operatingContractRelationship(fact.sourceType, fact.sourceSnapshot);
+  const signedAmountYuan = snapshot.signedAmountYuan;
+  if (fact.factKind !== "downstream_settlement" || fact.amountCents !== null || fact.direction !== "neutral" ||
+    fact.evidenceLevel !== "A" || snapshot.formalStatus !== "confirmed" || frozen.protocolVersion !== 2 ||
+    (relationship !== "inside" && relationship !== "outside" && relationship !== "upward") ||
+    typeof signedAmountYuan !== "string" || !/^-?\d+\.\d{4}$/u.test(signedAmountYuan) ||
+    normalizeBusinessAmount(signedAmountYuan, { allowNegative: true }) !== signedAmountYuan ||
+    signedAmountYuan === "0.0000" || signedAmountYuan.replace(/^-/, "") !== fact.amountYuan ||
+    typeof frozen.payableDeltaCents !== "string" || !/^(?:0|-?[1-9]\d*)$/u.test(frozen.payableDeltaCents)) {
+    throw new Error("已签结算四位经营金额与冻结来源不一致");
+  }
+  const payableDeltaCents = BigInt(frozen.payableDeltaCents);
+  if (relationship === "upward" && payableDeltaCents !== 0n) throw new Error("对上已签结算不能产生应付分录");
+  return { relationship, signedAmountYuan, payableDeltaCents, impactCount: payableDeltaCents === 0n ? 1 : 2 };
+}
+
+function validateSignedSettlementImpact(
+  fact: ProjectionV2FactInput,
+  impact: ProjectionV2ImpactInput,
+  source: SignedSettlementSource,
+  seen?: Set<string>
+): SignedSettlementImpact {
+  const upward = source.relationship === "upward";
+  const primaryKind = upward ? "receivable_increase" : "confirmed_cost";
+  const payableKind = source.payableDeltaCents < 0n ? "payable_decrease" : "payable_increase";
+  const kind = impact.impactKind;
+  const signedAmountYuan = kind === primaryKind ? source.signedAmountYuan
+    : kind === payableKind && source.payableDeltaCents !== 0n
+      ? businessAmountFromLegacyCents(source.payableDeltaCents) : null;
+  if (impact.numericProtocolVersion !== 2 || impact.amountCents !== null || !signedAmountYuan ||
+    impact.amountYuan !== signedAmountYuan.replace(/^-/, "") ||
+    impact.direction !== (signedAmountYuan.startsWith("-") ? "decrease" : "increase") ||
+    (upward && (fact.creditorSubject?.kind !== "participating_company" ||
+      fact.debtorSubject?.kind !== "construction_enterprise" ||
+      impact.subjectKind !== fact.creditorSubject.kind || impact.subjectId !== fact.creditorSubject.id ||
+      jsonRecord(impact.impactSnapshot).projectConsolidation !== "exclude_internal")) ||
+    seen?.has(kind)) {
+    throw new Error("已签结算四位成本、内部应收或原分应付分录不一致");
+  }
+  seen?.add(kind);
+  return { kind: kind === primaryKind ? primaryKind : payableKind, signedAmountYuan };
+}
+
+function foldSignedSettlementImpact(
+  totals: SignedSettlementTotals,
+  fact: ProjectionV2FactInput,
+  impact: ProjectionV2ImpactInput,
+  source: SignedSettlementSource,
+  value: SignedSettlementImpact,
+  uncertainty?: SettlementProjectionUncertainty
+) {
+  const { kind, signedAmountYuan } = value;
+  uncertainty?.addImpact(fact, kind);
+  if (kind === "receivable_increase") {
+    totals.internalReceivableYuan = sumBusinessAmounts([totals.internalReceivableYuan ?? "0.0000", signedAmountYuan]);
+    return;
+  }
+  const contractKey = contractKeyFromSnapshot(fact.sourceSnapshot);
+  if (contractKey && !totals.payableByContract.has(contractKey)) totals.payableByContract.set(contractKey, 0n);
+  if (kind === "confirmed_cost") {
+    totals.costYuan = sumBusinessAmounts([totals.costYuan ?? "0.0000", signedAmountYuan]);
+    totals.costByRelationship.set(source.relationship,
+      sumBusinessAmounts([totals.costByRelationship.get(source.relationship) ?? "0.0000", signedAmountYuan])!);
+    foldExactCostAttribution(totals.attribution, fact, impact, signedAmountYuan);
+    if (uncertainty) {
+      const bearing = fact.costBearingCompanySubject;
+      if (bearing) uncertainty.costCompanies.add(`${bearing.kind}\u0000${bearing.id}`);
+      else uncertainty.unattributedCost = true;
+    }
+    return;
+  }
+  const payable = source.payableDeltaCents;
+  totals.payableCents += payable;
+  totals.payableByKind.set(kind, (totals.payableByKind.get(kind) ?? 0n) + payable);
+  totals.payableByRelationship.set(source.relationship, (totals.payableByRelationship.get(source.relationship) ?? 0n) + payable);
+  if (contractKey) totals.payableByContract.set(contractKey, (totals.payableByContract.get(contractKey) ?? 0n) + payable);
+}
+
 /** V1 never silently consumes decimal facts. V2 preserves the source precision. */
 export function reduceOperatingProjection(input: ReduceOperatingProjectionV2Input): OperatingProjectionV2ReadModel;
 export function reduceOperatingProjection(input: ReduceOperatingProjectionInput): OperatingProjectionReadModel;
@@ -2391,7 +2540,34 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
     if (decimalFacts.length || (input.aggregateSeed?.decimalSummary?.count ?? 0) > 0) throw new Error("此经营读取协议不能表达新版四位金额，请使用新版经营读取入口");
     return reduceLegacyOperatingProjection({ ...input, facts: legacyFacts });
   }
-  const result = reduceLegacyOperatingProjection({ ...input, facts: legacyFacts });
+  const decimalSeed = input.aggregateSeed?.decimalSummary;
+  let signedSettlement = decimalSeed?.signedSettlement;
+  const settlementCandidates = new SettlementProjectionCandidates();
+  const directSigned = decimalFacts.filter(fact => fact.sourceType === SIGNED_SETTLEMENT_SOURCE);
+  if (directSigned.length) {
+    for (const fact of input.facts) settlementCandidates.add(fact);
+  }
+  const signedDeduplication = directSigned.length ? settlementCandidates.resolve() : undefined;
+  const signedUncertainty = input.aggregateSeed?.settlementUncertainty ?? new SettlementProjectionUncertainty();
+  const signedDetails: Array<{ fact: ProjectionV2FactInput; impacts: ProjectionV2ImpactInput[]; signedAmounts: string[] }> = [];
+  for (const fact of directSigned) {
+    const source = signedSettlementSource(fact);
+    if (fact.impacts.length !== source.impactCount) throw new Error("已签结算四位经营事实缺少对应影响分录");
+    const seen = new Set<string>();
+    const detail = { fact, impacts: [] as ProjectionV2ImpactInput[], signedAmounts: [] as string[] };
+    for (const impact of fact.impacts) {
+      const value = validateSignedSettlementImpact(fact, impact, source, seen);
+      if (signedDeduplication!.suppressedFactIds.has(fact.id) ||
+        !matchesFilters(fact, impact, input.scope.filters, input.constructionEnterpriseSubjectIds, input.companyEntityVersionIds)) continue;
+      foldSignedSettlementImpact(signedSettlement ??= newSignedSettlementTotals(), fact, impact, source, value,
+        signedDeduplication!.uncertainFactIds.has(fact.id) ? signedUncertainty : undefined);
+      detail.impacts.push(impact);
+      detail.signedAmounts.push(value.signedAmountYuan);
+    }
+    if (detail.impacts.length) signedDetails.push(detail);
+  }
+  const result = reduceLegacyOperatingProjection({ ...input, facts: legacyFacts }, signedDeduplication, signedUncertainty,
+    signedSettlement?.payableCents);
   const summary = (known: string, unknownCount = 0): ProjectionYuanSummary => ({ amountYuan: unknownCount ? null : known, knownSubtotalYuan: known, unknownCount });
   const add = (target: ProjectionYuanSummary, value: string | null) => {
     if (value === null) target.unknownCount += 1;
@@ -2399,7 +2575,6 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
     target.amountYuan = target.unknownCount ? null : target.knownSubtotalYuan;
   };
   const commitment = summary(businessAmountFromLegacyCents(result.commitments.contractCommitmentCents)!);
-  const decimalSeed = input.aggregateSeed?.decimalSummary;
   if (decimalSeed) {
     add(commitment, decimalSeed.commitment.knownSubtotalYuan);
     commitment.unknownCount += decimalSeed.commitment.unknownCount;
@@ -2413,7 +2588,7 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
   let selectedDecimalCount = (decimalSeed?.sourceGroups.contract_version?.count ?? 0) + (decimalSeed?.sourceGroups.contract_economic_review?.count ?? 0);
   let confirmedCostYuan = decimalSeed?.confirmedCostYuan;
   let reimbursementPayableCents = decimalSeed?.reimbursementPayableCents ?? 0n;
-  const reimbursementAttribution = decimalSeed?.reimbursementAttribution ?? newExactReimbursementAttribution();
+  const reimbursementAttribution = decimalSeed?.reimbursementAttribution ?? newExactCostAttribution();
   let ownerSettlement = decimalSeed?.ownerSettlement ? { ...decimalSeed.ownerSettlement } : undefined;
   if (decimalSeed) {
     result.asOf.retroactiveFactCount += decimalSeed.retroactiveFactCount;
@@ -2434,12 +2609,32 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
       row.value.amountYuan = row.value.unknownCount ? null : row.value.knownSubtotalYuan;
       row.hasDecimal = true;
     }
-    for (const sourceType of ["contract_version", "contract_economic_review", CONTRACT_WORK_COMPLETION_SOURCE, EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE] as const) {
+    for (const sourceType of ["contract_version", "contract_economic_review", CONTRACT_WORK_COMPLETION_SOURCE, EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE, SIGNED_SETTLEMENT_SOURCE] as const) {
       const group = decimalSeed.sourceGroups[sourceType];
       if (group?.count) sourceDrilldown.push({ projectId: input.scope.projectIds[0] ?? "", sourceType, sourceTypeLabel: sourceTypeLabel(sourceType), sourceBusinessId: "", sourceBusinessCode: "", factCount: group.count, impactCount: group.impactCount ?? group.count, signedImpactCents: null, amountYuan: group.amountYuan, knownSubtotalYuan: group.knownSubtotalYuan, unknownCount: group.unknownCount });
     }
   }
+  for (const { fact, impacts, signedAmounts } of signedDetails) {
+    if (fact.confirmedAt > input.cutoffAt) result.asOf.retroactiveFactCount += 1;
+    evidence.A.factCount += 1;
+    evidence.A.amountCents = null;
+    add(evidence.A, fact.amountYuan);
+    sourceDrilldown.push({ projectId: fact.projectId, sourceType: fact.sourceType, sourceTypeLabel: sourceTypeLabel(fact.sourceType),
+      sourceBusinessId: fact.sourceBusinessId, sourceBusinessCode: fact.sourceBusinessCode, factCount: 1, impactCount: impacts.length,
+      signedImpactCents: null, ...summary(sumBusinessAmounts(signedAmounts)!) });
+    for (const impact of impacts) {
+      details.push({
+        ...toOperatingProjectionPublicDetail(fact, impact, input.cutoffAt),
+        factId: fact.id, impactId: impact.id, projectId: fact.projectId, sourceType: fact.sourceType,
+        sourceBusinessId: fact.sourceBusinessId, factKind: fact.factKind, impactKind: impact.impactKind,
+        direction: impact.direction, signedImpactYuan: impact.direction === "decrease" ? `-${impact.amountYuan}` : impact.amountYuan,
+        amountState: "known", subjectRole: impact.subjectRole ?? null, subjectKind: impact.subjectKind ?? null,
+        subjectId: impact.subjectId ?? null, description: impact.description ?? null, sourceReferenceIds: sourceReferenceIds(fact.sourceSnapshot)
+      });
+    }
+  }
   for (const fact of decimalFacts) {
+    if (fact.sourceType === SIGNED_SETTLEMENT_SOURCE) continue;
     if (fact.sourceType === EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE) {
       const source = exactReimbursementSource(fact);
       if (fact.impacts.length !== source.impactCount) throw new Error("报销确认成本或应付分录数量不一致");
@@ -2449,7 +2644,7 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
         if (!matchesFilters(fact, impact, input.scope.filters, input.constructionEnterpriseSubjectIds, input.companyEntityVersionIds)) return false;
         if ("costYuan" in value) {
           confirmedCostYuan = sumBusinessAmounts([confirmedCostYuan ?? "0.0000", value.costYuan])!;
-          foldExactReimbursementAttribution(reimbursementAttribution, fact, impact, value.costYuan);
+          foldExactCostAttribution(reimbursementAttribution, fact, impact, value.costYuan);
         } else reimbursementPayableCents += value.payableCents;
         return true;
       });
@@ -2530,11 +2725,21 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
     sourceDrilldown.push({ projectId: fact.projectId, sourceType: fact.sourceType, sourceTypeLabel: sourceTypeLabel(fact.sourceType), sourceBusinessId: fact.sourceBusinessId, sourceBusinessCode: fact.sourceBusinessCode, factCount: 1, impactCount: 1, signedImpactCents: null, ...summary(signedYuan ?? "0.0000", signedYuan === null ? 1 : 0) });
     details.push({ factId: fact.id, impactId: impact.id, projectId: fact.projectId, projectCode: fact.projectCode, projectName: fact.projectName, sourceType: fact.sourceType, sourceTypeLabel: sourceTypeLabel(fact.sourceType), sourceBusinessId: fact.sourceBusinessId, sourceBusinessCode: fact.sourceBusinessCode, factKind: fact.factKind, factKindLabel: factKindLabel(fact.factKind), contractRelationshipLabel: CONTRACT_RELATIONSHIP_LABELS[operatingContractRelationship(fact.sourceType, fact.sourceSnapshot)], evidenceLevel: fact.evidenceLevel, occurredAt: fact.occurredAt, confirmedAt: fact.confirmedAt, confirmedAfterAsOf: fact.confirmedAt > input.cutoffAt, impactKind: impact.impactKind, impactKindLabel: impactKindLabel(impact.impactKind), direction: impact.direction, signedImpactCents: null, ...(fact.sourceNumericProtocolVersion===1?{numericProtocolVersion:1 as const,sourceNumericProtocolVersion:1 as const,sourceAmountCents:fact.sourceAmountCents!.toString()}:{numericProtocolVersion:2 as const}), signedImpactYuan: signedYuan, amountState: signedYuan === null ? "unknown" : "known", subjectRole: impact.subjectRole ?? null, subjectKind: impact.subjectKind ?? null, subjectId: impact.subjectId ?? null, costCategoryCode: null, fundPurpose: null, description: impact.description ?? null, sourceReferenceIds: sourceReferenceIds(fact.sourceSnapshot) });
   }
+  if (signedSettlement?.costYuan != null) {
+    confirmedCostYuan = sumBusinessAmounts([confirmedCostYuan ?? "0.0000", signedSettlement.costYuan])!;
+  }
+  const exactInternalReceivable = signedSettlement?.internalReceivableYuan;
+  const includeInternalReceivable = input.scope.kind === "company" || Boolean(input.scope.filters?.companyEntityId);
+  const addCents = (base: ApiMoney, delta: bigint): ApiMoney => base === null ? null : (BigInt(base) + delta).toString();
   const operating = {
     ...result.operating,
-    payableCents: result.operating.payableCents === null ? null : (BigInt(result.operating.payableCents) + reimbursementPayableCents).toString(),
+    payableCents: addCents(result.operating.payableCents, reimbursementPayableCents),
     confirmedIncomeCents: ownerSettlement ? null : result.operating.confirmedIncomeCents,
-    receivableCents: ownerSettlement ? null : result.operating.receivableCents,
+    receivableCents: ownerSettlement || (includeInternalReceivable && exactInternalReceivable != null) ? null : result.operating.receivableCents,
+    ...(exactInternalReceivable != null ? {
+      internalReceivableCents: null,
+      internalReceivableYuan: sumBusinessAmounts([businessAmountFromLegacyCents(result.operating.internalReceivableCents ?? null), exactInternalReceivable])
+    } : {}),
     confirmedCostCents: confirmedCostYuan === undefined ? result.operating.confirmedCostCents : null,
     confirmedCostYuan: sumBusinessAmounts([businessAmountFromLegacyCents(result.operating.confirmedCostCents),
       confirmedCostYuan ?? "0.0000"]),
@@ -2542,10 +2747,11 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
       businessAmountFromLegacyCents(result.operating.confirmedIncomeCents), ownerSettlement?.incomeYuan ?? "0.0000"
     ])!,
     receivableYuan: sumBusinessAmounts([
-      businessAmountFromLegacyCents(result.operating.receivableCents), ownerSettlement?.receivableYuan ?? "0.0000"
+      businessAmountFromLegacyCents(result.operating.receivableCents), ownerSettlement?.receivableYuan ?? "0.0000",
+      includeInternalReceivable ? exactInternalReceivable ?? "0.0000" : "0.0000"
     ])
   };
-  const costDecrease = confirmedCostYuan === undefined ? "0.0000" : `-${confirmedCostYuan}`;
+  const costDecrease = confirmedCostYuan?.startsWith("-") ? confirmedCostYuan.slice(1) : `-${confirmedCostYuan ?? "0.0000"}`;
   const profitAndLoss = {
     ...result.profitAndLoss,
     currentOperatingProfitCents: ownerSettlement || confirmedCostYuan !== undefined ? null : result.profitAndLoss.currentOperatingProfitCents,
@@ -2557,32 +2763,57 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
       businessAmountFromLegacyCents(result.profitAndLoss.currentEstimatedProfitCents), ownerSettlement?.incomeYuan ?? "0.0000", costDecrease
     ])
   };
+  const contractDrilldown = new Map(result.contractDrilldown.map(row => [row.contractKey, row]));
+  for (const [contractKey, delta] of signedSettlement?.payableByContract ?? []) {
+    const prior = contractDrilldown.get(contractKey) ?? { contractKey, settledCents: "0", paidCents: "0", unpaidCents: "0" };
+    const settledCents = signedUncertainty.contractSettlements.has(contractKey) ? null : addCents(prior.settledCents, delta);
+    contractDrilldown.set(contractKey, { ...prior, settledCents, unpaidCents: settledCents === null
+      ? null : nonNegative(BigInt(settledCents) - BigInt(prior.paidCents)).toString() });
+  }
+  const impactTotalsByKind = { ...result.impactTotalsByKind,
+    ...(selectedDecimalCount ? { contract_commitment_reference: null } : {}),
+    ...(confirmedCostYuan !== undefined ? { confirmed_cost: null } : {}),
+    ...(exactInternalReceivable != null ? { receivable_increase: null } : {})
+  };
+  const payableIncrease = reimbursementPayableCents + (signedSettlement?.payableByKind.get("payable_increase") ?? 0n);
+  const payableDecrease = signedSettlement?.payableByKind.get("payable_decrease") ?? 0n;
+  for (const [kind, delta] of [["payable_increase", payableIncrease], ["payable_decrease", payableDecrease]] as const) {
+    if (delta !== 0n) impactTotalsByKind[kind] = signedUncertainty.impactKinds.has(kind) ? null
+      : addCents(impactTotalsByKind[kind] === undefined ? "0" : impactTotalsByKind[kind], delta);
+  }
   return { ...result, schema: "operating_projection/V2", numericProtocolVersion: 2, operating, profitAndLoss,
-    costAttribution: versionedCostAttribution(result.costAttribution, reimbursementAttribution),
-    distribution: reimbursementAttribution.totalYuan === null && reimbursementPayableCents === 0n ? result.distribution
-      : distributionWithExactReimbursement(result, operating.payableCents, profitAndLoss.currentEstimatedProfitYuan),
+    contractDrilldown: [...contractDrilldown.values()].sort((left, right) => left.contractKey.localeCompare(right.contractKey)),
+    costAttribution: versionedCostAttribution(result.costAttribution, signedUncertainty.costCompanies, reimbursementAttribution,
+      ...(signedSettlement ? [signedSettlement.attribution] : [])),
+    distribution: reimbursementAttribution.totalYuan === null && reimbursementPayableCents === 0n && signedSettlement?.costYuan == null ? result.distribution
+      : distributionWithExactOperatingAmounts(result, operating.payableCents, profitAndLoss.currentEstimatedProfitYuan),
     commitments: { contractCommitmentCents: selectedDecimalCount ? null : result.commitments.contractCommitmentCents, contractCommitmentYuan: commitment.amountYuan, knownContractCommitmentYuan: commitment.knownSubtotalYuan, unknownContractCommitmentCount: commitment.unknownCount },
     relationshipTotals: [...relationships.values()].map(({ row, value, hasDecimal }) => {
       const expense = row.relationship === "non_contract" ? reimbursementAttribution.totalYuan : null;
+      const signedCost = signedSettlement?.costByRelationship.get(row.relationship);
+      const signedPayable = signedSettlement?.payableByRelationship.get(row.relationship) ?? 0n;
       return { ...row,
         contractCommitmentCents: hasDecimal ? null : row.contractCommitmentCents,
         contractCommitmentYuan: value.amountYuan, knownContractCommitmentYuan: value.knownSubtotalYuan,
         unknownContractCommitmentCount: value.unknownCount,
-        confirmedCostCents: expense === null ? row.confirmedCostCents : null,
-        confirmedCostYuan: sumBusinessAmounts([businessAmountFromLegacyCents(row.confirmedCostCents), expense ?? "0.0000"]),
-        payableCents: row.relationship !== "non_contract" || row.payableCents === null ? row.payableCents
-          : (BigInt(row.payableCents) + reimbursementPayableCents).toString()
+        confirmedCostCents: expense === null && signedCost === undefined ? row.confirmedCostCents : null,
+        confirmedCostYuan: sumBusinessAmounts([businessAmountFromLegacyCents(row.confirmedCostCents), expense ?? "0.0000", signedCost ?? "0.0000"]),
+        payableCents: addCents(row.payableCents, signedPayable + (row.relationship === "non_contract" ? reimbursementPayableCents : 0n)),
+        ...(row.relationship === "upward" && exactInternalReceivable != null ? {
+          receivableCents: null,
+          receivableYuan: sumBusinessAmounts([businessAmountFromLegacyCents(row.receivableCents), exactInternalReceivable])
+        } : {})
       };
     }),
-    evidence, details, sourceDrilldown, impactTotalsByKind: { ...result.impactTotalsByKind, ...(selectedDecimalCount ? { contract_commitment_reference: null } : {}), ...(confirmedCostYuan !== undefined ? { confirmed_cost: null } : {}),
-      ...(reimbursementPayableCents === 0n || result.impactTotalsByKind.payable_increase === null ? {} : {
-        payable_increase: (BigInt(result.impactTotalsByKind.payable_increase ?? "0") + reimbursementPayableCents).toString()
-      }) }
+    evidence, details, sourceDrilldown, impactTotalsByKind
   };
 }
 
 function reduceLegacyOperatingProjection(
-  input: ReduceOperatingProjectionInput
+  input: ReduceOperatingProjectionInput,
+  signedDeduplication?: SettlementProjectionDeduplication,
+  signedUncertainty?: SettlementProjectionUncertainty,
+  signedPayableCents = 0n
 ): OperatingProjectionReadModel {
   const restrictionIntegrity = validateRestrictionIntegrity(input);
   const notices: string[] = [
@@ -2626,8 +2857,8 @@ function reduceLegacyOperatingProjection(
   if (!input.aggregateSeed) {
     for (const fact of input.facts) settlements.add(fact);
   }
-  const settlementDeduplication = settlements.resolve();
-  const settlementUncertainty = input.aggregateSeed?.settlementUncertainty ?? new SettlementProjectionUncertainty();
+  const settlementDeduplication = signedDeduplication ?? settlements.resolve();
+  const settlementUncertainty = input.aggregateSeed?.settlementUncertainty ?? signedUncertainty ?? new SettlementProjectionUncertainty();
   moneyComplete &&= settlementDeduplication.moneyComplete;
   notices.push(...settlementDeduplication.notices);
   const costByBearingCompany = new Map<string, { kind: string; id: string; name: string | null; costCents: bigint }>();
@@ -2807,7 +3038,8 @@ function reduceLegacyOperatingProjection(
   const confirmedCost = total("confirmed_cost");
   const internalReceivable = (relationshipTotals.get("upward:receivable_increase") ?? 0n) + (relationshipTotals.get("upward:receivable_decrease") ?? 0n);
   const receivable = sumKinds("receivable_increase", "receivable_decrease") - (input.scope.kind === "company" || input.scope.filters?.companyEntityId ? 0n : internalReceivable);
-  const payable = sumKinds("payable_increase", "payable_decrease");
+  // Include the whole-cent settlement delta before clamping the available cash.
+  const payable = sumKinds("payable_increase", "payable_decrease") + signedPayableCents;
   const constructionEnterpriseFunds = sumKinds(
     "construction_enterprise_funds_increase",
     "construction_enterprise_funds_decrease"
