@@ -189,7 +189,7 @@ BEGIN
     OR NEW."sourceSnapshot"->>'requestedAmountCents' IS DISTINCT FROM claim_record."requestedAmountCents"::text
     OR NEW."sourceSnapshot"->>'companyPayableAmountCents' IS DISTINCT FROM claim_record."companyPayableAmountCents"::text
     OR NEW."costBearingCompanySubjectId" IS DISTINCT FROM expected_bearer
-    OR NEW."costBearingCompanySubjectKind" IS DISTINCT FROM CASE WHEN expected_bearer IS NULL THEN NULL ELSE 'participating_company' END
+    OR NEW."costBearingCompanySubjectKind" IS DISTINCT FROM (CASE WHEN expected_bearer IS NULL THEN NULL ELSE 'participating_company' END)
     OR NEW."idempotencyKey" IS DISTINCT FROM 'expense_claim_approval:' || claim_record.id
     OR source_lines IS NULL
     OR (SELECT jsonb_agg(item - 'occurredOn' ORDER BY ordinality)
@@ -206,7 +206,7 @@ BEGIN
   RETURN NEW;
 EXCEPTION WHEN no_data_found THEN
   RAISE EXCEPTION 'reimbursement exact operating source not approved' USING ERRCODE = '23514';
-END
+END;
 $$;
 
 CREATE TRIGGER "OperatingFact_reimbursement_exact_source"
@@ -228,12 +228,12 @@ BEGIN
   FROM public."OperatingImpactEntry" i WHERE i."factId" = NEW.id;
   IF counted_costs <> jsonb_array_length(NEW."sourceSnapshot"->'reimbursementLines')
     OR total_cost IS DISTINCT FROM NEW."amountYuan"
-    OR counted_payables <> CASE WHEN NEW."sourceSnapshot"->>'companyPayableAmountCents' = '0' THEN 0 ELSE 1 END
+    OR counted_payables <> (CASE WHEN NEW."sourceSnapshot"->>'companyPayableAmountCents' = '0' THEN 0 ELSE 1 END)
   THEN
     RAISE EXCEPTION 'reimbursement exact operating impacts are incomplete' USING ERRCODE = '23514';
   END IF;
   RETURN NULL;
-END
+END;
 $$;
 
 CREATE CONSTRAINT TRIGGER "OperatingFact_reimbursement_exact_impacts"
@@ -268,7 +268,7 @@ BEGIN
     'AND ((NEW."numericProtocolVersion" = 1 AND expense."requestedAmountCents" = NEW."amountCents")
       OR (NEW."numericProtocolVersion" = 2 AND expense."claimType" = ''reimbursement''
         AND expense."requestedAmountYuan" = NEW."amountYuan"))'));
-END
+END;
 $upgrade$;
 
 COMMIT;
