@@ -1967,18 +1967,19 @@ const businessItems = computed(() => {
 
 const receivablePayableItems = computed(() => {
   const operating = overview.value?.operatingProjection.operating;
+  const attribution = overview.value?.operatingProjection.costAttribution;
   return [
     { label: "已确认收入", value: formatCents(operating?.confirmedIncomeCents ?? null) },
     { label: "已确认成本", value: operating?.confirmedCostYuan ? `¥${operating.confirmedCostYuan}` : formatCents(operating?.confirmedCostCents ?? null) },
-    ...(overview.value?.operatingProjection.relationshipTotals ?? []).filter((row) => ["inside", "outside", "unclassified", "non_contract"].includes(row.relationship)).map((row) => ({ label: `${row.label}确认成本`, value: formatCents(row.confirmedCostCents) })),
+    ...(overview.value?.operatingProjection.relationshipTotals ?? []).filter((row) => ["inside", "outside", "unclassified", "non_contract"].includes(row.relationship)).map((row) => ({ label: `${row.label}确认成本`, value: row.confirmedCostYuan != null ? `¥${row.confirmedCostYuan}` : formatCents(row.confirmedCostCents) })),
     { label: "对上内部应收（项目合并抵销）", value: formatCents(operating?.internalReceivableCents ?? null) },
     ...(overview.value?.operatingProjection.costAttribution?.byBearingCompany ?? []).map((row) => ({
       label: `${row.name ?? "成本承担公司"}确认成本`,
-      value: formatCents(row.costCents)
+      value: row.costYuan != null ? `¥${row.costYuan}` : formatCents(row.costCents)
     })),
     {
       label: "待归属成本（承担公司未明）",
-      value: formatCents(overview.value?.operatingProjection.costAttribution?.unattributedCostCents ?? null)
+      value: attribution?.unattributedCostYuan != null ? `¥${attribution.unattributedCostYuan}` : formatCents(attribution?.unattributedCostCents ?? null)
     },
     {
       label: "公共现金支付成本",
