@@ -7,9 +7,10 @@ const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run
 const [lane] = process.argv.slice(2);
 assert.ok(process.argv.length===3&&['cash-handover','principal-return','cash-transfer','project-advance','principal-return-a23'].includes(lane));
 const textDirect=source.mode==='text-direct-330';
-const precision=source.mode==='expense-witness-349'?require('./expense-witness-349-profile.cjs'):undefined;
+const signed=source.mode==='signed-settlement-350'?require('./payment-execution-350.cjs'):undefined;
+const precision=(signed||source.mode==='expense-witness-349')?require('./expense-witness-349-profile.cjs'):undefined;
 const expense=(precision||source.mode==='expense-witness-346')?require('./expense-witness-346-profile.cjs'):undefined;
-const profile=precision??expense;
+const profile=signed?require('./signed-settlement-350-profile.cjs'):precision??expense;
 const historical=(expense||source.mode==="historical-settlement-334")?require("./historical-settlement-334-profile.cjs"):null;
 const upwardArchive=source.mode==='upward-archive-332';
 const paymentRemainder=source.mode==='payment-remainder-331';
@@ -53,8 +54,8 @@ async function main(){
         tails:source.tails.slice(39,expense.count-295).map(({name,sha256})=>({name,sha256}))
       });
       if(precision) assert.deepEqual(receipt.expenseWitnessPrecisionForward,{
-        count,ledgerSha256:precision.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
-        tails:source.tails.slice(expense.count-295).map(({name,sha256})=>({name,sha256}))
+        count:precision.count,ledgerSha256:precision.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
+        tails:source.tails.slice(expense.count-295,precision.count-295).map(({name,sha256})=>({name,sha256}))
       });
     }
     return runTask398Owned282Voucher(context,lane+'-'+count,receipt);
@@ -63,7 +64,10 @@ async function main(){
     const install=historical?withCombined334HistoricalSettlement:upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
     const material={sourceTree:source.sourceTree,
       migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails};
-    if(precision){
+    if(signed){
+      await signed.install(receipt,consume,source);
+      signed.assertInstallation(receipt,source);
+    } else if(precision){
       await withCombinedExpenseWitness349(receipt,consume,{...source,...material});
       assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness,true);
     } else if(expense){
