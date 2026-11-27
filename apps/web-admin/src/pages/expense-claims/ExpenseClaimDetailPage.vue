@@ -37,7 +37,7 @@ import { buildApprovalSelfReviewPayload } from "../../components/approval-self-r
 import JgDetailTabs from "../../components/JgDetailTabs.vue";
 import JgPageHeader from "../../components/JgPageHeader.vue";
 import JgResultState from "../../components/JgResultState.vue";
-import { displayExpenseAmount, parseExpenseAmountYuan } from "./expense-claim-money";
+import { displayExpenseAmount, parseExpenseAmountYuan, validateExpenseQuantity } from "./expense-claim-money";
 import ExpenseClaimSubmissionHistory from "./components/ExpenseClaimSubmissionHistory.vue";
 import ExpenseClaimLineEditor, { type ExpenseClaimLineDraft } from "./components/ExpenseClaimLineEditor.vue";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../lib/money";
@@ -504,6 +504,7 @@ async function saveReturnedDraft() {
         if (!line.expenseCategory.trim() || !line.occurredOn || !line.purpose.trim()) throw new Error(`${position}请补全费用类别、发生日期和用途`);
         const receiptCount = Number(line.receiptCount);
         if (!/^\d+$/u.test(line.receiptCount) || receiptCount > 10000) throw new Error(`${position}单据张数须为 0 到 10000 的整数`);
+        validateExpenseQuantity(line.quantity, position);
         const amountYuan = parseExpenseAmountYuan(line.amountYuan, `${position}费用金额`);
         if (line.evidenceType === "none" && !line.noEvidenceReason.trim()) throw new Error(`${position}无凭证费用须填写原因`);
         return {

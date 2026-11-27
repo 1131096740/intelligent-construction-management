@@ -109,6 +109,7 @@ test("费用工作台仅保留报销和零星费用，并办理零星费用草�
 });
 
 test("普通报销保留错误输入并按四位原值保存费用明细", async ({ page }) => {
+  const quantity = "99999999999999999999.1234";
   const posted: unknown[] = [];
   await mockExpenseClaimSession(page, [], posted);
   await page.route("**/api/expense-claims/expense-categories?*", route => route.fulfill({ json: { categories: [] } }));
@@ -121,7 +122,7 @@ test("普通报销保留错误输入并按四位原值保存费用明细", async
       approval: null,
       lines: [{
         id: "line-four-place", sortOrder: 1, expenseCategory: "车辆使用费", purpose: "油费",
-        occurredOn: "2026-07-22", quantity: null, receiptCount: 0, amountCents: "1235",
+        occurredOn: "2026-07-22", quantity, receiptCount: 0, amountCents: "1235",
         amountYuan: "12.3456", evidenceType: "invoice", noEvidenceReason: null, remark: null
       }],
       attachments: [], paymentExecutions: [], entrySnapshots: []
@@ -149,6 +150,27 @@ test("普通报销保留错误输入并按四位原值保存费用明细", async
     await editor.fill(value);
     await editor.press("Enter");
   }
+  const quantityCell = grid.locator('revogr-data [data-rgrow="0"][data-rgcol="3"]');
+  const quantityEditor = grid.locator("revogr-edit input");
+  for (const [input, error] of [
+    ["00.0000", "第 1 行：数量必须大于 0"],
+    ["1.23456", "第 1 行：数量最多 4 位小数"],
+    ["1e2", "第 1 行：数量格式不正确，请填写正数，最多 4 位小数"],
+    ["100000000000000000000", "第 1 行：数量超出可登记范围"]
+  ]) {
+    await quantityCell.dblclick();
+    await quantityEditor.fill(input);
+    await quantityEditor.press("Enter");
+    await drawer.getByRole("button", { name: "下一步" }).click();
+    await expect(drawer.getByText(error, { exact: true })).toBeVisible();
+    await expect(quantityCell).toHaveText(input);
+    expect(posted).toHaveLength(0);
+  }
+
+  await quantityCell.dblclick();
+  await quantityEditor.fill(quantity);
+  await quantityEditor.press("Enter");
+
   await drawer.getByRole("button", { name: "下一步" }).click();
   await drawer.getByRole("button", { name: "下一步" }).click();
   await expect(drawer.getByText("1 行；合计 12.3456 元")).toBeVisible();
@@ -156,12 +178,14 @@ test("普通报销保留错误输入并按四位原值保存费用明细", async
   await expect.poll(() => posted).toHaveLength(1);
   expect(posted[0]).toMatchObject({
     requestedAmountYuan: "12.3456",
-    lines: [{ expenseCategory: "车辆使用费", purpose: "油费", amountYuan: "12.3456" }]
+    lines: [{ expenseCategory: "车辆使用费", purpose: "油费", quantity, amountYuan: "12.3456" }]
   });
   expect(posted[0]).not.toHaveProperty("requestedAmountCents");
   expect(posted[0]).not.toHaveProperty("lines.0.amountCents");
+  await expect(page).toHaveURL(/expense-claim-created$/u);
   await expect(page.getByText("¥12.3456", { exact: true })).toBeVisible();
-  await page.getByText("费用明细", { exact: true }).click();
+  await page.getByRole("navigation", { name: "详情分区" }).getByText("费用明细", { exact: true }).click();
+  await expect(page.getByRole("cell", { name: quantity, exact: true })).toBeVisible();
   await expect(page.getByRole("cell", { name: "¥12.3456", exact: true })).toBeVisible();
 });
 

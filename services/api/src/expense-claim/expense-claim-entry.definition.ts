@@ -32,9 +32,13 @@ export const EXPENSE_CLAIM_ENTRY_DEFINITION: BusinessEntrySceneDefinition = {
 export const REIMBURSEMENT_ENTRY_DEFINITION: BusinessEntrySceneDefinition = {
   ...EXPENSE_CLAIM_ENTRY_DEFINITION,
   version: 2,
-  fields: EXPENSE_CLAIM_ENTRY_DEFINITION.fields.map((field) =>
-    field.key === "requestedAmountYuan" || field.key === "amountYuan"
-      ? { ...field, precision: 4, exactDecimalString: { sign: "nonnegative", maximumExclusive: "92233720368547758.075" } }
-      : field
-  )
+  fields: EXPENSE_CLAIM_ENTRY_DEFINITION.fields.map((field) => {
+    if (field.key === "quantity") {
+      return { ...field, precision: 4, exactDecimalString: { sign: "nonnegative", minimumExclusive: "0", maximumExclusive: "100000000000000000000" } };
+    }
+    if (field.key === "requestedAmountYuan" || field.key === "amountYuan") {
+      return { ...field, precision: 4, exactDecimalString: { sign: "nonnegative", maximumExclusive: "92233720368547758.075" } };
+    }
+    return field;
+  })
 };
