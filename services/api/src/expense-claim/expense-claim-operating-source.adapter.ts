@@ -1,6 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type { PrimaryCostCategoryCode } from "@jiangkong/shared-domain";
+import { businessAmountFromLegacyCents, businessAmountToLegacyCents, normalizeBusinessAmount, sumBusinessAmounts, type PrimaryCostCategoryCode } from "@jiangkong/shared-domain";
+import type { OperatingMoneyInput } from "../operating-ledger/operating-money-protocol";
 import { observeRegisteredOperationalPaymentSource } from "../fund-account/registered-operational-payment";
 
 import {
@@ -17,6 +18,7 @@ import {
 } from "../operating-ledger/formal-operating-source.helpers";
 import type {
   AppendOperatingFactInput,
+  OperatingImpactInput,
   OperatingSubjectReference
 } from "../operating-ledger/operating-ledger.service";
 import type {
@@ -166,9 +168,6 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
       "companyPayableAmountCents",
       "费用确认"
     );
-    if (amountCents <= 0n || payableCents < 0n || payableCents > amountCents) {
-      throw new BadRequestException("费用确认金额或待付金额不正确");
-    }
     const companyId = source.costBearingCompanyEntityId === null
       ? null
       : requiredJsonText(source,
@@ -177,17 +176,23 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
     const claimType = requiredJsonText(source, "claimType", "费用确认");
     const payee = claimPayee(source, claimType, "费用确认");
     const batchLinked = typeof source.actualPurchaseBatchId === "string" && source.actualPurchaseBatchId.trim().length > 0;
-    const impacts: AppendOperatingFactInput["impacts"] = batchLinked
-      ? []
+    const exactAmountYuan = claimType === "reimbursement" && !batchLinked && typeof source.requestedAmountYuan === "string"
+      ? positiveSourceAmount(source.requestedAmountYuan) : null;
+    if ((exactAmountYuan === null && amountCents <= 0n) ||
+      (exactAmountYuan !== null && businessAmountToLegacyCents(exactAmountYuan) !== amountCents.toString()) ||
+      payableCents < 0n || payableCents > amountCents) {
+      throw new BadRequestException("费用确认金额或待付金额不正确");
+    }
+    const impacts = batchLinked ? []
       : claimType === "reimbursement"
-        ? reimbursementCostImpacts(snapshot, source, company, amountCents)
+        ? reimbursementCostImpacts(snapshot, source, company, amountCents, exactAmountYuan)
         : incidentalCostImpacts(snapshot, source, company, amountCents);
     if (payableCents > 0n) {
       impacts.push({
         idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:payable`,
         sourceImpactKey: "payable_increase",
         impactKind: "payable_increase",
-        amountCents: payableCents,
+        ...expenseOperatingMoney(payableCents, exactAmountYuan ? businessAmountFromLegacyCents(payableCents) : null),
         direction: "increase",
         subjectRole: "payee",
         subject: payee,
@@ -207,6 +212,7 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
         confirmedAt,
         effectiveDate,
         amountCents,
+        exactAmountYuan,
         confirmedByUserId: requiredJsonText(source, "confirmedByUserId", "费用确认"),
         factKind: "expense",
         direction: "outflow",
@@ -846,6 +852,7 @@ function formalInput(input: {
   confirmedAt: Date;
   effectiveDate: Date;
   amountCents: bigint;
+  exactAmountYuan?: string | null;
   confirmedByUserId: string;
   factKind: AppendOperatingFactInput["factKind"];
   direction: AppendOperatingFactInput["direction"];
@@ -867,7 +874,7 @@ function formalInput(input: {
     factKind: input.factKind,
     operatingLevel: "project",
     evidenceLevel: "A",
-    amountCents: input.amountCents,
+    ...expenseOperatingMoney(input.amountCents, input.exactAmountYuan ?? null),
     currencyCode: "CNY",
     direction: input.direction,
     isBeforeOperatingLedgerEffectiveDate: occurredBeforeEffectiveDate(
@@ -920,41 +927,58 @@ function claimPayee(
   throw new BadRequestException("费用申请类型不支持经营账投影");
 }
 
+function expenseOperatingMoney(amountCents: bigint, exactAmountYuan: string | null): OperatingMoneyInput {
+  return exactAmountYuan === null ? { amountCents } : { numericProtocolVersion: 2, amountCents: null, amountYuan: exactAmountYuan };
+}
+
+function positiveSourceAmount(value: string): string {
+  const amount = normalizeBusinessAmount(value);
+  if (!amount || amount === "0.0000") throw new BadRequestException("报销费用金额必须大于 0");
+  return amount;
+}
+
 function reimbursementCostImpacts(
   snapshot: OperatingSourceSnapshot,
   source: Record<string, Prisma.InputJsonValue>,
   company: OperatingSubjectReference | null,
-  requestedAmountCents: bigint
+  requestedAmountCents: bigint,
+  requestedAmountYuan: string | null
 ): AppendOperatingFactInput["impacts"] {
   const lines = source.reimbursementLines;
-  if (!Array.isArray(lines) || !lines.length) {
-    throw new BadRequestException("报销确认快照缺少费用明细");
-  }
-  const impacts = lines.flatMap((entry) => {
+  if (!Array.isArray(lines) || !lines.length) throw new BadRequestException("报销确认快照缺少费用明细");
+
+  let totalCents = 0n;
+  const exactLines: string[] = [];
+  const impacts: OperatingImpactInput[] = lines.map((entry) => {
     const line = requiredJsonRecord(entry, "报销费用明细");
     const amountCents = requiredJsonMoney(line, "amountCents", "报销费用明细");
-    if (amountCents === 0n && typeof line.amountYuan === "string" && typeof source.requestedAmountYuan === "string") return [];
-    if (amountCents <= 0n) throw new BadRequestException("报销费用明细金额必须大于 0");
+    const exactAmountYuan = requestedAmountYuan === null
+      ? null
+      : positiveSourceAmount(requiredJsonText(line, "amountYuan", "报销费用明细"));
+    if (amountCents < 0n || (amountCents === 0n && exactAmountYuan === null)) {
+      throw new BadRequestException("报销费用明细金额必须大于 0");
+    }
+    totalCents += amountCents;
+    if (exactAmountYuan !== null) exactLines.push(exactAmountYuan);
     const sortOrder = requiredJsonText(line, "sortOrder", "报销费用明细");
-    return [{
+    return {
       idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:confirmed_cost:${sortOrder}`,
       sourceImpactKey: `confirmed_cost:${sortOrder}`,
-      impactKind: "confirmed_cost" as const,
-      amountCents,
-      direction: "increase" as const,
+      impactKind: "confirmed_cost",
+      ...expenseOperatingMoney(amountCents, exactAmountYuan),
+      direction: "increase",
       ...(company ? { subjectRole: "cost_bearing_company" as const, subject: company } : {}),
-      costCategoryCode: "project_daily_expense" as const,
+      costCategoryCode: "project_daily_expense",
       description: `报销费用确认：${requiredJsonText(line, "expenseCategory", "报销费用明细")}`,
       impactSnapshot: sourceJson({
         lineId: requiredJsonText(line, "id", "报销费用明细"),
         occurredOn: requiredJsonText(line, "occurredOn", "报销费用明细"),
-        purpose: requiredJsonText(line, "purpose", "报销费用明细"),
-        ...(typeof line.amountYuan === "string" ? { amountYuan: line.amountYuan } : {})
+        purpose: requiredJsonText(line, "purpose", "报销费用明细")
       })
-    }];
+    };
   });
-  const total = impacts.reduce((sum, impact) => sum + impact.amountCents, 0n);
-  if (total !== requestedAmountCents) {
+  if (totalCents !== requestedAmountCents ||
+    (requestedAmountYuan !== null && sumBusinessAmounts(exactLines) !== requestedAmountYuan)) {
     throw new BadRequestException("报销费用明细合计与确认金额不一致");
   }
   return impacts;

@@ -221,6 +221,57 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect(maxPayable).toMatchObject({ status: 201, body: { requestedAmountYuan: "92233720368547758.0749", requestedAmountCents: "9223372036854775807" } });
   }, 45_000);
 
+  (enabled ? it : it.skip)("报销四位元金额终审保留项目成本并分开整数分待付", async () => {
+    const prisma = app.get(PrismaService);
+    const company = await prisma.companyEntity.update({
+      where: { id: companyEntityId },
+      data: { unifiedSocialCreditCode: "91310000A01EXP0001", currentVersionNo: 1 }
+    });
+    const version = await prisma.companyEntityVersion.create({
+      data: { companyEntityId, versionNo: 1, name: company.name, unifiedSocialCreditCode: company.unifiedSocialCreditCode,
+        isActive: true, action: "test_master", actorUserId: applicantUserId }
+    });
+    const effectiveFrom = new Date("2026-01-01");
+    await prisma.projectParticipatingCompany.create({
+      data: { projectId, companyEntityId, companyEntityVersionId: version.id,
+        companyNameSnapshot: company.name, companyCreditCodeSnapshot: company.unifiedSocialCreditCode,
+        effectiveFrom, changeReason: "隔离四位报销成本验收", addedByUserId: applicantUserId }
+    });
+    await prisma.project.update({ where: { id: projectId }, data: { operatingLedgerEffectiveDate: effectiveFrom } });
+
+    const { requestedAmountCents, lines: legacyLines, ...claim } = selfInput(applicantUserId, "reimbursement");
+    const { amountCents, ...line } = legacyLines![0];
+    for (const scenario of [
+      { exact: "0.0100", payable: "1", amounts: ["0.0050", "0.0050"], status: "approved_pending_payment", costBearingCompanyEntityId: company.id },
+      { exact: "0.0001", payable: "0", amounts: ["0.0001"], status: "offset_completed", costBearingCompanyEntityId: null }
+    ]) {
+      const created = await request("/expense-claims", { ...claim, costBearingCompanyEntityId: scenario.costBearingCompanyEntityId,
+        requestedAmountYuan: scenario.exact, lines: scenario.amounts.map(amountYuan => ({ ...line, amountYuan })) });
+      expect(created).toMatchObject({ status: 201, body: { requestedAmountYuan: scenario.exact, requestedAmountCents: scenario.payable } });
+      const path = `/expense-claims/${created.body.id}`;
+      expect(await request(path + "/submission", {})).toMatchObject({ status: 201, body: { companyPayableAmountCents: scenario.payable } });
+      for (const [approvalIndex, approvalToken] of approvalTokens.entries()) {
+        const coordinates = await parallelReviewCoordinates(path, approvalToken);
+        const approval = await request(path + "/approval", { decision: "approve", ...coordinates }, approvalToken);
+        if (approval.status !== 201) throw new Error(`四位报销 ${scenario.exact} 审批 ${approvalIndex + 1}：${approval.status} ${JSON.stringify(approval.body)}`);
+      }
+      expect(await request(path)).toMatchObject({ status: 200, body: {
+        status: scenario.status, requestedAmountYuan: scenario.exact, companyPayableAmountCents: scenario.payable
+      } });
+      const facts = await prisma.operatingFact.findMany({
+        where: { sourceType: "expense_claim_approval", sourceBusinessId: created.body.id },
+        include: { impacts: { orderBy: { sourceImpactKey: "asc" } } }
+      });
+      expect(facts).toHaveLength(1);
+      const [fact] = facts;
+      expect(fact).toMatchObject({ numericProtocolVersion: 2, amountCents: null, costBearingCompanySubjectId: scenario.costBearingCompanyEntityId });
+      expect(fact.amountYuan?.toFixed(4)).toBe(scenario.exact);
+      expect(fact.impacts.filter(impact => impact.impactKind === "confirmed_cost").map(impact => impact.amountYuan?.toFixed(4))).toEqual(scenario.amounts);
+      expect(fact.impacts.filter(impact => impact.impactKind === "payable_increase").map(impact => impact.amountYuan?.toFixed(4))).toEqual(scenario.payable === "0" ? [] : ["0.0100"]);
+      expect(await prisma.expenseClaimPaymentExecution.count({ where: { expenseClaimId: created.body.id } })).toBe(0);
+    }
+  }, 60_000);
+
   function seedHistoricalLoan(status: "draft" | "approved_pending_disbursement" | "disbursed", reason: string, loanProjectId = projectId, requestedAmountCents = 1n) {
     const now = new Date();
     const approved = status !== "draft";

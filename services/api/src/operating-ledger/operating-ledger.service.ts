@@ -14,6 +14,8 @@ import {
 import { Prisma } from "@prisma/client";
 import {
   EVIDENCE_LEVELS,
+  businessAmountFromLegacyCents,
+  sumBusinessAmounts,
   chinaDateOnly,
   normalizeBusinessAmount,
   OPERATING_FACT_KINDS,
@@ -751,7 +753,7 @@ export class OperatingLedgerService {
     const claimType = input.sourceSnapshot?.claimType;
     if (input.factKind !== "expense" || input.subjects.costBearingCompany || entryKind !== "original" ||
       input.sourceType !== EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE || input.sourceVersion !== 1 ||
-      input.adjustsFactId || input.historicalTakeoverBatchId || input.numericProtocolVersion === 2 ||
+      input.adjustsFactId || input.historicalTakeoverBatchId ||
       input.operatingLevel !== "project" || input.evidenceLevel !== "A" || input.direction !== "outflow" ||
       input.idempotencyKey !== `${input.sourceType}:${input.sourceBusinessId}` ||
       input.sourceSnapshot?.formalStatus !== "confirmed" || input.sourceSnapshot.costBearingCompanyEntityId !== null ||
@@ -771,7 +773,7 @@ export class OperatingLedgerService {
           : ["approved_pending_payment", "partially_paid", "paid"] },
         approvedAt: input.occurredAt,
         approvalInstanceId: { not: null },
-        requestedAmountCents: input.amountCents,
+        ...(input.numericProtocolVersion === 2 ? { requestedAmountYuan: input.amountYuan } : { requestedAmountCents: input.amountCents }),
         costBearingCompanySpecified: true,
         costBearingCompanyEntityId: null
       },
@@ -1275,6 +1277,29 @@ function validateOperatingMoneyScope(input: AppendOperatingFactInput, entryKind:
     return;
   }
   if (input.numericProtocolVersion !== 2) return;
+  if (input.sourceType === EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE) {
+    const costs = input.impacts.filter(impact => impact.impactKind === "confirmed_cost");
+    const payables = input.impacts.filter(impact => impact.impactKind === "payable_increase");
+    const cents = input.sourceSnapshot.companyPayableAmountCents;
+    if (entryKind !== "original" || input.factKind !== "expense" || input.direction !== "outflow" ||
+      input.sourceSnapshot.claimType !== "reimbursement" || input.sourceSnapshot.actualPurchaseBatchId ||
+      !input.amountYuan || input.amountYuan === "0.0000" || input.paymentExecutionId || input.fundExecutionId ||
+      input.fundExecutionCaseId || !costs.length || costs.length + payables.length !== input.impacts.length ||
+      sumBusinessAmounts(costs.map(impact => impact.amountYuan ?? null)) !== input.amountYuan ||
+      typeof cents !== "string" || !/^(?:0|[1-9]\d*)$/u.test(cents) ||
+      payables.length !== (cents === "0" ? 0 : 1) ||
+      costs.some(impact => !/^confirmed_cost:[1-9]\d*$/u.test(impact.sourceImpactKey) ||
+        impact.costCategoryCode !== "project_daily_expense" || !impact.amountYuan || impact.amountYuan === "0.0000" ||
+        impact.subject?.kind !== input.subjects.costBearingCompany?.kind ||
+        impact.subject?.id !== input.subjects.costBearingCompany?.id) ||
+      payables.some(impact => impact.sourceImpactKey !== "payable_increase" || impact.subjectRole !== "payee" ||
+        impact.amountYuan !== businessAmountFromLegacyCents(cents)) ||
+      input.impacts.some(impact => impact.direction !== "increase" || impact.paymentExecutionId || impact.fundExecutionId ||
+        impact.fundExecutionCaseId || impact.executionAllocationLineId)) {
+      throw new BadRequestException("报销经营成本须保留原金额，待付须与整数分付款口径一致");
+    }
+    return;
+  }
   if (input.sourceType === "project_owner_settlement_entry") {
     const reduction = input.direction === "outflow";
     const impactDirection = reduction ? "decrease" : "increase";

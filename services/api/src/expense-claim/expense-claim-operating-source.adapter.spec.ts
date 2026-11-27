@@ -58,6 +58,33 @@ describe("POL-06 expense operating source adapters", () => {
     );
   });
 
+  it("preserves both reimbursement costs while booking the payable amount in whole cents", () => {
+    const approved = snapshot("expense_claim_approval", "claim-precision", {
+      claimType: "reimbursement",
+      companyEntityId: "company-1",
+      applicantUserId: "employee-1",
+      applicantNameSnapshot: "合成报销人",
+      requestedAmountCents: "1",
+      requestedAmountYuan: "0.0100",
+      companyPayableAmountCents: "1",
+      approvedAt: "2026-08-15T01:00:00.000Z",
+      confirmedAt: "2026-08-15T02:00:00.000Z",
+      confirmedByUserId: "approver",
+      reimbursementLines: ["1", "2"].map((sortOrder, index) => ({
+        id: "line-" + sortOrder, sortOrder, expenseCategory: "办公费",
+        occurredOn: "2026-08-14T00:00:00.000Z", purpose: "验收",
+        amountYuan: "0.0050", amountCents: index === 0 ? "1" : "0"
+      }))
+    });
+    const { input } = new ExpenseClaimApprovalOperatingSourceAdapter().toOperatingFactInput(approved);
+    expect(input).toMatchObject({ numericProtocolVersion: 2, amountCents: null, amountYuan: "0.0100" });
+    expect(input.impacts).toMatchObject([
+      { impactKind: "confirmed_cost", amountYuan: "0.0050", amountCents: null },
+      { impactKind: "confirmed_cost", amountYuan: "0.0050", amountCents: null },
+      { impactKind: "payable_increase", amountYuan: "0.0100", amountCents: null }
+    ]);
+  });
+
   it.each([undefined, null, "bearing-company"])("confirms the cost once with the bearing decision %s", companyId => {
     const mapped = new ExpenseClaimApprovalOperatingSourceAdapter().toOperatingFactInput(
       snapshot("expense_claim_approval", "claim-bearing", {
