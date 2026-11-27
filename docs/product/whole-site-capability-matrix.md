@@ -6,32 +6,32 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `f11bd2f53ac55e99c7d78eb4ae3265cc26551978770d81213bbdc27a2dd19739` |
-| webApiWrappers | ready | `678e00af2d2784bb4ae1258c80f0c4488e2ca8f2243a6d1955e81a4e684a0cf1` |
-| webPageActions | ready | `c8daae4f2eab1398e2d220732c8045b03ff311bbe2b0848fa148af3429807d3c` |
-| routeUsage | ready | `08e141cc7ca20e4a3980f7e6077681ab52f5aaec72cc6e5055a185f39491e80c` |
+| nestRoutes | ready | `2714d1089e8f8807199139fa8f14ce45908af246cddf0b41473549de71d3ea90` |
+| webApiWrappers | ready | `256a95f2ebce2c2c5fed4dbcf943aba547674b6631f9299071ed64c2778b3e73` |
+| webPageActions | ready | `e4911d51bf9190f05229c34345cbc8593507d50ef19c5c56fde2553a43236eeb` |
+| routeUsage | ready | `b7f89a740befb7db002ada2817a6b26c2d6f5a598e1bcc561858b9d338681dfb` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 884 |
-| pageRouteCount | 602 |
+| routeCount | 886 |
+| pageRouteCount | 604 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 138 |
 | internalTaskRouteCount | 74 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 815 |
+| mainRequestBindingCount | 817 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 434 |
-| actionBindingCount | 529 |
-| acceptedActionBindingCount | 485 |
+| registeredActionCount | 435 |
+| actionBindingCount | 530 |
+| acceptedActionBindingCount | 486 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 425 |
-| coveredProductionMutationConsumerPairCount | 425 |
+| productionMutationConsumerPairCount | 426 |
+| coveredProductionMutationConsumerPairCount | 426 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -273,6 +273,7 @@
 | GET | /projects/:projectId/history-expenses/batches/:batchId | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#fetchHistoryExpenseBatch | — | not_applicable | — |
 | GET | /projects/:projectId/history-expenses/batches | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#fetchHistoryExpenseBatches | — | not_applicable | — |
 | GET | /projects/:projectId/history-expenses/capability | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#fetchHistoryExpenseCapability | — | not_applicable | — |
+| GET | /projects/:projectId/history-expenses/excel-template | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#downloadHistoryExpenseTemplate | — | not_applicable | — |
 | GET | /projects/:projectId/operating-funds-overview | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectOperatingOverview | — | not_applicable | — |
 | GET | /projects/:projectId/operating-profile | page | web_api_wrapper | apps/web-admin/src/api/project-operating-profile.api.ts#fetchProjectOperatingProfile | — | not_applicable | — |
 | GET | /projects/:projectId/operating-takeovers/:batchId | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#deleteOperatingTakeoverDraft<br>apps/web-admin/src/api/operating-takeover.api.ts#fetchOperatingTakeoverDetail | operating-takeover.delete-draft | not_applicable | — |
@@ -759,6 +760,7 @@
 | POST | /projects/:projectId/history-expenses/batches/:batchId/confirmations | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#confirmHistoryExpenseBatch | history-expense.confirm-batch | covered | — |
 | POST | /projects/:projectId/history-expenses/batches/:batchId/rows/:rowId/corrections | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#correctHistoryExpenseRow | history-expense.correct-row | covered | — |
 | POST | /projects/:projectId/history-expenses/batches | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#createHistoryExpenseBatch | history-expense.create-batch | covered | — |
+| POST | /projects/:projectId/history-expenses/excel-precheck | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#precheckHistoryExpenseExcel | history-expense.excel-precheck | covered | — |
 | POST | /projects/:projectId/history-expenses/precheck | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#precheckHistoryExpenses | history-expense.precheck | covered | — |
 | POST | /projects/:projectId/operating-takeovers/:batchId/activation | page | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#activateOperatingTakeover | operating-takeover.activate | covered | — |
 | POST | /projects/:projectId/operating-takeovers/:batchId/attachments | external_takeover | web_api_wrapper | apps/web-admin/src/api/operating-takeover.api.ts#addOperatingTakeoverAttachmentGroup | operating-takeover.attach-files | covered | — |

@@ -104,13 +104,17 @@ export interface HistoryExpenseBatchListItem {
 }
 
 export interface HistoryExpensePrecheckResult {
-  rows: Array<
-    HistoryExpenseRowReadModel & {
-      rowNo: number;
-      duplicateStatus: string;
-      issues: HistoryExpenseIssue[];
-    }
-  >;
+  rows: Array<{
+    rowNo: number;
+    businessRef: string | null;
+    occurredAt: string;
+    amountCents: string;
+    paidCents: string | null;
+    paymentStatus: HistoryExpensePaymentStatus;
+    costCategoryCode: string | null;
+    values: Record<string, unknown>;
+    issues: HistoryExpenseIssue[];
+  }>;
   summary: HistoryExpenseSummary;
   zeroWrites: boolean;
   importFingerprint: string;
@@ -188,6 +192,24 @@ export function precheckHistoryExpenses(
     { rows },
     "历史费用预检失败"
   );
+}
+
+export async function downloadHistoryExpenseTemplate(projectId: string) {
+  const response = await apiFetch(`${base(projectId)}/excel-template`, { method: "GET" });
+  await ensureOk(response, "下载历史费用导入模板失败");
+  return response.blob();
+}
+
+export async function precheckHistoryExpenseExcel(projectId: string, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await apiFetch(`${base(projectId)}/excel-precheck`, { method: "POST", body: form });
+  await ensureOk(response, "预检历史费用 Excel 失败");
+  return response.json() as Promise<{
+    rows: HistoryExpenseRowInput[];
+    worksheetRows: number[];
+    precheck: HistoryExpensePrecheckResult;
+  }>;
 }
 
 export function createHistoryExpenseBatch(

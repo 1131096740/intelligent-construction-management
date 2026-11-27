@@ -1,15 +1,22 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   Param,
   Patch,
-  Post
+  Post,
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RequirePositions } from "../auth/decorators/require-positions.decorator";
 import { RequireProjectRole } from "../auth/decorators/require-project-role.decorator";
+import { BUSINESS_ENTRY_XLSX_MIME } from "../file/bounded-xlsx";
+import type { MemoryUploadedFile } from "../file/uploaded-file";
 import { HistoryExpenseService } from "./history-expense.service";
 import {
   ActivateHistoryExpenseDto,
@@ -34,6 +41,28 @@ export class HistoryExpenseController {
   @RequirePositions("comprehensive_director", "finance_staff", "finance_director")
   capability(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser) {
     return this.historyExpenses.capability(projectId, user.id);
+  }
+
+  @Get("excel-template")
+  @RequireProjectRole("history_expense.manage")
+  async excelTemplate(@Param("projectId") projectId: string, @CurrentUser() user: AuthenticatedUser) {
+    const { buffer, fileName } = await this.historyExpenses.excelTemplate(projectId, user.id);
+    return new StreamableFile(buffer, {
+      type: BUSINESS_ENTRY_XLSX_MIME,
+      disposition: `attachment; filename="history-expense.xlsx"; filename*=UTF-8''${encodeURIComponent(fileName)}`
+    });
+  }
+
+  @Post("excel-precheck")
+  @RequireProjectRole("history_expense.manage")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 10 * 1024 * 1024 } }))
+  precheckExcel(
+    @Param("projectId") projectId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @UploadedFile() file: MemoryUploadedFile | undefined
+  ) {
+    if (!file) throw new BadRequestException("请选择历史费用 Excel 文件");
+    return this.historyExpenses.precheckExcel(projectId, user.id, file);
   }
 
   @Post("precheck")

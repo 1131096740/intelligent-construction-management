@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { MessagePlugin } from "tdesign-vue-next";
+import { MessagePlugin, type UploadFile } from "tdesign-vue-next";
 import { fetchProjects, type ProjectOptionReadModel } from "../../api/core-flow-read.api";
 import { formatUnknownApiError } from "../../api/error-message";
 import {
@@ -8,9 +8,11 @@ import {
   confirmHistoryExpenseBatch,
   correctHistoryExpenseRow,
   createHistoryExpenseBatch,
+  downloadHistoryExpenseTemplate,
   fetchHistoryExpenseBatch,
   fetchHistoryExpenseBatches,
   fetchHistoryExpenseCapability,
+  precheckHistoryExpenseExcel,
   precheckHistoryExpenses,
   verifyHistoryExpenseRow,
   type HistoryExpenseBatchListItem,
@@ -31,6 +33,10 @@ const batches = ref<HistoryExpenseBatchListItem[]>([]);
 const detail = ref<HistoryExpenseBatchReadModel | null>(null);
 const precheck = ref<HistoryExpensePrecheckResult | null>(null);
 const pasteText = ref("");
+const excelFiles = ref<UploadFile[]>([]);
+const excelPreview = ref<Awaited<ReturnType<typeof precheckHistoryExpenseExcel>> | null>(null);
+const excelError = ref("");
+const downloadingTemplate = ref(false);
 const loading = ref(false);
 const actionLoading = ref(false);
 const message = ref("");
@@ -176,10 +182,47 @@ async function loadProject() {
     batches.value = list;
     detail.value = null;
     precheck.value = null;
+    excelPreview.value = null;
   } catch (error) {
     message.value = formatUnknownApiError(error, "读取历史费用批次失败");
   } finally {
     loading.value = false;
+  }
+}
+
+function setExcelFiles(files: UploadFile[]) {
+  excelFiles.value = files;
+  excelPreview.value = null;
+  precheck.value = null;
+  excelError.value = "";
+}
+
+function onProjectChange() {
+  setExcelFiles([]);
+  void loadProject();
+}
+
+async function downloadTemplate() {
+  const currentCapability = capability.value;
+  const operationAllowed = currentCapability?.actions.manage;
+  if (!operationAllowed) {
+    MessagePlugin.warning("当前岗位无历史费用登记权限");
+    return;
+  }
+  downloadingTemplate.value = true;
+  excelError.value = "";
+  try {
+    const blob = await downloadHistoryExpenseTemplate(selectedProjectId.value);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "历史费用导入模板.xlsx";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (error) {
+    excelError.value = formatUnknownApiError(error, "下载历史费用导入模板失败");
+  } finally {
+    downloadingTemplate.value = false;
   }
 }
 
@@ -247,6 +290,36 @@ async function runPrecheck() {
   }
 }
 
+async function runExcelPrecheck() {
+  const currentCapability = capability.value;
+  const operationAllowed = currentCapability?.actions.manage;
+  if (!operationAllowed) {
+    MessagePlugin.warning("当前岗位无历史费用登记权限");
+    return;
+  }
+  const file = excelFiles.value[0]?.raw;
+  if (!file) {
+    excelError.value = "未读取到所选文件，请重新选择";
+    return;
+  }
+  actionLoading.value = true;
+  excelError.value = "";
+  excelPreview.value = null;
+  precheck.value = null;
+  try {
+    const imported = await precheckHistoryExpenseExcel(selectedProjectId.value, file);
+    excelPreview.value = imported;
+    precheck.value = imported.precheck;
+    MessagePlugin.success(
+      `预检完成：${imported.precheck.summary.totalRows} 行，阻断 ${imported.precheck.blockingRows} 行`
+    );
+  } catch (error) {
+    excelError.value = formatUnknownApiError(error, "历史费用 Excel 预检失败");
+  } finally {
+    actionLoading.value = false;
+  }
+}
+
 async function createBatch() {
   const currentCapability = capability.value;
   const operationAllowed = currentCapability?.actions.manage;
@@ -254,9 +327,9 @@ async function createBatch() {
     MessagePlugin.warning("当前岗位无历史费用登记权限");
     return;
   }
-  const rows = parsePasteRows();
-  if (!rows.length) {
-    message.value = "请先粘贴至少一行历史费用";
+  const rows = excelFiles.value.length ? excelPreview.value?.rows : parsePasteRows();
+  if (!rows?.length) {
+    message.value = excelFiles.value.length ? "请先预检所选 Excel 文件" : "请先粘贴至少一行历史费用";
     return;
   }
   actionLoading.value = true;
@@ -266,7 +339,7 @@ async function createBatch() {
     MessagePlugin.success(created.idempotent ? "相同内容已导入过，已打开原批次" : "批次已创建，请财务逐行核实");
     await loadProject();
     await openBatch(created.id);
-    precheck.value = null;
+    setExcelFiles([]);
     pasteText.value = "";
   } catch (error) {
     message.value = formatUnknownApiError(error, "创建历史费用批次失败");
@@ -442,7 +515,7 @@ onMounted(loadProjects);
         <h1>历史费用核实入账</h1>
         <p>先选项目，按网格登记历史无合同费用；财务逐行核实，主管复核后只把已核实行入账，待核对行保留。</p>
       </div>
-      <t-button :loading="loading" @click="loadProject">刷新</t-button>
+      <t-button :loading="loading" :disabled="actionLoading" @click="loadProject">刷新</t-button>
     </div>
 
     <t-alert v-if="message" theme="error" :close="false">{{ message }}</t-alert>
@@ -455,7 +528,8 @@ onMounted(loadProjects);
           :options="projectOptions"
           :loading="loading"
           filterable
-          @change="loadProject"
+          :disabled="actionLoading"
+          @change="onProjectChange"
         />
       </label>
       <p class="helper-text">
@@ -466,16 +540,39 @@ onMounted(loadProjects);
     <t-card v-if="selectedProjectId && capability?.actions.manage" class="panel" title="批量登记历史费用">
       <p class="helper-text">
         每行一条，列顺序：业务编号 / 发生日期 / 用途 / 类别 / 金额 / 付款情况 / 已付金额 / 付款公司 / 收款方 / 承担公司 / 已有依据。
-        支持从 Excel 直接复制粘贴（Tab 分隔）。付款公司可留空，待核对不影响费用与实付确认。
+        可使用 Excel 模板或直接粘贴（Tab 分隔）。付款公司可留空，待核对不影响费用与实付确认。
       </p>
+      <div class="form-actions">
+        <t-button variant="outline" :loading="downloadingTemplate" @click="downloadTemplate">下载 Excel 模板</t-button>
+        <t-upload
+          :model-value="excelFiles"
+          theme="file"
+          :multiple="false"
+          :auto-upload="false"
+          accept=".xlsx"
+          :disabled="actionLoading"
+          :size-limit="{ size: 10, unit: 'MB' }"
+          @update:model-value="setExcelFiles"
+        />
+      </div>
+      <t-alert v-if="excelError" theme="error" :close="false">{{ excelError }}</t-alert>
       <t-textarea
+        v-if="!excelFiles.length"
         v-model="pasteText"
         :autosize="{ minRows: 6, maxRows: 18 }"
         placeholder="历史费用-001	2026-08-01	临时用工	班组及人工成本	1000.00	已付款	1000.00	甲方公司	劳务队	甲方公司	原始签收单"
       />
       <div class="form-actions">
-        <t-button variant="outline" :loading="actionLoading" @click="runPrecheck">预检</t-button>
-        <t-button theme="primary" :loading="actionLoading" @click="createBatch">创建批次</t-button>
+        <t-button v-if="excelFiles.length" variant="outline" :loading="actionLoading" @click="runExcelPrecheck">
+          预检所选 Excel
+        </t-button>
+        <t-button v-else variant="outline" :loading="actionLoading" @click="runPrecheck">预检</t-button>
+        <t-button
+          theme="primary"
+          :loading="actionLoading"
+          :disabled="excelFiles.length > 0 && !excelPreview"
+          @click="createBatch"
+        >创建批次</t-button>
       </div>
 
       <div v-if="precheck" class="precheck">
@@ -490,11 +587,12 @@ onMounted(loadProjects);
           :data="precheck.rows"
           :loading="actionLoading"
         >
+          <template #rowNo="{ row }">{{ excelPreview?.worksheetRows[row.rowNo - 1] ?? row.rowNo }}</template>
           <template #purpose="{ row }">{{ row.values.purpose }}</template>
           <template #category="{ row }">{{ categoryLabel(row.costCategoryCode) }}</template>
           <template #amount="{ row }">{{ amount(row.amountCents) }}</template>
           <template #payment="{ row }">{{ paymentLabels[row.paymentStatus] }}</template>
-          <template #paid="{ row }">{{ amount(row.paidAmountCents) }}</template>
+          <template #paid="{ row }">{{ amount(row.paidCents) }}</template>
           <template #company="{ row }">
             {{ row.values.costBearingCompanyName || "待核对" }} / {{ row.values.payerCompanyName || "来源待核对" }}
           </template>

@@ -8,9 +8,9 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 422,
+    "activeBusinessActionCount": 423,
     "technicalActionCount": 8,
-    "activeBindingCount": 516,
+    "activeBindingCount": 517,
     "retiredWriteEntryCount": 125,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
@@ -3597,6 +3597,22 @@
       "capabilityKind": "server_boolean",
       "bindingKeys": [
         "POST /projects/:param/history-expenses/batches"
+      ],
+      "bindingCount": 1,
+      "productionConsumerCount": 1,
+      "causalVerified": true
+    },
+    {
+      "id": "history-expense.excel-precheck",
+      "status": "unified_candidate",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "capabilityKind": "server_boolean",
+      "bindingKeys": [
+        "POST /projects/:param/history-expenses/excel-precheck"
       ],
       "bindingCount": 1,
       "productionConsumerCount": 1,

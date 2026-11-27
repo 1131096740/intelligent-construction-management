@@ -11,6 +11,8 @@ import { canPerform, type BusinessAction } from "@jiangkong/shared-domain";
 import { AuditService } from "../audit/audit.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
 import { PrismaService } from "../database/prisma.service";
+import type { BoundedXlsxUpload } from "../file/bounded-xlsx";
+import { exportHistoryExpenseTemplate, parseHistoryExpenseExcel } from "./history-expense-excel";
 import {
   type AppendOperatingFactInput,
   type OperatingFactWriteResult,
@@ -171,12 +173,33 @@ export class HistoryExpenseService {
     };
   }
 
+  async excelTemplate(projectId: string, actorUserId: string) {
+    await this.authorize(projectId, actorUserId, "history_expense.manage");
+    return exportHistoryExpenseTemplate();
+  }
+
+  async precheckExcel(projectId: string, actorUserId: string, file: BoundedXlsxUpload) {
+    await this.authorize(projectId, actorUserId, "history_expense.manage");
+    const parsed = await parseHistoryExpenseExcel(file);
+    return {
+      ...parsed,
+      precheck: await this.precheckRows(projectId, { rows: parsed.rows })
+    };
+  }
+
   async precheck(
     projectId: string,
     actorUserId: string,
     input: PrecheckHistoryExpenseDto
   ): Promise<HistoryExpensePrecheckResult> {
     await this.authorize(projectId, actorUserId, "history_expense.manage");
+    return this.precheckRows(projectId, input);
+  }
+
+  private async precheckRows(
+    projectId: string,
+    input: PrecheckHistoryExpenseDto
+  ): Promise<HistoryExpensePrecheckResult> {
     const rows = this.inputRows(input);
     const project = await this.project(projectId);
     const existing = await this.existingRows(projectId);

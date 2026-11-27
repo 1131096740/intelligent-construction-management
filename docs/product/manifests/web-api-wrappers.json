@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 56,
-    "exportedFunctionCount": 761,
-    "transportWrapperCount": 742,
+    "exportedFunctionCount": 763,
+    "transportWrapperCount": 744,
     "pureExportCount": 19,
-    "mainRequestBindingCount": 815,
+    "mainRequestBindingCount": 817,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 769,
-    "productionConsumerCount": 630,
+    "requestEdgeCount": 771,
+    "productionConsumerCount": 632,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -6711,7 +6711,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5725,
+          "sourceLine": 5738,
           "method": "POST",
           "path": "/files/download-package",
           "normalizedPath": "/files/download-package",
@@ -7102,7 +7102,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7163,
+          "sourceLine": 7176,
           "method": "POST",
           "path": "/approval-forms/:param/:param/download",
           "normalizedPath": "/approval-forms/:param/:param/download",
@@ -7134,7 +7134,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7147,
+          "sourceLine": 7160,
           "method": "GET",
           "path": "/contracts/ledger-export?:param",
           "normalizedPath": "/contracts/ledger-export",
@@ -7164,7 +7164,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7147,
+          "sourceLine": 7160,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/:param/detail-export",
           "normalizedPath": "/projects/:param/contract-takeovers/:param/detail-export",
@@ -7194,7 +7194,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 5837,
+          "sourceLine": 5850,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/import-template",
           "normalizedPath": "/projects/:param/contract-takeovers/import-template",
@@ -7223,7 +7223,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7147,
+          "sourceLine": 7160,
           "method": "GET",
           "path": "/projects/:param/contract-takeovers/ledger-export",
           "normalizedPath": "/projects/:param/contract-takeovers/ledger-export",
@@ -7253,7 +7253,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 2897,
+          "sourceLine": 2910,
           "method": "POST",
           "path": "/operating-projections/export",
           "normalizedPath": "/operating-projections/export",
@@ -7283,7 +7283,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7147,
+          "sourceLine": 7160,
           "method": "GET",
           "path": "/payments/ledger-export?:param",
           "normalizedPath": "/payments/ledger-export",
@@ -7343,7 +7343,7 @@
         },
         {
           "kind": "ticket_followup",
-          "sourceLine": 5696,
+          "sourceLine": 5709,
           "method": "GET",
           "ticketField": "downloadUrl",
           "bodyKind": "none",
@@ -7377,7 +7377,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 3972,
+          "sourceLine": 3985,
           "method": "POST",
           "path": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
           "normalizedPath": "/projects/:param/expense-requests/:param/approval-pdf-download-ticket",
@@ -7436,7 +7436,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7190,
+          "sourceLine": 7203,
           "method": "GET",
           "path": "/settlements/:param/attachment-templates/:param/download",
           "normalizedPath": "/settlements/:param/attachment-templates/:param/download",
@@ -7465,7 +7465,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7177,
+          "sourceLine": 7190,
           "method": "GET",
           "path": "/settlements/:param/draft-excel",
           "normalizedPath": "/settlements/:param/draft-excel",
@@ -7494,7 +7494,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7205,
+          "sourceLine": 7218,
           "method": "POST",
           "path": "/settlements/:param/approval-pdf/latest",
           "normalizedPath": "/settlements/:param/approval-pdf/latest",
@@ -7523,7 +7523,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7147,
+          "sourceLine": 7160,
           "method": "GET",
           "path": "/settlements/ledger-export",
           "normalizedPath": "/settlements/ledger-export",
@@ -7553,7 +7553,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 7147,
+          "sourceLine": 7160,
           "method": "GET",
           "path": "/settlements/signed-ledger-export?:param",
           "normalizedPath": "/settlements/signed-ledger-export",
@@ -16577,7 +16577,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 161,
+          "sourceLine": 165,
           "method": "POST",
           "path": "/projects/:param/history-expenses/batches/:param/activation",
           "normalizedPath": "/projects/:param/history-expenses/batches/:param/activation",
@@ -16605,7 +16605,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 161,
+          "sourceLine": 165,
           "method": "POST",
           "path": "/projects/:param/history-expenses/batches/:param/confirmations",
           "normalizedPath": "/projects/:param/history-expenses/batches/:param/confirmations",
@@ -16633,7 +16633,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 161,
+          "sourceLine": 165,
           "method": "POST",
           "path": "/projects/:param/history-expenses/batches/:param/rows/:param/corrections",
           "normalizedPath": "/projects/:param/history-expenses/batches/:param/rows/:param/corrections",
@@ -16661,7 +16661,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 161,
+          "sourceLine": 165,
           "method": "POST",
           "path": "/projects/:param/history-expenses/batches",
           "normalizedPath": "/projects/:param/history-expenses/batches",
@@ -16682,6 +16682,33 @@
       "unreachableConsumers": []
     },
     {
+      "name": "downloadHistoryExpenseTemplate",
+      "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+      "kind": "transport",
+      "returnProvenance": "unverified",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 198,
+          "method": "GET",
+          "path": "/projects/:param/history-expenses/excel-template",
+          "normalizedPath": "/projects/:param/history-expenses/excel-template",
+          "normalizedKey": "GET /projects/:param/history-expenses/excel-template",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadHistoryExpenseTemplate"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchHistoryExpenseBatch",
       "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
       "kind": "transport",
@@ -16689,7 +16716,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 161,
+          "sourceLine": 165,
           "method": "GET",
           "path": "/projects/:param/history-expenses/batches/:param",
           "normalizedPath": "/projects/:param/history-expenses/batches/:param",
@@ -16717,7 +16744,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 161,
+          "sourceLine": 165,
           "method": "GET",
           "path": "/projects/:param/history-expenses/batches",
           "normalizedPath": "/projects/:param/history-expenses/batches",
@@ -16745,7 +16772,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 161,
+          "sourceLine": 165,
           "method": "GET",
           "path": "/projects/:param/history-expenses/capability",
           "normalizedPath": "/projects/:param/history-expenses/capability",
@@ -16766,6 +16793,33 @@
       "unreachableConsumers": []
     },
     {
+      "name": "precheckHistoryExpenseExcel",
+      "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 206,
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/excel-precheck",
+          "normalizedPath": "/projects/:param/history-expenses/excel-precheck",
+          "normalizedKey": "POST /projects/:param/history-expenses/excel-precheck",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "precheckHistoryExpenseExcel"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "precheckHistoryExpenses",
       "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
       "kind": "transport",
@@ -16773,7 +16827,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 161,
+          "sourceLine": 165,
           "method": "POST",
           "path": "/projects/:param/history-expenses/precheck",
           "normalizedPath": "/projects/:param/history-expenses/precheck",
@@ -16801,7 +16855,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 161,
+          "sourceLine": 165,
           "method": "PATCH",
           "path": "/projects/:param/history-expenses/batches/:param/rows/:param",
           "normalizedPath": "/projects/:param/history-expenses/batches/:param/rows/:param",

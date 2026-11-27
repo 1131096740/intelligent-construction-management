@@ -10,21 +10,21 @@
     "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
   },
   "summary": {
-    "routeCount": 884,
-    "exactRouteCount": 884,
-    "normalizedRouteCount": 884,
+    "routeCount": 886,
+    "exactRouteCount": 886,
+    "normalizedRouteCount": 886,
     "classificationOverrideCount": 301,
     "consumerSurfaceOverrideCount": 76,
     "classificationOverrideSha256": "8ab76be36b8e6846dca04b7ee021dede876a613986c512c84f1e939f82be8231",
     "consumerSurfaceOverrideSha256": "c14620f08f076d0b1bc3a7ecfb258a147bdeb7ca120f68c23cdb9ce10521ad49",
-    "derivedProductionPageCount": 583,
-    "pageRouteCount": 602,
+    "derivedProductionPageCount": 585,
+    "pageRouteCount": 604,
     "externalTakeoverCount": 70,
     "exitCandidateCount": 138,
     "internalTaskCount": 74,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 654,
+      "web_api_wrapper": 656,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 2,
@@ -35,7 +35,7 @@
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 654,
+    "productionWrapperRouteCount": 656,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -5048,7 +5048,7 @@
             "wrapper": "downloadPrivateFileByTicket",
             "method": "GET",
             "ticketField": "downloadUrl",
-            "sourceLine": 5696,
+            "sourceLine": 5709,
             "productionConsumers": [
               "apps/web-admin/src/components/ContractBankVerificationPanel.vue",
               "apps/web-admin/src/components/files/PrivatePdfActions.vue",
@@ -10305,6 +10305,47 @@
             "method": "GET",
             "normalizedPath": "/projects/:param/history-expenses/capability",
             "normalizedKey": "GET /projects/:param/history-expenses/capability",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "GET",
+      "path": "/projects/:projectId/history-expenses/excel-template",
+      "normalizedKey": "GET /projects/:param/history-expenses/excel-template",
+      "controller": "HistoryExpenseController",
+      "handler": "excelTemplate",
+      "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "history_expense.manage",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+            "wrapper": "downloadHistoryExpenseTemplate",
+            "method": "GET",
+            "normalizedPath": "/projects/:param/history-expenses/excel-template",
+            "normalizedKey": "GET /projects/:param/history-expenses/excel-template",
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
             ]
@@ -29689,6 +29730,47 @@
             "method": "POST",
             "normalizedPath": "/projects/:param/history-expenses/batches/:param/rows/:param/corrections",
             "normalizedKey": "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections",
+            "productionConsumers": [
+              "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+            ]
+          }
+        ],
+        "authStore": [],
+        "ticketFollowups": [],
+        "manualSurfaceReason": null
+      },
+      "deletionAuthorized": false,
+      "exitCandidateSemantics": null
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/history-expenses/excel-precheck",
+      "normalizedKey": "POST /projects/:param/history-expenses/excel-precheck",
+      "controller": "HistoryExpenseController",
+      "handler": "precheckExcel",
+      "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+      "authorizationScope": "guard_metadata_only",
+      "authentication": "authenticated",
+      "guardAuthorization": "project_action",
+      "isPublic": false,
+      "requiredPositions": [],
+      "requiredProjectAction": "history_expense.manage",
+      "authorizationCombination": null,
+      "contractCutoverSurface": false,
+      "contractCutoverLegacyWrite": false,
+      "contractCutoverTombstoneWrite": false,
+      "usage": "page",
+      "classificationSource": "production_web_evidence",
+      "classificationReason": null,
+      "consumerSurface": "web_api_wrapper",
+      "consumerEvidence": {
+        "webApiWrappers": [
+          {
+            "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+            "wrapper": "precheckHistoryExpenseExcel",
+            "method": "POST",
+            "normalizedPath": "/projects/:param/history-expenses/excel-precheck",
+            "normalizedKey": "POST /projects/:param/history-expenses/excel-precheck",
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
             ]

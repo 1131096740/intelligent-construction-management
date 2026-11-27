@@ -1,4 +1,4 @@
-// Explicit AST witnesses for the six history-expense writes added by #417.
+// Explicit AST witnesses for the #417 and #436 history-expense actions.
 //
 // Each witness pins:
 //   1. the trigger element and the server capability gate on it or on its
@@ -45,6 +45,20 @@ const ACTIONS = {
     ],
     serverPins: ['@RequireProjectRole("history_expense.manage")'],
     wrappers: [{ apiFile: API, name: "precheckHistoryExpenses" }]
+  },
+  "history-expense.excel-precheck": {
+    page: PAGE,
+    route: ROUTE,
+    element: "t-button",
+    event: "click",
+    handler: "runExcelPrecheck",
+    capability: "capability.actions.manage",
+    triggerGate: MANAGE_GATE,
+    guard: "const operationAllowed = currentCapability?.actions.manage;",
+    call: "const imported = await precheckHistoryExpenseExcel(selectedProjectId.value, file);",
+    capabilityPins: [[PAGE, "capability?.actions.manage"], [API, "manage: boolean;"]],
+    serverPins: ['@Post("excel-precheck") @RequireProjectRole("history_expense.manage")'],
+    wrappers: [{ apiFile: API, name: "precheckHistoryExpenseExcel" }]
   },
   "history-expense.create-batch": {
     page: PAGE,

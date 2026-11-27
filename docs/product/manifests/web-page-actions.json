@@ -9,20 +9,20 @@
     "authorizationScope": "ui_capability_binding_only"
   },
   "summary": {
-    "registeredActionCount": 434,
-    "pageActionCount": 107,
+    "registeredActionCount": 435,
+    "pageActionCount": 108,
     "backgroundActionCount": 327,
     "reachableVueFileCount": 237,
     "routeRootCount": 82,
     "totalVueFileCount": 257,
     "parsedVueFileCount": 257,
     "reachableProductionModuleCount": 408,
-    "templateEventDirectiveCount": 1544,
+    "templateEventDirectiveCount": 1547,
     "propCallbackDirectiveCount": 8,
-    "coveredProductionMutationConsumerCount": 425,
-    "candidateProductionMutationConsumerCount": 425,
-    "acceptedProductionMutationConsumerCount": 425,
-    "productionMutationConsumerPairCount": 425,
+    "coveredProductionMutationConsumerCount": 426,
+    "candidateProductionMutationConsumerCount": 426,
+    "acceptedProductionMutationConsumerCount": 426,
+    "productionMutationConsumerPairCount": 426,
     "blockerCount": 0
   },
   "evidence": {
@@ -2333,7 +2333,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5696,
+              "sourceLine": 5709,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -2379,7 +2379,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5696,
+              "sourceLine": 5709,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3529,7 +3529,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5696,
+              "sourceLine": 5709,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -3573,7 +3573,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5696,
+              "sourceLine": 5709,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5138,7 +5138,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5696,
+              "sourceLine": 5709,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -5182,7 +5182,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5696,
+              "sourceLine": 5709,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6249,7 +6249,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5696,
+              "sourceLine": 5709,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -6295,7 +6295,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5696,
+              "sourceLine": 5709,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7345,7 +7345,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5696,
+              "sourceLine": 5709,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -7389,7 +7389,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5696,
+              "sourceLine": 5709,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -10678,7 +10678,7 @@
         "event": "call",
         "handler": "submitCostAttribution",
         "kind": "background_call",
-        "sourceLine": 2411,
+        "sourceLine": 2416,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -10746,7 +10746,7 @@
         "event": "call",
         "handler": "submitCostAttributionReview",
         "kind": "background_call",
-        "sourceLine": 2454,
+        "sourceLine": 2459,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -15614,7 +15614,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5696,
+              "sourceLine": 5709,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -15658,7 +15658,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5696,
+              "sourceLine": 5709,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -16818,7 +16818,7 @@
         "event": "click",
         "handler": "submitActivate",
         "kind": "event",
-        "sourceLine": 546,
+        "sourceLine": 644,
         "sourceColumn": 85
       },
       "semantic": "business_write",
@@ -16882,7 +16882,7 @@
         "event": "click",
         "handler": "submitConfirm",
         "kind": "event",
-        "sourceLine": 543,
+        "sourceLine": 641,
         "sourceColumn": 84
       },
       "semantic": "business_write",
@@ -16946,7 +16946,7 @@
         "event": "confirm",
         "handler": "submitCorrection",
         "kind": "event",
-        "sourceLine": 599,
+        "sourceLine": 697,
         "sourceColumn": 110
       },
       "semantic": "business_write",
@@ -17010,8 +17010,8 @@
         "event": "click",
         "handler": "createBatch",
         "kind": "event",
-        "sourceLine": 478,
-        "sourceColumn": 59
+        "sourceLine": 574,
+        "sourceColumn": 10
       },
       "semantic": "business_write",
       "capability": {
@@ -17060,6 +17060,70 @@
       ]
     },
     {
+      "id": "history-expense.excel-precheck",
+      "usage": "page_action",
+      "routePaths": [
+        "/历史费用核实入账"
+      ],
+      "ownerRoutePaths": [
+        "/历史费用核实入账"
+      ],
+      "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
+      "trigger": {
+        "element": "t-button",
+        "event": "click",
+        "handler": "runExcelPrecheck",
+        "kind": "event",
+        "sourceLine": 566,
+        "sourceColumn": 86
+      },
+      "semantic": "business_write",
+      "capability": {
+        "kind": "server_boolean",
+        "source": "capability.actions.manage",
+        "serverDerived": true,
+        "dominatesTrigger": true
+      },
+      "bindings": [
+        {
+          "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+          "wrapper": "precheckHistoryExpenseExcel",
+          "method": "POST",
+          "path": "/projects/:param/history-expenses/excel-precheck",
+          "normalizedKey": "POST /projects/:param/history-expenses/excel-precheck",
+          "bodyKind": "form_data",
+          "nestRoute": {
+            "method": "POST",
+            "path": "/projects/:projectId/history-expenses/excel-precheck",
+            "normalizedKey": "POST /projects/:param/history-expenses/excel-precheck",
+            "controller": "HistoryExpenseController",
+            "handler": "precheckExcel",
+            "sourceFile": "services/api/src/history-expense/history-expense.controller.ts",
+            "authorizationScope": "guard_metadata_only",
+            "authentication": "authenticated",
+            "guardAuthorization": "project_action",
+            "isPublic": false,
+            "requiredPositions": [],
+            "requiredProjectAction": "history_expense.manage"
+          },
+          "productionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "acceptedProductionConsumers": [
+            "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+          ],
+          "causalVerified": true,
+          "causalProof": {
+            "localCallChain": [
+              "runExcelPrecheck",
+              "precheckHistoryExpenseExcel"
+            ]
+          },
+          "ticketFollowups": []
+        }
+      ]
+    },
+    {
       "id": "history-expense.precheck",
       "usage": "page_action",
       "routePaths": [
@@ -17074,8 +17138,8 @@
         "event": "click",
         "handler": "runPrecheck",
         "kind": "event",
-        "sourceLine": 477,
-        "sourceColumn": 61
+        "sourceLine": 569,
+        "sourceColumn": 68
       },
       "semantic": "business_write",
       "capability": {
@@ -17138,7 +17202,7 @@
         "event": "confirm",
         "handler": "submitVerify",
         "kind": "event",
-        "sourceLine": 645,
+        "sourceLine": 743,
         "sourceColumn": 104
       },
       "semantic": "business_write",
@@ -17255,7 +17319,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5696,
+              "sourceLine": 5709,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -17299,7 +17363,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5696,
+              "sourceLine": 5709,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20098,7 +20162,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5696,
+              "sourceLine": 5709,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -20142,7 +20206,7 @@
           "ticketFollowups": [
             {
               "kind": "ticket_followup",
-              "sourceLine": 5696,
+              "sourceLine": 5709,
               "method": "GET",
               "ticketField": "downloadUrl",
               "bodyKind": "none"
@@ -21811,7 +21875,7 @@
         "event": "call",
         "handler": "reconcileProjectCloseImpactsWithCapability",
         "kind": "background_call",
-        "sourceLine": 2290,
+        "sourceLine": 2295,
         "sourceColumn": 0
       },
       "semantic": "technical_write",
@@ -22106,7 +22170,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseApprovalPdfWithCapability",
         "kind": "background_call",
-        "sourceLine": 3466,
+        "sourceLine": 3471,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -22171,7 +22235,7 @@
         "event": "call",
         "handler": "downloadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 3428,
+        "sourceLine": 3433,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -22236,7 +22300,7 @@
         "event": "call",
         "handler": "uploadProjectExpenseAttachmentWithCapability",
         "kind": "background_call",
-        "sourceLine": 2792,
+        "sourceLine": 2797,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -22301,7 +22365,7 @@
         "event": "call",
         "handler": "createProjectExpenseRequestWithCapability",
         "kind": "background_call",
-        "sourceLine": 2776,
+        "sourceLine": 2781,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -22604,7 +22668,7 @@
         "event": "call",
         "handler": "recordProjectExpensePurchaseExecutionWithCapability",
         "kind": "background_call",
-        "sourceLine": 3387,
+        "sourceLine": 3392,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -25650,7 +25714,7 @@
         "event": "call",
         "handler": "createProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 2201,
+        "sourceLine": 2206,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26193,7 +26257,7 @@
         "event": "call",
         "handler": "updateProjectWithCapability",
         "kind": "background_call",
-        "sourceLine": 2210,
+        "sourceLine": 2215,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26258,7 +26322,7 @@
         "event": "call",
         "handler": "confirmProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 3169,
+        "sourceLine": 3174,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26325,7 +26389,7 @@
         "event": "call",
         "handler": "uploadProjectUpstreamFundEvidenceWithCapability",
         "kind": "background_call",
-        "sourceLine": 3108,
+        "sourceLine": 3113,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26394,7 +26458,7 @@
         "event": "call",
         "handler": "recordProjectUpstreamFundFactWithCapability",
         "kind": "background_call",
-        "sourceLine": 3056,
+        "sourceLine": 3061,
         "sourceColumn": 0
       },
       "semantic": "business_write",
@@ -26461,7 +26525,7 @@
         "event": "call",
         "handler": "validateProjectUpstreamFundDraftWithDefinition",
         "kind": "background_call",
-        "sourceLine": 3072,
+        "sourceLine": 3077,
         "sourceColumn": 0
       },
       "semantic": "business_write",
