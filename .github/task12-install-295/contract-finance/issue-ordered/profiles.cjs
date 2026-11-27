@@ -458,7 +458,7 @@ for (const [scope, predecessor] of Object.entries({
   issue416_his_349: 'issue416_his_346',
   issue420_349: 'issue420_346',
   issue422_349: 'issue422_346',
-  ...Object.fromEntries(issue418OperatingScopes349.map((scope, index) => [scope, issue418OperatingScopes[index]]))
+  ...Object.fromEntries(issue418OperatingScopes.map(scope => [scope + '_349', scope]))
 })) {
   const frozen = profiles[predecessor];
   profiles[scope] = {

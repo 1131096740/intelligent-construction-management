@@ -42,7 +42,9 @@ fi
     $2 == expense-execution || $2 == expense-finance || $2 == expense-receipt || $2 == cash-handover || $2 == principal-return || $2 == company-proxy ||
     $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts || $2 == pol109 ||
     $2 == pfq || $2 == task398-standard || $2 == cash-transfer || $2 == project-advance || $issue_lane == true ) && $3 == --expense-witness-346 ) ||
-  ( $# == 3 && ( $issue_lane == true || $2 == pol115-full || $2 == pol115-workbench ) && $3 == --expense-witness-349 ) ||
+  ( $# == 3 && ( $issue_lane == true || $2 == pol115-full || $2 == pol115-workbench ||
+    $2 == v7 || $2 == invoice || $2 == pol279 || $2 == pol280 ||
+    $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts || $2 == pol109 ) && $3 == --expense-witness-349 ) ||
   ( $# == 4 && ( $2 == payment-execution || $2 == task398-competition || $2 == pol109 || $2 == cash-transfer || $2 == project-advance ) &&
     $3 == --expense-witness-346 && $4 == --host-only ) ||
   ( $# == 4 && $2 == pol275 && ( $3 == --historical-settlement-334 || $3 == --expense-witness-346 ) && $4 == a187dc73a133114e1cfbbc891a4aec923abe2545 ) ||
