@@ -150,6 +150,13 @@ for lane in fresh valid paid other; do
   if [[ ! -s "$work/$lane.stdout" ]]; then
     printf 'PAYMENT_EXECUTION_%s_NO_RECEIPT %s exit=%s stderr_bytes=%s\n' \
       "$count" "$lane" "$exit_code" "$(wc -c < "$work/$lane.stderr" | tr -d '[:space:]')" >&2
+    node - "$work/$lane.stderr" <<'JS'
+const text = require('node:fs').readFileSync(process.argv[2], 'utf8');
+const kind = /MODULE_NOT_FOUND|Cannot find module/u.test(text) ? 'MODULE_NOT_FOUND'
+  : /EACCES|permission denied/iu.test(text) ? 'PERMISSION_DENIED'
+  : /SyntaxError/u.test(text) ? 'SYNTAX_ERROR' : 'UNCLASSIFIED';
+console.error(`PAYMENT_EXECUTION_START_FAILURE_KIND ${kind}`);
+JS
     exit 1
   fi
   tail -n 1 "$work/$lane.stdout" > "$work/$lane.json"
