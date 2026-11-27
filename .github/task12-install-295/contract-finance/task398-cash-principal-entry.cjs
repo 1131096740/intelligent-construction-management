@@ -7,10 +7,11 @@ const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run
 const [lane] = process.argv.slice(2);
 assert.ok(process.argv.length===3&&['cash-handover','principal-return','cash-transfer','project-advance','principal-return-a23'].includes(lane));
 const textDirect=source.mode==='text-direct-330';
-const signed=source.mode==='signed-settlement-350'?require('./payment-execution-350.cjs'):undefined;
+const company=source.mode==='company-history-352';
+const signed=(company||source.mode==='signed-settlement-350')?require('./payment-execution-'+source.migrationCount+'.cjs'):undefined;
 const precision=(signed||source.mode==='expense-witness-349')?require('./expense-witness-349-profile.cjs'):undefined;
 const expense=(precision||source.mode==='expense-witness-346')?require('./expense-witness-346-profile.cjs'):undefined;
-const profile=signed?require('./signed-settlement-350-profile.cjs'):precision??expense;
+const profile=company?require('./company-history-352-profile.cjs'):signed?require('./signed-settlement-350-profile.cjs'):precision??expense;
 const historical=(expense||source.mode==="historical-settlement-334")?require("./historical-settlement-334-profile.cjs"):null;
 const upwardArchive=source.mode==='upward-archive-332';
 const paymentRemainder=source.mode==='payment-remainder-331';

@@ -1,0 +1,55 @@
+--- predecessor/fixture
++++ forward/fixture
+@@ -501,19 +501,20 @@
+  `);
+ }
+ async function runTask398Owned282Voucher(context, mode="standard", receipt){
+- const modes=new Map([["cash-handover-350",["--cash-handover-real"]],["principal-return-350",["--principal-return-real"]],["cash-handover-349",["--cash-handover-real"]],["principal-return-349",["--principal-return-real"]],["cash-handover-346",["--cash-handover-real"]],["principal-return-346",["--principal-return-real"]],["cash-handover-334",["--cash-handover-real"]],["principal-return-334",["--principal-return-real"]],["cash-handover-332",["--cash-handover-real"]],["principal-return-332",["--principal-return-real"]],["cash-handover-331",["--cash-handover-real"]],["principal-return-331",["--principal-return-real"]],["cash-handover-330",["--cash-handover-real"]],["principal-return-330",["--principal-return-real"]],["cash-handover-329",["--cash-handover-real"]],["principal-return-329",["--principal-return-real"]],["cash-handover-295",["--cash-handover-real"]],["principal-return-295",["--principal-return-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["cash-handover-352",["--cash-handover-real"]],["principal-return-352",["--principal-return-real"]],["cash-handover-350",["--cash-handover-real"]],["principal-return-350",["--principal-return-real"]],["cash-handover-349",["--cash-handover-real"]],["principal-return-349",["--principal-return-real"]],["cash-handover-346",["--cash-handover-real"]],["principal-return-346",["--principal-return-real"]],["cash-handover-334",["--cash-handover-real"]],["principal-return-334",["--principal-return-real"]],["cash-handover-332",["--cash-handover-real"]],["principal-return-332",["--principal-return-real"]],["cash-handover-331",["--cash-handover-real"]],["principal-return-331",["--principal-return-real"]],["cash-handover-330",["--cash-handover-real"]],["principal-return-330",["--principal-return-real"]],["cash-handover-329",["--cash-handover-real"]],["principal-return-329",["--principal-return-real"]],["cash-handover-295",["--cash-handover-real"]],["principal-return-295",["--principal-return-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+  if(!modes.has(mode))throw new Error("TASK398_OWNED_282_SCENARIO");
+  const exact295=mode==="cash-handover-295"||mode==="principal-return-295";
+  const exact320=mode==="cash-handover-329"||mode==="principal-return-329";
+  const exact330=mode==="cash-handover-330"||mode==="principal-return-330";
+  const exact331=mode==="cash-handover-331"||mode==="principal-return-331";
+- const exact350=mode==="cash-handover-350"||mode==="principal-return-350";
++ const exact352=mode==="cash-handover-352"||mode==="principal-return-352";
++ const exact350=exact352||mode==="cash-handover-350"||mode==="principal-return-350";
+  const exact349=exact350||mode==="cash-handover-349"||mode==="principal-return-349";
+  const exact346=exact349||mode==="cash-handover-346"||mode==="principal-return-346";
+  const exact334=exact346||mode==="cash-handover-334"||mode==="principal-return-334";
+  const exact332=exact334||mode==="cash-handover-332"||mode==="principal-return-332";
+  const prefixCount=exact334?334:exact332?332:exact331?331:exact330?330:329;
+- const count=exact350?350:exact349?349:exact346?346:prefixCount;
++ const count=exact352?352:exact350?350:exact349?349:exact346?346:prefixCount;
+  const forward=exact332||exact331||exact330||exact320?receipt?.forward320:undefined;
+  if((exact332||exact331||exact330||exact320)&&(receipt?.purpose!=="TASK398_CASH_PRINCIPAL_EXACT_"+count||mode!==receipt.lane+"-"+count
+   ||forward?.count!==prefixCount||forward.sameIdentity!==true||forward.sameBaseB7!==true
+@@ -538,6 +539,10 @@
+    ||precision.tails?.length!==3||precision.tails.at(-1)?.name!=="20261129018000_reimbursement_exact_cash_cost_links"
+    ||precision.tails.at(-1)?.sha256!=="58b3cc0404a85a97dbb484654245d4bd042e5fb2014f32997244b2597cb5110b"))
+   throw Error("TASK398_CASH_PRINCIPAL_349_SCOPE");
++ const company=exact352?receipt?.companyHistoryForward:undefined;
++ if(exact352&&(company?.count!==352||company.sameIdentity!==true||company.sourceTree!==forward.sourceTree
++   ||company.ledgerSha256!=="155903a7032c978e10b8d73f48a0621bf9561ae69ef58a0128d2455f1ccfa5f8"
++   ||company.tails?.length!==2)) throw Error("TASK398_CASH_PRINCIPAL_352_SCOPE");
+  const signed=exact350?receipt?.signedSettlementForward:undefined;
+  if(exact350&&(signed?.count!==350||signed.sameIdentity!==true||signed.sourceTree!==forward.sourceTree
+    ||signed.ledgerSha256!=="6dd4b8f7c484e4afeacd893991256275b087e2ae1ee2c940df87f812dc60a860"
+@@ -595,7 +600,7 @@
+  const ledger=readback.ledger.map(row=>({name:row.name,sha256:row.sha256,finished:true,rolledBack:false}));
+  if(readback.database!==database||readback.actor!=="jg_task01_owner"||readback.ownerOid!=="10"
+    ||readback.sameActor!==true||readback.tls!==true||readback.inactiveLedger!==0||ledger.length!==(forward?count:exact295?295:(mode==="correction-catalog"||exact290)?290:282)
+-   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(forward?(signed??precision??expense??forward).ledgerSha256:exact295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||exact290)?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
++   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(forward?(company??signed??precision??expense??forward).ledgerSha256:exact295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||exact290)?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
+  const protectedExec=await snapshotOwned280CashProfile(sql,fences);
+  const storage=mkdtempSync(path.join(workDir,"cash-storage-"));
+  chmodSync(storage,0o700);
+@@ -612,7 +617,7 @@
+  `);
+  const catalog=await runBusiness(options,{candidate,short,storage,url,sql,env,current280:true,readPostgresLog,
+   correctionCatalog:mode==="correction-catalog"?{context,receipt}:undefined,standard290:forward||exact295||exact290?receipt:undefined,ownedMigrationBaseline:forward?{
+-  expectedDirectoryCount:count,terminalMigration:(signed??precision??expense??forward).tails.at(-1).name,terminalMigrationChecksum:(signed??precision??expense??forward).tails.at(-1).sha256
++  expectedDirectoryCount:count,terminalMigration:(company??signed??precision??expense??forward).tails.at(-1).name,terminalMigrationChecksum:(company??signed??precision??expense??forward).tails.at(-1).sha256
+  }:exact295?{
+   expectedDirectoryCount:295,terminalMigration:"20261119003800_company_transfer_ordinary_loan_multi_witness",
+   terminalMigrationChecksum:"e5b56cb299eb4a51eb094267fbf302b6fa6b40b31c0337c6dfcf628694d5de25"
