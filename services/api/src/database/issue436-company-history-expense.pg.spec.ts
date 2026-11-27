@@ -17,7 +17,7 @@ integration("公司历史费用真实入账、净额、两会话更正、相邻�
   const url = new URL(process.env.ISSUE436_COMPANY_HISTORY_DATABASE_URL ?? "");
   const runId = process.env.ISSUE436_COMPANY_HISTORY_RUN_ID;
   if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" ||
-      url.protocol !== "postgresql:" || url.pathname !== "/jiangkong_line_a_real_db" ||
+      url.protocol !== "postgresql:" || !/^\/issue436_company_[0-9a-f]{12}$/u.test(url.pathname) ||
       !/^[0-9a-f-]{36}$/u.test(runId ?? "")) {
     throw new Error("公司历史费用验收只允许一次性本机 PostgreSQL 专库");
   }
