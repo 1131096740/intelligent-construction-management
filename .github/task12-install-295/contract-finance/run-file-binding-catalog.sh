@@ -2,7 +2,11 @@
 set -euo pipefail
 umask 077
 
-[[ ( $# == 5 || ( $# == 6 && $6 == --host-only ) ) && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 ) ]] || exit 64
+[[ ( $# == 5 || ( $# == 6 && $6 == --host-only ) ) &&
+  ( $5 == --expense-witness-34[69] || $5 == --signed-settlement-350 ) ]] || exit 64
+if [[ $5 == --signed-settlement-350 ]]; then
+  [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
+fi
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -42,7 +46,7 @@ for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
 source "$plan/remaining-installer-mounts.sh"
-append_remaining_installer "$mode"
+append_remaining_installer "$mode" owner
 
 if [[ ${6-} == --host-only ]]; then
   node --check "$work/installer.cjs"
