@@ -20,6 +20,7 @@ node -e '
 entry=line-a-entry.cjs
 mode=$(node -p 'require(process.argv[1]).mode' "$source")
 case "$mode:${4:-}:${5:-}" in
+  signed-settlement-350:original:|signed-settlement-350:original:--host-only|\
   signed-settlement-350:--a01-signed-subcent-350:|signed-settlement-350:--a01-signed-subcent-350:--host-only)
     [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64 ;;
   expense-witness-349:original:|expense-witness-349:original:--host-only) ;;
@@ -58,8 +59,8 @@ profile.assertSource(source, final);
 
 const workspace = path.join(prepared, 'prepared/context/workspace');
 const api = path.join(workspace, 'services/api');
-const signedSubcent = lane === '--a01-signed-subcent-350';
-if (lane !== 'original' || profile.count === 349) {
+const signedSubcent = source.mode === 'signed-settlement-350';
+if (lane !== 'original' || profile.count === 349 || signedSubcent) {
   profile.assertRuntimeBaseline(require(path.join(api, 'prisma/migration-baseline.cjs')));
 }
 if (lane !== 'original' && !signedSubcent) {
@@ -87,7 +88,7 @@ if (signedSubcent) {
     status: 'HOST_MATERIAL_ONLY', sourceSha: source.sourceSha, sourceTree: source.sourceTree,
     predecessor349: source.predecessor349, migrationCount: profile.count, ledgerSha256: source.ledgerSha256,
     terminal: source.tails.at(-1), originalCaseCount: 18, overlayCaseCount: 19,
-    selectedCase: 'A01 已签结算不足一分冲减在确认后保留经营原值', fixtureSha256
+    ...(lane === 'original' ? {} : { selectedCase: 'A01 已签结算不足一分冲减在确认后保留经营原值' }), fixtureSha256
   }) + '\n', { flag: 'wx' });
 }
 const output = path.join(work, path.basename(spec));
@@ -168,16 +169,22 @@ case ${4:-} in
 esac
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
+entry_args=()
+if [[ "$mode" == signed-settlement-350 && ${4:-} == original ]]; then entry_args=(original); fi
 exit_code=0
-docker run "${args[@]}" --entrypoint node "$image" /qualification/"$entry" > "$work/receipt.json" 2> "$work/private.stderr" || exit_code=$?
+docker run "${args[@]}" --entrypoint node "$image" /qualification/"$entry" ${entry_args[@]+"${entry_args[@]}"} > "$work/receipt.json" 2> "$work/private.stderr" || exit_code=$?
 [[ ! -s "$work/receipt.json" ]] || cat "$work/receipt.json"
 (( exit_code == 0 )) || exit "$exit_code"
 node -e '
   const assert=require("node:assert/strict");
   const proof=require(process.argv[1]);
   const source=require(process.argv[3]);
-  if (process.argv[4] === "--a01-signed-subcent-350") {
-    assert.equal(proof.status, "LINE_A_A01_SIGNED_SUBCENT_350_PASSED");
+  if (source.mode === "signed-settlement-350") {
+    const full = process.argv[4] === "original";
+    assert.equal(proof.status, full ? "LINE_A_SIGNED_SETTLEMENT_350_PASSED" : "LINE_A_A01_SIGNED_SUBCENT_350_PASSED");
+    assert.equal(proof.lineA.registered, 19);
+    assert.equal(proof.lineA.passed, full ? 19 : 1);
+    assert.equal(proof.lineA.skipped, full ? 0 : 18);
     assert.equal(proof.sourceSha, process.argv[2]);
     assert.equal(proof.signedSettlementForward.count, 350);
     assert.equal(proof.signedSettlementForward.ledgerSha256, source.ledgerSha256);

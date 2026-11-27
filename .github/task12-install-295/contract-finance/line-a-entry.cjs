@@ -17,6 +17,8 @@ const root = '/qualification';
 const api = path.join(root, 'workspace/services/api');
 const spec = 'src/database/line-a-real-db.http.pg.spec.ts';
 const signedSubcent = source.mode === 'signed-settlement-350';
+const fullSignedSuite = signedSubcent && process.argv[2] === 'original';
+const signedSubcentOnly = signedSubcent && !fullSignedSuite;
 const signedProfile = signedSubcent ? require('./signed-settlement-350-profile.cjs') : null;
 const signedSubcentTitle = 'line A contract candidate on real PostgreSQL and HTTP A01 已签结算不足一分冲减在确认后保留经营原值';
 const signedSubcentFixture = 'cdba722cd3d8ae6fbc8bdef72be4201fc717f0bfe9a2319bb451471e365d715d';
@@ -30,7 +32,8 @@ const textDirect = source.mode === 'text-direct-330' || paymentRemainder;
 const migrationCount = signedProfile?.count ?? (expenseWitness ? expenseWitness.count
   : historicalSettlement ? 334 : upwardArchive ? 332 : paymentRemainder ? 331 : textDirect ? 330 : 329);
 const tests = paymentRemainder ? 18 : textDirect ? 17 : 16;
-const purpose = signedSubcent ? 'LINE_A_A01_SIGNED_SUBCENT_350'
+const purpose = fullSignedSuite ? 'LINE_A_SIGNED_SETTLEMENT_350'
+  : signedSubcentOnly ? 'LINE_A_A01_SIGNED_SUBCENT_350'
   : expenseWitness ? 'LINE_A_EXPENSE_WITNESS_' + migrationCount
   : historicalSettlement ? 'LINE_A_HISTORICAL_SETTLEMENT_334'
   : upwardArchive ? 'LINE_A_UPWARD_ARCHIVE_332' : paymentRemainder ? 'LINE_A_PAYMENT_REMAINDER_331'
@@ -213,12 +216,12 @@ async function consume(context) {
     });
     assert.ok(login.status === 0 && login.stdout.trim() === 'true', 'LINE_A_TLS_FIXTURE_LOGIN');
     receipt.runtime = { originalConnectionLimit: 1, fixtureConnectionLimit: 4, tls: true };
-    receipt.stages.push(signedSubcent ? 'LINE_A_A01_SIGNED_SUBCENT_HTTP' : 'LINE_A_ORIGINAL_HTTP_SUITE');
+    receipt.stages.push(signedSubcentOnly ? 'LINE_A_A01_SIGNED_SUBCENT_HTTP' : 'LINE_A_ORIGINAL_HTTP_SUITE');
     const directory = fs.mkdtempSync(path.join(workDir, 'line-a-'));
     const file = path.join(directory, 'jest.json');
     const result = spawnSync(process.execPath, [path.join(api, 'node_modules/jest/bin/jest.js'),
       '--runInBand', '--runTestsByPath', spec, '--json', '--outputFile=' + file,
-      ...(signedSubcent ? ['--testNamePattern=^' + signedSubcentTitle + '$'] : [])], {
+      ...(signedSubcentOnly ? ['--testNamePattern=^' + signedSubcentTitle + '$'] : [])], {
       cwd: api, encoding: 'utf8', timeout: 600_000, maxBuffer: 16 * 1024 * 1024,
       env: {
         PATH: '/usr/local/bin:/usr/bin:/bin', HOME: workDir, TMPDIR: workDir, NODE_ENV: 'test', CI: 'true',
@@ -275,12 +278,16 @@ async function consume(context) {
     };
     if (signedSubcent) {
       const passed = cases.filter(test => test.status === 'passed');
+      const expectedPassed = fullSignedSuite ? tests + 1 : 1;
       assert.ok(result.status === 0 && report?.success === true && report.testResults.length === 1 &&
         report.testResults[0].name === path.join(api, spec) && report.numTotalTests === tests + 1 &&
-        report.numPendingTests === tests && report.numPassedTests === 1 && cases.length === tests + 1 &&
-        passed.length === 1 && passed[0].fullName === signedSubcentTitle, 'LINE_A_A01_SIGNED_SUBCENT_HTTP_COVERAGE');
+        report.numPendingTests === (fullSignedSuite ? 0 : tests) && report.numPassedTests === expectedPassed &&
+        cases.length === tests + 1 && passed.length === expectedPassed &&
+        passed.filter(test => test.fullName === signedSubcentTitle).length === 1,
+        'LINE_A_A01_SIGNED_SUBCENT_HTTP_COVERAGE');
       receipt.a01 = {
-        selectedCase: signedSubcentTitle, originalCaseCount: tests, registeredCaseCount: tests + 1, passedCaseCount: 1,
+        ...(fullSignedSuite ? {} : { selectedCase: signedSubcentTitle }),
+        originalCaseCount: tests, registeredCaseCount: tests + 1, passedCaseCount: expectedPassed,
         confirmationHttpStatus: 201, signedYuan: '-0.0001', confirmedCostDecreaseYuan: '0.0001',
         payableImpactCount: 0, paymentCapCents: '101', repeatReviewHttpStatus: 409, duplicateWrites: false
       };
@@ -303,7 +310,7 @@ async function consume(context) {
 }
 
 async function main() {
-  assert.equal(process.argv.length, 2);
+  assert.equal(process.argv.length, fullSignedSuite ? 3 : 2);
   assert.notEqual(process.getuid(), 0);
   assert.equal(process.env.DATABASE_URL, undefined);
   assert.match(source.sourceSha, /^[a-f0-9]{40}$/u);
