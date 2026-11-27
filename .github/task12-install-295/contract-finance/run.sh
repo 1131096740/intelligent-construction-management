@@ -2,9 +2,14 @@
 set -euo pipefail
 umask 077
 
+signed_finance=false
 if [[ ${2-} == --signed-settlement-350 ]]; then
-  [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
-  [[ ( $# == 3 || ( $# == 4 && $4 == --host-only ) ) && $3 == a187dc73a133114e1cfbbc891a4aec923abe2545 ]] || exit 64
+  [[ ${GITHUB_ACTIONS:-} != true && ${3-} == a187dc73a133114e1cfbbc891a4aec923abe2545 ]] || exit 64
+  case "$#:${4-}:${5-}" in
+    3::|4:--host-only:) ;;
+    4:--full-finance:|5:--full-finance:--host-only) signed_finance=true ;;
+    *) exit 64 ;;
+  esac
 else
 [[ ( ( $# == 3 || ( $# == 4 && $4 == --host-only ) ) &&
   ( ${2-} == --historical-settlement-334 || ${2-} == --expense-witness-34[69] ) &&
@@ -44,11 +49,18 @@ if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode ==
     trap 'remove_predecessor' EXIT
     prepare_predecessor "$restore_predecessor"
   fi
-  if [[ ${3-} == --host-only || ${4-} == --host-only ]]; then
+  if [[ ${3-} == --host-only || ${4-} == --host-only || ${5-} == --host-only ]]; then
     if [[ $mode == --signed-settlement-350 ]]; then
       export RUNNER_TEMP="$work"
+      if [[ $signed_finance == true ]]; then
+        bash "$plan/run-bank-restore.sh" "$work/source" "$sha" --host-only bank "$mode" --host-only
+      fi
       bash "$plan/run-bank-restore.sh" "$work/predecessor-source" "$restore_predecessor" --host-only \
         restore "$mode" "$work/source" --host-only
+      if [[ $signed_finance == true ]]; then
+        bash "$plan/run-core-payment.sh" "$work/source" "$sha" --host-only core "$mode"
+        bash "$plan/run-payment-execution.sh" "$root" "$work/source" "$sha" --host-only --host-only
+      fi
       exit 0
     fi
     if [[ $mode == --historical-settlement-334 || $mode == --expense-witness-34[69] ]]; then
@@ -94,9 +106,17 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 if [[ $mode == --signed-settlement-350 ]]; then
+  if [[ $signed_finance == true ]]; then
+    bash "$plan/build.sh" "$work/source" "$sha" browser "$work/browser"
+    bash "$plan/run-bank-restore.sh" "$work/source" "$sha" "$work/browser" bank "$mode"
+  fi
   bash "$plan/build.sh" "$work/predecessor-source" "$restore_predecessor" restore "$work/restore"
   bash "$plan/run-bank-restore.sh" "$work/predecessor-source" "$restore_predecessor" "$work/restore" \
     restore "$mode" "$work/source"
+  if [[ $signed_finance == true ]]; then
+    bash "$plan/run-core-payment.sh" "$work/source" "$sha" "$work/browser" core "$mode"
+    bash "$plan/run-payment-execution.sh" "$root" "$work/source" "$sha" "$work/browser"
+  fi
   exit 0
 fi
 
