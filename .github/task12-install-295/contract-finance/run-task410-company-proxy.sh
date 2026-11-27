@@ -13,29 +13,40 @@ scope=company-proxy-repayment
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  if(source.sourceSha!==process.argv[2]||source.migrationCount!==(source.mode==="expense-witness-349"?349:source.mode==="expense-witness-346"?346:source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295))process.exit(1);
+  if(source.sourceSha!==process.argv[2]||source.migrationCount!==(source.mode==="signed-settlement-350"?350:source.mode==="expense-witness-349"?349:source.mode==="expense-witness-346"?346:source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295))process.exit(1);
   if(source.migrationCount===332) require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
   if(source.migrationCount===334) require(process.argv[5]).assertSource(source,require(process.argv[4]).final);
   if(source.migrationCount===346) require(process.argv[6]).assertSource(source,require(process.argv[4]).final);
   if(source.migrationCount===349) require(process.argv[7]).assertSource(source,require(process.argv[4]).final);
+  if(source.migrationCount===350) require(process.argv[8]).assertSource(source,require(process.argv[4]).final);
   console.log(source.migrationCount);
-' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan/expense-witness-346-profile.cjs" "$plan/expense-witness-349-profile.cjs")
+' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan/expense-witness-346-profile.cjs" "$plan/expense-witness-349-profile.cjs" "$plan/signed-settlement-350-profile.cjs")
+if [[ $count == 350 ]]; then
+  [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
+  [[ $plan == "$repo/.github/task12-install-295/contract-finance" ]] || exit 65
+  cmp -s "$prepared/source.json" <(node "$plan/check-ledger.cjs" "$repo" "$sha" --signed-settlement-350) || exit 65
+  node - "$plan" "$prepared" <<'JS'
+const [plan,prepared]=process.argv.slice(2);
+require(plan+'/bank/migration-inputs-346.cjs')(prepared+'/prepared/context/workspace/services/api',
+  require(prepared+'/source.json'),require(plan+'/signed-settlement-350-profile.cjs'));
+JS
+fi
 mode_args=()
 case $(node -p 'require(process.argv[1]).mode' "$prepared/source.json") in
   current-320) mode_args=(--current-320) ;;
   text-direct-330) mode_args=(--text-direct-330) ;;
   payment-remainder-331) mode_args=(--payment-remainder-331) ;;
   upward-archive-332) mode_args=(--upward-archive-332) ;;
-  historical-settlement-334|expense-witness-346|expense-witness-349) mode_args=(--historical-settlement-334) ;;
+  historical-settlement-334|expense-witness-346|expense-witness-349|signed-settlement-350) mode_args=(--historical-settlement-334) ;;
 esac
-if [[ $count == 346 || $count == 349 ]]; then
+if (( count >= 346 )); then
   [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
   dirty=$(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" .github/task12-install-290)
   [[ -z $dirty ]] || exit 65
   node -e 'require("node:assert/strict").equal(require(process.argv[1]).sourceTree, process.argv[2])' \
     "$prepared/source.json" "$(git -C "$repo" rev-parse "$sha^{tree}")"
 fi
-if [[ ${5-} == --host-only && $count != 334 && $count != 346 && $count != 349 ]]; then exit 64; fi
+if [[ ${5-} == --host-only && $count != 334 && $count != 346 && $count != 349 && $count != 350 ]]; then exit 64; fi
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 python3 "$plan/stage-task410.py" \
@@ -45,7 +56,7 @@ overlay_files=()
 while IFS= read -r file; do overlay_files+=("$file"); done < "$work/overlay-files.txt"
 [[ ${#overlay_files[@]} == 9 ]] || exit 65
 
-if [[ $count == 346 || $count == 349 ]]; then
+if (( count >= 346 )); then
   runner="$work/services/api/prisma/run-task398-shared-standard-local.cjs"
   support="$work/services/api/src/database/task410-owned-test-database.ts"
   patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task410-runner-346.patch"
@@ -55,27 +66,38 @@ if [[ $count == 346 || $count == 349 ]]; then
   spec="$work/services/api/src/database/company-proxy-repayment.http.pg.spec.ts"
   patch --batch --forward --fuzz=0 --silent "$spec" < "$plan/task410-signed-competition-346.patch"
   [[ $(sha256sum "$spec" | cut -d' ' -f1) == ce26a99c9e966f67a4d09c669c488b86f394f1d2998b2eac119d98ada70b1c32 ]] || exit 65
-  if [[ $count == 349 ]]; then
+  if (( count >= 349 )); then
     patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task410-runner-349.patch"
     [[ $(sha256sum "$runner" | cut -d' ' -f1) == a63260e7e9af23e658ff1f62a8e1a5d175b318eee6592e8f47f8c359760c61fa ]] || exit 65
     patch --batch --forward --fuzz=0 --silent "$support" < "$plan/task410-support-349.patch"
     [[ $(sha256sum "$support" | cut -d' ' -f1) == e877f9efd6e1d6090be1eeefad3096f969806839d5d664115b1272f84f8efe1e ]] || exit 65
+    if (( count == 350 )); then
+      patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task410-runner-350.patch"
+      [[ $(sha256sum "$runner" | cut -d' ' -f1) == d97aa2775f7f03b28b4dedfbca19d5ea433150d4405eb35e7d0d5f5f8b7f4c48 ]] || exit 65
+      patch --batch --forward --fuzz=0 --silent "$support" < "$plan/task410-support-350.patch"
+      [[ $(sha256sum "$support" | cut -d' ' -f1) == d9ed92296768c1f7ccd263fc12175f7f4ee89b42bdf3a3498823aa20211a2710 ]] || exit 65
+    fi
     node --check "$runner"
   fi
 fi
 
 installer="$common/installer.cjs"
-if [[ $count == 334 || $count == 346 || $count == 349 ]]; then
+if (( count == 334 || count >= 346 )); then
   node "$plan/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
   installer="$work/installer.cjs"
 fi
-if [[ $count == 346 || $count == 349 ]]; then
+if (( count >= 346 )); then
   git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer.patch"
   expected=$(node -p 'require(process.argv[1]).installerSha256' "$plan/expense-witness-346-profile.cjs")
   [[ $(sha256sum "$installer" | cut -d' ' -f1) == "$expected" ]] || exit 65
-  if [[ $count == 349 ]]; then
+  if (( count >= 349 )); then
     git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer-349.patch"
     expected=$(node -p 'require(process.argv[1]).installerSha256' "$plan/expense-witness-349-profile.cjs")
+    [[ $(sha256sum "$installer" | cut -d' ' -f1) == "$expected" ]] || exit 65
+  fi
+  if (( count == 350 )); then
+    git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer-350.patch"
+    expected=$(node -p 'require(process.argv[1]).installerSha256' "$plan/signed-settlement-350-profile.cjs")
     [[ $(sha256sum "$installer" | cut -d' ' -f1) == "$expected" ]] || exit 65
   fi
   chmod 0644 "$installer"
@@ -107,18 +129,23 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$plan/task410-entry.cjs,dst=/qualification/task410-entry.cjs,readonly"
   --mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 args+=(--mount "type=bind,src=$installer,dst=/qualification/installer.cjs,readonly")
-if [[ $count == 334 || $count == 346 || $count == 349 ]]; then
+if (( count == 334 || count >= 346 )); then
   for file in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
 fi
-if [[ $count == 346 || $count == 349 ]]; then
+if (( count >= 346 )); then
   for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
 fi
-if [[ $count == 349 ]]; then
+if (( count >= 349 )); then
   args+=(--mount "type=bind,src=$plan/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
+fi
+if (( count == 350 )); then
+  for file in signed-settlement-350-profile.cjs payment-execution-350.cjs; do
+    args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
+  done
 fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
