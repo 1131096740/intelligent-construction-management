@@ -10,6 +10,7 @@ with tempfile.TemporaryDirectory(prefix='jg435-patch-') as d:
  p=Path(d)/'fixture.ts';p.write_text(show(base));subprocess.run(['git','-C',d,'apply','--unidiff-zero',repo+'/.github/task12-install-295/contract-finance/issue-ordered/issue411.fixture.patch'],check=True); initial=p.read_text()
 source=show(target)
 missing=[line for line in source.splitlines() if line.startswith('import ') and line not in initial]
+missing.append('import { Prisma } from "@prisma/client";')
 initial=initial.replace('import "reflect-metadata";\n', 'import "reflect-metadata";\n'+'\n'.join(missing)+'\n', 1)
 marker='  const settledReturnCase = process.env.RUN_ISSUE435_SETTLED_RETURN'; assert source.count(marker)==1
 body=source[source.index(marker):];assert body.endswith('\n});\n')
@@ -52,6 +53,46 @@ body=body[:proxy_start]+'''    const proxyAccount = "6222000022222222";
       } });
     });
 ''' +body[proxy_end:]
+# The target is an actual confirmed cross-company settlement, built from the
+# existing payable-settlement fixture rather than a fabricated confirmed row.
+payable_file='services/api/src/database/payable-settlement-concurrency.spec.ts'
+payable=subprocess.check_output(['git','-C',repo,'show',f'{target}:{payable_file}'],text=True)
+def section(start, end):
+ assert payable.count(start)==1 and payable.count(end)==1
+ return payable[payable.index(start):payable.index(end)]
+types=section('type PayerAuthority = {','export function payableSettlementDatabaseUrl')
+types='type DatabaseClient = PrismaClient | Prisma.TransactionClient;\n'+types
+payer=section('async function createPayerAuthority(', 'async function allocateWithExecutionLock(')
+payer=payer.replace('Pick<Fixture, "debtorCompanyId" | "executionPayerCompanyId">',
+ '{ debtorCompanyId: string; executionPayerCompanyId: string }')
+payer=payer.replace('"动态门实际付款主体"','"乙合成公司"')
+eligible=section('async function createEligibleServiceFixture(', 'type HistoricalWageFixture =')
+eligible=eligible.replace('  crossCompany = false\n)', '  crossCompany = true\n)')
+eligible=eligible.replace('const companyId = randomUUID();','const companyId = a.companyId;')
+eligible=eligible.replace('const executionPayerCompanyId = crossCompany ? randomUUID() : companyId;',
+ 'const executionPayerCompanyId = crossCompany ? b.companyId : companyId;')
+old='const executionPayerCreditCode = crossCompany\n    ? `DYN${executionPayerCompanyId.replace(/-/g, "").slice(0, 15).toUpperCase()}`\n    : "91310000DYNAMICGATE";'
+assert eligible.count(old)==1
+eligible=eligible.replace(old,'const executionPayerCreditCode = crossCompany ? b.companyCreditCode : a.companyCreditCode;')
+eligible=eligible.replace('const companyVersionId = randomUUID();','const companyVersionId = a.companyVersionId;')
+eligible=eligible.replace('const projectId = randomUUID();','const projectId = a.projectId;')
+start=eligible.index('  await client.project.create({'); end=eligible.index('  await client.contract.create({',start)
+eligible=eligible[:start]+eligible[end:]
+eligible=eligible.replace('"动态门付款主体"','"甲合成公司"').replace('"动态门实际付款主体"','"乙合成公司"')
+eligible=eligible.replace('`DYN${companyId.replace(/-/g, "").slice(0, 15)}`','a.companyCreditCode')
+allocation=section('async function seedHistoricalAllocation(', 'function dynamicFile(')
+filefn=payable[payable.index('function dynamicFile('):]
+assert filefn.rstrip().endswith('}')
+helpers=types+payer+eligible+'type HistoricalWageFixture = Awaited<ReturnType<typeof createEligibleServiceFixture>>;\n'+allocation+filefn
+cross=section('    const fixture = await createEligibleServiceFixture(observer, 1_000n, true);',
+ '    if (!directoryActive) {')
+cross=cross.replace('observer','prisma').replace('const relationship =', 'const target =')
+cross=cross.replace('2026-08-27','2026-08-04')
+start=body.index('    const target = await prisma.interEntityRelationshipEntry.create',body.index('issue 435 keeps the debt correction'))
+end=body.index('    const originalRef =',start)
+body=body[:start]+cross+body[end:]
+body=helpers+'\n'+body
+
 assert 'verificationA' not in body and 'verificationB' not in body and 'verificationC' not in body
 assert initial.endswith('\n});\n')
 Path(sys.argv[2]).write_text(initial[:-5]+'\n'+body)
