@@ -1,9 +1,12 @@
 {
   "apps/web-admin/e2e/expense-claim-workbench.e2e.ts": "17231dea14c1b8cddee9b55a4386eba14850f4dc0eb3802b44c49a9b38dec4e9",
+  "apps/web-admin/e2e/project-financing-quota-termination.e2e.ts": "ab2057952b318d0668395a49d8355ab7eb311f02b0f8f1d0bc7f61f1b7b5d9c4",
   "apps/web-admin/src/api/core-flow-read.api.test.ts": "99bbc1ea9774e7a5c301b58fe7180276904a8dfab17e3b92bb10726c01013203",
   "apps/web-admin/src/api/core-flow-read.api.ts": "84855af07257d581a0dabad81bcec515dfb63c4d18b344d920ca713cd5e68e8e",
   "apps/web-admin/src/api/expense-claim.api.ts": "3c33962639c19eb673909a719b1a41157db4b0f149cf1830a8c954cec6241bc7",
   "apps/web-admin/src/api/operating-read-fetch.test.ts": "14d0173e8a40bf482cabb59ddd120ebafc92b98f638fa1290a630de6b8071b29",
+  "apps/web-admin/src/api/project-financing-quota.api.test.ts": "da10242abf47731eebb5c6878abedbf1982b87e142c800d8112a08cc2c880ba1",
+  "apps/web-admin/src/api/project-financing-quota.api.ts": "c77c459614a53740156949eb3afa4d1d8bf6167a1a7c865ec55bcf31fe58ebfe",
   "apps/web-admin/src/components/ContractFinancialBalances.vue": "8983c359f57b48c48b7b0a4bcf91157cf6adb3ad580cd5759844d6f33e55ca33",
   "apps/web-admin/src/lib/business-entry-adapters.ts": "2df5b94e47d040a7eb59c533d8473bad51b7ffb6d0bc2415f6259b89ca557653",
   "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue": "050727529994905b41880927eb43131d7dea839f87380411575c5a261e549042",
@@ -12,6 +15,9 @@
   "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimLineEditor.vue": "a6fcc7844ad82096bc5c17493286708d0ab02954566e5010f5b19b9119966f7f",
   "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimSubmissionHistory.vue": "d22e6f43b4b9e55ca0202ab3228af9da6987aeb9b5bff18b26432b44731f7c1c",
   "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue": "283793be6392d02e3d1029a49bf943e30f15c5d1e0cc6c4633312422d1adfd20",
+  "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.test.ts": "257ab24bf2f389262245d2dddef753a9621dde0d203558c357a7d9b231123202",
+  "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue": "c403487d4c6d61230763acda806b808100991798d2032e38fad971fdc2a2cd7d",
+  "apps/web-admin/src/pages/projects/project-financing-quota-panel.structure.test.ts": "56c7beb609e4dc397cc83c77038893ead428fdaece4a1061c2ca6cc4869b6a1d",
   "packages/shared-domain/src/business-decimal.ts": "caaae536beb16d40d254fb7eb614a23c9db1a307099f878d2e9d290308d83aa5",
   "services/api/prisma/database-dynamic-gate-manifest.json": "ee8158e1585ec741bb010ecc29368b3d9fd3ccf666fcb9c13a01442b78b71907",
   "services/api/prisma/run-database-dynamic-gate-local.cjs": "7b35ac889a73f3db12d148b15f71210af71e014ad6865c8526f71884ea2de094",
@@ -35,5 +41,8 @@
   "services/api/src/operating-projection/operating-projection.service.spec.ts": "24c0f3d4e080b8053e03d0e6ed625387eac0b6cc6c2291eb7b98270f131ed5ce",
   "services/api/src/operating-projection/operating-projection.service.ts": "f82f2107b4c86559da3493c76a977a88b82a1a50d4d1ca4afd877bbf0bb1bceb",
   "services/api/src/payment/payment-read.service.ts": "696f1f441d45103b416996e2ab5c1e092349400418300b74eadefe7370c3c88b",
+  "services/api/src/project/project-financing-quota-workbench.spec.ts": "f9e3a817a0f712094dbb81e310e8e49dabd5e4ab7a966c7f3bdda4a1e389840c",
+  "services/api/src/project/project.service.ts": "ee30e34e946a37c591653f8297ca673a75157b7604c4fb01acce256171de240c",
+  "services/api/src/retired-write-entry/retired-write-entry.guard.ts": "499b5c74b9ad5cbb8e86912bb5066e4d8dff9a382aa5c99cd9ff313d013aea27",
   "services/api/src/spot-procurement/spot-procurement-read.service.ts": "f61bd31deee988ddacaac1bfd94e4133eff6dca61588f27d48e39565016756e7"
 }
