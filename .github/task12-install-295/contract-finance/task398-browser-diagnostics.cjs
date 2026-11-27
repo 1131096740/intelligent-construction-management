@@ -41,6 +41,7 @@ function browserAssertion(report, scenario) {
   const first = test?.failureMessages?.[0] ?? suite?.message;
   const clean = typeof first === 'string' ? first.slice(0, 8192).replace(/\x1b\[[0-9;]*m/gu, '') : '';
   const status = /^\s*Expected:\s+([1-5]\d{2})\s*\r?\n\s*Received:\s+([1-5]\d{2})\s*$/mu.exec(clean);
+  const errorCode = /\b(TASK398_BROWSER_[A-Z0-9_]{1,64})\b/u.exec(clean);
   const statuses = /TASK398_HTTP_STATUSES_([1-5]\d{2}(?:_[1-5]\d{2}){5})\b/u.exec(clean);
   const frame = /^\s*at [^\r\n]*?\b(task16-real-browser(?:-completion)?\.pg\.spec\.ts):(\d{1,5}):(\d{1,5})(?=[\s)]|$)/mu.exec(clean);
   const kind = status || statuses ? 'HTTP_STATUS_MISMATCH'
@@ -49,6 +50,7 @@ function browserAssertion(report, scenario) {
         : /expect\(|AssertionError/u.test(clean) ? 'ASSERTION' : 'OTHER';
   return {
     kind,
+    ...(errorCode ? { errorCode: errorCode[1] } : {}),
     ...(status ? { http: { expected: Number(status[1]), received: Number(status[2]) } } : {}),
     ...(statuses ? { initialHttpStatuses: statuses[1].split('_').map(Number) } : {}),
     ...(frame?.[1] === spec && Number(frame[2]) > 0 && Number(frame[3]) > 0
