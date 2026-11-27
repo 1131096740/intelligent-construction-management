@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-if [[ ${6-} == --signed-settlement-350 ]]; then
+if [[ ${6-} == --signed-settlement-350 || ${6-} == --company-history-352 ]]; then
   [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
   [[ $# == 6 || ( $# == 7 && $7 == --host-only ) ]] || exit 64
 else
@@ -16,7 +16,7 @@ mode_args=()
 count=295
 if (( $# >= 6 )); then
   mode_args=("$6")
-  case "$6" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; --upward-archive-332) count=332;; --historical-settlement-334) count=334;; --expense-witness-346) count=346;; --expense-witness-349) count=349;; --signed-settlement-350) count=350;; esac
+  case "$6" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; --upward-archive-332) count=332;; --historical-settlement-334) count=334;; --expense-witness-346) count=346;; --expense-witness-349) count=349;; --signed-settlement-350) count=350;; --company-history-352) count=352;; esac
 fi
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -26,7 +26,7 @@ case "$shard" in core) size=512m ;; facts) size=1g ;; impacts) size=2g ;; *) exi
 scope=pol108-$shard
 
 source_tree=
-if [[ $count == 346 || $count == 349 || $count == 350 ]]; then
+if [[ $count == 346 || $count == 349 || $count == 350 || $count == 352 ]]; then
   [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
   dirty=$(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" .github/task12-install-289 .github/task12-install-290)
   [[ -z $dirty ]] || exit 65
@@ -34,7 +34,7 @@ if [[ $count == 346 || $count == 349 || $count == 350 ]]; then
 fi
 node -e '
   const source=require(process.argv[1]);
-  const modes={329:"current-320",330:"text-direct-330",331:"payment-remainder-331",332:"upward-archive-332",334:"historical-settlement-334",346:"expense-witness-346",349:"expense-witness-349",350:"signed-settlement-350"};
+  const modes={329:"current-320",330:"text-direct-330",331:"payment-remainder-331",332:"upward-archive-332",334:"historical-settlement-334",346:"expense-witness-346",349:"expense-witness-349",350:"signed-settlement-350",352:"company-history-352"};
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==Number(process.argv[3])||source.mode!==modes[process.argv[3]])process.exit(1);
   if(source.mode==="upward-archive-332"){
     const plan=process.argv[4];
@@ -42,16 +42,17 @@ node -e '
   } else if(source.mode==="historical-settlement-334"){
     const plan=process.argv[4];
     require(plan+"/historical-settlement-334-profile.cjs").assertSource(source,require(plan+"/common/multi-witness.cjs").final);
-  } else if([346,349,350].includes(source.migrationCount)){
+  } else if([346,349,350,352].includes(source.migrationCount)){
     const plan=process.argv[4];
     require("node:assert/strict").equal(source.sourceTree,process.argv[5]);
     require(plan+"/"+source.mode+"-profile.cjs").assertSource(source,require(plan+"/common/multi-witness.cjs").final);
   }
 ' "$prepared/source.json" "$sha" "$count" "$plan" "$source_tree"
-if [[ $count == 349 || $count == 350 ]]; then
+if [[ $count == 349 || $count == 350 || $count == 352 ]]; then
   [[ $plan == "$repo/.github/task12-install-295/contract-finance" ]] || exit 65
   profile=expense-witness-349
   if [[ $count == 350 ]]; then profile=signed-settlement-350; fi
+  if [[ $count == 352 ]]; then profile=company-history-352; fi
   cmp -s "$prepared/source.json" <(node "$plan/check-ledger.cjs" "$repo" "$sha" "--$profile") || exit 65
   node - "$plan" "$prepared/prepared/context/workspace" "$profile" <<'JS'
 const [plan,workspace,profile]=process.argv.slice(2);
@@ -91,24 +92,27 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
-if [[ $count == 332 || $count == 334 || $count == 346 || $count == 349 || $count == 350 ]]; then
+if [[ $count == 332 || $count == 334 || $count == 346 || $count == 349 || $count == 350 || $count == 352 ]]; then
   args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 fi
-if [[ $count == 334 || $count == 346 || $count == 349 || $count == 350 ]]; then
+if [[ $count == 334 || $count == 346 || $count == 349 || $count == 350 || $count == 352 ]]; then
   for file in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
 fi
-if [[ $count == 346 || $count == 349 || $count == 350 ]]; then
+if [[ $count == 346 || $count == 349 || $count == 350 || $count == 352 ]]; then
   for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
 fi
-if [[ $count == 349 || $count == 350 ]]; then
+if [[ $count == 349 || $count == 350 || $count == 352 ]]; then
   args+=(--mount "type=bind,src=$plan/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
 fi
-if [[ $count == 350 ]]; then
+if [[ $count == 350 || $count == 352 ]]; then
   args+=(--mount "type=bind,src=$plan/signed-settlement-350-profile.cjs,dst=/qualification/signed-settlement-350-profile.cjs,readonly")
+fi
+if [[ $count == 352 ]]; then
+  args+=(--mount "type=bind,src=$plan/company-history-352-profile.cjs,dst=/qualification/company-history-352-profile.cjs,readonly")
 fi
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
