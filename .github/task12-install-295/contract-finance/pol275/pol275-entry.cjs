@@ -2,17 +2,18 @@
 const assert=require('node:assert/strict');
 const source=require('./contract-finance-source.json');
 const {sourceSha}=source;
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness,withCombinedExpenseWitness349}=require('./installer.cjs');
 const lane=process.argv[2];
 assert.ok(['warm','collision'].includes(lane));
 const requestedMode=process.argv[3];
 const textDirect=requestedMode==='--text-direct-330';
 const paymentRemainder=requestedMode==='--payment-remainder-331';
 const historicalSettlement=requestedMode==='--historical-settlement-334';
-const exact=requestedMode==='--expense-witness-346'?require('./exact-346.cjs'):undefined;
+const precision=requestedMode==='--expense-witness-349';
+const exact=precision?require('./exact-349.cjs'):requestedMode==='--expense-witness-346'?require('./exact-346.cjs'):undefined;
 const upwardArchive=requestedMode==='--upward-archive-332';
 const forward=exact||historicalSettlement||upwardArchive||paymentRemainder||textDirect||requestedMode==='--current-320';
-const count=exact?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:forward?329:295;
+const count=precision?349:exact?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:forward?329:295;
 const profile331=paymentRemainder?require('./payment-remainder-331-profile.cjs'):undefined;
 const profile334=historicalSettlement?require('./historical-settlement-334-profile.cjs'):undefined;
 const profile332=upwardArchive?require('./upward-archive-332-profile.cjs'):undefined;
@@ -44,6 +45,7 @@ Promise.resolve().then(()=>{
     upwardArchive?withCombined332UpwardArchive:
     paymentRemainder?withCombined331PaymentRemainder:
     textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
+  if(precision) return withCombinedExpenseWitness349(receipt,consume,{...source,...material});
   return forward
     ? install(receipt,consume,material,...(exact?[count]:[]))
     : withCombined295MultiWitness(receipt,consume);
@@ -70,6 +72,7 @@ Promise.resolve().then(()=>{
       assert.equal(receipt.historicalTakeoverCatalogAfterBusiness,true);
       assert.equal(receipt.historicalSettlementCatalogAfterBusiness,true);
       assert.equal(receipt.expenseWitnessCatalogAfterBusiness,true);
+      if(precision) assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness,true);
     }
     if(profile334) {
       profile334.assertFinanceInstallation(receipt,source);
