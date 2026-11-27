@@ -8,7 +8,7 @@ const {runBackup295,prepareBackup295,runBackup320,verifyLease} = require('./back
 const admission=require('./committed-admission.json');
 const {admitSource} = require('./install-only292.cjs');
 const {checkClosure} = require('./verify-behavior.cjs');
-const {withCombined295MultiWitnessForRestore,withCombined320ContractPaymentForRestore,withCombined330ContractPaymentForRestore,withCombined331PaymentRemainderForRestore,withCombined332UpwardArchiveForRestore,withCombined334HistoricalSettlementForRestore,withCombinedExpenseWitnessForRestore} = require('./installer.cjs');
+const {withCombined295MultiWitnessForRestore,withCombined320ContractPaymentForRestore,withCombined330ContractPaymentForRestore,withCombined331PaymentRemainderForRestore,withCombined332UpwardArchiveForRestore,withCombined334HistoricalSettlementForRestore,withCombinedExpenseWitnessForRestore,withCombinedExpensePrecisionForRestore} = require('./installer.cjs');
 const bank = require('./named-roles/contract-finance-owned-ci.cjs');
 const correctionRoot='/qualification/workspace', loanRoot='/qualification/loan-workspace';
 const correction=require(correctionRoot+'/services/api/prisma/run-task398-shared-standard-local.cjs').runTask398Owned282Voucher;
@@ -19,11 +19,13 @@ const upwardArchive332=args[0]==='--upward-archive-332';
 const paymentRemainder331=args[0]==='--payment-remainder-331';
 const historicalSettlement334=args[0]==='--historical-settlement-334';
 const expenseWitness346=args[0]==='--expense-witness-346';
-const exact=expenseWitness346?require('./exact-346.cjs'):undefined;
-const historical=historicalSettlement334||expenseWitness346?require('./historical-settlement-334-profile.cjs'):undefined;
-const textDirect330=expenseWitness346||historicalSettlement334||upwardArchive332||paymentRemainder331||args[0]==='--text-direct-330';
+const expenseWitness349=args[0]==='--expense-witness-349';
+const exact=expenseWitness349?require('./exact-349.cjs'):expenseWitness346?require('./exact-346.cjs'):undefined;
+const expenseCount=expenseWitness349?349:346;
+const historical=historicalSettlement334||exact?require('./historical-settlement-334-profile.cjs'):undefined;
+const textDirect330=Boolean(exact)||historicalSettlement334||upwardArchive332||paymentRemainder331||args[0]==='--text-direct-330';
 const forward=current320||textDirect330;
-const count=expenseWitness346?346:historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
+const count=exact?expenseCount:historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
 const runArgs=forward?args.slice(1):args;
 const source=forward?require('./current320-source.json'):undefined;
 const paymentProfile=upwardArchive332?require('./upward-archive-332-profile.cjs'):
@@ -83,13 +85,14 @@ async function main(){
   if(textDirect330){
     const base=require('./multi-witness.cjs').final;
     if(exact) {
-      assert.equal(admission.head,exact.fixtureSha,'BACKUP346_PREDECESSOR_SHA');
-      assert.equal(admission.predecessorSourceSha256,exact.fixtureSourceSha256,'BACKUP346_PREDECESSOR_BYTES');
-      assert.match(source.sourceSha,/^[a-f0-9]{40}$/u,'BACKUP346_SOURCE_SHA');
-      assert.equal(source.sourceSha,admission.currentSha,'BACKUP346_SOURCE_SHA');
-      assert.equal(exact.hash(fs.readFileSync(__dirname+'/current320-source.json')),admission.currentSourceSha256,'BACKUP346_SOURCE_BYTES');
-      assert.equal(exact.hash(fs.readFileSync(__dirname+'/installer.cjs')),exact.installerSha256,'BACKUP346_INSTALLER_SHA');
-      require('./expense-witness-346-profile.cjs').assertSource(source,base);
+      const label='BACKUP'+count;
+      assert.equal(admission.head,exact.fixtureSha,label+'_PREDECESSOR_SHA');
+      assert.equal(admission.predecessorSourceSha256,exact.fixtureSourceSha256,label+'_PREDECESSOR_BYTES');
+      assert.match(source.sourceSha,/^[a-f0-9]{40}$/u,label+'_SOURCE_SHA');
+      assert.equal(source.sourceSha,admission.currentSha,label+'_SOURCE_SHA');
+      assert.equal(exact.hash(fs.readFileSync(__dirname+'/current320-source.json')),admission.currentSourceSha256,label+'_SOURCE_BYTES');
+      assert.equal(exact.hash(fs.readFileSync(__dirname+'/installer.cjs')),exact.installerSha256,label+'_INSTALLER_SHA');
+      require('./expense-witness-'+count+'-profile.cjs').assertSource(source,base);
       exact.assertMigrationBytes('/qualification/current320/migrations',source);
     } else if(historical) historical.assertSource(source,base);
     else paymentProfile.assertSource(source,source.sourceSha,base);
@@ -131,7 +134,7 @@ async function main(){
     loan:async ctx=>{ await verifyLease(ctx); return loan('affiliate',ctx); },
   };
   if(forward){
-    const install=exact?withCombinedExpenseWitnessForRestore:historicalSettlement334?withCombined334HistoricalSettlementForRestore:upwardArchive332?withCombined332UpwardArchiveForRestore:paymentRemainder331?withCombined331PaymentRemainderForRestore:
+    const install=expenseWitness349?withCombinedExpensePrecisionForRestore:exact?withCombinedExpenseWitnessForRestore:historicalSettlement334?withCombined334HistoricalSettlementForRestore:upwardArchive332?withCombined332UpwardArchiveForRestore:paymentRemainder331?withCombined331PaymentRemainderForRestore:
       textDirect330?withCombined330ContractPaymentForRestore:withCombined320ContractPaymentForRestore;
     await install(receipt,
       context=>prepareBackup295(context,receipt,admission,{...fixtures,textDirect330}),
@@ -142,7 +145,7 @@ async function main(){
         return runBackup320(context,receipt,{forward320:terminal,namedRoles:ctx=>namedRoles(ctx,terminal),
           textDirectSource:textDirect330?source:undefined});
       },
-      {sourceTree:source.sourceTree,migrations:'/qualification/current320/migrations',tails:source.tails});
+      {...(expenseWitness349?source:{sourceTree:source.sourceTree,tails:source.tails}),migrations:'/qualification/current320/migrations'});
     assert.equal(receipt.forward320.sourceTree,source.sourceTree);
     assert.equal(receipt.combinedAfterBusiness.ledgerSha256,source.ledgerSha256);
     assert.equal(receipt.combinedAfterBusiness.exactB7,true);
@@ -162,6 +165,7 @@ async function main(){
     assert.equal(receipt.historicalSettlementCatalogAfterBusiness,true);
   }
   if(exact) assert.equal(receipt.expenseWitnessCatalogAfterBusiness,true);
+  if(expenseWitness349) assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness,true);
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
   receipt.status='BACKUP'+count+'_RESTORED_AND_VERIFIED';

@@ -17,4 +17,7 @@ const textDirect=Object.freeze({...successor,count:330});
 const expense346=profile(346,successor.businessCount+1,[...successor.addedBusiness,'ExpensePublicCashCostLink'],
   [...forward.ownerSchemaOnlyEmptyAdditions.map(([,name])=>name),'jg_expense_public_cash_voucher_witness']);
 
-module.exports={legacy,successor,textDirect,expense346};
+// The reimbursement precision tail changes columns, constraints and routines on the same tables.
+const expense349=Object.freeze({...expense346,count:349});
+
+module.exports={legacy,successor,textDirect,expense346,expense349};
