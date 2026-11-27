@@ -1,0 +1,60 @@
+--- installer.cjs
++++ installer.cjs
+@@ -287 +287,3 @@
+-  const named346=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_346';
++  const named349=purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_349';
++  const precision=named349?require('./expense-witness-349-profile.cjs'):undefined;
++  const named346=named349||(purpose===named292&&receipt.purpose==='NAMED_POL113_POL114_EXACT_346');
+@@ -742 +744,5 @@
+-        const target=expenseWitness?.count ?? 334;
++        const target=precision?.count ?? expenseWitness?.count ?? 334;
++        if (precision) {
++          need(material.sourceMode===precision.mode && material.ledger346===expenseWitness.ledgerSha256 &&
++            material.ledger349===precision.ledgerSha256,'NAMED_349_ADMISSION');
++        }
+@@ -753,0 +760 @@
++        const precisionCatalog={};
+@@ -773 +780 @@
+-          if (expenseWitness&&count>=334) expenseWitness.assertPrefix(count,expected);
++          if (expenseWitness&&count>=334) (precision ?? expenseWitness).assertPrefix(count,expected);
+@@ -801 +808 @@
+-          if (expenseWitness&&[334,341,342,343,344,345,target].includes(count)) {
++          if (expenseWitness&&[334,341,342,343,344,345,expenseWitness.count].includes(count)) {
+@@ -814 +821 @@
+-          if (expenseWitness&&count===target) {
++          if (expenseWitness&&count===expenseWitness.count) {
+@@ -816,0 +824,13 @@
++          if (precision&&count>=expenseWitness.count) {
++            const observed=await jsonSql(precision.catalogSql);
++            precision.assertCheckpoint(count,observed,precisionCatalog[346],precisionCatalog[347],precisionCatalog[348]);
++            precisionCatalog[count]=observed;
++            if (count>expenseWitness.count) {
++              const body=count===347?priorExpenseCatalog.costValidator.body:precisionCatalog[346].expectedCostValidatorAfter348;
++              precision.assertExpenseCatalog(await jsonSql(expenseWitness.catalogSql),priorExpenseCatalog,body);
++            }
++          }
++          if (precision&&count===precision.count) {
++            receipt.forward349={count,ledgerSha256:expected,sourceTree:material.sourceTree,sameIdentity:true,exactB7:true,outside};
++            receipt.expenseWitnessPrecisionCatalog=precisionCatalog;
++          }
+@@ -846 +866 @@
+-      enter(named346?'EXACT_346_NAMED_FRESH_CONSUMER':named334?'EXACT_334_NAMED_FRESH_CONSUMER':named320?'EXACT_329_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
++      enter(named349?'EXACT_349_NAMED_FRESH_CONSUMER':named346?'EXACT_346_NAMED_FRESH_CONSUMER':named334?'EXACT_334_NAMED_FRESH_CONSUMER':named320?'EXACT_329_NAMED_FRESH_CONSUMER':named295?'EXACT_295_NAMED_FRESH_CONSUMER':exact292?'EXACT_292_NAMED_FRESH_CONSUMER':consumerLedger?'EXACT_290_FRESH_CONSUMER':'EXACT_'+release.count+'_CONSUMER');
+@@ -876 +896 @@
+-          if(named320) receipt[named346?'postBehavior346':'postBehavior334']={exactB7:true,sameIdentity:true,
++          if(named320) receipt[named349?'postBehavior349':named346?'postBehavior346':'postBehavior334']={exactB7:true,sameIdentity:true,
+@@ -886,2 +906,10 @@
+-            need(equal(await jsonSql(expenseWitness.catalogSql),receipt.expenseWitnessCatalog[expenseWitness.count]),
+-              'EXPENSE_WITNESS_CATALOG_AFTER_CONSUMER');
++            const observed=await jsonSql(expenseWitness.catalogSql);
++            const baseline=receipt.expenseWitnessCatalog[expenseWitness.count];
++            if (precision) {
++              const catalogs=receipt.expenseWitnessPrecisionCatalog;
++              precision.assertExpenseCatalog(observed,baseline,catalogs[346].expectedCostValidatorAfter348);
++              need(equal(await jsonSql(precision.catalogSql),catalogs[precision.count]),'NAMED_349_CATALOG_AFTER_CONSUMER');
++              receipt.expenseWitnessPrecisionCatalogAfterBusiness=true;
++            } else {
++              need(equal(observed,baseline),'EXPENSE_WITNESS_CATALOG_AFTER_CONSUMER');
++            }
+@@ -1233,0 +1262 @@
++module.exports.withNamedPol113Pol114349=(receipt,mode,consume)=>withNamedPol113Pol114(receipt,mode,consume,349);

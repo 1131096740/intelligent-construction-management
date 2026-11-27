@@ -18,7 +18,8 @@ source = json.loads((prepared / 'source.json').read_bytes())
 ref = source['sourceSha']
 count = source['migrationCount']
 source_mode = source.get('mode')
-expense_witness = source_mode == 'expense-witness-346'
+precision = source_mode == 'expense-witness-349'
+expense_witness = precision or source_mode == 'expense-witness-346'
 historical_settlement = source_mode == 'historical-settlement-334' or expense_witness
 upward_archive = source_mode == 'upward-archive-332' or historical_settlement
 payment_remainder = upward_archive or source_mode == 'payment-remainder-331'
@@ -29,7 +30,7 @@ ledger329 = '3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2'
 previous = source['predecessor'] if current320 else source
 assert previous['migrationCount'] == 295 and len(previous['tails']) == 3
 if current320:
-    expected_count = {'current-320': 329, 'text-direct-330': 330, 'payment-remainder-331': 331, 'upward-archive-332': 332, 'historical-settlement-334': 334, 'expense-witness-346': 346}
+    expected_count = {'current-320': 329, 'text-direct-330': 330, 'payment-remainder-331': 331, 'upward-archive-332': 332, 'historical-settlement-334': 334, 'expense-witness-346': 346, 'expense-witness-349': 349}
     assert count == expected_count[source_mode] and len(source['tails']) == count - 295
 assert subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip() == ref
 admission = subprocess.check_output(['node',str(common.parent/'check-ledger.cjs'),str(repo),ref,*mode])
@@ -106,6 +107,12 @@ if expense_witness:
     assert digest(new_installer) == 'f37863078cddb9ef0577e2fa43c69a320d4a0a0c4f4d1eb0f4495a51ee8fe488'
     for profile in ('expense-witness-345-profile.cjs', 'expense-witness-346-profile.cjs', 'expense-witness-prefixes.json'):
         write(context/profile,(common.parent/profile).read_bytes())
+if precision:
+    precision_patch = read_pinned(plan/'installer-named349.patch','1d75d6434243c0691cd70f7f5e624c35188210f499d159782378151110b2c9c9')
+    new_installer = patch(new_installer,precision_patch)
+    assert digest(new_installer) == 'a7738cbc9bc72738431e26393baae504fa4791566a16afa6a2085de1b334ce84'
+    profile = 'expense-witness-349-profile.cjs'
+    write(context/profile,read_pinned(common.parent/profile,'85770028fffad317bf8e09d88d6ae8954bf24d822ab2766ef1bf40b1d7b1de98'))
 write(context/'installer.cjs',new_installer)
 for name, pin in pins['runtime'].items():
     material = read_pinned(repo/pin['repoFile'] if 'repoFile' in pin else donor/pin['file'],pin['digest'])
@@ -250,6 +257,10 @@ for name, pin in pins['runtime'].items():
 """
             assert material.count(diagnostic_anchor) == 1
             material = material.replace(diagnostic_anchor, diagnostic_anchor + diagnostic)
+    if precision and name == 'install-only.cjs':
+        assert digest(material) == '4c4a65347899b0a52b215477b0f105956c6c76288a6dc9962a721e3bb6869818'
+        material = patch(material,read_pinned(plan/'entry-named349.patch','7d2f7a6166afb4612092e21b4d884fa15d35f359ef18efd39071188724774d9b'))
+        assert digest(material) == '783e7d3732b1187088da35cc59ed1cc0a0218bd72272c07d660cf5f426667102'
     if text_direct and name == 'browser-evidence.cjs':
         material = patch(material,(plan/'browser-330-diagnostics.patch').read_bytes())
     write(context/name,material)
@@ -287,7 +298,7 @@ for name,pin in pins['workspace'].items():
         before = json.loads(material)
         keys = ('expectedDirectoryCount','terminalMigration','terminalMigrationChecksum')
         manifest_count = before['migrationBaseline']['expectedDirectoryCount']
-        assert manifest_count == count or (expense_witness and manifest_count == 334)
+        assert manifest_count == count or (expense_witness and not precision and manifest_count == 334)
         last = source['tails'][38] if expense_witness and manifest_count == 334 else source['tails'][-1]
         assert tuple(before['migrationBaseline'][key] for key in keys) == (manifest_count,last['name'],last['sha256'])
         historical_base = subprocess.check_output(['git','-C',str(repo),'show',
@@ -324,7 +335,8 @@ write(context/'candidate-admission.json',(json.dumps({
        if current320 and not upward_archive else {}),
     **({'ledger333':source['predecessor333']['ledgerSha256'],
         'ledger334':source['predecessor334']['ledgerSha256'] if expense_witness else source['ledgerSha256']} if historical_settlement else {}),
-    **({'ledger346':source['ledgerSha256']} if expense_witness else {}),
+    **({'ledger346':source['predecessor346']['ledgerSha256'] if precision else source['ledgerSha256']} if expense_witness else {}),
+    **({'sourceMode':source_mode,'ledger349':source['ledgerSha256']} if precision else {}),
 })+'\n').encode())
 docker = read_pinned(donor/'Dockerfile.in','456025c143f993973d1947343c7636565406c74c5a0456addc1e1ff3dcffc24e').decode()
 copy = read_pinned(donor/'runtime-copy.txt','de9a7b69c406aa307423a7231ec086b8c6995bd435bfc1fae0bb0dab5d4b40e6').decode().strip()
@@ -334,6 +346,8 @@ if historical_settlement:
     copy += '\nCOPY --chmod=0644 historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs /qualification/'
 if expense_witness:
     copy += '\nCOPY --chmod=0644 expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json /qualification/'
+if precision:
+    copy += '\nCOPY --chmod=0644 expense-witness-349-profile.cjs /qualification/'
 docker = docker.replace('@RUNTIME_COPY@',copy)
 write(context/'Dockerfile',docker.encode())
 for file in context.glob('*.cjs'):
