@@ -1,0 +1,17 @@
+{
+  "bank/overlay/services/api/src/database/contract-finance-owned.test-support.ts": {
+    "kind": "full",
+    "material": "a2719896fecbd8c6fc67aa3e1e94a29df089f720875fc033d252983b5c1a5bbf.gz",
+    "sha256": "a2719896fecbd8c6fc67aa3e1e94a29df089f720875fc033d252983b5c1a5bbf"
+  },
+  "bank/overlay/services/api/prisma/contract-finance-owned-ci.cjs": {
+    "kind": "full",
+    "material": "2008b9d69093e6cbfa3a63001c0bcc510822094b8bdfb70f04e5c01c33ec1384.gz",
+    "sha256": "2008b9d69093e6cbfa3a63001c0bcc510822094b8bdfb70f04e5c01c33ec1384"
+  },
+  "bank/execution-files.json": {
+    "kind": "execution-manifest",
+    "material": "db8782be2783ac8c1b21d9026ea45ccd0eb4f8c81298ebbb9a898ca37e4c29b2.gz",
+    "sha256": "0638ac2be00b72893db6c397d49496dafa50af0ed32e79914346e81c927f7f26"
+  }
+}
