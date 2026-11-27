@@ -1,14 +1,15 @@
 #!/bin/bash
 set -euo pipefail
-[[ $# == 3 || ( $# == 4 && ( $4 == 346 || $4 == 349 || $4 == 350 ) ) ]] || exit 64
+[[ $# == 3 || ( $# == 4 && ( $4 == 346 || $4 == 349 || $4 == 350 || $4 == 352 ) ) ]] || exit 64
 repo=$1
 prepared=$2
 sha=$3
 count=${4:-346}
 mode=expense-witness-$count
-if [[ $count == 350 ]]; then
+if [[ $count == 350 || $count == 352 ]]; then
   [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
   mode=signed-settlement-350
+  if [[ $count == 352 ]]; then mode=company-history-352; fi
 fi
 base="$repo/.github/task12-install-295/contract-finance"
 [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65

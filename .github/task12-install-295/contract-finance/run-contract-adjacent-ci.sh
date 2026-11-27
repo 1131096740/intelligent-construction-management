@@ -41,9 +41,13 @@ JS
 fi
 if [[ ${3-} == --company-history-352 ]]; then
   [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
-  [[ $# == 3 || ( $# == 4 && $4 == --host-only ) ]] || exit 64
+  if [[ $2 == pol275 ]]; then
+    [[ ( $# == 4 || ( $# == 5 && $5 == --host-only ) ) && $4 == a187dc73a133114e1cfbbc891a4aec923abe2545 ]] || exit 64
+  else
+    [[ $# == 3 || ( $# == 4 && $4 == --host-only ) ]] || exit 64
+  fi
   company_352=true
-  if [[ $2 != bank && $2 != cash-handover && $2 != principal-return && $2 != company-proxy && $2 != pfq && $2 != pol109 && $2 != pol108-core && $2 != pol108-facts && $2 != pol108-impacts && $2 != onboarding && $2 != procurement && $2 != line-a && $2 != core-payment && $2 != payment-execution && $2 != settlement && $2 != template && $2 != draft && $2 != v7 && $2 != invoice && $2 != pol279 && $2 != pol280 && $2 != expense-execution && $2 != expense-finance && $2 != expense-receipt ]]; then
+  if [[ $2 != pol275 && $2 != bank && $2 != cash-handover && $2 != principal-return && $2 != company-proxy && $2 != pfq && $2 != pol109 && $2 != pol108-core && $2 != pol108-facts && $2 != pol108-impacts && $2 != onboarding && $2 != procurement && $2 != line-a && $2 != core-payment && $2 != payment-execution && $2 != settlement && $2 != template && $2 != draft && $2 != v7 && $2 != invoice && $2 != pol279 && $2 != pol280 && $2 != expense-execution && $2 != expense-finance && $2 != expense-receipt ]]; then
     scopes=$(node - "$plan/issue-ordered/profiles.cjs" "$2" <<'JS'
 const [file,lane]=process.argv.slice(2);
 const {issueOrderedScopes352}=require(file);
@@ -135,7 +139,7 @@ if [[ $lane == task398-ledger-loss && ${3:-} != --text-direct-330 && ${3:-} != -
 if [[ $lane == task398-competition && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
 root=$(git rev-parse --show-toplevel)
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-contract-adjacent.XXXXXXXX")
-if [[ ${4-} == --host-only || ( $signed_350 == true && $lane == pol275 && ${5-} == --host-only ) ]]; then
+if [[ ${4-} == --host-only || ( ( $signed_350 == true || $company_352 == true ) && $lane == pol275 && ${5-} == --host-only ) ]]; then
   bash "$plan/prepare.sh" "$root" "$sha" "$work/source" "$3"
   if [[ $signed_issue_ordered == true ]]; then
     for scope in "${signed_issue_scopes[@]}"; do
@@ -143,6 +147,15 @@ if [[ ${4-} == --host-only || ( $signed_350 == true && $lane == pol275 && ${5-} 
     done
   elif [[ $company_352 == true ]]; then
     case "$lane" in
+      pol275)
+        bash "$plan/pol275/run-pol275-cold.sh" "$root" "$work/source" "$sha" "$work" "$3" --host-only
+        git -C "$root" merge-base --is-ancestor "$4" "$sha"
+        git -C "$root" worktree add --detach "$work/predecessor" "$4"
+        trap 'git -C "$root" worktree remove "$work/predecessor"' EXIT
+        bash "$plan/prepare.sh" "$work/predecessor" "$4" "$work/predecessor-source"
+        bash "$plan/pol275/run-pol275.sh" "$work/predecessor" "$work/predecessor-source" "$4" "$work" collision --host-only
+        bash "$plan/pol275/prepare-warm-image.sh" "$root" "$work/source" "$sha" "$work/warm" "$3"
+        bash "$plan/pol275/run-pol275.sh" "$root" "$work/source" "$sha" "$work/warm" warm "$3" --host-only ;;
       bank) bash "$plan/run-bank-restore.sh" "$work/source" "$sha" --host-only bank "$3" --host-only ;;
       cash-handover|principal-return) bash "$plan/run-task398-cash-principal.sh" "$root" "$work/source" "$sha" "$work" "$lane" --host-only ;;
       company-proxy) bash "$plan/run-task410-company-proxy.sh" "$root" "$work/source" "$sha" "$work" --host-only ;;

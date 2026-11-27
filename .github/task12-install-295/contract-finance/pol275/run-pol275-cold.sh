@@ -2,9 +2,9 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --signed-settlement-350 ) ) ||
-  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --signed-settlement-350 ) && $6 == --host-only ) ]] || exit 64
-if [[ ${5-} == --signed-settlement-350 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --signed-settlement-350 || $5 == --company-history-352 ) ) ||
+  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --signed-settlement-350 || $5 == --company-history-352 ) && $6 == --host-only ) ]] || exit 64
+if [[ ( ${5-} == --signed-settlement-350 || ${5-} == --company-history-352 ) && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 count=295
 mode=()
 case ${5-} in
@@ -16,6 +16,7 @@ case ${5-} in
   --expense-witness-346) count=346; mode=(--expense-witness-346) ;;
   --expense-witness-349) count=349; mode=(--expense-witness-349) ;;
   --signed-settlement-350) count=350; mode=(--signed-settlement-350) ;;
+  --company-history-352) count=352; mode=(--company-history-352) ;;
 esac
 purpose="ORIGINAL_POL275_COLD_EXACT_$count"
 repo=$(cd "$1" && pwd -P)
@@ -81,6 +82,10 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$evidence,dst=/qualification/workspace/services/api/prisma/pol275-original-evidence.cjs,readonly"
   --mount "type=bind,src=$plan/pol275-cold-entry.cjs,dst=/qualification/pol275-cold-entry.cjs,readonly")
 args+=(--mount "type=bind,src=$installer,dst=/qualification/installer.cjs,readonly")
+if (( count == 352 )); then
+  args+=(--mount "type=bind,src=$base/company-history-352-profile.cjs,dst=/qualification/company-history-352-profile.cjs,readonly"
+    --mount "type=bind,src=$plan/exact-350.cjs,dst=/qualification/exact-350.cjs,readonly")
+fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
@@ -105,7 +110,7 @@ fi
 if (( count >= 349 )); then
   args+=(--mount "type=bind,src=$base/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
 fi
-if (( count == 350 )); then
+if (( count >= 350 )); then
   args+=(--mount "type=bind,src=$base/signed-settlement-350-profile.cjs,dst=/qualification/signed-settlement-350-profile.cjs,readonly"
     --mount "type=bind,src=$plan/exact-349.cjs,dst=/qualification/exact-349.cjs,readonly")
 fi

@@ -8,12 +8,13 @@ const requestedMode=process.argv[2];
 const textDirect=requestedMode==='--text-direct-330';
 const paymentRemainder=requestedMode==='--payment-remainder-331';
 const historicalSettlement=requestedMode==='--historical-settlement-334';
-const signed=requestedMode==='--signed-settlement-350';
+const company=requestedMode==='--company-history-352';
+const signed=company||requestedMode==='--signed-settlement-350';
 const precision=signed||requestedMode==='--expense-witness-349';
-const exact=signed?require('./exact-350.cjs'):precision?require('./exact-349.cjs'):requestedMode==='--expense-witness-346'?require('./exact-346.cjs'):undefined;
+const exact=company?require('./exact-352.cjs'):signed?require('./exact-350.cjs'):precision?require('./exact-349.cjs'):requestedMode==='--expense-witness-346'?require('./exact-346.cjs'):undefined;
 const upwardArchive=requestedMode==='--upward-archive-332';
 const forward=exact||historicalSettlement||upwardArchive||paymentRemainder||textDirect||requestedMode==='--current-320';
-const count=signed?350:precision?349:exact?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:forward?329:295;
+const count=company?352:signed?350:precision?349:exact?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:forward?329:295;
 const profile331=paymentRemainder?require('./payment-remainder-331-profile.cjs'):undefined;
 const profile334=historicalSettlement?require('./historical-settlement-334-profile.cjs'):undefined;
 const profile332=upwardArchive?require('./upward-archive-332-profile.cjs'):undefined;
@@ -45,6 +46,7 @@ Promise.resolve().then(()=>{
     paymentRemainder?installer.withCombined331PaymentRemainder:
     textDirect?installer.withCombined330TextAgreement:installer.withCombined320ContractPayment;
   const material={sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails};
+  if(company) return installer.withCombinedCompanyHistory352(receipt,consume,{...source,...material});
   if(signed) return installer.withCombinedSignedSettlement350(receipt,consume,{...source,...material});
   if(precision) return installer.withCombinedExpenseWitness349(receipt,consume,{...source,...material});
   return forward

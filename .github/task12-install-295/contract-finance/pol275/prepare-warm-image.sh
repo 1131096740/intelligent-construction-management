@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 umask 022
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --signed-settlement-350 ) ) ]] || exit 64
-if [[ ${5-} == --signed-settlement-350 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --signed-settlement-350 || $5 == --company-history-352 ) ) ]] || exit 64
+if [[ ( ${5-} == --signed-settlement-350 || ${5-} == --company-history-352 ) && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 count=295
 case ${5-} in
   --current-320) count=329 ;;
@@ -13,6 +13,7 @@ case ${5-} in
   --expense-witness-346) count=346 ;;
   --expense-witness-349) count=349 ;;
   --signed-settlement-350) count=350 ;;
+  --company-history-352) count=352 ;;
 esac
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
