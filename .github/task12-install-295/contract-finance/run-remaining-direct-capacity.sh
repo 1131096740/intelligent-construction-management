@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && $5 == --expense-witness-346 ) ||
-  ( $# == 6 && $5 == --expense-witness-346 && $6 == --host-only ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 ) ) ||
+  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 ) && $6 == --host-only ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -13,7 +13,13 @@ plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$plan/common"
 archive="$repo/.github/task12-install-289"
 scope=direct-capacity
-if [[ ${5-} == --expense-witness-346 ]]; then
+mode=${5-}
+expense=false
+if [[ $mode == --expense-witness-346 || $mode == --expense-witness-349 ]]; then
+  expense=true
+  if [[ $mode == --expense-witness-349 ]]; then
+    [[ $plan == "$repo/.github/task12-install-295/contract-finance" ]] || exit 65
+  fi
   [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
   [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$archive") ]] || exit 65
   node "$plan/check-ledger.cjs" "$repo" "$sha" "$5" | cmp -s "$prepared/source.json" - || exit 65
@@ -21,13 +27,13 @@ fi
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const expected=source.mode==="expense-witness-346"?346:source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const expected=source.mode==="expense-witness-349"?349:source.mode==="expense-witness-346"?346:source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==expected||
-    (expected===346)!==(process.argv[7]==="--expense-witness-346"))process.exit(1);
-  if(expected===346) {
+    (expected>=346?process.argv[7]!=="--"+source.mode:Boolean(process.argv[7])))process.exit(1);
+  if(expected===346||expected===349) {
     const plan=process.argv[6];
     const api=process.argv[8];
-    const profile=require(plan+"/expense-witness-346-profile.cjs");
+    const profile=require(plan+"/"+source.mode+"-profile.cjs");
     profile.assertSource(source,require(process.argv[4]).final);
     require(plan+"/bank/migration-inputs-346.cjs")(api,source,profile);
   }
@@ -70,7 +76,7 @@ if (( count >= 330 )); then
 fi
 
 upward_mount=()
-if [[ ${5-} != --expense-witness-346 ]]; then
+if [[ $expense == false ]]; then
   upward_mount=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 fi
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
@@ -91,8 +97,9 @@ done
 source "$plan/remaining-installer-mounts.sh"
 source_mode=$(node -p 'require(process.argv[1]).mode ?? ""' "$prepared/source.json")
 append_remaining_installer "$source_mode"
-if (( count == 346 )); then
-  args+=(--mount "type=bind,src=$plan/payment-execution-346.cjs,dst=/qualification/payment-execution-346.cjs,readonly")
+if [[ $expense == true ]]; then
+  witness=payment-execution-${source_mode##*-}.cjs
+  args+=(--mount "type=bind,src=$plan/$witness,dst=/qualification/$witness,readonly")
 fi
 args+=(--mount "type=bind,src=$runner,dst=/qualification/remaining-direct-capacity.cjs,readonly"
   --mount "type=bind,src=$fixture,dst=/qualification/workspace/services/api/src/database/direct-payment-capacity-concurrency.spec.ts,readonly")
@@ -101,7 +108,7 @@ if [[ ${6-} == --host-only ]]; then
   node --check "$work/installer.cjs"
   node --check "$runner"
   node --check "$plan/remaining-direct-capacity-entry.cjs"
-  printf 'REMAINING_DIRECT_CAPACITY_346_HOST_READY sha=%s material=%s\n' "$sha" "$work"
+  printf 'REMAINING_DIRECT_CAPACITY_%s_HOST_READY sha=%s material=%s\n' "${source_mode##*-}" "$sha" "$work"
   exit 0
 fi
 

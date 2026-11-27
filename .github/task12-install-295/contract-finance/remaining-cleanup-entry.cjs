@@ -2,13 +2,15 @@
 
 const assert = require('node:assert/strict');
 const {admitSource} = require('./install-only292.cjs');
-const {withCombined295RetainedCleanup,withCombined320RetainedCleanup,withCombined330RetainedCleanup,withCombined331RetainedCleanup,withCombined332RetainedCleanup,withCombined334RetainedCleanup,withCombined346RetainedCleanup} = require('./installer.cjs');
+const {withCombined295RetainedCleanup,withCombined320RetainedCleanup,withCombined330RetainedCleanup,withCombined331RetainedCleanup,withCombined332RetainedCleanup,withCombined334RetainedCleanup,withCombined346RetainedCleanup,withCombined349RetainedCleanup} = require('./installer.cjs');
 const {final, digest} = require('./multi-witness.cjs');
 const {runRetained} = require('./remaining-retained.cjs');
 
 const root = '/qualification';
 const source = require('./contract-finance-source.json');
-const expense=source.mode==='expense-witness-346'?require('./expense-witness-346-profile.cjs'):undefined;
+const precision=source.mode==='expense-witness-349';
+const expense=precision?require('./expense-witness-349-profile.cjs'):
+  source.mode==='expense-witness-346'?require('./expense-witness-346-profile.cjs'):undefined;
 const historicalSettlement=source.mode==='historical-settlement-334';
 const historical=historicalSettlement?require('./historical-settlement-334-profile.cjs'):undefined;
 const upwardArchive=source.mode==='upward-archive-332';
@@ -42,9 +44,10 @@ async function main() {
   receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   const consume=context=>runRetained(context,receipt,'cleanup');
   if(expense){
-    await withCombined346RetainedCleanup(receipt,consume,{sourceTree:source.sourceTree,
-      migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails});
-    require('./payment-execution-346.cjs').assertInstallation(receipt,source);
+    const material={sourceTree:source.sourceTree,migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails};
+    if(precision) await withCombined349RetainedCleanup(receipt,consume,{...source,...material});
+    else await withCombined346RetainedCleanup(receipt,consume,material);
+    require('./payment-execution-'+count+'.cjs').assertInstallation(receipt,source);
   } else if(current){
     const installCurrent=historicalSettlement?withCombined334RetainedCleanup:upwardArchive?withCombined332RetainedCleanup:paymentRemainder?withCombined331RetainedCleanup:textDirect?withCombined330RetainedCleanup:withCombined320RetainedCleanup;
     await installCurrent(receipt,consume,{sourceTree:source.sourceTree,

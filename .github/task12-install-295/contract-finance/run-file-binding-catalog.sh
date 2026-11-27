@@ -2,11 +2,14 @@
 set -euo pipefail
 umask 077
 
-[[ ( $# == 5 || ( $# == 6 && $6 == --host-only ) ) && $5 == --expense-witness-346 ]] || exit 64
+[[ ( $# == 5 || ( $# == 6 && $6 == --host-only ) ) && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
 build=$(cd "$4" && pwd -P)
+mode=${5#--}
+count=${mode##*-}
+witness=payment-execution-$count.cjs
 plan=$(cd "$(dirname "$0")" && pwd -P)
 common="$plan/common"
 workspace="$prepared/prepared/context/workspace"
@@ -16,7 +19,7 @@ workspace="$prepared/prepared/context/workspace"
 node "$plan/check-ledger.cjs" "$repo" "$sha" "$5" | cmp -s "$prepared/source.json" - || exit 65
 node - "$plan" "$prepared/source.json" "$workspace/services/api" <<'JS'
 const [plan,file,api] = process.argv.slice(2);
-const source = require(file), profile = require(plan+'/expense-witness-346-profile.cjs');
+const source = require(file), profile = require(plan+'/'+source.mode+'-profile.cjs');
 profile.assertSource(source,require(plan+'/common/multi-witness.cjs').final);
 require(plan+'/bank/migration-inputs-346.cjs')(api,source,profile);
 require(plan+'/file-binding-catalog-entry.cjs').assertFixture(api);
@@ -34,17 +37,17 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003700_company_transfer_ordinary_loan_payout_checkpoints/migration.sql,dst=/qualification/payout-terminal.sql,readonly"
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
   --mount "type=bind,src=$plan/file-binding-catalog-entry.cjs,dst=/qualification/file-binding-catalog-entry.cjs,readonly"
-  --mount "type=bind,src=$plan/payment-execution-346.cjs,dst=/qualification/payment-execution-346.cjs,readonly")
+  --mount "type=bind,src=$plan/$witness,dst=/qualification/$witness,readonly")
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
 done
 source "$plan/remaining-installer-mounts.sh"
-append_remaining_installer expense-witness-346
+append_remaining_installer "$mode"
 
 if [[ ${6-} == --host-only ]]; then
   node --check "$work/installer.cjs"
   node --check "$plan/file-binding-catalog-entry.cjs"
-  printf 'FILE_BINDING_CATALOG_346_HOST_READY sha=%s material=%s\n' "$sha" "$work"
+  printf 'FILE_BINDING_CATALOG_%s_HOST_READY sha=%s material=%s\n' "$count" "$sha" "$work"
   exit 0
 fi
 
@@ -61,10 +64,10 @@ docker run "${args[@]}" --entrypoint node "$image" /qualification/file-binding-c
   > "$work/receipt.json" 2> "$work/private.stderr" || status=$?
 [[ ! -s "$work/receipt.json" ]] || cat "$work/receipt.json"
 (( status == 0 )) || exit "$status"
-node - "$work/receipt.json" "$sha" <<'JS'
-const [file,sha] = process.argv.slice(2);
+node - "$work/receipt.json" "$sha" "$count" <<'JS'
+const [file,sha,count] = process.argv.slice(2);
 const assert = require('node:assert/strict'), receipt = require(file);
-assert.equal(receipt.status,'FILE_BINDING_CATALOG_346_PASSED');
+assert.equal(receipt.status,'FILE_BINDING_CATALOG_'+count+'_PASSED');
 assert.equal(receipt.sourceSha,sha);
 assert.deepEqual(receipt.original,{passed:6,skipped:0,scratchClean:true,outerIdentityUnchanged:true});
 JS
