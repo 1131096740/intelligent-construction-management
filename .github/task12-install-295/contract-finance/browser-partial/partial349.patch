@@ -1,0 +1,37 @@
+--- run-task398-shared-standard-local.cjs
++++ run-task398-shared-standard-local.cjs
+@@ -218 +218 @@
+- const browserReads=browserScenario&&[329,330,331,332,334,346].includes(ownedMigrationBaseline?.expectedDirectoryCount)?{
++ const browserReads=browserScenario&&[329,330,331,332,334,346,349].includes(ownedMigrationBaseline?.expectedDirectoryCount)?{
+@@ -223 +223 @@
+- if(browserScenario&&ownedMigrationBaseline?.expectedDirectoryCount===346){
++ if(browserScenario&&[346,349].includes(ownedMigrationBaseline?.expectedDirectoryCount)){
+@@ -367 +367 @@
+-  const browserDiagnostics=browser290 && /_EXACT_(?:329|330|331|332|334|346)$/u.test(browser290.purpose)?require("/qualification/task398-browser-diagnostics.cjs"):undefined;
++  const browserDiagnostics=browser290 && /_EXACT_(?:329|330|331|332|334|346|349)$/u.test(browser290.purpose)?require("/qualification/task398-browser-diagnostics.cjs"):undefined;
+@@ -541 +541 @@
+- const modes=new Map([["browser-partial-346",["--browser-real"]],["browser-partial-334",["--browser-real"]],["browser-partial-332",["--browser-real"]],["browser-partial-331",["--browser-real"]],["browser-partial-330",["--browser-real"]],["browser-partial-329",["--browser-real"]],["browser-partial-295",["--browser-real"]],["browser-partial-290",["--browser-real"]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["browser-partial-349",["--browser-real"]],["browser-partial-346",["--browser-real"]],["browser-partial-334",["--browser-real"]],["browser-partial-332",["--browser-real"]],["browser-partial-331",["--browser-real"]],["browser-partial-330",["--browser-real"]],["browser-partial-329",["--browser-real"]],["browser-partial-295",["--browser-real"]],["browser-partial-290",["--browser-real"]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+@@ -544 +544,2 @@
+- const expenseWitness=mode==="browser-partial-346";
++ const precision=mode==="browser-partial-349";
++ const expenseWitness=precision||mode==="browser-partial-346";
+@@ -548 +549 @@
+- const count=expenseWitness?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:mode==="browser-partial-330"?330:329;
++ const count=precision?349:expenseWitness?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:mode==="browser-partial-330"?330:329;
+@@ -550 +551 @@
+- const installed=expenseWitness?receipt?.expenseWitnessForward:forward;
++ const installed=precision?receipt?.expenseWitnessPrecisionForward:expenseWitness?receipt?.expenseWitnessForward:forward;
+@@ -559,3 +560,9 @@
+-   const tails=source.tails.slice(39).map(({name,sha256})=>({name,sha256}));
+-   require("node:assert/strict").deepEqual(installed,{
+-    count,ledgerSha256:source.ledgerSha256,sameIdentity:true,sourceTree:forward.sourceTree,tails
++   const boundary=precision?source.predecessor346.migrationCount-source.predecessor.migrationCount:39;
++   const tails=source.tails.map(({name,sha256})=>({name,sha256}));
++   const assert=require("node:assert/strict");
++   if(precision) assert.deepEqual(receipt.expenseWitnessForward,{
++    count:source.predecessor346.migrationCount,ledgerSha256:source.predecessor346.ledgerSha256,
++    sameIdentity:true,sourceTree:forward.sourceTree,tails:tails.slice(39,boundary)
++   });
++   assert.deepEqual(installed,{
++    count,ledgerSha256:source.ledgerSha256,sameIdentity:true,sourceTree:forward.sourceTree,tails:tails.slice(boundary)
