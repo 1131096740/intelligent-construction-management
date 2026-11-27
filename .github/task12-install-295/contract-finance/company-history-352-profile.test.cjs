@@ -25,6 +25,24 @@ test('the exact 352 ledger retains the 350 predecessor and rejects tampering', (
   assert.throws(() => profile.assertPrefix(351, '0'.repeat(64)), /COMPANY_HISTORY_351_PREFIX/u);
 });
 
+test('the 352 receipt requires the installed predecessor, same database and cleanup', () => {
+  const source = JSON.parse(execFileSync(process.execPath, args, { encoding: 'utf8' }));
+  const identity = { sameIdentity: true, sourceTree: source.sourceTree };
+  const receipt = { sourceSha: source.sourceSha, business: 'CALLBACK_COMPLETED',
+    cleanup: 'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT', signedSettlementCatalogAfterBusiness: true,
+    signedSettlementForward: { ...identity, count: 350, ledgerSha256: previous.ledgerSha256,
+      tails: [{ name: previous.terminal.name, sha256: previous.terminal.sha256 }] },
+    companyHistoryForward: { ...identity, count: 352, ledgerSha256: profile.ledgerSha256,
+      tails: profile.tails.map(({ name, sha256 }) => ({ name, sha256 })) },
+    combinedAfterBusiness: { count: 352, ledgerSha256: profile.ledgerSha256, sameIdentity: true, exactB7: true } };
+  profile.assertInstallation(receipt, source);
+  assert.throws(() => profile.assertInstallation({ ...receipt, companyHistoryForward: {
+    ...receipt.companyHistoryForward, sameIdentity: false } }, source), /COMPANY_HISTORY_352_FORWARD_RECEIPT/u);
+  assert.throws(() => profile.assertInstallation({ ...receipt, cleanup: 'STARTED' }, source), /COMPANY_HISTORY_352_CLEANUP/u);
+  assert.throws(() => profile.assertInstallation({ ...receipt, combinedAfterBusiness: {
+    ...receipt.combinedAfterBusiness, count: 350 } }, source), /COMPANY_HISTORY_352_POST_BUSINESS/u);
+});
+
 test('352 ledger preparation remains unavailable to hosted CI until the full matrix is admitted', () => {
   const result = spawnSync(process.execPath, args, { encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: 'true' } });
   assert.notEqual(result.status, 0);
