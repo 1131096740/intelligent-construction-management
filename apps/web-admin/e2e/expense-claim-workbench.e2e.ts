@@ -6,7 +6,7 @@ import {
   expectNoNestedHorizontalScrollers
 } from "./helpers/responsive-assertions";
 
-const { EXPENSE_CLAIM_ENTRY_DEFINITION } = createRequire(import.meta.url)(
+const { EXPENSE_CLAIM_ENTRY_DEFINITION, REIMBURSEMENT_ENTRY_DEFINITION } = createRequire(import.meta.url)(
   "../../../services/api/src/expense-claim/expense-claim-entry.definition.ts"
 ) as typeof import("../../../services/api/src/expense-claim/expense-claim-entry.definition");
 
@@ -349,7 +349,7 @@ test("手机修改退回报销的明细，金额校验失败后保留输入", as
       ...expenseClaim({ status: "draft" }),
       updatedAt: expectedUpdatedAt,
       canEditReturnedDraft: true,
-      returnedDraftEntryDefinition: EXPENSE_CLAIM_ENTRY_DEFINITION,
+      returnedDraftEntryDefinition: REIMBURSEMENT_ENTRY_DEFINITION,
       approval: null,
       lines: [{ id: "original-line", sortOrder: 1, quantity: null, ...savedLine }],
       attachments: [], paymentExecutions: [], entrySnapshots: []
@@ -702,6 +702,7 @@ async function mockExpenseClaimSession(page: Page, requestedViews: string[], pos
       applicantUsers: [{ id: "expense-claim-canary", name: "费用金丝雀" }],
       factWitnessUsers: [{ id: "witness-1", name: "事实证明人" }],
       entryDefinition: EXPENSE_CLAIM_ENTRY_DEFINITION,
+      reimbursementEntryDefinition: REIMBURSEMENT_ENTRY_DEFINITION,
       availableActions: ["create_expense_claim"]
     })
   }));
