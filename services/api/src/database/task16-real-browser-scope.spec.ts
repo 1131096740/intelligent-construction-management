@@ -6,6 +6,8 @@ it("admits only the fixed payment page query and existing scoped routes",()=>{
  expect(task16RealBrowserRequestAllowed("GET","/payment-executions/work-items",scope)).toBe(true);
  expect(task16RealBrowserRequestAllowed("GET","/projects",scope)).toBe(true);
  expect(task16RealBrowserRequestAllowed("GET","/operating-projections/as-of?asOf=2026-11-17&scopeKind=projects",scope)).toBe(true);
+ expect(task16RealBrowserRequestAllowed("GET","/operating-projections/as-of?numericProtocolVersion=2&asOf=2026-11-17&scopeKind=projects",scope)).toBe(true);
+ expect(task16RealBrowserRequestAllowed("GET","/operating-projections/as-of?numericProtocolVersion=3&asOf=2026-11-17&scopeKind=projects",scope)).toBe(false);
  expect(task16RealBrowserRequestAllowed("GET","/operating-projections/as-of?asOf=2026-11-17&scopeKind=projects&x=1",scope)).toBe(false);
  expect(task16RealBrowserRequestAllowed("POST","/operating-projections/as-of?asOf=2026-11-17&scopeKind=projects",scope)).toBe(false);
  expect(task16RealBrowserRequestAllowed("GET","/projects",{...scope,paymentId:"bad"})).toBe(false);

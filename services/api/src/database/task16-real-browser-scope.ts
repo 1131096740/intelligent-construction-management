@@ -8,7 +8,7 @@ export function task16RealBrowserRequestAllowed(method:string,raw:string,scope:S
  if (!scope || !uuid.test(scope.paymentId) || ![...scope.executionIds,...scope.resultKeys,...scope.fileIds].every(value=>uuid.test(value))) return false;
  if (method==="GET" && raw==="/payments?view=formal_ledger&page=1&pageSize=20") return true;
  if (method==="GET" && raw==="/projects") return true;
- if (method==="GET" && /^\/operating-projections\/as-of\?asOf=\d{4}-\d{2}-\d{2}&scopeKind=projects$/u.test(raw)) return true;
+ if (method==="GET" && /^\/operating-projections\/as-of\?(?:numericProtocolVersion=2&)?asOf=\d{4}-\d{2}-\d{2}&scopeKind=projects$/u.test(raw)) return true;
  if (method==="GET" && /^\/contract-relationship-ledger\?section=payments&asOf=\d{4}-\d{2}-\d{2}$/u.test(raw)) return true;
  return task16SharedPaymentRequestAllowed(method,raw,scope,ticket);
 }
