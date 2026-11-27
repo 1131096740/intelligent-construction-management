@@ -8,7 +8,7 @@ import sys
 plan = Path(__file__).resolve().parent
 lane, repo_name, workspace_name, out_name, *opts = sys.argv[1:]
 profile_count = {'--text-direct-330': 330, '--payment-remainder-331': 331, '--upward-archive-332': 332, '--historical-settlement-334': 334,
-                 '--expense-witness-346': 346, '--expense-witness-349': 349, '--signed-settlement-350': 350}
+                 '--expense-witness-346': 346, '--expense-witness-349': 349, '--signed-settlement-350': 350, '--company-history-352': 352}
 qualified_count = profile_count.get(opts[0]) if len(opts) == 2 else None
 if qualified_count is None and opts not in ([], ['--current-320']):
     sys.exit('PROCUREMENT_MODE')
@@ -23,7 +23,7 @@ port = json.loads((plan / 'port-pins.json').read_bytes())
 original = json.loads((prior / 'pins.json').read_bytes())[lane]
 delta_file = 'candidate-delta320.json' if forward else 'candidate-delta.json'
 delta = {row['path']: row for row in json.loads((plan / delta_file).read_bytes())}
-for candidate_count in (version for version in (330, 331, 332, 334, 346, 349, 350) if version <= count):
+for candidate_count in (version for version in (330, 331, 332, 334, 346, 349, 350, 352) if version <= count):
     delta.update({row['path']: row for row in
                   json.loads((plan / f'candidate-delta{candidate_count}.json').read_bytes())})
 digest = lambda data: sha256(data).hexdigest()
@@ -145,7 +145,7 @@ if qualified_count:
     if source['migrationCount'] != count or source['mode'] != opts[0][2:]:
         raise ValueError('PROCUREMENT_SOURCE_COUNT')
     if count >= 332:
-        terminal_count = {332: 1, 334: 3, 346: 15, 349: 18, 350: 19}[count]
+        terminal_count = {332: 1, 334: 3, 346: 15, 349: 18, 350: 19, 352: 21}[count]
         for terminal in source['tails'][-terminal_count:]:
             migration = workspace / 'services/api/prisma/migrations' / terminal['name'] / 'migration.sql'
             if digest(read(migration)) != terminal['sha256']:
@@ -171,7 +171,7 @@ if qualified_count:
                  str(plan/'../expense-witness-349-profile.cjs')], text=True).strip()
             if digest(read(installer)) != expected:
                 raise ValueError('PROCUREMENT_349_EXPENSE_WITNESS_INSTALLER_POSTIMAGE')
-        if count == 350:
+        if count >= 350:
             subprocess.run(['git', 'apply', '--unidiff-zero', str(plan/'../expense-witness/installer-350.patch')],
                            cwd=out, check=True)
             expected = subprocess.check_output(
@@ -179,6 +179,12 @@ if qualified_count:
                  str(plan/'../signed-settlement-350-profile.cjs')], text=True).strip()
             if digest(read(installer)) != expected:
                 raise ValueError('PROCUREMENT_350_SIGNED_SETTLEMENT_INSTALLER_POSTIMAGE')
+        if count == 352:
+            subprocess.run(['git', 'apply', '--unidiff-zero', str(plan/'../expense-witness/installer-352.patch')], cwd=out, check=True)
+            expected = subprocess.check_output(['node', '-p', 'require(process.argv[1]).installerSha256',
+                str(plan/'../company-history-352-profile.cjs')], text=True).strip()
+            if digest(read(installer)) != expected:
+                raise ValueError('PROCUREMENT_352_COMPANY_HISTORY_INSTALLER_POSTIMAGE')
     else:
         write(installer, before)
     role_patch, marker, old_entry = read(plan / 'installer-procurement.patch').rpartition(b'\n@@ -1388,3 ')
@@ -210,12 +216,14 @@ module.exports.withCombined295ProjectProcurement=(receipt,consume)=>withProcurem
                      346: "require('./historical-settlement-334-profile.cjs').assertFinanceInstallation(receipt,{...source,tails:source.tails.slice(0,39)})",
                      349: "require('./historical-settlement-334-profile.cjs').assertFinanceInstallation(receipt,{...source,tails:source.tails.slice(0,39)})",
                      350: "require('./historical-settlement-334-profile.cjs').assertFinanceInstallation(receipt,{...source,tails:source.tails.slice(0,39)})",
+                     352: "require('./historical-settlement-334-profile.cjs').assertFinanceInstallation(receipt,{...source,tails:source.tails.slice(0,39)})",
                  }.get(count, 'profile.assertInstallation(receipt,source)')))
     installer_pin = {
         334: '56e3855710cb8d049a33f02421d85feedf5186a9130c9aa6a52b6cb29648cc16',
         346: 'a8dbb55acaba9489b88e3bf412687ec9fd0444e814d193ff415b7e5f6311ae32',
         349: '7edf0731dedf3e3002611351c553649910c4ca116b50965221a2a5bfcc99c735',
         350: '481cbfe138573d2c8f6b2e5413d026c9b57178bbfb5c42047b3b37fd28b010e0',
+        352: '83bcf74b56ccf3ea0bea6b326a74da81cc5141459aa59b1fbbcb27ec4546ff7c',
     }.get(count)
     if installer_pin and digest(read(installer)) != installer_pin:
         raise ValueError(f'PROCUREMENT_{count}_INSTALLER_POSTIMAGE')
@@ -242,11 +250,17 @@ if forward:
             "receipt.expenseWitnessPrecisionForward?.sameIdentity===true && "
             "receipt.expenseWitnessPrecisionCatalogAfterBusiness===true"
         )
-    if count == 350:
+    if count >= 350:
         final_witness += (
             " && receipt.signedSettlementForward?.count===350 && "
             "receipt.signedSettlementForward?.sameIdentity===true && "
             "receipt.signedSettlementCatalogAfterBusiness===true"
+        )
+    if count == 352:
+        final_witness += (
+            " && receipt.companyHistoryForward?.count===352 && "
+            "receipt.companyHistoryForward?.ledgerSha256===require('./contract-finance-source.json').ledgerSha256 && "
+            "receipt.companyHistoryForward?.sameIdentity===true"
         )
     replacements = {
         'context.candidateTree===require("./scope.json").tree':
