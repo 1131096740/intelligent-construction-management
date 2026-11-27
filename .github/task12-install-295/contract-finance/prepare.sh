@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 022
 
-[[ $# == 3 || ( $# == 4 && ( $4 == --current-320 || $4 == --text-direct-330 || $4 == --payment-remainder-331 || $4 == --upward-archive-332 || $4 == --historical-takeover-333 || $4 == --historical-settlement-334 || $4 == --expense-witness-345 || $4 == --expense-witness-346 || $4 == --expense-witness-349 || $4 == --signed-settlement-350 ) ) ]] || exit 64
-if [[ ${4:-} == --signed-settlement-350 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
+[[ $# == 3 || ( $# == 4 && ( $4 == --current-320 || $4 == --text-direct-330 || $4 == --payment-remainder-331 || $4 == --upward-archive-332 || $4 == --historical-takeover-333 || $4 == --historical-settlement-334 || $4 == --expense-witness-345 || $4 == --expense-witness-346 || $4 == --expense-witness-349 || $4 == --signed-settlement-350 || $4 == --company-history-352 ) ) ]] || exit 64
+if [[ ( ${4:-} == --signed-settlement-350 || ${4:-} == --company-history-352 ) && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 root=$(cd "$1" && pwd -P)
 sha=$2
 out=$3
