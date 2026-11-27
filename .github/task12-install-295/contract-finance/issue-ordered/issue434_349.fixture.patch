@@ -2,10 +2,6 @@
 +++ b/fixture.ts
 @@ -97,0 +98,15 @@
 +      const db = app.get(PrismaService);
-+      await db.project.update({
-+        where: { id: projectId },
-+        data: { operatingLedgerEffectiveDate: new Date("2026-01-01") }
-+      });
 +      const company = await db.companyEntity.findUniqueOrThrow({ where: { id: companyEntityId } });
 +      const companyVersion = await db.companyEntityVersion.create({ data: {
 +        companyEntityId, versionNo: 1, name: company.name,
@@ -16,6 +12,10 @@
 +        companyNameSnapshot: company.name, effectiveFrom: new Date("2026-01-01"),
 +        changeReason: "合成实际采购费用公司参与档案", addedByUserId: director.id
 +      } });
++      await db.project.update({
++        where: { id: projectId },
++        data: { operatingLedgerEffectiveDate: new Date("2026-01-01") }
++      });
 @@ -147 +162 @@
 -        expect(await request(`${batchClaimPath}/approval`, "POST", {
 +        const approved = await request(`${batchClaimPath}/approval`, "POST", {
