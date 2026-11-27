@@ -81,6 +81,9 @@ it("批准未出款与多笔独立核对均有稳定键，排除本人出款和�
   .map(duty=>[duty.key,duty.amountCents])).toEqual([["outgoing",350n],["other",350n]]);
  expect(currentCompanyTransferCashDuties(row,[own,other,remaining,received,returned],"reviewer")
   .map(duty=>[duty.key,duty.amountCents])).toEqual([["outgoing",350n],["own",300n]]);
+ const settledRefund={...received,id:"refund",kind:"returned",returnedIncomingEventId:received.id};
+ expect(currentCompanyTransferCashDuties(row,[own,other,remaining,received,returned,settledRefund],"actor")
+  .map(duty=>[duty.key,duty.amountCents])).toEqual([["outgoing",350n],["other",350n]]);
 });
 
 it("两笔出款分别通知另一有效财务，撤岗与结清仅取消各自候选",async()=>{
@@ -90,14 +93,15 @@ it("两笔出款分别通知另一有效财务，撤岗与结清仅取消各自�
   frozenParties:{source:{name:"合成甲"},destination:{name:"合成乙"}}};
  const first={id:"leg1",kind:"outgoing",amountCents:300n,outgoingEventId:null,recordedByUserId:"a",createdAt};
  const second={...first,id:"leg2",amountCents:450n,recordedByUserId:"b"};
- const legs: Array<Omit<typeof first,"outgoingEventId"> & {outgoingEventId:string|null}>=[first,second];
+ const legs: Array<Omit<typeof first,"outgoingEventId"> & {outgoingEventId:string|null;returnedIncomingEventId?:string}>=[first,second];
  const revoked=new Set<string>();
  const events=new Map<string,{id:string;action:string;metadata:{recipientId?:string;key?:string}}>();
  const tx={
   position:{findMany:async()=>[{id:"finance-role"}]},
   userPosition:{findMany:async()=>["a","b","c"].map(userId=>({userId}))},
   companyTransfer:{findUnique:async()=>transfer},
-  companyTransferEvent:{findMany:async()=>legs},
+  companyTransferEvent:{findMany:async({select}:{select:Record<string,boolean>})=>legs.map(leg=>
+   Object.fromEntries(Object.keys(select).map(key=>[key,leg[key as keyof typeof leg]])))},
   user:{findUnique:async({where}:{where:{id:string}})=>({name:where.id,isActive:true,phone:where.id})},
   auditLog:{
    createMany:async({data}:{data:Array<NonNullable<ReturnType<typeof events.get>>>})=>{
@@ -123,12 +127,29 @@ it("两笔出款分别通知另一有效财务，撤岗与结清仅取消各自�
  ]);
  revoked.add("c");
  legs.push({...first,id:"returned",kind:"returned",outgoingEventId:"leg1"});
+ legs.push({...second,id:"received",kind:"incoming",outgoingEventId:"leg2",amountCents:100n},
+  {...second,id:"settled-refund",kind:"returned",outgoingEventId:"leg2",returnedIncomingEventId:"received",amountCents:100n});
  await service.afterCommit();
  await service.afterCommit();
  expect(sms.sendDutyIntent.mock.calls.map(([phone,intent])=>[phone,intent.dutyName,intent.amountText])).toEqual([
-  ["a","独立核对该笔到账或退回","4.50 元"],["a","登记实际出款","4.50 元"],["b","登记实际出款","4.50 元"]
+  ["a","独立核对该笔到账或退回","3.50 元"],["a","登记实际出款","4.50 元"],["b","登记实际出款","4.50 元"]
  ]);
  expect([...events.values()].filter(event=>event.action==="cancelled")).toHaveLength(4);
+});
+
+it("原债更正待办使用部分退款后的净额并在全额退回后结束", async () => {
+ const {currentCompanyTransferCorrectionDuties}=await import("./company-transfer-correction-duty");
+ const transfer={requiresParallelRepaymentApproval:true,sourceProjectId:"p",originalProxyId:"proxy"};
+ const outgoing={id:"out",kind:"outgoing",outgoingEventId:null,amountCents:800n};
+ const incoming={id:"in",kind:"incoming",outgoingEventId:outgoing.id,amountCents:800n};
+ const refund={id:"refund",kind:"returned",outgoingEventId:outgoing.id,returnedIncomingEventId:incoming.id,amountCents:300n};
+ const tx={companyTransferOriginalDebtCorrection:{findMany:jest.fn().mockResolvedValue([
+  {outgoingEventId:outgoing.id,status:"pending",requestedAt:new Date(),requestedByUserId:"finance"},
+ ])}};
+ expect(await currentCompanyTransferCorrectionDuties(tx as never,transfer,[outgoing,incoming,refund]))
+  .toEqual([expect.objectContaining({event:expect.objectContaining({amountCents:500n})})]);
+ expect(await currentCompanyTransferCorrectionDuties(tx as never,transfer,[outgoing,incoming,{...refund,amountCents:800n}]))
+  .toEqual([]);
 });
 
 it("项目财务两边都有效才具有实际互转权限",async()=>{

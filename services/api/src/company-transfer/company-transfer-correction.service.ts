@@ -40,6 +40,7 @@ function checkedReason(reason: unknown) {
 function handleCorrectionError(error: unknown): never {
   if (error instanceof Prisma.PrismaClientKnownRequestError || error instanceof Prisma.PrismaClientUnknownRequestError) {
     if (error.message.includes("company_transfer_correction_requires_receipt")) throw rejected("此笔尚未全部到账核对，不能更正原代付债务");
+    if (error.message.includes("company_transfer_correction_fully_refunded")) throw rejected("该笔到账资金已全部退回，无需更正原代付债务");
     if (error.message.includes("company_transfer_correction_capacity")) throw rejected("正确原债的未占用额度不足，或者原归还日期早于该债");
     if (error.message.includes("company_transfer_original_mismatch") || error.message.includes("company_transfer_correction_source_invalid")) {
       throw rejected("请核对正确原债的公司双方、项目和代付类别");

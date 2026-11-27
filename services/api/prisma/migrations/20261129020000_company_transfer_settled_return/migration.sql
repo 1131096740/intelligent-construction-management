@@ -433,7 +433,8 @@ BEGIN
     coalesce(sum("amountCents") FILTER (WHERE "returnedIncomingEventId" IS NOT NULL),0)
   INTO received, refunded
   FROM public."CompanyTransferEvent" WHERE "outgoingEventId" = outgoing.id;
-  IF received <> outgoing."amountCents" OR received = refunded THEN RAISE EXCEPTION 'company_transfer_correction_requires_receipt'; END IF;
+  IF received <> outgoing."amountCents" THEN RAISE EXCEPTION 'company_transfer_correction_requires_receipt'; END IF;
+  IF received = refunded THEN RAISE EXCEPTION 'company_transfer_correction_fully_refunded'; END IF;
   target := public.jg_company_transfer_correction_target(transfer, target_source);
   IF target."originalFundMovementRelationshipId" IS NOT NULL AND NOT EXISTS (
     SELECT 1 FROM public."FundMovementRelationshipEntry" movement

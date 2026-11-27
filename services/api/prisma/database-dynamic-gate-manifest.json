@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 351,
     "terminalMigration": "20261129020000_company_transfer_settled_return",
-    "terminalMigrationChecksum": "fee1c198837811f5c99022ba80acc577eb9d4eae96265032e70fddc2addd3e72",
+    "terminalMigrationChecksum": "cbaf785b470e8e0de1d79256e9ed19b181bf875131c741d866754fd1277d8fff",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false

@@ -46,7 +46,7 @@ export async function companyTransferWorkItems(tx: Prisma.TransactionClient, act
       const finance = await companyTransferCashAccess(tx,visibility,actor,[r.sourceProjectId,r.destinationProjectId],roles);
       if (!finance && !comprehensiveOutgoing) continue;
       const events=await tx.companyTransferEvent.findMany({where:{transferId:r.id},select:{
-        id:true,kind:true,amountCents:true,outgoingEventId:true,recordedByUserId:true,createdAt:true
+        id:true,kind:true,amountCents:true,outgoingEventId:true,returnedIncomingEventId:true,recordedByUserId:true,createdAt:true
       }});
       if (parallel && roles.includes("finance_director")) {
         for (const duty of await currentCompanyTransferCorrectionDuties(tx,r,events)) {

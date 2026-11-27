@@ -43,7 +43,7 @@ function matchesRetry(row:AuditLog,origin:AuditLog,previousId:string,kind:Notice
     row.businessId===origin.businessId && row.action==="queued" && data.retryOf===previousId && data.originalId===origin.id &&
     data.recipientId===prior.recipientId && data.roundId===prior.roundId && data.key===prior.key && data.nodeIndex===prior.nodeIndex;
 }
-const cashEventSelect = {id:true,kind:true,amountCents:true,outgoingEventId:true,recordedByUserId:true,createdAt:true} as const;
+const cashEventSelect = {id:true,kind:true,amountCents:true,outgoingEventId:true,returnedIncomingEventId:true,recordedByUserId:true,createdAt:true} as const;
 const transferSelect = {
   id:true,status:true,approvalInstanceId:true,applicantUserId:true,code:true,amountCents:true,
   frozenParties:true,sourceProjectId:true,destinationProjectId:true,approvedAt:true,createdAt:true,requiresParallelRepaymentApproval:true,originalTransferId:true,originalProxyId:true,
