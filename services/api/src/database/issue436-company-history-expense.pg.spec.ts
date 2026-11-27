@@ -15,8 +15,10 @@ const integration = process.env.ISSUE436_COMPANY_HISTORY_RUN === "1" ? test : te
 
 integration("公司历史费用真实入账、净额、两会话更正、相邻账簿零变动", async () => {
   const url = new URL(process.env.ISSUE436_COMPANY_HISTORY_DATABASE_URL ?? "");
+  const runId = process.env.ISSUE436_COMPANY_HISTORY_RUN_ID;
   if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" ||
-      url.protocol !== "postgresql:" || !/^\/issue436_company_[0-9a-f]{12}$/u.test(url.pathname)) {
+      url.protocol !== "postgresql:" || url.pathname !== "/jiangkong_line_a_real_db" ||
+      !/^[0-9a-f-]{36}$/u.test(runId ?? "")) {
     throw new Error("公司历史费用验收只允许一次性本机 PostgreSQL 专库");
   }
   const prisma = new PrismaClient({ datasources: { db: { url: url.href } } });
@@ -33,11 +35,12 @@ integration("公司历史费用真实入账、净额、两会话更正、相邻�
     next();
   });
   try {
-    const [database] = await prisma.$queryRaw<Array<{ name: string; version: number; immutable: boolean }>>`
+    const [database] = await prisma.$queryRaw<Array<{ name: string; version: number; immutable: boolean; runId: string }>>`
       SELECT current_database() AS name, current_setting('server_version_num')::int AS version,
+        current_setting('app.issue436_company_run', true) AS "runId",
         EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'CompanyHistoryExpenseFact_immutable' AND tgenabled = 'O') AS immutable
     `;
-    expect(database).toEqual(expect.objectContaining({ name: url.pathname.slice(1), immutable: true }));
+    expect(database).toEqual(expect.objectContaining({ name: url.pathname.slice(1), immutable: true, runId }));
     expect(Math.floor(database!.version / 10000)).toBe(16);
     const tag = randomUUID();
     const project = await prisma.project.create({
