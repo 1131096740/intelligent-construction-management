@@ -261,9 +261,13 @@ for name, pin in pins['runtime'].items():
         assert digest(material) == '4c4a65347899b0a52b215477b0f105956c6c76288a6dc9962a721e3bb6869818'
         material = patch(material,read_pinned(plan/'entry-named349.patch','7d2f7a6166afb4612092e21b4d884fa15d35f359ef18efd39071188724774d9b'))
         assert digest(material) == '783e7d3732b1187088da35cc59ed1cc0a0218bd72272c07d660cf5f426667102'
+        material = patch(material,read_pinned(plan/'pol113-progress-entry-349.patch','75ee80656067d00976f32b46856702f216ee076602e0a81aa1e557e5da90880a'))
+        assert digest(material) == '3001fbaf386ad8db695964fa0ad44689a48322fb252c5f93d5cb029d26e35144'
     if text_direct and name == 'browser-evidence.cjs':
         material = patch(material,(plan/'browser-330-diagnostics.patch').read_bytes())
     write(context/name,material)
+if precision:
+    write(context/'pol113-progress.cjs',read_pinned(plan/'pol113-progress.cjs','5d462fa9b4d869262e43037de944264954fab50d1cde5f87c2ad4ed8c9d396a2'))
 for name, pin in pins['named'].items():
     material = overlay((historical/'source/services/api/prisma'/name).read_bytes(),pin) if 'base' in pin else read_pinned(donor/pin['file'],pin['result'])
     write(context/'named-authority-modules'/name,material)
@@ -318,7 +322,12 @@ for name,pin in pins['workspace'].items():
             pin = {**pin,
                    'base': '2c336da20dd664b623f2b715c49d1963b6c0f3253df433145fa762daf9cfb37b',
                    'result': 'f7153477589137d7cb5bd624686c3926d2a6e676cf04bb05a79cb95862de4343'}
-        write(path,overlay(material,pin))
+        staged = overlay(material,pin)
+        if precision and name == 'apps/web-admin/playwright.pol113-project-real.config.ts':
+            assert digest(staged) == '8f3be3ab6820f979b5ed7d764726f0ad999a96a97f5e04fc7689e672b85c1641'
+            staged = patch(staged,read_pinned(plan/'pol113-progress-config-349.patch','21dcdcbf00503d075823a11a1031eed7b1e537e8b5a3fdb25520fca6dfc91ec2'))
+            assert digest(staged) == '985c19e9c60562c07a33e37bdeb6e4ba19fee576cdfe66b0b8a5abb7b99bb5c0'
+        write(path,staged)
 
 files=sorted(p for p in workspace.rglob('*') if p.is_file())
 assert not any(p.is_symlink() for p in workspace.rglob('*'))
@@ -347,7 +356,7 @@ if historical_settlement:
 if expense_witness:
     copy += '\nCOPY --chmod=0644 expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json /qualification/'
 if precision:
-    copy += '\nCOPY --chmod=0644 expense-witness-349-profile.cjs /qualification/'
+    copy += '\nCOPY --chmod=0644 expense-witness-349-profile.cjs pol113-progress.cjs /qualification/'
 docker = docker.replace('@RUNTIME_COPY@',copy)
 write(context/'Dockerfile',docker.encode())
 for file in context.glob('*.cjs'):

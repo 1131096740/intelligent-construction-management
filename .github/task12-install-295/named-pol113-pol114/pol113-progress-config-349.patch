@@ -1,0 +1,10 @@
+--- original
++++ diagnostic
+@@ -11,3 +11,6 @@
+   testDir: "./e2e", testMatch: ["pol113-project-profile-real.e2e.ts", "pol113-settings-real.e2e.ts", "pol113-business-party-real.e2e.ts", "pol113-company-entity-real.e2e.ts"],
+-  timeout: 45_000, workers: 1, retries: 0, reporter: [["line"], ["json", { outputFile: join(tmpdir(), "pol113-" + randomUUID() + ".json") }]],
++  timeout: 45_000, workers: 1, retries: 0, reporter: [["line"], ["json", { outputFile: join(tmpdir(), "pol113-" + randomUUID() + ".json") }],
++    ["/qualification/pol113-progress.cjs", {
++      file: process.env.JG_POL113_PROGRESS_FILE, startedAt: Number(process.env.JG_POL113_PROGRESS_STARTED_AT),
++    }]],
+   outputDir: join(tmpdir(), `pol113-project-browser-${randomUUID()}`),
