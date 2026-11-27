@@ -98,7 +98,7 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
   const secret = () => randomBytes(32).toString('hex');
   receipt.stages.push(profile.stage);
   const writeSecret = profile.requiresOperatingLedgerWriteSecret ? secret() : undefined;
-  if (precision) {
+  if (precision && writeSecret) {
     await sql(`INSERT INTO public."OperatingLedgerWriteSecret" ("id", "secretHash")
       VALUES (1, public.crypt('${writeSecret}', public.gen_salt('bf')));`);
   }
@@ -126,7 +126,7 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
       rows.length === titles.length && rows.every((row, index) => row.title === titles[index] && row.status === 'passed') };
   const firstFailed = rows.find(row => row.status === 'failed');
   if (firstFailed) receipt.suite.firstFailure = summarizeFirstFailure(file, firstFailed);
-  if (scope === 'issue404') {
+  if (scope === 'issue404' || scope === 'issue404_349') {
     const failedCases = rows.slice(0, titles.length).flatMap((row, index) =>
       row.status === 'failed' ? [{ index, ...summarizeFirstFailure(file, row, true) }] : []);
     if (failedCases.length) receipt.suite.failedCases = failedCases;

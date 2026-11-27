@@ -7,7 +7,7 @@ issue_lane=false
 if [[ ${2:-} == issue* ]]; then
   [[ $# == 3 ]] || exit 64
   case "$2:$3" in
-    issue426_a01_349:--expense-witness-349) ;;
+    issue426_a01_349:--expense-witness-349|issue404_349:--expense-witness-349|issue421b_349:--expense-witness-349) ;;
     issue403:--expense-witness-346|issue404:--expense-witness-346|issue417:--expense-witness-346|issue418-operating:--expense-witness-346) ;;
     issue400_346:--expense-witness-346|issue405_346:--expense-witness-346) ;;
     issue411_346:--expense-witness-346|issue413_346:--expense-witness-346|issue414_346:--expense-witness-346) ;;
@@ -40,7 +40,7 @@ fi
     $2 == expense-execution || $2 == expense-finance || $2 == expense-receipt || $2 == cash-handover || $2 == principal-return || $2 == company-proxy ||
     $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts || $2 == pol109 ||
     $2 == pfq || $2 == task398-standard || $2 == cash-transfer || $2 == project-advance || $issue_lane == true ) && $3 == --expense-witness-346 ) ||
-  ( $# == 3 && $2 == issue426_a01_349 && $3 == --expense-witness-349 ) ||
+  ( $# == 3 && $issue_lane == true && $3 == --expense-witness-349 ) ||
   ( $# == 4 && ( $2 == payment-execution || $2 == task398-competition || $2 == pol109 || $2 == cash-transfer || $2 == project-advance ) &&
     $3 == --expense-witness-346 && $4 == --host-only ) ||
   ( $# == 4 && $2 == pol275 && ( $3 == --historical-settlement-334 || $3 == --expense-witness-346 ) && $4 == a187dc73a133114e1cfbbc891a4aec923abe2545 ) ||

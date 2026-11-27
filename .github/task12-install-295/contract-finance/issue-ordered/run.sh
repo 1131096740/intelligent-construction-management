@@ -49,7 +49,7 @@ if [[ -n $fixture_digest ]]; then
   install -m 0644 "$source_spec" "$work/fixture.ts"
   git -C "$work" apply --unidiff-zero "$plan/$fixture_patch"
   [[ $(sha256sum "$work/fixture.ts" | cut -d' ' -f1) == "$fixture_digest" ]] || exit 65
-  if [[ $mode == expense-witness-346 ]]; then chmod 0644 "$work/fixture.ts"; fi
+  if [[ $mode == expense-witness-* ]]; then chmod 0644 "$work/fixture.ts"; fi
 fi
 node "$base/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
 if [[ $mode == expense-witness-346 || $mode == expense-witness-349 ]]; then

@@ -392,6 +392,23 @@ profiles.issue422_346 = {
   requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
 };
 
+const precisionBaseline = {
+  requiredMigrationCount: 349,
+  requiredTerminalMigration: '20261129018000_reimbursement_exact_cash_cost_links',
+  requiredTerminalMigrationSha256: '58b3cc0404a85a97dbb484654245d4bd042e5fb2014f32997244b2597cb5110b'
+};
+
+profiles.issue404_349 = {
+  ...profiles.issue404,
+  fixturePatch: 'issue404.fixture.patch',
+  ...precisionBaseline
+};
+
+profiles.issue421b_349 = {
+  ...profiles.issue421b_346,
+  ...precisionBaseline
+};
+
 profiles.issue426_a01_349 = {
   file: 'src/expense-claim/expense-claim-a01-precision.http.pg.spec.ts',
   sourceDigest: 'e517373d18a3c7d1ed48dad5ff43ac0749c84ea518177cb6c8a43303c4749f14',
@@ -403,9 +420,7 @@ profiles.issue426_a01_349 = {
     '报销四位元金额按明细精确求和、仅在付款总额取整',
     '报销四位元金额终审保留项目成本并分开整数分待付'
   ],
-  requiredMigrationCount: 349,
-  requiredTerminalMigration: '20261129018000_reimbursement_exact_cash_cost_links',
-  requiredTerminalMigrationSha256: '58b3cc0404a85a97dbb484654245d4bd042e5fb2014f32997244b2597cb5110b'
+  ...precisionBaseline
 };
 
 function profileFor(scope) {
