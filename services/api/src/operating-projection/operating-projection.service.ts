@@ -164,8 +164,8 @@ type ProjectionReadContext = {
 };
 
 export class OwnerSettlementBelowCentForCloseError extends ConflictException {
-  constructor() {
-    super("业主结算含不足一分的金额，当前收口不能准确记账。本次操作已阻止，已冻结的历史仍可查看。");
+  constructor(source: "业主结算" | "报销成本" = "业主结算") {
+    super(`${source}含不足一分的金额，当前收口不能准确记账。本次操作已阻止，已冻结的历史仍可查看。`);
   }
 }
 
@@ -208,7 +208,7 @@ export class OperatingProjectionService {
         requireOverviewPermission: true,
         fixedReadAt: input.fixedReadAt,
         transactionClient: tx,
-        allowExactOwnerSettlementCents: true
+        allowExactCentsForClose: true
       }, async (_client, _projectIds, context) => ({
         readAt: context.readAt,
         cutoffAt: context.cutoffAt,
@@ -803,7 +803,7 @@ export class OperatingProjectionService {
     fixedReadAt?: Date;
     fixedCutoffAt?: Date;
     transactionClient?: Prisma.TransactionClient;
-    allowExactOwnerSettlementCents?: boolean;
+    allowExactCentsForClose?: boolean;
   }, readAdditional?: (
     tx: Prisma.TransactionClient,
     projectIds: string[],
@@ -1180,7 +1180,7 @@ export class OperatingProjectionService {
       await readOperatingFactsInBatches(tx, projectIds, cutoffAt, readAt, {
         startFacts: (facts) => {
           const mapped = facts.map((fact) => versionedProjectionFactFromStored(
-            input.allowExactOwnerSettlementCents ? projectCloseLegacyOwnerSettlementRow(fact) : fact,
+            input.allowExactCentsForClose ? projectCloseExactCentsRow(fact) : fact,
             projectById,
             input.numericProtocolVersion ?? 1,
             costAttributionByFactId
@@ -1191,10 +1191,10 @@ export class OperatingProjectionService {
           impacts.flatMap((impact) => {
             const projected = projectExpenseCashCostImpact(
               versionedProjectionImpactFromStored(
-                input.allowExactOwnerSettlementCents ? projectCloseLegacyOwnerSettlementRow(impact) : impact,
+                input.allowExactCentsForClose ? projectCloseExactCentsRow(impact) : impact,
                 input.numericProtocolVersion ?? 1
               ),
-              expenseCashByImpactId.get(impact.id), companyEntityId, companyEntityVersionIds
+              impact.sourceType, expenseCashByImpactId.get(impact.id), companyEntityId, companyEntityVersionIds
             );
             return projected ? [{ ...projected, factId: impact.factId }] : [];
           })
@@ -1965,7 +1965,9 @@ async function preflightDetailSnapshotPageResources(
     FROM (
       SELECT
         COALESCE(octet_length(fact."sourceSnapshot"::text), 0) +
-        COALESCE(octet_length(fact."subjectSnapshot"::text), 0) AS "snapshotBytes"
+        COALESCE(octet_length(fact."subjectSnapshot"::text), 0)
+        ${context.numericProtocolVersion === 2 ? Prisma.sql`+ COALESCE(octet_length(impact."impactSnapshot"::text), 0)` : Prisma.empty}
+        AS "snapshotBytes"
       FROM "OperatingImpactEntry" impact
       INNER JOIN "OperatingFact" fact ON fact.id = impact."factId"
       WHERE impact."createdAt" <= ${context.readAt}
@@ -2034,6 +2036,7 @@ async function readFactDetailPageInTransaction(
         subjectId: true,
         costCategoryCode: true,
         fundPurpose: true,
+        ...(context.numericProtocolVersion === 2 ? { subjectRole: true, impactSnapshot: true } : {}),
         fact: {
           select: {
             id: true,
@@ -2083,7 +2086,10 @@ async function readFactDetailPageInTransaction(
         : projectionFactFromDetailStored(row.fact, context.projectById, context.costAttributionByFactId);
       if (row.numericProtocolVersion === 2 && row.amountCents !== null) throw new BadRequestException("新版经营明细混用了原分金额，请核对原资料");
       const storedImpact: ProjectionFactInput["impacts"][number] | ProjectionV2ImpactInput = row.numericProtocolVersion === 2
-        ? { id: row.id, impactKind: row.impactKind, numericProtocolVersion: 2, amountCents: null, amountYuan: row.amountYuan === null ? null : row.amountYuan.toFixed(4), direction: row.direction, subjectKind: row.subjectKind, subjectId: row.subjectId }
+        ? { id: row.id, impactKind: row.impactKind, numericProtocolVersion: 2, amountCents: null,
+          amountYuan: row.amountYuan === null ? null : row.amountYuan.toFixed(4), direction: row.direction,
+          subjectRole: row.subjectRole, subjectKind: row.subjectKind, subjectId: row.subjectId,
+          costCategoryCode: row.costCategoryCode, fundPurpose: row.fundPurpose, impactSnapshot: row.impactSnapshot }
         : projectionImpactFromDetailStored(row);
       after = {
         phase: "facts",
@@ -2091,9 +2097,9 @@ async function readFactDetailPageInTransaction(
         impactId: storedImpact.id
       };
       if (context.suppressedSettlementFactIds.has(fact.id)) continue;
-      const impact = projectExpenseCashCostImpact(storedImpact, context.expenseCashByImpactId.get(storedImpact.id),
+      const impact = projectExpenseCashCostImpact(storedImpact, fact.sourceType, context.expenseCashByImpactId.get(storedImpact.id),
         context.scope.filters?.companyEntityId, companyVersionIds);
-      if (!impact || !projectionFactMatchesFilters(
+      if (!impact || ("projectedCostYuan" in impact && impact.projectedCostYuan === null) || !projectionFactMatchesFilters(
         fact,
         impact,
         context.scope.filters,
@@ -2333,13 +2339,16 @@ async function readOperatingFactsInBatches(
   }
 }
 
-function projectCloseLegacyOwnerSettlementRow<Row extends {
+function projectCloseExactCentsRow<Row extends {
   sourceType: string; numericProtocolVersion: number; amountCents: bigint | null; amountYuan: Prisma.Decimal | null;
 }>(row: Row): Row {
-  if (row.sourceType !== "project_owner_settlement_entry" || row.numericProtocolVersion !== 2) return row;
-  const cents = row.amountYuan?.times(100);
-  if (row.amountCents !== null || !cents?.isInteger()) throw new OwnerSettlementBelowCentForCloseError();
-  return { ...row, numericProtocolVersion: 1, amountCents: BigInt(cents.toFixed(0)), amountYuan: null };
+  if (row.numericProtocolVersion !== 2 ||
+      !["project_owner_settlement_entry", "expense_claim_approval"].includes(row.sourceType)) return row;
+  const amountYuan = row.amountYuan?.toFixed(4);
+  if (row.amountCents !== null || !amountYuan || !/^\d+\.\d{2}00$/u.test(amountYuan)) {
+    throw new OwnerSettlementBelowCentForCloseError(row.sourceType === "expense_claim_approval" ? "报销成本" : "业主结算");
+  }
+  return { ...row, numericProtocolVersion: 1, amountCents: BigInt(amountYuan.slice(0, -2).replace(".", "")), amountYuan: null };
 }
 
 function versionedProjectionFactFromStored(fact: ProjectionStoredFact, projectById: Map<string, { id: string; code: string; name: string }>, protocol: 1 | 2, costAttributionByFactId?: Map<string, { companyEntityVersionId: string; companyName: string }>): ProjectionFactInput | ProjectionV2FactInput {
@@ -2360,18 +2369,23 @@ function versionedProjectionImpactFromStored(impact: StoredOperatingImpact, prot
 
 function projectExpenseCashCostImpact(
   impact: ProjectionFactInput["impacts"][number] | ProjectionV2ImpactInput,
+  sourceType: string,
   rows: ExpenseCashProjectionRow[] | undefined,
   companyEntityId?: string,
   companyEntityVersionIds?: Set<string> | null
 ) {
   if (!rows?.length) return impact;
-  if (impact.numericProtocolVersion === 2 || impact.impactKind !== "confirmed_cost" || impact.direction !== "increase") {
+  if (impact.impactKind !== "confirmed_cost" || impact.direction !== "increase" ||
+      (impact.numericProtocolVersion === 2 && (sourceType !== "expense_claim_approval" || impact.amountYuan === null))) {
     throw new ConflictException("公共现金分摊没有对应的已确认原费用");
   }
   const slices = rows.flatMap(row => row.confirmedAttribution ? [row.confirmedAttribution] : []);
   const assigned = slices.reduce((sum, slice) => sum + slice.amountCents, 0n);
   const cash = rows.reduce((sum, row) => sum + row.cashAmountCents, 0n);
-  if (assigned > impact.amountCents || cash > impact.amountCents) {
+  const originalWholeCents = impact.numericProtocolVersion === 2
+    ? BigInt(normalizeBusinessAmount(impact.amountYuan)!.replace(".", "")) / 100n
+    : impact.amountCents;
+  if (assigned > originalWholeCents || cash > originalWholeCents) {
     throw new ConflictException("公共现金归属金额超过原确认费用");
   }
   if (!companyEntityId || impact.subjectKind || !slices.length) {
@@ -2382,14 +2396,20 @@ function projectExpenseCashCostImpact(
     const version = row.confirmedAttribution?.companyEntityVersionId;
     return version && (version === companyEntityId || companyEntityVersionIds?.has(version));
   });
-  if (!selected.length) return null;
+  if (!selected.length) return impact.numericProtocolVersion === 2 ? { ...impact, projectedCostYuan: null } : null;
   const selectedSlices = selected.map(row => row.confirmedAttribution!);
   const amountCents = selectedSlices.reduce((sum, slice) => sum + slice.amountCents, 0n);
+  const selectedCash = selected.reduce((sum, row) => sum + row.cashAmountCents, 0n);
+  const needsReview = selected.some(row => row.attributionNeedsReview);
+  if (impact.numericProtocolVersion === 2) {
+    return { ...impact, projectedCostYuan: businessAmountFromLegacyCents(amountCents), costBearingSlices: selectedSlices,
+      publicCashCostAmountCents: selectedCash, cashAttributionNeedsReview: needsReview };
+  }
   return {
     ...impact, amountCents, subjectKind: "participating_company", subjectId: selectedSlices[0].companyEntityVersionId,
     costBearingSlices: selectedSlices,
-    cashAttributionNeedsReview: selected.some(row => row.attributionNeedsReview),
-    publicCashCostAmountCents: selected.reduce((sum, row) => sum + row.cashAmountCents, 0n)
+    cashAttributionNeedsReview: needsReview,
+    publicCashCostAmountCents: selectedCash
   };
 }
 
@@ -3035,11 +3055,21 @@ function projectionExportCsvRow(
       if (item.amountState !== "unknown" || item.signedImpactYuan !== null) throw new ConflictException("合同参考金额未知状态与导出值不一致");
       amountYuan = "待确定";
     } else {
-      if (item.amountState !== "known" || typeof metadata.factAmountYuan !== "string" || typeof item.signedImpactYuan !== "string") throw new ConflictException("合同参考金额缺少真实四位值，已拒绝导出");
+      if (item.amountState !== "known" || typeof metadata.factAmountYuan !== "string" || typeof item.signedImpactYuan !== "string") throw new ConflictException("经营金额缺少真实四位值，已拒绝导出");
       try { amountYuan = normalizeBusinessAmount(item.signedImpactYuan, { allowNegative: true })!; }
-      catch { throw new ConflictException("合同参考金额超出可导出精度，请核对原资料"); }
+      catch { throw new ConflictException("经营金额超出可导出精度，请核对原资料"); }
     }
     amountBasis = "合同参考金额（四位元）";
+    if (sourceType === "expense_claim_approval") {
+      if (impactKind === "confirmed_cost" && item.amountState === "known") {
+        amountBasis = "正式成本（四位元）";
+      } else if (impactKind === "payable_increase" && /^\d+\.\d{2}00$/u.test(amountYuan)) {
+        amountYuan = amountYuan.slice(0, -2);
+        amountBasis = "正式事实";
+      } else {
+        throw new ConflictException("报销导出金额与经营影响不一致，请核对原资料");
+      }
+    }
   } else {
   const signedImpactCents = nullableStringValue(item.signedImpactCents);
   const factAmountCents = stringValue(metadata.factAmountCents);

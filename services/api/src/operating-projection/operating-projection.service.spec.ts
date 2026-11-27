@@ -132,6 +132,82 @@ describe("OperatingProjectionService", () => {
     expect(afterRefund.integrity.notices).toContain("原公共现金费用已有归属确认，后续退款或更正影响承担关系的范围待核对。");
   });
 
+  it("returns each exact reimbursement line and only the linked whole-cent cost in a company view", async () => {
+    const readAt = new Date("2026-11-26T02:00:00Z");
+    const occurredAt = new Date("2026-11-20T00:00:00Z");
+    const exact = (amountYuan: string) => ({ numericProtocolVersion: 2, amountCents: null, amountYuan: new Prisma.Decimal(amountYuan) });
+    const costFact = {
+      ...exact("8.0051"), id: "approval-fact", projectId: project.id, sourceType: "expense_claim_approval",
+      sourceBusinessId: "claim-1", sourceBusinessCode: "BX-0001", sourceVersion: 1,
+      occurredAt, confirmedAt: occurredAt, affiliateBusinessPartyVersionId: "enterprise-v1", affiliateNameSnapshot: "施工单位",
+      factKind: "expense", operatingLevel: "project", evidenceLevel: "A", direction: "outflow", entryKind: "original",
+      costBearingCompanySubjectKind: null, costBearingCompanySubjectId: null, subjectSnapshot: {},
+      sourceSnapshot: {
+        formalStatus: "confirmed", claimType: "reimbursement", costBearingCompanyEntityId: null,
+        requestedAmountYuan: "8.0051", requestedAmountCents: "801", companyPayableAmountCents: "801", actualPurchaseBatchId: null,
+        numericFacts: { protocolVersion: 2, amountState: "known", amountYuan: "8.0051" },
+        reimbursementLines: [{ id: "line-1", sortOrder: "1", amountYuan: "8.0050" }, { id: "line-2", sortOrder: "2", amountYuan: "0.0001" }]
+      }
+    };
+    const impacts = [["8.0050", "1"], ["0.0001", "2"]].map(([amount, number]) => ({
+      ...exact(amount), id: `cost-${number}`, factId: costFact.id, fact: costFact,
+      sourceType: costFact.sourceType, sourceBusinessId: costFact.sourceBusinessId, sourceImpactKey: `confirmed_cost:${number}`,
+      impactKind: "confirmed_cost", direction: "increase", subjectRole: null, subjectKind: null, subjectId: null,
+      costCategoryCode: "project_daily_expense", fundPurpose: null,
+      impactSnapshot: { lineId: `line-${number}`, numericFacts: { protocolVersion: 2, amountState: "known", amountYuan: amount } }
+    }));
+    const payable = {
+      ...exact("8.0100"), id: "payable", factId: costFact.id, fact: costFact,
+      sourceType: costFact.sourceType, sourceBusinessId: costFact.sourceBusinessId, sourceImpactKey: "payable_increase",
+      impactKind: "payable_increase", direction: "increase", subjectRole: "payee", subjectKind: "person", subjectId: "payee-1",
+      costCategoryCode: null, fundPurpose: null, impactSnapshot: { numericFacts: { protocolVersion: 2, amountState: "known", amountYuan: "8.0100" } }
+    };
+    const link = {
+      id: "link-1", amountCents: 300n, costImpact: { id: "cost-1", fact: { ...costFact, adjustments: [] } },
+      operationalPayment: { amountCents: 801n, expensePublicCashCosts: [{ id: "link-1" }],
+        expenseExecution: { expenseClaimId: "claim-1", refunds: [] } },
+      confirmations: [{ companyEntityVersionId: "bearing-v1", companyNameSnapshot: "承担公司", attributedAmountCents: 300n }]
+    };
+    const tx = {
+      ...emptyProjectionTx(readAt, [project]),
+      expensePublicCashCostLink: { findMany: jest.fn().mockResolvedValue([link]) }
+    };
+    tx.companyEntityVersion.findMany.mockResolvedValue([{ id: "bearing-v1", name: "承担公司" }]);
+    tx.operatingFact.findMany.mockImplementation(async (query) => query.where.sourceType ? [] : [costFact]);
+    tx.operatingImpactEntry.findMany.mockResolvedValue([...impacts, payable]);
+    const visibility = overviewVisibility([project.id]);
+    visibility.effectiveRoleKeysByProjectInTransaction.mockResolvedValue(new Map([[project.id, ["finance_staff"]]]));
+    const service = new OperatingProjectionService(
+      { $transaction: jest.fn((work) => work(tx)) } as never, visibility as never, zeroRiskReader() as never,
+      { record: jest.fn() } as never, { confirmPassword: jest.fn() } as never
+    );
+
+    await expect(service.readProjectInTransaction(tx as never, "finance", { projectId: project.id }))
+      .rejects.toThrow("报销成本含不足一分的金额");
+
+    const request = { projectId: project.id, numericProtocolVersion: 2 as const };
+    const overall = await service.getProjectDetailPage("finance", request);
+    expect(overall.projection.operating).toMatchObject({ confirmedCostYuan: "8.0051", payableCents: "801" });
+    expect(overall.items.map(item => item.signedImpactYuan)).toEqual(["8.0050", "0.0001", "8.0100"]);
+
+    const companyRequest = { ...request, companyEntityId: "bearing-company" };
+    const filtered = await service.getProjectDetailPage("finance", companyRequest);
+    expect(filtered.projection.operating).toMatchObject({ confirmedCostYuan: "3.0000" });
+    expect(filtered.items).toEqual([expect.objectContaining({ signedImpactYuan: "3.0000", signedImpactCents: null })]);
+
+    const exported = await service.exportView("finance", { ...companyRequest, scopeKind: "project" },
+      "current-password", "project_operating_ledger_detail");
+    const csv = await readUtf8Stream(exported.stream);
+    const rows = csv.split("\n").filter((row) => row.includes('"BX-0001"'));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toContain('"正式成本（四位元）"');
+    expect(rows[0]).toContain('"3.0000"');
+
+    link.amountCents = 801n;
+    link.confirmations[0].attributedAmountCents = 801n;
+    await expect(service.getProjectView("finance", request)).rejects.toThrow("公共现金归属金额超过原确认费用");
+  });
+
   it.each([
     [20_000n, 100_000n, 67_108_864n, false],
     [20_001n, 1n, 1n, true],
