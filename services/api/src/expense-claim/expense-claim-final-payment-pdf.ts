@@ -18,6 +18,7 @@ export type ExpenseClaimFinalPaymentPdfInput = {
   applicantName: string;
   reason: string;
   requestedAmountCents: bigint;
+  requestedAmountYuan?: string | null;
   loanOffsetAmountCents: bigint;
   companyPayableAmountCents: bigint;
   paidAmountCents: bigint;
@@ -48,7 +49,7 @@ export async function renderExpenseClaimFinalPaymentPdf(input: ExpenseClaimFinal
   y = row(doc, margin, y, [64, 210, 64, width - 338], 24, ["单据编号", input.code, "项目", input.projectName || "非项目费用"]);
   y = row(doc, margin, y, [64, width - 64], 32, ["报销人 / 事由", `${input.applicantName}；${input.reason}`]);
   y = row(doc, margin, y, [64, 112, 64, 112, 64, width - 416], 24, [
-    "申请金额", `￥${formatMoneyCentsAsYuan(input.requestedAmountCents)}`,
+    "申请金额", `￥${input.requestedAmountYuan ?? formatMoneyCentsAsYuan(input.requestedAmountCents)}`,
     input.offsetLabel ?? "借款冲销", `￥${formatMoneyCentsAsYuan(input.loanOffsetAmountCents)}`,
     input.payableLabel ?? "公司补付", `￥${formatMoneyCentsAsYuan(input.companyPayableAmountCents)}`
   ]);

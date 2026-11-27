@@ -37,8 +37,13 @@ export class ExpenseClaimLineDto {
   @IsIntegerInRange({ min: 0, max: 10000, typeMessage: "单据张数必须是整数", rangeMessage: "单据张数必须在 0 到 10000 之间" })
   receiptCount!: number;
 
+  @ValidateIf((row: ExpenseClaimLineDto, value) => row.amountYuan === undefined || value !== undefined)
   @IsCanonicalMoneyText({ typeMessage: "费用金额必须是文字", formatMessage: "费用金额必须按分填写为大于 0 的整数" })
-  amountCents!: string;
+  amountCents?: string;
+
+  @ValidateIf((_input, value) => value !== undefined)
+  @IsString({ message: "费用金额必须是十进制文字" })
+  amountYuan?: string;
 
   @IsIn(["invoice", "receipt_or_other", "none"], { message: "证据类型不正确" })
   evidenceType!: "invoice" | "receipt_or_other" | "none";
@@ -118,8 +123,13 @@ export class CreateExpenseClaimDto {
   @IsRequiredText({ requiredMessage: "事由不能为空", typeMessage: "事由必须是文字", blankMessage: "事由不能为空白" })
   reason!: string;
 
+  @ValidateIf((input: CreateExpenseClaimDto, value) => input.requestedAmountYuan === undefined || value !== undefined)
   @IsCanonicalMoneyText({ typeMessage: "申请金额必须是文字", formatMessage: "申请金额必须按分填写为大于 0 的整数" })
-  requestedAmountCents!: string;
+  requestedAmountCents?: string;
+
+  @ValidateIf((_input, value) => value !== undefined)
+  @IsString({ message: "申请金额必须是十进制文字" })
+  requestedAmountYuan?: string;
 
   @IsOptionalNonBlankText({ typeMessage: "收款方式必须是文字", blankMessage: "收款方式不能为空白" })
   paymentMethod?: string;

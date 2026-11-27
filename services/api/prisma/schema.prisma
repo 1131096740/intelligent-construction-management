@@ -5318,6 +5318,7 @@ model ExpenseClaim {
   proxyReason                     String?
   reason                          String
   requestedAmountCents            BigInt
+  requestedAmountYuan             Decimal?                    @db.Decimal(24, 4)
   loanOffsetAmountCents           BigInt                      @default(0)
   companyPayableAmountCents       BigInt                      @default(0)
   fundedAmountCents               BigInt                      @default(0)
@@ -5383,6 +5384,7 @@ model ExpenseClaimLine {
   quantity         Decimal? @db.Decimal(24, 4)
   receiptCount     Int
   amountCents      BigInt
+  amountYuan       Decimal? @db.Decimal(24, 4)
   evidenceType     String
   noEvidenceReason String?
   remark           String?

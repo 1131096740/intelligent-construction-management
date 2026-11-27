@@ -2281,6 +2281,7 @@ export class ApprovalFormService {
         submittedAt: true,
         reason: true,
         requestedAmountCents: true,
+        requestedAmountYuan: true,
         loanOffsetAmountCents: true,
         companyPayableAmountCents: true,
         paymentMethod: true,
@@ -2313,7 +2314,8 @@ export class ApprovalFormService {
             purpose: true,
             quantity: true,
             receiptCount: true,
-            amountCents: true
+            amountCents: true,
+            amountYuan: true
           }
         })
         : Promise.resolve([])
@@ -2327,6 +2329,7 @@ export class ApprovalFormService {
       submittedAt: claim.submittedAt,
       reason: claim.reason,
       requestedAmountCents: dbMoneyToBigInt(claim.requestedAmountCents, "费用申请金额"),
+      requestedAmountYuan: claim.requestedAmountYuan?.toFixed(4) ?? null,
       loanOffsetAmountCents: dbMoneyToBigInt(claim.loanOffsetAmountCents, "费用借款冲销金额"),
       companyPayableAmountCents: dbMoneyToBigInt(claim.companyPayableAmountCents, "费用公司支付金额"),
       paymentMethod: claim.paymentMethod,
@@ -2335,7 +2338,8 @@ export class ApprovalFormService {
       lines: lines.map((line) => ({
         ...line,
         quantity: line.quantity?.toFixed() ?? null,
-        amountCents: dbMoneyToBigInt(line.amountCents, "费用明细金额")
+        amountCents: dbMoneyToBigInt(line.amountCents, "费用明细金额"),
+        amountYuan: line.amountYuan?.toFixed(4) ?? null
       }))
     };
   }
