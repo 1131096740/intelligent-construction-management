@@ -65,6 +65,12 @@ const insertTables = [
   'PaymentRequest', 'PaymentRequestAgreementSnapshot', 'ApprovalInstance', 'ApprovalActionLog',
   'BusinessEntrySubmissionSnapshot'
 ];
+const exactOperatingTypes = ['OperatingLedgerFactWritePayloadV2', 'OperatingLedgerImpactWritePayloadV2']
+  .map(name => 'public."' + name + '"');
+const exactOperatingFunctions = [
+  'public."appendOperatingFactThroughService"(' + exactOperatingTypes[0] + ',text,text)',
+  'public."appendOperatingImpactThroughService"(' + exactOperatingTypes[1] + ',text,text)'
+];
 const functions = [
   'jg_read_effective_contract_change_amount_v1', 'jg_read_payment_contract_agreement_detail_v1',
   'jg_read_payment_detail_activity_v1(text,text,text)',
@@ -178,6 +184,10 @@ async function consume(context) {
     // FOR UPDATE needs a column grant. The origin guard keeps createdAt immutable.
     'GRANT UPDATE ("createdAt") ON public."ContractWorkCompletion"' + toRole,
     'GRANT EXECUTE ON FUNCTION ' + functions.map(name => 'public.' + name).join(', ') + toRole,
+    ...(signedSubcent ? [
+      'GRANT USAGE ON TYPE ' + exactOperatingTypes.join(', ') + toRole,
+      'GRANT EXECUTE ON FUNCTION ' + exactOperatingFunctions.join(', ') + toRole
+    ] : []),
     ...insertions, 'COMMIT;'
   ].join('\n'));
   try {
@@ -188,6 +198,13 @@ async function consume(context) {
         AND NOT (rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls OR rolinherit)
       )
       AND NOT has_schema_privilege('${role}','public','CREATE')
+      ${signedSubcent ? [
+        ...exactOperatingTypes.map(type => `AND has_type_privilege('${role}','${type}','USAGE')`),
+        ...exactOperatingFunctions.map(fn => `AND has_function_privilege('${role}','${fn}','EXECUTE')`),
+        ...['OperatingFact', 'OperatingImpactEntry'].map(table =>
+          `AND NOT has_table_privilege('${role}','public."${table}"','INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER')
+           AND NOT has_any_column_privilege('${role}','public."${table}"','INSERT,UPDATE')`)
+      ].join('\n') : ''}
       AND NOT EXISTS (
         SELECT FROM pg_catalog.pg_class c
         WHERE c.relnamespace=to_regnamespace('public') AND c.relkind IN ('r','p')
