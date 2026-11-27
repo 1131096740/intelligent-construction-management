@@ -13,13 +13,16 @@ try {
   const paymentRemainder331=process.argv[2]==='--payment-remainder-331';
   const upwardArchive332=process.argv[2]==='--upward-archive-332';
   const historicalSettlement334=process.argv[2]==='--historical-settlement-334';
+  const expenseWitness349=process.argv[2]==='--expense-witness-349';
   const expenseWitness346=process.argv[2]==='--expense-witness-346';
-  const forward=current320||textDirect330||paymentRemainder331||upwardArchive332||historicalSettlement334||expenseWitness346;
+  const expenseProfile=expenseWitness349?require('./expense-witness-349-profile.cjs'):
+    expenseWitness346?require('./expense-witness-346-profile.cjs'):undefined;
+  const forward=current320||textDirect330||paymentRemainder331||upwardArchive332||historicalSettlement334||expenseWitness346||expenseWitness349;
   assert.equal(process.argv.length,forward?3:2);
-  const count=expenseWitness346?346:historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
+  const count=expenseWitness349?349:expenseWitness346?346:historicalSettlement334?334:upwardArchive332?332:paymentRemainder331?331:textDirect330?330:current320?329:295;
   assert.equal(source.migrationCount,count);
-  if(expenseWitness346) {
-    require('./expense-witness-346-profile.cjs').assertSource(source,multi.final);
+  if(expenseProfile) {
+    expenseProfile.assertSource(source,multi.final);
   } else if(historicalSettlement334) {
     require('./historical-settlement-334-profile.cjs').assertSource(source,multi.final);
   } else if(upwardArchive332) {
@@ -37,8 +40,8 @@ try {
   }
   if(!forward) assert.equal(source.ledgerSha256,multi.final);
   const baselineModule=require('./workspace/services/api/prisma/migration-baseline.cjs');
-  if(expenseWitness346) {
-    require('./expense-witness-346-profile.cjs').assertRuntimeBaseline(baselineModule);
+  if(expenseProfile) {
+    expenseProfile.assertRuntimeBaseline(baselineModule);
   } else {
     const baseline=baselineModule.loadCanonicalMigrationBaseline();
     assert.equal(baseline.expectedDirectoryCount,count);
