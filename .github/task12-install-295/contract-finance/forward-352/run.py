@@ -29,6 +29,12 @@ if subprocess.check_output(['git', '-C', str(base), 'status', '--porcelain'], te
     raise RuntimeError('350 worktree must be clean')
 if len(candidate) != 40 or git('rev-parse', candidate).decode().strip() != candidate:
     raise RuntimeError('candidate must be a full commit SHA')
+if os.environ.get('JG_FORWARD_352_BUSINESS') == '1':
+    image = (build / 'image.id').read_text().strip()
+    label = subprocess.check_output(['docker', 'image', 'inspect', image, '--format',
+        '{{index .Config.Labels "org.jiangkong.candidate-352"}}'], text=True).strip()
+    if label != candidate:
+        raise RuntimeError('business image candidate label mismatch')
 source = json.loads((prepared / 'source.json').read_text())
 if source['sourceSha'] != base_sha or source['migrationCount'] != 350:
     raise RuntimeError('prepared source does not match the 350 base')
@@ -44,7 +50,8 @@ for name in old:
         raise RuntimeError('350 predecessor migration changed: ' + name)
 tail = proof / 'forward-352'
 tail.mkdir()
-(tail / 'forward.cjs').write_bytes((Path(__file__).resolve().parent / 'forward.cjs').read_bytes())
+for helper in ['forward.cjs', 'business.cjs']:
+    (tail / helper).write_bytes((Path(__file__).resolve().parent / helper).read_bytes())
 rows = []
 for name in new[350:]:
     data = git('show', f'{candidate}:{name}')
@@ -67,11 +74,11 @@ from pathlib import Path
 import sys
 p=Path(sys.argv[1]); s=p.read_text()
 old="      receipt.business = 'CALLBACK_COMPLETED';"
-new=old+"\\n      await require('/qualification/forward-352/forward.cjs')({folder,cli,engine,endpoint,command,jsonSql,control,roleIdentity,qualifiedLedger,receipt,enter,finalSql,final});"
+new=old+"\\n      await require('/qualification/forward-352/forward.cjs')({folder,cli,engine,endpoint,command,jsonSql,control,roleIdentity,qualifiedLedger,receipt,enter,finalSql,final,runId,workDir:root});"
 assert s.count(old)==1
 p.write_text(s.replace(old,new))
 PYHOOK
-args+=(--env "JG_FORWARD_352_INSTALLER_SHA=$(shasum -a 256 "$work/installer.cjs" | cut -d' ' -f1)"
+args+=(--env "JG_FORWARD_352_BUSINESS=${JG_FORWARD_352_BUSINESS:-0}" --env "JG_FORWARD_352_INSTALLER_SHA=$(shasum -a 256 "$work/installer.cjs" | cut -d' ' -f1)"
   --mount "type=bind,src=''' + str(tail) + ''',dst=/qualification/forward-352,readonly")'''
 runner = replace_once(runner, 'append_remaining_installer "$source_mode" owner', injection)
 script = proof / 'run.sh'
@@ -90,5 +97,9 @@ if result.returncode == 0:
         forward.get('candidateSha') != candidate or forward.get('migrationCount') != 352 or
         forward.get('sameDatabase') is not True or forward.get('protectedCatalog') is not True):
         raise RuntimeError('352 forward receipt is incomplete')
+    if os.environ.get('JG_FORWARD_352_BUSINESS') == '1':
+        case = receipt.get('issue436_352', {})
+        if (case.get('total'), case.get('passed'), case.get('skipped'), case.get('exit')) != (1, 1, 0, 0):
+            raise RuntimeError('352 business receipt is incomplete')
 (proof / 'exit').write_text(str(result.returncode) + '\n')
 raise SystemExit(result.returncode)

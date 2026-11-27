@@ -8,7 +8,7 @@ const path = require('node:path');
 // Called only after the existing 350 installer has checked its own postconditions.
 module.exports = async function forward352(context) {
   const { folder, cli, engine, endpoint, command, jsonSql, control, roleIdentity,
-    qualifiedLedger, receipt, enter, finalSql, final } = context;
+    qualifiedLedger, receipt, enter, finalSql, final, runId, workDir } = context;
   const manifest = JSON.parse(fs.readFileSync('/qualification/forward-352/manifest.json', 'utf8'));
   assert.equal(manifest.migrations.length, 2);
   assert.match(manifest.candidate, /^[a-f0-9]{40}$/u);
@@ -45,4 +45,14 @@ module.exports = async function forward352(context) {
   receipt.forward352 = { candidateSha: manifest.candidate, migrationCount: expected.length,
     ledgerSha256: createHash('sha256').update(JSON.stringify(expected)).digest('hex'),
     sameDatabase: true, protectedCatalog: true, target };
+  if (process.env.JG_FORWARD_352_BUSINESS === '1') {
+    enter('ISSUE436_352_BUSINESS');
+    await require('./business.cjs')({ endpoint, database: roleIdentity.database, runId, workDir, jsonSql, receipt });
+    assert.deepEqual(await jsonSql(finalSql), final, 'FORWARD_352_POST_BUSINESS_CATALOG');
+    const after = await jsonSql(control.inspectSql());
+    assert.deepEqual(after.ledger, expected, 'FORWARD_352_POST_BUSINESS_LEDGER');
+    for (const key of ['database','databaseOid','namespaceOid','systemIdentifier','ownerOid','actorOid','sessionActor']) {
+      assert.equal(after[key], roleIdentity[key], 'FORWARD_352_POST_BUSINESS_IDENTITY_' + key);
+    }
+  }
 };
