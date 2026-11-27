@@ -1832,12 +1832,25 @@ export interface OperatingProjectionAggregateReadModel {
   asOf: { businessDate: string; readAt: string; retroactiveFactCount: number };
   integrity: { statusLabel: string; moneyComplete: boolean; notices: string[] };
   commitments: { contractCommitmentCents: string };
-  relationshipTotals?: Array<{ relationship: string; label: string; contractCommitmentCents: string; confirmedCostCents: string | null; confirmedCostYuan?: string | null; receivableCents: string | null; payableCents: string | null; interSubjectBalanceCents: string; interSubjectReceivableCents: string; interSubjectPayableCents: string }>;
+  relationshipTotals?: Array<{
+    relationship: string;
+    label: string;
+    contractCommitmentCents: string;
+    confirmedCostCents: string | null;
+    confirmedCostYuan?: string | null;
+    receivableCents: string | null;
+    receivableYuan?: string | null;
+    payableCents: string | null;
+    interSubjectBalanceCents: string;
+    interSubjectReceivableCents: string;
+    interSubjectPayableCents: string;
+  }>;
   operating: {
     confirmedIncomeCents: string;
     confirmedCostCents: string | null;
     confirmedCostYuan?: string | null;
     internalReceivableCents?: string | null;
+    internalReceivableYuan?: string | null;
     receivableCents: string | null;
     receivableYuan?: string | null;
     payableCents: string | null;

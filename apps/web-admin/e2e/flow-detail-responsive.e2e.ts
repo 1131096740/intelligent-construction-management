@@ -512,3 +512,52 @@ test("普通表单、费用详情、项目概览和设置页在手机、平板�
   expect(pageErrors).toEqual([]);
   expect(unexpectedRequests).toEqual([]);
 });
+
+test("350 对上四位应收和合并应收分别展示，保留零与待核对", async ({ page }) => {
+  await mockSession(page);
+
+  let internalReceivableYuan: string | null = "-90071992547409.0001";
+  const consolidatedReceivableYuan = "2.3456";
+  const readProjection = () => ({
+    ...projection,
+    operating: {
+      ...projection.operating,
+      receivableCents: null,
+      receivableYuan: consolidatedReceivableYuan,
+      internalReceivableCents: null,
+      internalReceivableYuan
+    },
+    relationshipTotals: [{
+      relationship: "upward", label: "对上（施工企业—我方）", contractCommitmentCents: "0",
+      confirmedCostCents: "0", receivableCents: null, receivableYuan: internalReceivableYuan,
+      payableCents: "0", interSubjectBalanceCents: "0", interSubjectReceivableCents: "0", interSubjectPayableCents: "0"
+    }]
+  });
+  await page.route("**/api/projects/project-responsive/operating-funds-overview", (route) =>
+    route.fulfill({ json: { ...projectOverview, operatingProjection: readProjection() } }));
+  await page.route("**/api/operating-projections/project/project-responsive?*", (route) =>
+    route.fulfill({ json: readProjection() }));
+  await login(page);
+
+  for (const state of [
+    { width: 1512, value: "-90071992547409.0001" },
+    { width: 390, value: "0.0000" },
+    { width: 390, value: null }
+  ]) {
+    internalReceivableYuan = state.value;
+    await page.setViewportSize({ width: state.width, height: 844 });
+    await page.goto("/项目经营?projectId=project-responsive");
+
+    const metrics = page.locator(".operating-metric-panel").filter({ hasText: "项目应收应付" });
+    const internal = metrics.getByText("对上内部应收（项目合并抵销）", { exact: true });
+    const consolidated = metrics.getByText("业主及其他应收", { exact: true });
+    await expect(internal.locator("+ dd")).toHaveText(state.value === null ? "暂无数据" : `¥${state.value}`);
+    await expect(consolidated.locator("+ dd")).toHaveText(`¥${consolidatedReceivableYuan}`);
+
+    const balances = page.getByRole("region", { name: "分类财务余额" });
+    const value = state.value === null ? "待核对" : `${state.value} 元`;
+    await expect(balances.getByText(`应收余额：${value}`, { exact: true })).toBeVisible();
+    await expect(balances.getByText(`对上内部应收：${value}（项目合并单列）。`, { exact: true })).toBeVisible();
+    await expect(balances.getByText(`对外应收：${consolidatedReceivableYuan} 元`, { exact: false })).toBeVisible();
+  }
+});
