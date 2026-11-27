@@ -16,8 +16,10 @@ const integration = process.env.ISSUE436_COMPANY_HISTORY_RUN === "1" ? test : te
 integration("公司历史费用真实入账、净额、两会话更正、相邻账簿零变动", async () => {
   const url = new URL(process.env.ISSUE436_COMPANY_HISTORY_DATABASE_URL ?? "");
   const runId = process.env.ISSUE436_COMPANY_HISTORY_RUN_ID;
+  const fullChain = process.env.ISSUE436_COMPANY_HISTORY_MODE === "--full-chain";
+  const databaseName = fullChain ? "jiangkong_line_a_real_db" : `issue436_company_${runId?.replaceAll("-", "").slice(0, 12)}`;
   if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" ||
-      url.protocol !== "postgresql:" || !/^\/issue436_company_[0-9a-f]{12}$/u.test(url.pathname) ||
+      url.protocol !== "postgresql:" || url.pathname !== `/${databaseName}` ||
       !/^[0-9a-f-]{36}$/u.test(runId ?? "")) {
     throw new Error("公司历史费用验收只允许一次性本机 PostgreSQL 专库");
   }
@@ -35,12 +37,13 @@ integration("公司历史费用真实入账、净额、两会话更正、相邻�
     next();
   });
   try {
-    const [database] = await prisma.$queryRaw<Array<{ name: string; version: number; immutable: boolean; runId: string }>>`
+    const [database] = await prisma.$queryRaw<Array<{ name: string; version: number; immutable: boolean; runId: string; hasLedger: boolean }>>`
       SELECT current_database() AS name, current_setting('server_version_num')::int AS version,
         current_setting('app.issue436_company_run', true) AS "runId",
+        to_regclass('public._prisma_migrations') IS NOT NULL AS "hasLedger",
         EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'CompanyHistoryExpenseFact_immutable' AND tgenabled = 'O') AS immutable
     `;
-    expect(database).toEqual(expect.objectContaining({ name: url.pathname.slice(1), immutable: true, runId }));
+    expect(database).toEqual(expect.objectContaining({ name: databaseName, immutable: true, runId, hasLedger: fullChain }));
     expect(Math.floor(database!.version / 10000)).toBe(16);
     const tag = randomUUID();
     const project = await prisma.project.create({
