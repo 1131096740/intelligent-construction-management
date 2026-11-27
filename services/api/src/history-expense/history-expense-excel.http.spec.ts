@@ -1,6 +1,5 @@
 import { Test } from "@nestjs/testing";
 import * as ExcelJS from "exceljs";
-import type { NextFunction, Request, Response } from "express";
 import { apiJsonReplacer } from "../api-json-replacer";
 import { AuditService } from "../audit/audit.service";
 import { ProjectVisibilityService } from "../auth/project-visibility.service";
@@ -32,7 +31,11 @@ it("在授权项目下载模板并预检真实 Excel，原始工作表行回传�
   }).compile();
   const app = module.createNestApplication();
   app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
-  app.use((request: Request, _response: Response, next: NextFunction) => {
+  app.use((
+    request: { get(name: string): string | undefined },
+    _response: unknown,
+    next: () => void
+  ) => {
     Object.assign(request, { user: { id: request.get("x-test-actor") } });
     next();
   });
