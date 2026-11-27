@@ -5,10 +5,11 @@ const {createHash}=require('node:crypto');
 const path=require('node:path');
 const {ledgerSha256: textDirectLedgerSha256}=require('./text-direct-330-profile.cjs');
 const [root,sha,mode]=process.argv.slice(2);
-assert.ok(process.argv.length===4||(process.argv.length===5&&['--current-320','--text-direct-330','--payment-remainder-331','--upward-archive-332','--historical-takeover-333','--historical-settlement-334','--expense-witness-345','--expense-witness-346','--expense-witness-349','--signed-settlement-350'].includes(mode)),
+assert.ok(process.argv.length===4||(process.argv.length===5&&['--current-320','--text-direct-330','--payment-remainder-331','--upward-archive-332','--historical-takeover-333','--historical-settlement-334','--expense-witness-345','--expense-witness-346','--expense-witness-349','--signed-settlement-350','--company-history-352'].includes(mode)),
   'CONTRACT_FINANCE_HOSTED_LEDGER_MODE');
 const textDirect=mode==='--text-direct-330';
-const signedSettlement350=mode==='--signed-settlement-350' ? require('./signed-settlement-350-profile.cjs') : null;
+const companyHistory352=mode==='--company-history-352' ? require('./company-history-352-profile.cjs') : null;
+const signedSettlement350=mode==='--signed-settlement-350' || companyHistory352 ? require('./signed-settlement-350-profile.cjs') : null;
 if (signedSettlement350) assert.notEqual(process.env.GITHUB_ACTIONS,'true','SIGNED_SETTLEMENT_350_LOCAL_ONLY');
 const expenseWitness349=mode==='--expense-witness-349' || signedSettlement350 ? require('./expense-witness-349-profile.cjs') : null;
 const expenseWitness=expenseWitness349 ?? (mode==='--expense-witness-346' ? require('./expense-witness-346-profile.cjs')
@@ -35,7 +36,7 @@ const ledger=git('ls-tree','-r','--name-only','-z',sha,'--',migrationsPath).toSt
 const digest=ledgerHash(ledger);
 const predecessor295Sha256='b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d';
 if(current320) {
-  assert.equal(ledger.length,signedSettlement350?.count ?? (expenseWitness?expenseWitness.count:historicalSettlement?334:historicalTakeover?333:upwardArchive?332:paymentRemainder?331:textDirect?330:329),'CONTRACT_FINANCE_CURRENT_320_LEDGER_COUNT');
+  assert.equal(ledger.length,companyHistory352?.count ?? signedSettlement350?.count ?? (expenseWitness?expenseWitness.count:historicalSettlement?334:historicalTakeover?333:upwardArchive?332:paymentRemainder?331:textDirect?330:329),'CONTRACT_FINANCE_CURRENT_320_LEDGER_COUNT');
   assert.equal(ledgerHash(ledger.slice(0,295)),predecessor295Sha256,'CONTRACT_FINANCE_CURRENT_320_PREDECESSOR');
   assert.equal(ledgerHash(ledger.slice(0,329)),'3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2',
     'CONTRACT_FINANCE_CURRENT_320_LEDGER_DIGEST');
@@ -50,7 +51,7 @@ if(current320) {
   if(historicalSettlement) assert.equal(ledgerHash(ledger.slice(0,334)),historicalSettlementProfile.ledgerSha256,
     'CONTRACT_FINANCE_HISTORICAL_SETTLEMENT_334_LEDGER_DIGEST');
   if(expenseWitness) {
-    const profile=signedSettlement350 ?? expenseWitness;
+    const profile=companyHistory352 ?? signedSettlement350 ?? expenseWitness;
     for(let size=335;size<=profile.count;size++) profile.assertPrefix(size,ledgerHash(ledger.slice(0,size)));
   }
 } else {
@@ -81,9 +82,10 @@ if (current320) {
     ...(expenseWitness?{predecessor334:{migrationCount:334,ledgerSha256:historicalSettlementProfile.ledgerSha256}}:{}),
     ...(expenseWitness349?{predecessor346:{migrationCount:346,ledgerSha256:ledgerHash(ledger.slice(0,346))}}:{}),
     ...(signedSettlement350?{predecessor349:{migrationCount:349,ledgerSha256:ledgerHash(ledger.slice(0,349))}}:{}),
+    ...(companyHistory352?{predecessor350:{migrationCount:350,ledgerSha256:ledgerHash(ledger.slice(0,350))}}:{}),
     tails:ledger.slice(295)
   };
-  if (expenseWitness349) (signedSettlement350 ?? expenseWitness349).assertSource(source, predecessor295Sha256);
+  if (expenseWitness349) (companyHistory352 ?? signedSettlement350 ?? expenseWitness349).assertSource(source, predecessor295Sha256);
   console.log(JSON.stringify(source));
 } else {
   console.log(JSON.stringify({sourceSha:sha,migrationCount:ledger.length,ledgerSha256:digest,tails:ledger.slice(292)}));
