@@ -21,6 +21,7 @@ describe("expense claim quantity parsing", () => {
   it("rejects zero, negative, over-precision and non-decimal text", () => {
     expect(() => parseExpenseQuantity("0")).toThrow("数量必须大于 0");
     expect(() => parseExpenseQuantity("0.0000")).toThrow("数量必须大于 0");
+    expect(() => parseExpenseQuantity("00.0000")).toThrow("数量必须大于 0");
     expect(() => parseExpenseQuantity("-1")).toThrow("数量格式不正确");
     expect(() => parseExpenseQuantity("1.23456")).toThrow("最多 4 位小数");
     expect(() => parseExpenseQuantity("1e3")).toThrow("数量格式不正确");

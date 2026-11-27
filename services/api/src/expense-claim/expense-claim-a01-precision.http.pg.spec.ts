@@ -154,14 +154,18 @@ describe("A01 报销四位金额真实 HTTP 与 PostgreSQL 16", () => {
     }
     expect((await request(path, { ...claim, reason, requestedAmountYuan: "0.0101", lines: [exact("0.005"), exact("0.005")] })).status).toBe(400);
     expect((await request(path, { ...claim, reason, requestedAmountYuan: "92233720368547758.0800", lines: [exact("92233720368547758.0700"), exact("0.0100")] })).status).toBe(400);
+    for (const quantity of ["0", "00.0000", "-1", "1.23456", "1e2", "100000000000000000000"]) {
+      const invalidLine = { ...exact("0.0100"), quantity };
+      expect((await request(path, { ...claim, reason, requestedAmountYuan: "0.0100", lines: [invalidLine] })).status).toBe(400);
+    }
     expect(await prisma.expenseClaim.count({ where: { reason } })).toBe(countBefore);
 
-    const created = await request(path, { ...claim, reason, requestedAmountYuan: "0.0100", lines: [exact("0.005"), exact("0.005")] });
+    const created = await request(path, { ...claim, reason, requestedAmountYuan: "0.0100", lines: [exact("0.005"), { ...exact("0.005"), quantity: "0002.0001" }] });
     expect(created).toMatchObject({ status: 201, body: { requestedAmountYuan: "0.0100", requestedAmountCents: "1", numericProtocolVersion: 2 } });
     const detailPath = path + "/" + created.body.id;
     expect(await request(detailPath)).toMatchObject({ status: 200, body: {
       requestedAmountYuan: "0.0100", requestedAmountCents: "1",
-      lines: [{ amountYuan: "0.0050", amountCents: "1" }, { amountYuan: "0.0050", amountCents: "0" }]
+      lines: [{ amountYuan: "0.0050", amountCents: "1", quantity: null }, { amountYuan: "0.0050", amountCents: "0", quantity: "2.0001" }]
     } });
     const submitted = await request(detailPath + "/submission", {});
     expect(submitted).toMatchObject({ status: 201, body: { companyPayableAmountCents: "1" } });

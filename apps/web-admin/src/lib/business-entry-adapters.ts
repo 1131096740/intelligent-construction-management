@@ -92,6 +92,9 @@ function normalizeFieldValue(
     const day = String(value.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   }
+  if (field.exactDecimalString) {
+    return typeof value === "string" ? value.trim() : String(value);
+  }
   if (field.type === "number") {
     const normalized = typeof value === "string" ? value.trim() : String(value);
     const parsed = Number(normalized);

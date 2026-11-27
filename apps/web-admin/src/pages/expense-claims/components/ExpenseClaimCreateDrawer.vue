@@ -16,7 +16,7 @@ import {
   type SelectablePurchaseBatch
 } from "../../../api/expense-claim.api";
 import { centsTextToYuanText, yuanTextToCentsText } from "../../../lib/money";
-import { parseExpenseAmountYuan } from "../expense-claim-money";
+import { parseExpenseAmountYuan, validateExpenseQuantity } from "../expense-claim-money";
 import ExpenseClaimLineEditor, { type ExpenseClaimLineDraft } from "./ExpenseClaimLineEditor.vue";
 import ExpenseClaimApplicationFields from "./ExpenseClaimApplicationFields.vue";
 import ExpenseClaimPayeeFields from "./ExpenseClaimPayeeFields.vue";
@@ -291,8 +291,7 @@ function validateStep(currentStep: number): string {
       for (const [index, line] of form.lines.entries()) {
         if (!line.expenseCategory.trim() || !line.occurredOn || !line.purpose.trim()) return "请补全每一行费用类别、发生日期和用途";
         if (!/^\d+$/.test(line.receiptCount) || Number(line.receiptCount) > 10000) return "单据张数必须是 0 到 10000 的整数";
-        if (line.quantity.trim() && !/^\d+(?:\.\d{1,4})?$/.test(line.quantity.trim())) return "数量必须为正数，最多 4 位小数";
-        if (line.quantity.trim() && /^0(?:\.0*)?$/.test(line.quantity.trim())) return "数量必须大于 0";
+        validateExpenseQuantity(line.quantity, `第 ${index + 1} 行`);
         parseExpenseAmountYuan(line.amountYuan, `第 ${index + 1} 行费用金额`);
         if (line.evidenceType === "none" && !line.noEvidenceReason.trim()) return "无凭证费用必须填写原因";
       }

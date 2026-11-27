@@ -2,7 +2,7 @@
   {
     "path": "apps/web-admin/e2e/expense-claim-workbench.e2e.ts",
     "expected": "8c0e7d588456b25fe7e78b35255377292ac2ff7505d21cb28aff9a63571f22f3",
-    "candidate": "0c462ad3b00951594f803a822b9b8c1037a7afe9d4b2907c8a845b327e470aa2"
+    "candidate": "17231dea14c1b8cddee9b55a4386eba14850f4dc0eb3802b44c49a9b38dec4e9"
   },
   {
     "path": "apps/web-admin/src/api/core-flow-read.api.test.ts",
@@ -30,9 +30,14 @@
     "candidate": "8983c359f57b48c48b7b0a4bcf91157cf6adb3ad580cd5759844d6f33e55ca33"
   },
   {
+    "path": "apps/web-admin/src/lib/business-entry-adapters.ts",
+    "expected": "84312aed35bd6a34212b142b42c280d06beee739177166e8e4764b9d36735e08",
+    "candidate": "2df5b94e47d040a7eb59c533d8473bad51b7ffb6d0bc2415f6259b89ca557653"
+  },
+  {
     "path": "apps/web-admin/src/pages/expense-claims/ExpenseClaimDetailPage.vue",
     "expected": "8121eb6c0b06db777520b299b101bb4daa71902ad48a397c911a9d8bb50912db",
-    "candidate": "d694da19ef03051acd05b1a3ffde2f8b047793dbfa793c5838c91f9426ca9fdf"
+    "candidate": "050727529994905b41880927eb43131d7dea839f87380411575c5a261e549042"
   },
   {
     "path": "apps/web-admin/src/pages/expense-claims/ExpenseClaimWorkbenchPage.vue",
@@ -42,7 +47,7 @@
   {
     "path": "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimCreateDrawer.vue",
     "expected": "3526e820e239496d4e80d0cc1f8ba24e539c29983f9ef543b6590aa8a1bc2189",
-    "candidate": "8d7945322c21c6284947e8877b131d18cec3cc3481124afd16f5a10890eb58e6"
+    "candidate": "13bb0c284856d373012c1adc0fefc925fd79bc66a479c9e34177cd480a509d90"
   },
   {
     "path": "apps/web-admin/src/pages/expense-claims/components/ExpenseClaimLineEditor.vue",
@@ -60,9 +65,14 @@
     "candidate": "283793be6392d02e3d1029a49bf943e30f15c5d1e0cc6c4633312422d1adfd20"
   },
   {
+    "path": "packages/shared-domain/src/business-decimal.ts",
+    "expected": "12bbdcf6c1b02072d2171c70b05f2556947afd35a028cf1c7ab6c4d5dc2b2f4c",
+    "candidate": "caaae536beb16d40d254fb7eb614a23c9db1a307099f878d2e9d290308d83aa5"
+  },
+  {
     "path": "services/api/prisma/database-dynamic-gate-manifest.json",
     "expected": "945ae553d511df229336f33fbbb360a60b75930835c086beab6accf549d2455c",
-    "candidate": "e8a261bc560577a870e1fff78fc1fa14dd473ac54ea537e3a4533873eed77df5"
+    "candidate": "ee8158e1585ec741bb010ecc29368b3d9fd3ccf666fcb9c13a01442b78b71907"
   },
   {
     "path": "services/api/prisma/schema.prisma",
@@ -97,7 +107,7 @@
   {
     "path": "services/api/src/expense-claim/expense-claim-entry.definition.ts",
     "expected": "43b833c0f640b02c7409acf1e60f54f27ed6a57e6fa8d396b9f4205d3461cec7",
-    "candidate": "6d935b63d55192798a57ba19c5156215063301f0604dbda2d4353c7fa218d7ac"
+    "candidate": "89b3ffaba4adb304816c3e0bc22cffe7d9467a343fe6f96c1fa2078816ab6d21"
   },
   {
     "path": "services/api/src/expense-claim/expense-claim-final-payment-pdf.ts",

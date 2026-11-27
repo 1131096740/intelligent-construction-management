@@ -33,6 +33,21 @@ export function normalizeBusinessQuantity(value: string | null): string | null {
   return normalized;
 }
 
+/** Expense lines store numeric(24,4). An omitted quantity stays unknown. */
+export function normalizeExpenseQuantity(input: string | undefined | null): string | null {
+  const text = (input ?? "").trim();
+  if (!text) return null;
+  if (!/^\d+(?:\.\d{1,4})?$/u.test(text)) {
+    if (/^\d+\.\d{5,}$/u.test(text)) throw new Error("数量最多 4 位小数");
+    throw new Error("数量格式不正确，请填写正数，最多 4 位小数");
+  }
+  const [integer, fraction = ""] = text.split(".");
+  if (integer.length > 20) throw new Error("数量超出可登记范围");
+  const decimal = fraction.replace(/0+$/u, "");
+  if (/^0+$/u.test(integer) && !decimal) throw new Error("数量必须大于 0");
+  return decimal ? `${integer}.${decimal}` : integer;
+}
+
 export function calculateBusinessLineAmount(quantity: string | null, unitPriceYuan: string | null): string | null {
   const quantityUnits = quantity === null ? null : scaled4(quantity);
   const priceUnits = unitPriceYuan === null ? null : scaled4(unitPriceYuan);
