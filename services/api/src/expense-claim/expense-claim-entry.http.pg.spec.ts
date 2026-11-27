@@ -189,6 +189,38 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     };
   }
 
+  (enabled ? it : it.skip)("报销四位元金额按明细精确求和、仅在付款总额取整", async () => {
+    const prisma = app.get(PrismaService);
+    const { requestedAmountCents, lines: legacyLines, ...claim } = selfInput(applicantUserId, "reimbursement");
+    const { amountCents, ...line } = legacyLines![0];
+    const exact = (amount: string) => ({ ...line, amountYuan: amount });
+    const reason = "四位金额验收";
+    const path = "/expense-claims";
+    const countBefore = await prisma.expenseClaim.count({ where: { reason } });
+    for (const invalid of ["", "0", "-0.0001", "0.00501", "1e2", "92233720368547758.0750", "100000000000000000000.0000"]) {
+      expect((await request(path, { ...claim, reason, requestedAmountYuan: invalid, lines: [exact(invalid)] })).status).toBe(400);
+    }
+    expect((await request(path, { ...claim, reason, requestedAmountYuan: "0.0101", lines: [exact("0.005"), exact("0.005")] })).status).toBe(400);
+    expect((await request(path, { ...claim, reason, requestedAmountYuan: "92233720368547758.0800", lines: [exact("92233720368547758.0700"), exact("0.0100")] })).status).toBe(400);
+    expect(await prisma.expenseClaim.count({ where: { reason } })).toBe(countBefore);
+
+    const created = await request(path, { ...claim, reason, requestedAmountYuan: "0.0100", lines: [exact("0.005"), exact("0.005")] });
+    expect(created).toMatchObject({ status: 201, body: { requestedAmountYuan: "0.0100", requestedAmountCents: "1", numericProtocolVersion: 2 } });
+    const detailPath = path + "/" + created.body.id;
+    expect(await request(detailPath)).toMatchObject({ status: 200, body: {
+      requestedAmountYuan: "0.0100", requestedAmountCents: "1",
+      lines: [{ amountYuan: "0.0050" }, { amountYuan: "0.0050" }]
+    } });
+    expect(await request(detailPath + "/submission", {})).toMatchObject({ status: 201, body: { companyPayableAmountCents: "1" } });
+    const snapshot = await prisma.expenseClaimEntrySnapshot.findFirstOrThrow({ where: { expenseClaimId: created.body.id } });
+    expect(snapshot.valuesSnapshot).toMatchObject({ requestedAmountYuan: "0.0100", requestedAmountCents: "1", numericProtocolVersion: 2, lines: [{ amountYuan: "0.0050" }, { amountYuan: "0.0050" }] });
+
+    const zeroPayable = await request(path, { ...claim, reason, requestedAmountYuan: "0.0001", lines: [exact("0.0001")] });
+    expect(zeroPayable).toMatchObject({ status: 201, body: { requestedAmountYuan: "0.0001", requestedAmountCents: "0" } });
+    const maxPayable = await request(path, { ...claim, reason, requestedAmountYuan: "92233720368547758.0749", lines: [exact("92233720368547758.0749")] });
+    expect(maxPayable).toMatchObject({ status: 201, body: { requestedAmountYuan: "92233720368547758.0749", requestedAmountCents: "9223372036854775807" } });
+  }, 45_000);
+
   function seedHistoricalLoan(status: "draft" | "approved_pending_disbursement" | "disbursed", reason: string, loanProjectId = projectId, requestedAmountCents = 1n) {
     const now = new Date();
     const approved = status !== "draft";

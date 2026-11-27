@@ -2,7 +2,7 @@ import { approvalDate as formatDate, approvalDateTime } from "../approval/approv
 import { BadRequestException } from "@nestjs/common";
 import { resolve } from "node:path";
 import PDFDocument = require("pdfkit");
-import { formatChineseUppercaseMoney } from "../contract-document/contract-docx-renderer";
+import { formatChineseUppercaseBusinessAmount, formatChineseUppercaseMoney } from "../contract-document/contract-docx-renderer";
 import { formatMoneyCentsAsYuan } from "../money/decimal-money";
 
 const FONT_PATH = resolve(__dirname, "../../assets/fonts/NotoSansSC-Regular.otf");
@@ -19,6 +19,7 @@ export type ExpenseClaimApprovalFormInput = {
   submittedAt: Date | null;
   reason: string;
   requestedAmountCents: bigint;
+  requestedAmountYuan?: string | null;
   loanOffsetAmountCents: bigint;
   companyPayableAmountCents: bigint;
   paymentMethod: string | null;
@@ -32,6 +33,7 @@ export type ExpenseClaimApprovalFormInput = {
     quantity?: string | null;
     receiptCount: number;
     amountCents: bigint;
+    amountYuan?: string | null;
   }>;
   approvals: ExpenseApprovalRow[];
   incomplete?: boolean;
@@ -92,9 +94,9 @@ export async function renderExpenseClaimApprovalForm(
   }
   y = row(doc, margin, y, [64, 120, 52, 134, 64, contentWidth - 434], 24, [
     "申请金额",
-    `￥${formatMoneyCentsAsYuan(input.requestedAmountCents)}`,
+    `￥${input.requestedAmountYuan ?? formatMoneyCentsAsYuan(input.requestedAmountCents)}`,
     "大写",
-    formatChineseUppercaseMoney(input.requestedAmountCents),
+    input.requestedAmountYuan == null ? formatChineseUppercaseMoney(input.requestedAmountCents) : formatChineseUppercaseBusinessAmount(input.requestedAmountYuan),
     input.claimType !== "loan" ? "公司支付" : "预计清账",
     input.claimType !== "loan"
       ? `￥${formatMoneyCentsAsYuan(input.companyPayableAmountCents)}`
@@ -121,7 +123,7 @@ export async function renderExpenseClaimApprovalForm(
         line.purpose,
         line.quantity?.trim() || "",
         String(line.receiptCount),
-        `￥${formatMoneyCentsAsYuan(line.amountCents)}`
+        `￥${line.amountYuan ?? formatMoneyCentsAsYuan(line.amountCents)}`
       ]);
     }
   } else {

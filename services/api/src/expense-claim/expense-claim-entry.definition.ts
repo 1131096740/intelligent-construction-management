@@ -27,3 +27,14 @@ export const EXPENSE_CLAIM_ENTRY_DEFINITION: BusinessEntrySceneDefinition = {
     field("noEvidenceReason", "无凭证原因", "long_text", { scope: "line" }), field("remark", "备注", "long_text", { scope: "line" })
   ], rules: []
 };
+
+// Keep the existing definition for incidental expenses and prior frozen rounds.
+export const REIMBURSEMENT_ENTRY_DEFINITION: BusinessEntrySceneDefinition = {
+  ...EXPENSE_CLAIM_ENTRY_DEFINITION,
+  version: 2,
+  fields: EXPENSE_CLAIM_ENTRY_DEFINITION.fields.map((field) =>
+    field.key === "requestedAmountYuan" || field.key === "amountYuan"
+      ? { ...field, precision: 4, exactDecimalString: { sign: "nonnegative", maximumExclusive: "92233720368547758.075" } }
+      : field
+  )
+};

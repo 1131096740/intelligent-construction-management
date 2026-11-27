@@ -55,9 +55,10 @@ import { freezeExpenseClaimEntryInTransaction } from "./expense-claim-entry.adap
 import { assertEmployeeAdvanceBatchSource } from "./expense-claim-batch-source";
 import { DEFAULT_EXPENSE_CATEGORIES, expenseCategoryKey, mergeExpenseCategories, resolveExpenseCategoryName } from "./expense-claim-category";
 import { parseExpenseQuantity } from "./expense-claim-quantity";
+import { exactReimbursementAmounts } from "./expense-claim-amount";
 import { projectClaimPaymentCapacity } from "./other-project-payment";
 import { recordExpensePublicCashVoucher } from "./expense-public-cash-voucher";
-import { EXPENSE_CLAIM_ENTRY_DEFINITION } from "./expense-claim-entry.definition";
+import { EXPENSE_CLAIM_ENTRY_DEFINITION, REIMBURSEMENT_ENTRY_DEFINITION } from "./expense-claim-entry.definition";
 import type { CreateExpenseClaimDto, ExpenseClaimLineDto } from "./dto/create-expense-claim.dto";
 import type { ReviewExpenseClaimDto } from "./dto/review-expense-claim.dto";
 import type { EditReturnedExpenseClaimDto } from "./dto/returned-expense-claim.dto";
@@ -185,6 +186,7 @@ export class ExpenseClaimService {
       selfApplicantUserId: actorUserId,
       canProxy,
       entryDefinition: EXPENSE_CLAIM_ENTRY_DEFINITION,
+      reimbursementEntryDefinition: REIMBURSEMENT_ENTRY_DEFINITION,
       availableActions: ["create_expense_claim"],
       applicantUsers: canProxy ? activeUsers : actor ? [actor] : [],
       factWitnessUsers: activeUsers,
@@ -222,7 +224,7 @@ export class ExpenseClaimService {
         ...(status ? { status: { in: status } } : {})
       },
       orderBy: [{ updatedAt: "desc" }, { code: "asc" }],
-      select: { id: true, code: true, claimType: true, incidentalExpenseCategory: true, status: true, projectId: true, companyEntityNameSnapshot: true, applicantNameSnapshot: true, handledByNameSnapshot: true, reason: true, payeeNameSnapshot: true, requestedAmountCents: true, loanOffsetAmountCents: true, companyPayableAmountCents: true, fundedAmountCents: true, updatedAt: true }
+      select: { id: true, code: true, claimType: true, incidentalExpenseCategory: true, status: true, projectId: true, companyEntityNameSnapshot: true, applicantNameSnapshot: true, handledByNameSnapshot: true, reason: true, payeeNameSnapshot: true, requestedAmountCents: true, requestedAmountYuan: true, loanOffsetAmountCents: true, companyPayableAmountCents: true, fundedAmountCents: true, updatedAt: true }
     });
     const projectIds = [...new Set(rows.flatMap((row) => row.projectId ? [row.projectId] : []))];
     const projects = projectIds.length
@@ -233,6 +235,8 @@ export class ExpenseClaimService {
       ...row,
       project: row.projectId ? projectsById.get(row.projectId) ?? null : null,
       requestedAmountCents: moneyCentsToApi(row.requestedAmountCents),
+      requestedAmountYuan: row.requestedAmountYuan?.toFixed(4) ?? formatMoneyCentsAsPlainYuan(row.requestedAmountCents),
+      numericProtocolVersion: row.requestedAmountYuan == null ? 1 : 2,
       loanOffsetAmountCents: moneyCentsToApi(row.loanOffsetAmountCents),
       companyPayableAmountCents: moneyCentsToApi(row.companyPayableAmountCents),
       fundedAmountCents: moneyCentsToApi(row.fundedAmountCents)
@@ -312,7 +316,6 @@ export class ExpenseClaimService {
       rows: rows.map((row) => ({
         ...row,
         projectName: row.projectName,
-        requestedAmountYuan: formatMoneyCentsAsPlainYuan(BigInt(row.requestedAmountCents)),
         settledAmountYuan: formatMoneyCentsAsPlainYuan(
           BigInt(row.loanOffsetAmountCents) + BigInt(row.fundedAmountCents)
         ),
@@ -337,7 +340,7 @@ export class ExpenseClaimService {
         claimTypeLabel: expenseClaimTypeLabel(row.claimType),
         categoryLabel: expenseCategoryLabel(row.claimType, row.incidentalExpenseCategory, null),
         status: row.status,
-        statusLabel: expenseClaimStatusLabel(row.status),
+        statusLabel: expenseClaimStatusLabel(row.status, row.requestedAmountCents === "0"),
         projectId: row.projectId,
         projectName: row.project ? `${row.project.code} · ${row.project.name}` : "公司日常",
         companyName: row.companyEntityNameSnapshot,
@@ -346,6 +349,7 @@ export class ExpenseClaimService {
         reason: row.reason,
         payeeName: row.payeeNameSnapshot ?? "待确定",
         requestedAmountCents: row.requestedAmountCents,
+        requestedAmountYuan: row.requestedAmountYuan,
         loanOffsetAmountCents: row.loanOffsetAmountCents,
         companyPayableAmountCents: row.companyPayableAmountCents,
         fundedAmountCents: row.fundedAmountCents,
@@ -388,6 +392,7 @@ export class ExpenseClaimService {
         reason: true,
         payeeNameSnapshot: true,
         requestedAmountCents: true,
+        requestedAmountYuan: true,
         loanOffsetAmountCents: true,
         companyPayableAmountCents: true,
         fundedAmountCents: true,
@@ -429,7 +434,7 @@ export class ExpenseClaimService {
           categoryByClaimId.get(row.id) ?? null
         ),
         status: row.status,
-        statusLabel: expenseClaimStatusLabel(row.status),
+        statusLabel: expenseClaimStatusLabel(row.status, row.requestedAmountCents === 0n),
         projectId: row.projectId,
         projectName: project ? `${project.code} · ${project.name}` : "公司日常",
         companyName: row.companyEntityNameSnapshot,
@@ -438,6 +443,7 @@ export class ExpenseClaimService {
         reason: row.reason,
         payeeName: row.payeeNameSnapshot ?? "待确定",
         requestedAmountCents: moneyCentsToApi(row.requestedAmountCents),
+        requestedAmountYuan: row.requestedAmountYuan?.toFixed(4) ?? formatMoneyCentsAsPlainYuan(row.requestedAmountCents),
         loanOffsetAmountCents: moneyCentsToApi(row.loanOffsetAmountCents),
         companyPayableAmountCents: moneyCentsToApi(row.companyPayableAmountCents),
         fundedAmountCents: moneyCentsToApi(row.fundedAmountCents),
@@ -483,7 +489,10 @@ export class ExpenseClaimService {
     );
     return sortLedgerRows(filtered, query.sortField, query.sortDirection, {
       updatedAt: (row) => new Date(row.updatedAt),
-      requestedAmountCents: (row) => Number(row.requestedAmountCents),
+      requestedAmountCents: (row) => {
+        const [integer, fraction] = row.requestedAmountYuan.split(".");
+        return integer.padStart(20, "0") + fraction.padEnd(4, "0");
+      },
       code: (row) => row.code,
       projectName: (row) => row.projectName
     });
@@ -492,11 +501,23 @@ export class ExpenseClaimService {
   async create(actorUserId: string, input: CreateExpenseClaimDto) {
     const claimType = input.claimType;
     if (claimType === "loan") throw new GoneException(RETIRED_EMPLOYEE_LOAN);
-    const requestedAmountCents = positiveCents(input.requestedAmountCents, "申请金额必须大于零");
     const lines = claimType === "reimbursement" ? this.lines(input.lines) : [];
-    const lineAmountCents = lines.reduce((total, line) => total + positiveCents(line.amountCents, "费用明细金额必须大于零"), 0n);
-    if (claimType === "reimbursement" && lineAmountCents !== requestedAmountCents) {
-      throw new BadRequestException("费用明细合计必须等于申请金额");
+    const exactLines = lines.some((line) => line.amountYuan !== undefined);
+    const exact = input.requestedAmountYuan !== undefined;
+    if (exact && (claimType !== "reimbursement" || input.requestedAmountCents !== undefined)) {
+      throw new BadRequestException("只有费用报销可以使用元金额，同一申请不能同时填写元和分");
+    }
+    if (exact !== exactLines) throw new BadRequestException("申请金额与费用明细必须使用相同的金额口径");
+    const exactAmounts = exact ? exactReimbursementAmounts(lines, input.requestedAmountYuan) : null;
+    const requestedAmountCents = exactAmounts?.requestedAmountCents
+      ?? positiveCents(input.requestedAmountCents, "申请金额必须大于零");
+    const requestedAmountYuan = exactAmounts?.requestedAmountYuan;
+    if (input.actualPurchaseBatchId && claimType === "reimbursement" && requestedAmountCents === 0n) {
+      throw new BadRequestException("关联实际采购批次的报销可付金额必须大于零");
+    }
+    if (claimType === "reimbursement" && !exactAmounts) {
+      const lineAmountCents = lines.reduce((total, line) => total + positiveCents(line.amountCents, "费用明细金额必须大于零"), 0n);
+      if (lineAmountCents !== requestedAmountCents) throw new BadRequestException("费用明细合计必须等于申请金额");
     }
     if (claimType === "incidental_expense" && !input.projectId?.trim()) {
       throw new BadRequestException("零星费用必须选择项目");
@@ -595,6 +616,7 @@ export class ExpenseClaimService {
           proxyReason: applicant.userId === actor.id ? null : "由综合部代办",
           reason: requiredText(input.reason, "事由不能为空"),
           requestedAmountCents,
+          ...(requestedAmountYuan === undefined ? {} : { requestedAmountYuan }),
           paymentMethod: optionalText(input.paymentMethod),
           payeeNameSnapshot: optionalText(input.payeeName),
           payeeAccountNameSnapshot: optionalText(input.payeeAccountName),
@@ -605,7 +627,7 @@ export class ExpenseClaimService {
       });
       if (lines.length) {
         await tx.expenseClaimLine.createMany({
-          data: await this.prepareExpenseLines(tx, claim.id, company.id, lines, advance?.sourceCategory)
+          data: await this.prepareExpenseLines(tx, claim.id, company.id, lines, advance?.sourceCategory, exactAmounts?.lineAmounts)
         });
       }
       await this.audit.record(tx, {
@@ -625,10 +647,11 @@ export class ExpenseClaimService {
           incidentalExpenseCategory,
           projectId: project?.id ?? null,
           actualPurchaseBatchId: advance?.batch.id ?? null,
-          requestedAmountCents: requestedAmountCents.toString()
+          requestedAmountCents: requestedAmountCents.toString(),
+          ...(requestedAmountYuan === undefined ? {} : { requestedAmountYuan, numericProtocolVersion: 2 })
         }
       });
-      return { id: claim.id, code, status: claim.status, requestedAmountCents: moneyCentsToApi(requestedAmountCents) };
+      return { id: claim.id, code, status: claim.status, requestedAmountCents: moneyCentsToApi(requestedAmountCents), ...(requestedAmountYuan === undefined ? {} : { requestedAmountYuan, numericProtocolVersion: 2 }) };
     });
   }
 
@@ -640,7 +663,7 @@ export class ExpenseClaimService {
         costBearingCompanySpecified: true, costBearingCompanyEntityId: true, approvalInstanceId: true,
         paymentSubjectCompanyEntityId: true, paymentSubjectNameSnapshot: true, paymentSubjectAdjustmentReason: true, paymentSubjectAdjustedAt: true, paymentSubjectAdjustedByUserId: true, paymentSubjectAdjustedByRoleKey: true,
         applicantNameSnapshot: true, applicantPhoneSnapshot: true, handledByNameSnapshot: true, proxyReason: true,
-        factWitnessNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true,
+        factWitnessNameSnapshot: true, reason: true, requestedAmountCents: true, requestedAmountYuan: true, loanOffsetAmountCents: true,
         companyPayableAmountCents: true, fundedAmountCents: true, paymentMethod: true, payeeNameSnapshot: true,
         payeeAccountNameSnapshot: true, payeeBankNameSnapshot: true, payeeBankAccountSnapshot: true,
         loanExpectedClearanceAt: true, submittedAt: true, approvedAt: true, voidedAt: true, updatedAt: true
@@ -678,7 +701,8 @@ export class ExpenseClaimService {
     const canReview = claim.claimType !== "loan" && duties.length > 0;
     const isOwner = claim.applicantUserId === actorUserId || claim.handledByUserId === actorUserId;
     const canReadExistingExpenseEvidence =
-      !["draft", "rejected", "offset_completed"].includes(claim.status) &&
+      !["draft", "rejected"].includes(claim.status) &&
+      (claim.status !== "offset_completed" || claim.requestedAmountCents === 0n) &&
       (claim.handledByUserId === actorUserId ||
         roles.some((role) => ["comprehensive_director", "finance_staff", "finance_director"].includes(role)));
     const canAdjustPaymentSubject =
@@ -729,7 +753,7 @@ export class ExpenseClaimService {
       this.prisma.expenseClaimLine.findMany({
         where: { expenseClaimId: claim.id },
         orderBy: { sortOrder: "asc" },
-        select: { id: true, sortOrder: true, expenseCategory: true, occurredOn: true, purpose: true, quantity: true, receiptCount: true, amountCents: true, evidenceType: true, noEvidenceReason: true, remark: true }
+        select: { id: true, sortOrder: true, expenseCategory: true, occurredOn: true, purpose: true, quantity: true, receiptCount: true, amountCents: true, amountYuan: true, evidenceType: true, noEvidenceReason: true, remark: true }
       }),
       (this.prisma as unknown as {
         expenseClaimAttachment?: {
@@ -851,7 +875,7 @@ export class ExpenseClaimService {
       canEditReturnedDraft,
       canWithdrawApproval: parallel && canConsiderIdentity && !voidedAt && !claim.approvedAt &&
         claim.fundedAmountCents === 0n && claim.handledByUserId === actorUserId && instance?.applicantUserId === actorUserId,
-      returnedDraftEntryDefinition: canEditReturnedDraft && claim.claimType === "reimbursement" ? EXPENSE_CLAIM_ENTRY_DEFINITION : null,
+      returnedDraftEntryDefinition: canEditReturnedDraft && claim.claimType === "reimbursement" ? REIMBURSEMENT_ENTRY_DEFINITION : null,
       sourcePurchase,
       ...((claim.claimType === "reimbursement" || claim.claimType === "incidental_expense") ? {
         originalDebtorCompanyId: claim.companyEntityNameSnapshot?.trim() ? companyEntityId : null
@@ -861,6 +885,8 @@ export class ExpenseClaimService {
       project,
       entrySnapshots: await this.prisma.expenseClaimEntrySnapshot.findMany({ where: { expenseClaimId: claim.id }, orderBy: [{ frozenAt: "asc" }, { id: "asc" }] }),
       requestedAmountCents: moneyCentsToApi(claim.requestedAmountCents),
+      requestedAmountYuan: claim.requestedAmountYuan?.toFixed(4) ?? formatMoneyCentsAsPlainYuan(claim.requestedAmountCents),
+      numericProtocolVersion: claim.requestedAmountYuan == null ? 1 : 2,
       loanOffsetAmountCents: moneyCentsToApi(claim.loanOffsetAmountCents),
       companyPayableAmountCents: moneyCentsToApi(claim.companyPayableAmountCents),
       fundedAmountCents: moneyCentsToApi(claim.fundedAmountCents),
@@ -931,7 +957,7 @@ export class ExpenseClaimService {
       loanDisbursements: loanDisbursements.map((entry) => ({ ...entry, amountCents: moneyCentsToApi(entry.amountCents) })),
       loanRepayments: loanRepayments.map((repayment) => ({ ...repayment, amountCents: moneyCentsToApi(repayment.amountCents) })),
       finalPaymentPdf,
-      lines: lines.map((line) => ({ ...line, amountCents: moneyCentsToApi(line.amountCents) })),
+      lines: lines.map((line) => ({ ...line, amountCents: moneyCentsToApi(line.amountCents), amountYuan: line.amountYuan?.toFixed(4) ?? formatMoneyCentsAsPlainYuan(line.amountCents) })),
       attachments: attachments.map((attachment) => {
         const file = fileById.get(attachment.fileId);
         return {
@@ -1131,7 +1157,7 @@ export class ExpenseClaimService {
       );
       const claim = claims[0];
       if (!claim) throw new NotFoundException("费用申请不存在");
-      if (claim.status === "draft" || claim.status === "rejected" || claim.status === "offset_completed") {
+      if (claim.status === "draft" || claim.status === "rejected" || (claim.status === "offset_completed" && claim.requestedAmountCents !== 0n)) {
         throw new BadRequestException("当前费用申请不允许追加资料");
       }
       const roleKeys = await this.loadRoleKeys(tx, actorUserId, claim.projectId ?? undefined);
@@ -1274,11 +1300,23 @@ export class ExpenseClaimService {
       }
 
       let requestedAmountCents = claim.requestedAmountCents;
+      let requestedAmountYuan: string | undefined;
       if (claim.claimType === "reimbursement") {
         if (input.requestedAmountCents !== undefined) throw new BadRequestException("报销申请金额须由费用明细合计");
         if (input.lines !== undefined) {
-          const lines = await this.prepareExpenseLines(tx, claimId, claim.companyEntityId, this.lines(input.lines));
-          requestedAmountCents = positiveCents(lines.reduce((amount, line) => amount + line.amountCents, 0n).toString(), "费用明细合计超出申请金额范围");
+          const inputLines = this.lines(input.lines);
+          const exact = inputLines.some((line) => line.amountYuan !== undefined);
+          if (claim.requestedAmountYuan != null && !exact) {
+            throw new BadRequestException("请使用元金额修改费用明细，避免丢失原金额精度");
+          }
+          const exactAmounts = exact ? exactReimbursementAmounts(inputLines) : null;
+          const lines = await this.prepareExpenseLines(tx, claimId, claim.companyEntityId, inputLines, undefined, exactAmounts?.lineAmounts);
+          requestedAmountCents = exactAmounts?.requestedAmountCents
+            ?? positiveCents(lines.reduce((amount, line) => amount + line.amountCents, 0n).toString(), "费用明细合计超出申请金额范围");
+          requestedAmountYuan = exactAmounts?.requestedAmountYuan;
+          if (claim.actualPurchaseBatchId && requestedAmountCents === 0n) {
+            throw new BadRequestException("关联实际采购批次的报销可付金额必须大于零");
+          }
           await tx.expenseClaimLine.deleteMany({ where: { expenseClaimId: claimId } });
           await tx.expenseClaimLine.createMany({ data: lines });
         }
@@ -1316,14 +1354,14 @@ export class ExpenseClaimService {
       });
       const updated = await tx.expenseClaim.update({
         where: { id: claimId },
-        data: { reason, requestedAmountCents, ...costBearingCompany, updatedAt: new Date(Math.max(Date.now(), claim.updatedAt.getTime() + 1)) },
-        select: { id: true, status: true, updatedAt: true, requestedAmountCents: true }
+        data: { reason, requestedAmountCents, ...(requestedAmountYuan === undefined ? {} : { requestedAmountYuan }), ...costBearingCompany, updatedAt: new Date(Math.max(Date.now(), claim.updatedAt.getTime() + 1)) },
+        select: { id: true, status: true, updatedAt: true, requestedAmountCents: true, requestedAmountYuan: true }
       });
       await this.audit.record(tx, {
         actorUserId, action: "expense_claim.draft.edit_returned", businessType: "expense_claim", businessId: claimId,
-        metadata: { previousAmountCents: claim.requestedAmountCents.toString(), requestedAmountCents: requestedAmountCents.toString() }
+        metadata: { previousAmountCents: claim.requestedAmountCents.toString(), requestedAmountCents: requestedAmountCents.toString(), ...(requestedAmountYuan === undefined ? {} : { previousAmountYuan: claim.requestedAmountYuan?.toFixed(4) ?? formatMoneyCentsAsPlainYuan(claim.requestedAmountCents), requestedAmountYuan, numericProtocolVersion: 2 }) }
       });
-      return { ...updated, requestedAmountCents: moneyCentsToApi(updated.requestedAmountCents) };
+      return { ...updated, requestedAmountCents: moneyCentsToApi(updated.requestedAmountCents), ...(updated.requestedAmountYuan == null ? {} : { requestedAmountYuan: updated.requestedAmountYuan.toFixed(4), numericProtocolVersion: 2 }) };
     });
   }
 
@@ -1862,7 +1900,7 @@ export class ExpenseClaimService {
         where: { id: claimId },
         select: {
           id: true, code: true, claimType: true, status: true, companyEntityNameSnapshot: true, paymentSubjectNameSnapshot: true,
-          projectId: true, applicantNameSnapshot: true, reason: true, requestedAmountCents: true, loanOffsetAmountCents: true,
+          projectId: true, applicantNameSnapshot: true, reason: true, requestedAmountCents: true, requestedAmountYuan: true, loanOffsetAmountCents: true,
           companyPayableAmountCents: true, fundedAmountCents: true
         }
       }),
@@ -1893,6 +1931,7 @@ export class ExpenseClaimService {
       applicantName: claim.applicantNameSnapshot,
       reason: claim.reason,
       requestedAmountCents: claim.requestedAmountCents,
+      requestedAmountYuan: claim.requestedAmountYuan?.toFixed(4) ?? null,
       loanOffsetAmountCents: claim.loanOffsetAmountCents,
       companyPayableAmountCents: claim.companyPayableAmountCents,
       paidAmountCents: paidAmount,
@@ -1913,7 +1952,8 @@ export class ExpenseClaimService {
   }
 
   private async prepareExpenseLines(
-    tx: Prisma.TransactionClient, expenseClaimId: string, companyId: string, lines: ExpenseClaimLineDto[], advanceCategory?: string
+    tx: Prisma.TransactionClient, expenseClaimId: string, companyId: string, lines: ExpenseClaimLineDto[], advanceCategory?: string,
+    exactAmounts?: ReturnType<typeof exactReimbursementAmounts>["lineAmounts"]
   ) {
     const knownCategories = await this.companyExpenseCategories(tx, companyId);
     return lines.map((line, index) => {
@@ -1928,7 +1968,7 @@ export class ExpenseClaimService {
         quantity: parseExpenseQuantity(line.quantity),
         purpose: requiredText(line.purpose, "用途说明不能为空"),
         receiptCount: receiptCount(line.receiptCount),
-        amountCents: positiveCents(line.amountCents, "费用明细金额必须大于零"),
+        ...(exactAmounts?.[index] ?? { amountCents: positiveCents(line.amountCents, "费用明细金额必须大于零") }),
         evidenceType: line.evidenceType,
         noEvidenceReason: line.evidenceType === "none" ? requiredText(line.noEvidenceReason, "无凭证原因必填") : null,
         remark: optionalText(line.remark)
@@ -2564,6 +2604,7 @@ type ExpenseLedgerRow = {
   reason: string;
   payeeName: string;
   requestedAmountCents: string;
+  requestedAmountYuan: string;
   loanOffsetAmountCents: string;
   companyPayableAmountCents: string;
   fundedAmountCents: string;
@@ -2641,7 +2682,7 @@ function expenseClaimTypeLabel(value: string): string {
       : "费用报销";
 }
 
-function expenseClaimStatusLabel(value: string): string {
+function expenseClaimStatusLabel(value: string, noPayment = false): string {
   return ({
     draft: "草稿",
     approval_pending: "审批中",
@@ -2650,7 +2691,7 @@ function expenseClaimStatusLabel(value: string): string {
     approved_pending_disbursement: "待放款",
     partially_disbursed: "部分放款",
     disbursed: "已放款",
-    offset_completed: "借款冲销完成",
+    offset_completed: noPayment ? "审批通过，无需付款" : "借款冲销完成",
     rejected: "已驳回"
   } as Record<string, string>)[value] ?? "待确认状态";
 }
