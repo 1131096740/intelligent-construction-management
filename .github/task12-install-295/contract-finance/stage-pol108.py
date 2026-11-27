@@ -61,7 +61,7 @@ if shard=='core':
                     AND finished_at IS NOT NULL AND rolled_back_at IS NULL)
                 AND EXISTS (SELECT FROM "_prisma_migrations"
                   WHERE migration_name = '20261129021000_company_history_expense'
-                    AND checksum = '8cb43f1ae6a6fb6108280f1ea08df4d2d2edf7c060b39b37dfbeeaff7ae368e5'
+                    AND checksum = '8cb43f1ae9a6fb6108280f1ea08df4d2d2edf7c060b39b37dfbeeaff7ae368e5'
                     AND finished_at IS NOT NULL AND rolled_back_at IS NULL)
 '''
             if text.count(anchor) != 1:
@@ -72,7 +72,7 @@ if shard=='core':
             '346': '90ebf581a9ba6d2019560facab6a6329c5b0626c2908b73a526015fbc1437e77',
             '349': 'e3c97dd22f1481fc5c3651ea74608ee255959f1406db78b5cec54351bfc7be89',
             '350': '6e94dde323576d1c6e4a98ee36b1205567fa9e5c8858a2d2a7a3ee0d28845de3',
-            '352': '538a961de5f0e9e97c19271540c1464b17106320cd5b5a1dc6146074b4927f6d',
+            '352': '16be31ad9c69d4a52256fa27c085708b65f742f9cda13d6abc5980fdb36b3e1c',
         }
         if count in core_fingerprints and digest(cases) != core_fingerprints[count]:
             raise SystemExit('POL108_'+count+'_CORE_FIXTURE')

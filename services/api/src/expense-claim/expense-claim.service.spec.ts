@@ -194,7 +194,8 @@ describe("employee loan application through HTTP", () => {
       expect(incidental.status).toBe(201);
       expect(await incidental.json()).toMatchObject({ status: "draft", requestedAmountCents: "1200" });
 
-      const { requestedAmountCents: _legacyAmount, ...reimbursement } = application;
+      const reimbursement = { companyEntityId: application.companyEntityId, projectId: application.projectId,
+        applicantUserId: application.applicantUserId, reason: application.reason };
       const line = { expenseCategory: "餐饮费", occurredOn: "2026-07-23", purpose: "现场餐费", receiptCount: 1, evidenceType: "invoice" };
       const exact = await create({
         ...reimbursement, claimType: "reimbursement", requestedAmountYuan: "0.0100",

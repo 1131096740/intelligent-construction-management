@@ -422,6 +422,7 @@ function postedData(row: CompanyHistoryExpenseRow, company: SealedCompany, actor
 
 function reversalData(original: CompanyHistoryExpenseFact, rowId: string, actorUserId: string) {
   const { id, createdAt, ...snapshot } = original;
+  void createdAt;
   return {
     ...snapshot, rowId, entryKind: "reversal", adjustsFactId: id, actorUserId, costCents: -original.costCents,
     paidCents: original.paidCents === null ? null : -original.paidCents,

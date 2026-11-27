@@ -84,7 +84,7 @@ if (( count >= 346 )); then
       patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task410-runner-352.patch"
       [[ $(sha256sum "$runner" | cut -d' ' -f1) == f86a9b38102b12076eba79ed83d967dc21cdc3d65266834a78916938f0a712f6 ]] || exit 65
       patch --batch --forward --fuzz=0 --silent "$support" < "$plan/task410-support-352.patch"
-      [[ $(sha256sum "$support" | cut -d' ' -f1) == 830a7d52ec15fb866de5f97e55550479b496f02c2594f300f7a4573c79b0bd05 ]] || exit 65
+      [[ $(sha256sum "$support" | cut -d' ' -f1) == 844f317fa137a0720fa4163558b66734db30455aea8af1a65cdb21fa16a5d832 ]] || exit 65
     fi
     node --check "$runner"
   fi

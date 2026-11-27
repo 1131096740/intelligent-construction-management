@@ -10,7 +10,14 @@ import { CompanyHistoryExpenseController } from "../history-expense/company-hist
 import { CompanyHistoryExpenseService } from "../history-expense/company-history-expense.service";
 import { PrismaService } from "./prisma.service";
 
-interface Reply { status: number; body: Record<string, any> }
+interface Reply {
+  status: number;
+  body: {
+    id: string; revision: number; idempotent: boolean; costCents: string;
+    rows: Array<{ id: string; revision: number; rowNo: number; generatedFactId: string; issues: unknown[] }>;
+    summary: { postedAmountCents: string };
+  };
+}
 const integration = process.env.ISSUE436_COMPANY_HISTORY_RUN === "1" ? test : test.skip;
 
 integration("公司历史费用真实入账、净额、两会话更正、相邻账簿零变动", async () => {
@@ -127,7 +134,7 @@ integration("公司历史费用真实入账、净额、两会话更正、相邻�
         paidCents: "1500", outstandingCents: "4500", unknownPaymentCostCents: "4000" }
     });
     expect((await call(payer.id, reviewer, "/ledger")).body.costCents).toBe("0");
-    const original = posted.rows.find((item: { rowNo: number }) => item.rowNo === 2);
+    const original = posted.rows.find(item => item.rowNo === 2)!;
     const correction = `${batch}/rows/${original.id}/corrections`;
     const correctionInput = { expectedRevision: original.revision, reason: "原金额凭据补正",
       values: { paymentStatus: "partially_paid", amountYuan: "17.00", paidAmountYuan: "4.00" } };
@@ -144,7 +151,7 @@ integration("公司历史费用真实入账、净额、两会话更正、相邻�
     expect((await client(reviewer, "/ledger")).body).toMatchObject({
       costCents: "9700", paidCents: "1400", outstandingCents: "4300", unknownPaymentCostCents: "4000"
     });
-    const replacement = afterCorrection.rows.find((item: { rowNo: number }) => item.rowNo === 7);
+    const replacement = afterCorrection.rows.find(item => item.rowNo === 7)!;
     expect((await client(supervisor, `${batch}/rows/${replacement.id}/corrections`, "POST", {
       expectedRevision: replacement.revision, reason: "补充证明未付",
       values: { paymentStatus: "unpaid", amountYuan: "18.00", paidAmountYuan: null }

@@ -111,7 +111,7 @@ describePg("结算模板工作台公开HTTP / PG16", () => {
               AND checksum = '86ad90ea7fad6231f1d8b24dd8e4eb25d5ba0b1696d3544f5999680ebaa4c6e4') AND
             EXISTS (SELECT FROM public._prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
               AND migration_name = '20261129021000_company_history_expense'
-              AND checksum = '8cb43f1ae6a6fb6108280f1ea08df4d2d2edf7c060b39b37dfbeeaff7ae368e5')))) AS accepted
+              AND checksum = '8cb43f1ae9a6fb6108280f1ea08df4d2d2edf7c060b39b37dfbeeaff7ae368e5')))) AS accepted
         FROM pg_catalog.pg_database d WHERE d.datname = current_database()
       `;
       if (witness?.accepted !== true) throw new Error("POL115_WORKBENCH_OWNED_282_DATABASE");
