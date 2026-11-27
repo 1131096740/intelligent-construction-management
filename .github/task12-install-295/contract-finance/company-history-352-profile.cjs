@@ -5,6 +5,7 @@ const previous = require('./signed-settlement-350-profile.cjs');
 
 const mode = 'company-history-352';
 const count = 352;
+const installerSha256 = 'ff94f00f81a0610558e405d0c7dbf17536c4db663276f12fe31fd336777ee98c';
 const tails = Object.freeze([
   Object.freeze({ name: '20261129020000_company_transfer_settled_return',
     sha256: 'cbaf785b470e8e0de1d79256e9ed19b181bf875131c741d866754fd1277d8fff', finished: true, rolledBack: false }),
@@ -40,4 +41,20 @@ function assertRuntimeBaseline({ loadManifest, deriveMigrationBaseline, DEFAULT_
   assert.deepEqual(tuple(deriveMigrationBaseline()), expected, 'COMPANY_HISTORY_352_RUNTIME');
 }
 
-module.exports = { mode, count, tails, terminal, prefix351, ledgerSha256, assertSource, assertPrefix, assertRuntimeBaseline };
+function assertInstallation(receipt, source) {
+  assert.equal(receipt.sourceSha, source.sourceSha, 'COMPANY_HISTORY_352_RECEIPT_SOURCE');
+  assert.deepEqual(receipt.signedSettlementForward, { count: 350, ledgerSha256: previous.ledgerSha256,
+    sameIdentity: true, sourceTree: source.sourceTree,
+    tails: source.tails.slice(349 - 295, 350 - 295).map(({ name, sha256 }) => ({ name, sha256 }))
+  }, 'COMPANY_HISTORY_352_PREDECESSOR_RECEIPT');
+  assert.deepEqual(receipt.companyHistoryForward, { count, ledgerSha256, sameIdentity: true, sourceTree: source.sourceTree,
+    tails: tails.map(({ name, sha256 }) => ({ name, sha256 })) }, 'COMPANY_HISTORY_352_FORWARD_RECEIPT');
+  assert.ok(receipt.combinedAfterBusiness?.count === count && receipt.combinedAfterBusiness.ledgerSha256 === ledgerSha256 &&
+    receipt.combinedAfterBusiness.sameIdentity === true && receipt.combinedAfterBusiness.exactB7 === true &&
+    receipt.business === 'CALLBACK_COMPLETED' && receipt.signedSettlementCatalogAfterBusiness === true,
+  'COMPANY_HISTORY_352_POST_BUSINESS');
+  assert.equal(receipt.cleanup, 'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT', 'COMPANY_HISTORY_352_CLEANUP');
+}
+
+module.exports = { mode, count, tails, terminal, prefix351, ledgerSha256, installerSha256, assertSource, assertPrefix,
+  assertRuntimeBaseline, assertInstallation };

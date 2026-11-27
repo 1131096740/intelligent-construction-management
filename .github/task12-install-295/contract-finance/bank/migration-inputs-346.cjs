@@ -14,8 +14,9 @@ module.exports = function assertMigrationInputs(api, source, profile) {
   const digest = rows => createHash('sha256').update(JSON.stringify(rows)).digest('hex');
   assert.equal(ledger.length, profile.count, 'BANK_346_MIGRATION_COUNT');
   assert.equal(digest(ledger.slice(0, 334)), source.predecessor334.ledgerSha256, 'BANK_346_PREFIX_334');
-  if (profile.count === 350) {
+  if (profile.count === 350 || profile.count === 352) {
     assert.equal(digest(ledger.slice(0, 349)), source.predecessor349.ledgerSha256, 'BANK_350_PREFIX_349');
   }
+  if (profile.count === 352) assert.equal(digest(ledger.slice(0, 350)), source.predecessor350.ledgerSha256, 'BANK_352_PREFIX_350');
   assert.equal(digest(ledger), source.ledgerSha256, 'BANK_346_MIGRATION_BYTES');
 };

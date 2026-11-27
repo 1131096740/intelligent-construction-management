@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 case $#:${6-}:${7-} in
-  6:--signed-settlement-350:|7:--signed-settlement-350:--host-only)
+  6:--signed-settlement-350:|7:--signed-settlement-350:--host-only|6:--company-history-352:|7:--company-history-352:--host-only)
     [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64 ;;
   *)
     [[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 || $6 == --expense-witness-34[69] ) ) ||
@@ -26,6 +26,7 @@ if [[ $# -ge 6 ]]; then
     --expense-witness-346) count=346 ;;
     --expense-witness-349) count=349 ;;
     --signed-settlement-350) count=350 ;;
+    --company-history-352) count=352 ;;
   esac
 fi
 [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
@@ -41,7 +42,7 @@ const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||!Object.hasOwn(require(profilesFile),lane))process.exit(65);
 if(mode!==undefined) {
   const count={'--current-320':329,'--text-direct-330':330,'--payment-remainder-331':331,'--upward-archive-332':332,
-    '--historical-settlement-334':334,'--expense-witness-346':346,'--expense-witness-349':349,'--signed-settlement-350':350}[mode];
+    '--historical-settlement-334':334,'--expense-witness-346':346,'--expense-witness-349':349,'--signed-settlement-350':350,'--company-history-352':352}[mode];
   if(source.mode!==mode.slice(2)||source.migrationCount!==count||source.predecessor?.migrationCount!==295||
      source.predecessor.ledgerSha256!==terminal.final||source.tails.length!==count-295) process.exit(65);
   if(count===332) require(upwardProfile).assertSource(source,sha,terminal.final);

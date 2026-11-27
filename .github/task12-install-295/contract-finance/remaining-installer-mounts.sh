@@ -5,14 +5,14 @@ append_remaining_installer() {
   local source_mode=$1
   local retained=${2:-}
   local installer="$common/installer.cjs"
-  if [[ $source_mode == signed-settlement-350 ]]; then
+  if [[ $source_mode == signed-settlement-350 || $source_mode == company-history-352 ]]; then
     [[ ${GITHUB_ACTIONS:-} != true ]] || return 64
-    case $retained in
-      retained|owner) ;;
+    case "$source_mode:$retained" in
+      signed-settlement-350:retained|signed-settlement-350:owner|company-history-352:owner) ;;
       *) return 64 ;;
     esac
   fi
-  if [[ $source_mode == expense-witness-346 || $source_mode == expense-witness-349 || $source_mode == signed-settlement-350 ]]; then
+  if [[ $source_mode == expense-witness-346 || $source_mode == expense-witness-349 || $source_mode == signed-settlement-350 || $source_mode == company-history-352 ]]; then
     local count=${source_mode##*-}
     node "$plan/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
     installer="$work/installer.cjs"
@@ -20,8 +20,11 @@ append_remaining_installer() {
     if [[ $count != 346 ]]; then
       (cd "$work" && git apply --unidiff-zero "$plan/expense-witness/installer-349.patch")
     fi
-    if [[ $count == 350 ]]; then
+    if [[ $count == 350 || $count == 352 ]]; then
       (cd "$work" && git apply --unidiff-zero "$plan/expense-witness/installer-350.patch")
+    fi
+    if [[ $count == 352 ]]; then
+      (cd "$work" && git apply --unidiff-zero "$plan/expense-witness/installer-352.patch")
     fi
     local expected
     expected=$(node -p 'require(process.argv[1]).installerSha256' "$plan/$source_mode-profile.cjs")
@@ -43,8 +46,11 @@ append_remaining_installer() {
     if [[ $count != 346 ]]; then
       args+=(--mount "type=bind,src=$plan/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
     fi
-    if [[ $count == 350 ]]; then
+    if [[ $count == 350 || $count == 352 ]]; then
       args+=(--mount "type=bind,src=$plan/signed-settlement-350-profile.cjs,dst=/qualification/signed-settlement-350-profile.cjs,readonly")
+    fi
+    if [[ $count == 352 ]]; then
+      args+=(--mount "type=bind,src=$plan/company-history-352-profile.cjs,dst=/qualification/company-history-352-profile.cjs,readonly")
     fi
   elif [[ $source_mode == historical-settlement-334 ]]; then
     local installer_mode=$source_mode
