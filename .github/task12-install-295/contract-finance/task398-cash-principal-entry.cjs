@@ -1,18 +1,20 @@
 'use strict';
 const assert = require('node:assert/strict');
 const source = require('./contract-finance-source.json');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness} = require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness,withCombinedExpenseWitness349} = require('./installer.cjs');
 const {runTask398Owned282Voucher} = require('./workspace/services/api/prisma/run-task398-shared-standard-local.cjs');
 
 const [lane] = process.argv.slice(2);
 assert.ok(process.argv.length===3&&['cash-handover','principal-return','cash-transfer','project-advance'].includes(lane));
 const textDirect=source.mode==='text-direct-330';
-const expense=source.mode==='expense-witness-346'?require('./expense-witness-346-profile.cjs'):undefined;
+const precision=source.mode==='expense-witness-349'?require('./expense-witness-349-profile.cjs'):undefined;
+const expense=(precision||source.mode==='expense-witness-346')?require('./expense-witness-346-profile.cjs'):undefined;
+const profile=precision??expense;
 const historical=(expense||source.mode==="historical-settlement-334")?require("./historical-settlement-334-profile.cjs"):null;
 const upwardArchive=source.mode==='upward-archive-332';
 const paymentRemainder=source.mode==='payment-remainder-331';
 const current320=Boolean(expense)||Boolean(historical)||upwardArchive||paymentRemainder||textDirect||source.mode==='current-320';
-const count=expense?expense.count:historical?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
+const count=profile?profile.count:historical?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
 const purpose='TASK398_CASH_PRINCIPAL_EXACT_'+count;
 const receipt = {schemaVersion:1,sourceSha:source.sourceSha,lane,purpose,business:'NOT_ENTERED',stages:[]};
 async function main(){
@@ -22,9 +24,9 @@ async function main(){
   assert.equal((current320?source.predecessor:source).ledgerSha256,require('./multi-witness.cjs').final);
   if(expense){
     const {readFileSync}=require('node:fs'),{createHash}=require('node:crypto');
-    assert.equal(createHash('sha256').update(readFileSync('/qualification/installer.cjs')).digest('hex'),expense.installerSha256);
-    expense.assertSource(source,require('./multi-witness.cjs').final);
-    expense.assertRuntimeBaseline(require('./workspace/services/api/prisma/migration-baseline.cjs'));
+    assert.equal(createHash('sha256').update(readFileSync('/qualification/installer.cjs')).digest('hex'),profile.installerSha256);
+    profile.assertSource(source,require('./multi-witness.cjs').final);
+    profile.assertRuntimeBaseline(require('./workspace/services/api/prisma/migration-baseline.cjs'));
   }
   if(historical&&!expense){
     const {readFileSync}=require('node:fs'),{createHash}=require('node:crypto');
@@ -38,8 +40,12 @@ async function main(){
     if(expense){
       assert.equal(context.candidateTree,source.sourceTree);
       assert.deepEqual(receipt.expenseWitnessForward,{
-        count,ledgerSha256:expense.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
-        tails:source.tails.slice(39).map(({name,sha256})=>({name,sha256}))
+        count:expense.count,ledgerSha256:expense.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
+        tails:source.tails.slice(39,expense.count-295).map(({name,sha256})=>({name,sha256}))
+      });
+      if(precision) assert.deepEqual(receipt.expenseWitnessPrecisionForward,{
+        count,ledgerSha256:precision.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
+        tails:source.tails.slice(expense.count-295).map(({name,sha256})=>({name,sha256}))
       });
     }
     return runTask398Owned282Voucher(context,lane+'-'+count,receipt);
@@ -48,12 +54,15 @@ async function main(){
     const install=historical?withCombined334HistoricalSettlement:upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
     const material={sourceTree:source.sourceTree,
       migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails};
-    if(expense){
+    if(precision){
+      await withCombinedExpenseWitness349(receipt,consume,{...source,...material});
+      assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness,true);
+    } else if(expense){
       await withCombinedExpenseWitness(receipt,consume,material,count);
-      assert.equal(receipt.expenseWitnessCatalogAfterBusiness,true);
     } else {
       await install(receipt,consume,material);
     }
+    if(expense) assert.equal(receipt.expenseWitnessCatalogAfterBusiness,true);
     assert.equal(receipt.forward320.sourceTree,source.sourceTree);
     if(!expense) assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
     assert.equal(receipt.forward320.sameBaseB7,true);

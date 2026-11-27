@@ -14,26 +14,27 @@ case "$scope" in cash-handover|principal-return|cash-transfer|project-advance) ;
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="expense-witness-346"?346:source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const count=source.mode==="expense-witness-349"?349:source.mode==="expense-witness-346"?346:source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(1);
   if(count===332) require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
   if(count===334) require(process.argv[5]).assertSource(source,require(process.argv[4]).final);
   if(count===346) require(process.argv[6]).assertSource(source,require(process.argv[4]).final);
+  if(count===349) require(process.argv[7]).assertSource(source,require(process.argv[4]).final);
   console.log(count);
-' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan/expense-witness-346-profile.cjs")
+' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan/expense-witness-346-profile.cjs" "$plan/expense-witness-349-profile.cjs")
 extended=false
 if [[ $scope == cash-transfer || $scope == project-advance ]]; then
   [[ $count == 332 || $count == 346 ]] || exit 64
   extended=true
 fi
-if [[ $count == 346 ]]; then
+if [[ $count == 346 || $count == 349 ]]; then
   [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
   dirty=$(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" .github/task12-install-290)
   [[ -z $dirty ]] || exit 65
   node -e 'require("node:assert/strict").equal(require(process.argv[1]).sourceTree, process.argv[2])' \
     "$prepared/source.json" "$(git -C "$repo" rev-parse "$sha^{tree}")"
 fi
-if [[ ${6-} == --host-only && $count != 334 && $count != 346 ]]; then exit 64; fi
+if [[ ${6-} == --host-only && $count != 334 && $count != 346 && $count != 349 ]]; then exit 64; fi
 
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-finance-$scope.XXXXXXXX")
 python3 "$plan/stage-task398-cash-principal.py" \
@@ -60,18 +61,23 @@ if (( count >= 330 )); then
     [[ $(runner_sha) == 6dacd1f230b28d13a76dc42e510affe8230f4fa8c87339624d1a4993814afb74 ]] || exit 65
   fi
 fi
-if (( count == 332 || count == 334 || count == 346 )); then
+if (( count >= 332 )); then
   patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-principal-332.patch"
   [[ $(runner_sha) == 1d46ecbe7796b613e996fe8652d7147f68147ae6f43adb53c1c37d902f675471 ]] || exit 65
 fi
 
-if [[ $count == 334 || $count == 346 ]]; then
+if [[ $count == 334 || $count == 346 || $count == 349 ]]; then
   patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-principal-334.patch"
   [[ $(runner_sha) == aa1982573cf667ead46a761819f412676458c9f9c45b35db6d3f0f3100266b3e ]] || exit 65
 fi
-if [[ $count == 346 ]]; then
+if [[ $count == 346 || $count == 349 ]]; then
   patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-principal-346.patch"
   [[ $(runner_sha) == e9c1bcbd831e1a2d29ce2a9d13fe577238bf95549efbd968febb2b20547b757c ]] || exit 65
+  if [[ $count == 349 ]]; then
+    patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-cash-principal-349.patch"
+    [[ $(runner_sha) == c2c17739b6fd52ff369e9d76453dbd30338e52e615da31d3f96650ad092ac626 ]] || exit 65
+    node --check "$runner"
+  fi
 fi
 if [[ $extended == true ]]; then
   if [[ $count == 346 ]]; then
@@ -84,14 +90,19 @@ if [[ $extended == true ]]; then
 fi
 
 installer="$common/installer.cjs"
-if [[ $count == 334 || $count == 346 ]]; then
+if [[ $count == 334 || $count == 346 || $count == 349 ]]; then
   node "$plan/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
   installer="$work/installer.cjs"
 fi
-if [[ $count == 346 ]]; then
+if [[ $count == 346 || $count == 349 ]]; then
   git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer.patch"
   expected=$(node -p 'require(process.argv[1]).installerSha256' "$plan/expense-witness-346-profile.cjs")
   [[ $(sha256sum "$installer" | cut -d' ' -f1) == "$expected" ]] || exit 65
+  if [[ $count == 349 ]]; then
+    git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer-349.patch"
+    expected=$(node -p 'require(process.argv[1]).installerSha256' "$plan/expense-witness-349-profile.cjs")
+    [[ $(sha256sum "$installer" | cut -d' ' -f1) == "$expected" ]] || exit 65
+  fi
   chmod 0644 "$installer"
 fi
 if [[ ${6-} == --host-only ]]; then
@@ -118,16 +129,19 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$prepared/tails/20261119003800_company_transfer_ordinary_loan_multi_witness/migration.sql,dst=/qualification/multi-witness.sql,readonly"
   --mount "type=bind,src=$plan/task398-cash-principal-entry.cjs,dst=/qualification/task398-cash-principal-entry.cjs,readonly"
   --mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
-if [[ $count == 334 || $count == 346 ]]; then
+if [[ $count == 334 || $count == 346 || $count == 349 ]]; then
   for file in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
 fi
 args+=(--mount "type=bind,src=$installer,dst=/qualification/installer.cjs,readonly")
-if [[ $count == 346 ]]; then
+if [[ $count == 346 || $count == 349 ]]; then
   for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
+fi
+if [[ $count == 349 ]]; then
+  args+=(--mount "type=bind,src=$plan/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
 fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")

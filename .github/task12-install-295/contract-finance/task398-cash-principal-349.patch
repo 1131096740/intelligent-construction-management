@@ -1,0 +1,25 @@
+--- predecessor/fixture
++++ forward/fixture
+@@ -504 +504 @@
+- const modes=new Map([["cash-handover-346",["--cash-handover-real"]],["principal-return-346",["--principal-return-real"]],["cash-handover-334",["--cash-handover-real"]],["principal-return-334",["--principal-return-real"]],["cash-handover-332",["--cash-handover-real"]],["principal-return-332",["--principal-return-real"]],["cash-handover-331",["--cash-handover-real"]],["principal-return-331",["--principal-return-real"]],["cash-handover-330",["--cash-handover-real"]],["principal-return-330",["--principal-return-real"]],["cash-handover-329",["--cash-handover-real"]],["principal-return-329",["--principal-return-real"]],["cash-handover-295",["--cash-handover-real"]],["principal-return-295",["--principal-return-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["cash-handover-349",["--cash-handover-real"]],["principal-return-349",["--principal-return-real"]],["cash-handover-346",["--cash-handover-real"]],["principal-return-346",["--principal-return-real"]],["cash-handover-334",["--cash-handover-real"]],["principal-return-334",["--principal-return-real"]],["cash-handover-332",["--cash-handover-real"]],["principal-return-332",["--principal-return-real"]],["cash-handover-331",["--cash-handover-real"]],["principal-return-331",["--principal-return-real"]],["cash-handover-330",["--cash-handover-real"]],["principal-return-330",["--principal-return-real"]],["cash-handover-329",["--cash-handover-real"]],["principal-return-329",["--principal-return-real"]],["cash-handover-295",["--cash-handover-real"]],["principal-return-295",["--principal-return-real"]],["standard-290",[]],["cash-handover-290",["--cash-handover-real"]],["principal-return-290",["--principal-return-real"]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+@@ -510 +510,2 @@
+- const exact346=mode==="cash-handover-346"||mode==="principal-return-346";
++ const exact349=mode==="cash-handover-349"||mode==="principal-return-349";
++ const exact346=exact349||mode==="cash-handover-346"||mode==="principal-return-346";
+@@ -514 +515 @@
+- const count=exact346?346:prefixCount;
++ const count=exact349?349:exact346?346:prefixCount;
+@@ -532,0 +534,6 @@
++ const precision=exact349?receipt?.expenseWitnessPrecisionForward:undefined;
++ if(exact349&&(precision?.count!==349||precision.sameIdentity!==true||precision.sourceTree!==forward.sourceTree
++   ||precision.ledgerSha256!=="8bfe19831eeb7da7c38c8a4f8c4cda98b9b1a165bf4013f0e39816c0fd340679"
++   ||precision.tails?.length!==3||precision.tails.at(-1)?.name!=="20261129018000_reimbursement_exact_cash_cost_links"
++   ||precision.tails.at(-1)?.sha256!=="58b3cc0404a85a97dbb484654245d4bd042e5fb2014f32997244b2597cb5110b"))
++  throw Error("TASK398_CASH_PRINCIPAL_349_SCOPE");
+@@ -584 +591 @@
+-   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(forward?(expense??forward).ledgerSha256:exact295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||exact290)?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
++   ||createHash("sha256").update(JSON.stringify(ledger)).digest("hex")!==(forward?(precision??expense??forward).ledgerSha256:exact295?"b0d398a46c4c6a3209e1448ddd415938ea95425c3d823f1f8a77d81dde396f2d":(mode==="correction-catalog"||exact290)?"8741d9da09253efb803af9e132b4cde09de0dfef86da7edf952b6c0056a057a5":"be6d9aed22658af5e273010a2e1e839544fa27e74e998701fb3d9e9248f88cfc"))throw new Error("TASK398_OWNED_280_LEDGER");
+@@ -601 +608 @@
+-  expectedDirectoryCount:count,terminalMigration:(expense??forward).tails.at(-1).name,terminalMigrationChecksum:(expense??forward).tails.at(-1).sha256
++  expectedDirectoryCount:count,terminalMigration:(precision??expense??forward).tails.at(-1).name,terminalMigrationChecksum:(precision??expense??forward).tails.at(-1).sha256
