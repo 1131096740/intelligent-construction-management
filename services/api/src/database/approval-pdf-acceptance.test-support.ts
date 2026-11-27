@@ -56,4 +56,5 @@ export async function verifyApprovedPdf(input: {
       pageCount: pdf.getPageCount(), pdfSha256: createHash("sha256").update(bytes).digest("hex"), actions: evidence
     }, null, 2));
   }
+  return bytes;
 }

@@ -3,7 +3,7 @@ import { Test } from "@nestjs/testing";
 import { ApprovalFormController } from "./approval-form.controller";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { spawnSync } from "node:child_process";
+import { pdfPublicTextItems } from "./approval-pdf-text.test-support";
 import { resolve } from "node:path";
 import { PDFDocument } from "pdf-lib";
 import { BadRequestException, NotFoundException } from "@nestjs/common";
@@ -3594,25 +3594,6 @@ it("未知并联协议版本不能回退为旧串联证明", async () => {
   await expect(service.renderForDownload("spot_procurement_version", "version-1", "applicant-1", "password", "核验协议")).rejects.toThrow("审批职责协议版本无效");
 });
 
-
-function pdfPublicTextItems(buffer: Buffer) {
-  const pdfjs = require.resolve("pdfjs-dist/legacy/build/pdf.mjs", {paths: [resolve(__dirname, "../../../../apps/web-admin")]});
-  const parsed = spawnSync(process.execPath, ["--input-type=module", "-e", `
-    import {pathToFileURL} from "node:url";
-    const {getDocument} = await import(pathToFileURL(process.argv[1]).href);
-    const chunks=[]; for await (const chunk of process.stdin) chunks.push(chunk);
-    const task=getDocument({data:new Uint8Array(Buffer.concat(chunks)),verbosity:0}); const doc=await task.promise;
-    const items=[];
-    for(let page=1;page<=doc.numPages;page++) {
-      const content=await (await doc.getPage(page)).getTextContent();
-      for(const item of content.items) if("str" in item) items.push({page,text:item.str,x:item.transform[4],y:item.transform[5]});
-    }
-    process.stdout.write(JSON.stringify(items)); await task.destroy();
-  `, pdfjs], {input: buffer, maxBuffer: 4 * 1024 * 1024});
-  if (parsed.status !== 0) throw new Error(`PDF公开输出坐标解析失败：${parsed.stderr.toString()}`);
-  const items = JSON.parse(parsed.stdout.toString()) as Array<{page:number;text:string;x:number;y:number}>;
-  return items;
-}
 
 function pdfDutyCoordinates(buffer: Buffer) {
   const items = pdfPublicTextItems(buffer);

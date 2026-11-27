@@ -14,7 +14,8 @@ import { apiJsonReplacer } from "../api-json-replacer";
 import { createApiValidationPipe } from "../validation/api-validation";
 import { PrismaService } from "./prisma.service";
 
-const describePg = process.env.RUN_GENERAL_PROCUREMENT_PG16 === "1" ? describe : describe.skip;
+const orderedIssue434Database = process.env.JG_ISSUE434_ORDERED_DATABASE;
+const describePg = process.env.RUN_GENERAL_PROCUREMENT_PG16 === "1" || orderedIssue434Database !== undefined ? describe : describe.skip;
 
 describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
   jest.setTimeout(60_000);
@@ -58,7 +59,15 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
 
   beforeAll(async () => {
     const url = new URL(process.env.DATABASE_URL ?? "");
-    if (process.env.NODE_ENV === "production" || url.hostname !== "127.0.0.1" || url.pathname !== "/general_procurement") throw new Error("仅允许本机一次性采购测试数据库");
+    const isolatedName = orderedIssue434Database ?? "general_procurement";
+    const orderedOwner = orderedIssue434Database === undefined ||
+      (/^jg_task01_[0-9a-f]{32}$/u.test(orderedIssue434Database) && url.username === "jg_task01_owner" &&
+        url.searchParams.get("sslmode") === "require" && url.searchParams.get("sslaccept") === "strict");
+    if (process.env.NODE_ENV === "production" || (orderedIssue434Database !== undefined && process.env.NODE_ENV !== "test") ||
+        url.hostname !== "127.0.0.1" ||
+        url.pathname !== "/" + isolatedName || !orderedOwner) {
+      throw new Error("仅允许本机一次性采购测试数据库");
+    }
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = module.createNestApplication({ logger: false });
     app.getHttpAdapter().getInstance().set("json replacer", apiJsonReplacer);
@@ -83,6 +92,76 @@ describePg("综合采购公开 HTTP / PostgreSQL 16", () => {
 
   });
   afterAll(async () => { if (app) await app.close(); });
+
+  if (orderedIssue434Database !== undefined) {
+    it("实际综合采购批次付款四岗同时待办，审批单按冻结岗位签署顺序呈现", async () => {
+      const modern = await request("/general-procurements", "POST", {
+        requestKey: randomUUID(), requestProtocolVersion: 2, scope: "project", projectId, companyEntityId,
+        category: "office_supplies", reason: "采购实际办公用品", lines: [{ id: randomUUID(), name: "办公用品" }]
+      });
+      expect(modern.status).toBe(201);
+      const requestPath = `/general-procurements/${modern.body.id}`;
+      const submittedRequest = await request(`${requestPath}/submission`, "POST", { revision: modern.body.revision });
+      expect(submittedRequest.status).toBe(201);
+      const directorReview = await request(`${requestPath}/review`, "POST", {
+        revision: submittedRequest.body.revision, expectedNodeIndex: 0, decision: "approve"
+      }, director.token);
+      expect(directorReview.status).toBe(201);
+      expect(await request(`${requestPath}/review`, "POST", {
+        revision: directorReview.body.revision, expectedNodeIndex: 1, decision: "approve"
+      }, manager.token)).toMatchObject({ status: 201, body: { status: "approved_pending_procurement" } });
+
+      const batch = await request("/actual-purchase-batches", "POST", {
+        kind: "general", procurementId: modern.body.id, companyEntityId,
+        supplierName: "合成批次供应商", totalAmountCents: "50000", idempotencyKey: randomUUID(),
+        lines: [{ materialName: "办公用品一批", amountCents: "50000" }]
+      }, director.token);
+      expect(batch).toMatchObject({ status: 201, body: { kind: "general", procurementId: modern.body.id } });
+      const batchClaim = await request("/expense-claims", "POST", {
+        claimType: "incidental_expense", incidentalExpenseCategory: "procurement_office_supplies",
+        generalProcurementId: modern.body.id, generalProcurementRequestKey: randomUUID(),
+        actualPurchaseBatchId: batch.body.id, companyEntityId, projectId,
+        reason: "综合采购批次首笔付款", requestedAmountCents: "20000", payeeName: "合成批次供应商"
+      }, director.token);
+      expect(batchClaim.status).toBe(201);
+      const batchClaimPath = `/expense-claims/${batchClaim.body.id}`;
+      const batchSubmission = await request(`${batchClaimPath}/submission`, "POST", {}, director.token);
+      expect(batchSubmission).toMatchObject({ status: 201, body: { status: "approval_pending" } });
+      const approvalInstanceId = batchSubmission.body.approvalInstanceId;
+
+      // Each role can act immediately. Approval order differs from the document's fixed duty slots.
+      const reviews = [
+        { reviewer: financeDirector, index: 2 }, { reviewer: chairman, index: 3 },
+        { reviewer: director, index: 0 }, { reviewer: manager, index: 1 }
+      ];
+      for (const { reviewer, index } of reviews) {
+        expect(await request(batchClaimPath, "GET", undefined, reviewer.token)).toMatchObject({
+          status: 200, body: { actualPurchaseBatchId: batch.body.id, approval: { approvalInstanceId, canReview: true, actionableDuties: [{ index }] } }
+        });
+      }
+      const materialDirector = await actor("material_director");
+      expect(await request(`${batchClaimPath}/approval`, "POST", {
+        approvalInstanceId, approvalDutyIndex: 0, decision: "approve"
+      }, materialDirector.token)).toMatchObject({ status: 403 });
+      for (const { reviewer, index } of reviews) {
+        expect(await request(`${batchClaimPath}/approval`, "POST", {
+          approvalInstanceId, approvalDutyIndex: index, decision: "approve",
+          ...(reviewer.id === director.id ? { selfReviewReason: "按实际采购批次办理付款", confirmationPassword: password } : {})
+        }, reviewer.token)).toMatchObject({
+          status: 201, body: { status: index === 1 ? "approved_pending_payment" : "approval_pending" }
+        });
+      }
+      const bytes = await verifyApprovedPdf({ db: app.get(PrismaService), baseUrl: base, token: director.token, password,
+        businessType: "expense_claim", businessId: batchClaim.body.id,
+        roles: ["finance_director", "chairman", "comprehensive_director", "project_manager"], label: "综合采购实际批次付款" });
+      const dutyLabels = ["综合部主管", "项目经理", "财务主管", "董事长"];
+      const { pdfPublicTextItems } = await import("../approval/approval-pdf-text.test-support");
+      const visibleRoles = pdfPublicTextItems(bytes).map(item => item.text.trim())
+        .filter(label => dutyLabels.includes(label) || label === "物资部主管");
+      expect(visibleRoles).toEqual(dutyLabels);
+    });
+    return;
+  }
 
 
   async function seedHistoricalDraft(input: {
