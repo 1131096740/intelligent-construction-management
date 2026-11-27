@@ -13,29 +13,34 @@ scope=payment-execution
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const counts=new Map([["expense-witness-346",346],["historical-settlement-334",334],["upward-archive-332",332],
+  const counts=new Map([["expense-witness-349",349],["expense-witness-346",346],["historical-settlement-334",334],["upward-archive-332",332],
     ["payment-remainder-331",331],["text-direct-330",330],["current-320",329],[undefined,295]]);
   const count=counts.get(source.mode);
   if(!count||source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(65);
   if(count===332) require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
   if(count===334) require(process.argv[5]).assertSource(source,require(process.argv[4]).final);
-  if(count===346) require(process.argv[6]).assertSource(source,require(process.argv[4]).final);
+  if(count===346||count===349) require(process.argv[6]+"/"+source.mode+"-profile.cjs").assertSource(source,require(process.argv[4]).final);
   console.log(count);
-'  "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan/expense-witness-346-profile.cjs")
+'  "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan")
 host_only=false
 if [[ ${5-} == --host-only ]]; then
-  [[ $count == 346 ]] || exit 64
+  [[ $count == 346 || $count == 349 ]] || exit 64
   host_only=true
 fi
-if [[ $count == 346 ]]; then
+if [[ $count == 346 || $count == 349 ]]; then
   [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
   [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$repo/.github/task12-install-290/payment") ]] || exit 65
+  if [[ $count == 349 ]]; then
+    [[ $plan == "$repo/.github/task12-install-295/contract-finance" ]] || exit 65
+    cmp -s "$prepared/source.json" <(node "$plan/check-ledger.cjs" "$repo" "$sha" --expense-witness-349) || exit 65
+  fi
   node - "$prepared" "$(git -C "$repo" rev-parse "$sha^{tree}")" "$plan" <<'JS'
 const assert = require('node:assert/strict');
 const [prepared, tree, plan] = process.argv.slice(2);
-assert.equal(require(prepared + '/source.json').sourceTree, tree);
+const source = require(prepared + '/source.json');
+assert.equal(source.sourceTree, tree);
 const baseline = require(prepared + '/prepared/context/workspace/services/api/prisma/migration-baseline.cjs');
-require(plan + '/expense-witness-346-profile.cjs').assertRuntimeBaseline(baseline);
+require(plan + '/' + source.mode + '-profile.cjs').assertRuntimeBaseline(baseline);
 JS
 fi
 if [[ $host_only == false ]]; then
@@ -55,7 +60,7 @@ case "$count" in
   331) portable_args=(--payment-remainder-331) ;;
   332) portable_args=(--upward-archive-332) ;;
   334) portable_args=(--historical-settlement-334) ;;
-  346) portable_args=(--expense-witness-346) ;;
+  346|349) portable_args=("--expense-witness-$count") ;;
 esac
 python3 "$plan/stage-payment-execution.py" "$repo/.github/task12-install-290/payment" "$common" "$material" ${portable_args[@]+"${portable_args[@]}"}
 
@@ -63,11 +68,11 @@ if [[ $host_only == true ]]; then
   for file in installer.cjs fresh.cjs valid.cjs paid/payment-retained-ci.cjs other/payment-retained-ci.cjs; do
     node --check "$material/$file"
   done
-  node --check "$plan/payment-execution-346.cjs"
+  node --check "$plan/payment-execution-$count.cjs"
   node - "$prepared/source.json" "$material" <<'JS'
 const [file, material] = process.argv.slice(2);
 const { sourceSha, sourceTree, migrationCount, ledgerSha256 } = require(file);
-console.log(JSON.stringify({ status: 'PAYMENT_EXECUTION_346_HOST_READY', sourceSha, sourceTree,
+console.log(JSON.stringify({ status: 'PAYMENT_EXECUTION_' + migrationCount + '_HOST_READY', sourceSha, sourceTree,
   migrationCount, ledgerSha256, material }));
 JS
   exit 0
@@ -112,15 +117,18 @@ for lane in fresh valid paid other; do
   if [[ $count == 332 && ( $lane == fresh || $lane == valid ) ]]; then
     lane_args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
   fi
-  if [[ ( $count == 334 || $count == 346 ) && ( $lane == fresh || $lane == valid ) ]]; then
+  if [[ ( $count == 334 || $count == 346 || $count == 349 ) && ( $lane == fresh || $lane == valid ) ]]; then
     for file in upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
       lane_args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
     done
   fi
-  if [[ $count == 346 && ( $lane == fresh || $lane == valid ) ]]; then
-    for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json payment-execution-346.cjs; do
+  if [[ ( $count == 346 || $count == 349 ) && ( $lane == fresh || $lane == valid ) ]]; then
+    for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json "payment-execution-$count.cjs"; do
       lane_args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
     done
+  fi
+  if [[ $count == 349 && ( $lane == fresh || $lane == valid ) ]]; then
+    lane_args+=(--mount "type=bind,src=$plan/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
   fi
   exit_code=0
   docker run "${lane_args[@]}" --entrypoint node "$image" "/qualification/$entry" \
@@ -149,10 +157,10 @@ for lane in fresh valid paid other; do
       if(row.combinedAfterBusiness?.sameIdentity!==true||row.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256||
          row.historicalTakeoverCatalogAfterBusiness!==true||row.historicalSettlementCatalogAfterBusiness!==true)process.exit(1);
     }
-    if(positive&&count==="346") require(process.argv[10]).assertInstallation(row,require(process.argv[7]));
+    if(positive&&(count==="346"||count==="349")) require(process.argv[10]+"/payment-execution-"+count+".cjs").assertInstallation(row,require(process.argv[7]));
     if(code!=="0"||row.status!==expected||row.cleanup!=="POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT"||
       (positive&&(row.sourceSha!==sha||row.installOnly295?.count!==295||row.combinedAfterBusiness?.count!==Number(count)||row.combinedAfterBusiness?.exactB7!==true))||
       (!positive&&(row.retainedPaymentNegatives?.length!==(lane==="paid"?1:13)||row.installOnly295!==undefined)))process.exit(1);
-  ' "$work/$lane.json" "$lane" "$sha" "$expected" "$exit_code" "$count" "$prepared/source.json" "$plan/upward-archive-332-profile.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan/payment-execution-346.cjs" ||
+  ' "$work/$lane.json" "$lane" "$sha" "$expected" "$exit_code" "$count" "$prepared/source.json" "$plan/upward-archive-332-profile.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan" ||
     { printf 'PAYMENT_EXECUTION_%s_STOPPED %s %s\n' "$count" "$lane" "$work" >&2; exit 1; }
 done
