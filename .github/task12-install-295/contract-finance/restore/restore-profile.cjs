@@ -23,4 +23,8 @@ const expense349=Object.freeze({...expense346,count:349});
 // The signed settlement tail preserves the business and technical table inventory.
 const signed350=Object.freeze({...expense349,count:350});
 
-module.exports={legacy,successor,textDirect,expense346,expense349,signed350};
+// Company history adds three business tables; the transfer-return migration adds no table.
+const company352=profile(352,signed350.businessCount+3,
+  [...signed350.addedBusiness,'CompanyHistoryExpenseBatch','CompanyHistoryExpenseRow','CompanyHistoryExpenseFact'],
+  [...forward.ownerSchemaOnlyEmptyAdditions.map(([,name])=>name),'jg_expense_public_cash_voucher_witness']);
+module.exports={legacy,successor,textDirect,expense346,expense349,signed350,company352};
