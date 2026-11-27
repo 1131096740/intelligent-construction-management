@@ -6,19 +6,21 @@ const { createHash } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { admitSource } = require('./install-only292.cjs');
-const { withCombined335HistoricalExpense, withCombinedExpenseWitness, withCombinedExpenseWitness349 } = require('./installer.cjs');
+const { withCombined335HistoricalExpense, withCombinedExpenseWitness, withCombinedExpenseWitness349, withCombinedSignedSettlement350 } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
 const history = require('./historical-expense-335-profile.cjs');
 const source = require('./contract-finance-source.json');
-const precision = source.mode === 'expense-witness-349';
+const signed = source.mode === 'signed-settlement-350';
+const precision = signed || source.mode === 'expense-witness-349';
 const combined = precision || source.mode === 'expense-witness-346';
-const profile = precision ? require('./expense-witness-349-profile.cjs')
+const profile = signed ? require('./signed-settlement-350-profile.cjs')
+  : precision ? require('./expense-witness-349-profile.cjs')
   : combined ? require('./expense-witness-346-profile.cjs') : history;
 
 const root = '/qualification';
 const api = path.join(root, 'workspace/services/api');
 const raceScript = path.join(root, 'historical-expense-335-race.cjs');
-const spec = 'src/database/issue417-history-expense.pg.spec.ts';
+const spec = history.issue417Spec;
 const title = 'imports 20 rows, verifies 18, keeps 2 pending, posts only verified rows once';
 const purpose = 'ISSUE417_HISTORY_EXPENSE_EXACT_' + profile.count;
 const receipt = { schemaVersion: 1, purpose, sourceSha: source.sourceSha, stages: ['INPUTS'], status: 'STOPPED' };
@@ -28,6 +30,7 @@ async function consume(context) {
   const endpoint = new URL(ownerUrl);
   const run = runId.replaceAll('-', '');
   assert.equal(candidateTree, source.sourceTree);
+  if (signed) assert.equal(receipt.installOnly295.nonOwnerDenied, true);
   assert.match(run, /^[a-f0-9]{32}$/u);
   assert.equal(database, 'jg_task01_' + run);
   assert.equal(endpoint.protocol, 'postgresql:');
@@ -98,10 +101,18 @@ async function main() {
   }
   assert.equal(createHash('sha256').update(fs.readFileSync(path.join(root, 'installer.cjs'))).digest('hex'),
     profile.installerSha256);
-  assert.equal(createHash('sha256').update(fs.readFileSync(raceScript)).digest('hex'), precision ? history.race349Sha256 : history.raceSha256);
+  assert.equal(createHash('sha256').update(fs.readFileSync(raceScript)).digest('hex'),
+    signed ? history.race350Sha256 : precision ? history.race349Sha256 : history.raceSha256);
+  if (signed) {
+    require('./migration-inputs-346.cjs')(api, source, profile);
+    assert.equal(createHash('sha256').update(fs.readFileSync(path.join(api, spec))).digest('hex'), history.issue417SpecSha256);
+  }
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
   const material = { sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails };
-  if (precision) {
+  if (signed) {
+    await withCombinedSignedSettlement350(receipt, consume, { ...source, ...material });
+    profile.assertInstallation(receipt, source);
+  } else if (precision) {
     await withCombinedExpenseWitness349(receipt, consume, { ...source, ...material });
     assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness, true);
   } else if (combined) {
@@ -115,7 +126,8 @@ async function main() {
   assert.equal(base334.ledgerSha256, source.predecessor334.ledgerSha256);
   assert.equal(base334.sameIdentity, true);
   assert.equal(base334.sameBaseB7, true);
-  const forward = precision ? receipt.expenseWitnessPrecisionForward
+  const forward = signed ? receipt.signedSettlementForward
+    : precision ? receipt.expenseWitnessPrecisionForward
     : combined ? receipt.expenseWitnessForward : receipt.forward320;
   assert.equal(forward.sourceTree, source.sourceTree);
   assert.equal(forward.ledgerSha256, profile.ledgerSha256);

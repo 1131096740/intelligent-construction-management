@@ -12,6 +12,11 @@ plan=$(cd "$(dirname "$0")" && pwd -P)
 base="$plan/.."
 common="$base/common"
 [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$base") ]] || exit 65
+mode=$(node -p 'require(process.argv[1]).mode' "$prepared/source.json")
+if [[ $mode == signed-settlement-350 ]]; then
+  [[ ${GITHUB_ACTIONS:-} != true && ${5-} == --issue417-history-expense ]] || exit 64
+  node "$base/check-ledger.cjs" "$repo" "$sha" --signed-settlement-350 | cmp -s "$prepared/source.json" - || exit 65
+fi
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-expense-witness.XXXXXXXX")
 node "$plan/stage.cjs" "$prepared" "$sha" "$work" "${5-}"
 if [[ ${5-} == --host-only || ${6-} == --host-only ]]; then
@@ -50,6 +55,10 @@ if [[ ${5-} == --issue417-history-expense ]]; then
     race="$work/historical-expense-335-race.cjs"
     args+=(--mount "type=bind,src=$base/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
   fi
+  if [[ $mode == signed-settlement-350 ]]; then
+    args+=(--mount "type=bind,src=$base/signed-settlement-350-profile.cjs,dst=/qualification/signed-settlement-350-profile.cjs,readonly"
+      --mount "type=bind,src=$base/bank/migration-inputs-346.cjs,dst=/qualification/migration-inputs-346.cjs,readonly")
+  fi
   args+=(--mount "type=bind,src=$race,dst=/qualification/historical-expense-335-race.cjs,readonly")
 fi
 for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs; do
@@ -74,7 +83,11 @@ const assert=require('node:assert/strict');
 const [file,sha,sourceFile,scope]=process.argv.slice(2),r=require(file),source=require(sourceFile);
 assert.equal(r.sourceSha,sha);
 if (scope === '--issue417-history-expense') {
-  assert.ok([346,349].includes(source.migrationCount));
+  assert.ok([346,349,350].includes(source.migrationCount));
+  if (source.migrationCount === 350) {
+    assert.equal(r.installOnly295.nonOwnerDenied,true);
+    assert.equal(r.signedSettlementCatalogAfterBusiness,true);
+  }
   assert.equal(r.status,'ISSUE417_HISTORY_EXPENSE_EXACT_'+source.migrationCount+'_PASSED');
   assert.equal(r.original.operatingLedgerPort,'ORIGINAL_RECORDED_INPUTS');
   assert.equal(r.original.complete,true);
