@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 || $6 == --expense-witness-346 ) ) ||
-  ( $# == 7 && ( $6 == --historical-settlement-334 || $6 == --expense-witness-346 ) && $7 == --host-only ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 || $6 == --expense-witness-346 || $6 == --expense-witness-349 ) ) ||
+  ( $# == 7 && ( $6 == --historical-settlement-334 || $6 == --expense-witness-346 || $6 == --expense-witness-349 ) && $7 == --host-only ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -17,16 +17,18 @@ finance="$root/.github/task12-install-295/contract-finance"
 common="$finance/common"
 workspace="$prepared/prepared/context/workspace"
 source_tree=
-if [[ ${6:-} == --expense-witness-346 ]]; then
+expense_profile=
+if [[ ${6:-} == --expense-witness-* ]]; then
+  expense_profile="$plan/${6#--}-profile.cjs"
   dirty=$(git -C "$root" status --porcelain --untracked-files=all -- "$plan" "$prior")
   [[ -z $dirty ]] || exit 65
   source_tree=$(git -C "$root" rev-parse "$sha^{tree}")
 fi
-node - "$prepared/source.json" "$sha" "$plan/finance-adjacent-profiles.json" "$lane" "$common/multi-witness.cjs" "$plan/upward-archive-332-profile.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan/expense-witness-346-profile.cjs" "$source_tree" ${mode_args[@]+"${mode_args[@]}"} <<'JS'
+node - "$prepared/source.json" "$sha" "$plan/finance-adjacent-profiles.json" "$lane" "$common/multi-witness.cjs" "$plan/upward-archive-332-profile.cjs" "$plan/historical-settlement-334-profile.cjs" "$expense_profile" "$source_tree" ${mode_args[@]+"${mode_args[@]}"} <<'JS'
 const [sourceFile,sha,profilesFile,lane,terminalFile,archiveProfile,historicalProfile,expenseProfile,tree,mode]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
 if(source.sourceSha!==sha||!Object.hasOwn(require(profilesFile),lane))process.exit(65);
-if(mode==='--expense-witness-346') {
+if(expenseProfile) {
   require('node:assert/strict').equal(source.sourceTree,tree);
   require(expenseProfile).assertSource(source,terminal.final);
 } else if(mode==='--historical-settlement-334') {
@@ -69,14 +71,19 @@ if (mode!==undefined && profile.legacySeed) {
 JS
 
 installer="$common/installer.cjs"
-if [[ ${6:-} == --historical-settlement-334 || ${6:-} == --expense-witness-346 ]]; then
+if [[ ${6:-} == --historical-settlement-334 || ${6:-} == --expense-witness-* ]]; then
   node "$plan/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
   installer="$work/installer.cjs"
 fi
-if [[ ${6:-} == --expense-witness-346 ]]; then
+if [[ ${6:-} == --expense-witness-* ]]; then
   git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer.patch"
   expected=$(node -e 'console.log(require(process.argv[1]).installerSha256)' "$plan/expense-witness-346-profile.cjs")
   [[ $(sha256sum "$installer" | cut -d' ' -f1) == "$expected" ]] || exit 65
+  if [[ ${6:-} == --expense-witness-349 ]]; then
+    git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer-349.patch"
+    expected=$(node -p 'require(process.argv[1]).installerSha256' "$expense_profile")
+    [[ $(sha256sum "$installer" | cut -d' ' -f1) == "$expected" ]] || exit 65
+  fi
   chmod 0644 "$installer"
 fi
 if [[ ${7-} == --host-only ]]; then
@@ -103,18 +110,21 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$installer,dst=/qualification/installer.cjs,readonly"
   --mount "type=bind,src=$plan/finance-adjacent-entry.cjs,dst=/qualification/finance-adjacent-entry.cjs,readonly"
   --mount "type=bind,src=$plan/finance-adjacent-profiles.json,dst=/qualification/finance-adjacent-profiles.json,readonly")
-if [[ ${6:-} == --upward-archive-332 || ${6:-} == --historical-settlement-334 || ${6:-} == --expense-witness-346 ]]; then
+if [[ ${6:-} == --upward-archive-332 || ${6:-} == --historical-settlement-334 || ${6:-} == --expense-witness-* ]]; then
   args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 fi
-if [[ ${6:-} == --historical-settlement-334 || ${6:-} == --expense-witness-346 ]]; then
+if [[ ${6:-} == --historical-settlement-334 || ${6:-} == --expense-witness-* ]]; then
   for file in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
 fi
-if [[ ${6:-} == --expense-witness-346 ]]; then
+if [[ ${6:-} == --expense-witness-* ]]; then
   for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
+fi
+if [[ ${6:-} == --expense-witness-349 ]]; then
+  args+=(--mount "type=bind,src=$expense_profile,dst=/qualification/expense-witness-349-profile.cjs,readonly")
 fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
@@ -127,7 +137,7 @@ done < "$work/mounts.tsv"
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 count=295
-case "${6:-}" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; --upward-archive-332) count=332;; --historical-settlement-334) count=334;; --expense-witness-346) count=346;; esac
+case "${6:-}" in --current-320) count=329;; --text-direct-330) count=330;; --payment-remainder-331) count=331;; --upward-archive-332) count=332;; --historical-settlement-334) count=334;; --expense-witness-346) count=346;; --expense-witness-349) count=349;; esac
 printf '%s\n' "假设原 $lane 业务断言、角色及并发行为可在同一 $count 隔离库保持。观察原用例统计、combinedAfterBusiness 和 cleanup。" > "$work/hypothesis.txt"
 printf '%s\n' "$work"
 status=0
