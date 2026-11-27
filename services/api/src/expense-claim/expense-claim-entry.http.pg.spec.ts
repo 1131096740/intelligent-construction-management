@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import * as ExcelJS from "exceljs";
 import { PDFDict, PDFDocument, PDFName, PDFStream } from "pdf-lib";
 import { verifyApprovedPdf } from "../database/approval-pdf-acceptance.test-support";
 import type { INestApplication } from "@nestjs/common";
@@ -211,7 +212,8 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       requestedAmountYuan: "0.0100", requestedAmountCents: "1",
       lines: [{ amountYuan: "0.0050", amountCents: "1" }, { amountYuan: "0.0050", amountCents: "0" }]
     } });
-    expect(await request(detailPath + "/submission", {})).toMatchObject({ status: 201, body: { companyPayableAmountCents: "1" } });
+    const submitted = await request(detailPath + "/submission", {});
+    expect(submitted).toMatchObject({ status: 201, body: { companyPayableAmountCents: "1" } });
     const snapshot = await prisma.expenseClaimEntrySnapshot.findFirstOrThrow({ where: { expenseClaimId: created.body.id } });
     expect(snapshot.valuesSnapshot).toMatchObject({ requestedAmountYuan: "0.0100", requestedAmountCents: "1", numericProtocolVersion: 2, lines: [{ amountYuan: "0.0050", amountCents: "1" }, { amountYuan: "0.0050", amountCents: "0" }] });
 
@@ -219,6 +221,33 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect(zeroPayable).toMatchObject({ status: 201, body: { requestedAmountYuan: "0.0001", requestedAmountCents: "0" } });
     const maxPayable = await request(path, { ...claim, reason, requestedAmountYuan: "92233720368547758.0749", lines: [exact("92233720368547758.0749")] });
     expect(maxPayable).toMatchObject({ status: 201, body: { requestedAmountYuan: "92233720368547758.0749", requestedAmountCents: "9223372036854775807" } });
+    const exportResponse = await fetch(`${baseUrl}${path}/ledger-export?keyword=${encodeURIComponent(reason)}`, {
+      headers: { authorization: `Bearer ${token}` }
+    });
+    expect(exportResponse.status).toBe(200);
+    const ledger = new ExcelJS.Workbook();
+    await ledger.xlsx.load(Buffer.from(await exportResponse.arrayBuffer()) as unknown as ExcelJS.Buffer);
+    const sheet = ledger.getWorksheet("费用与报销台账");
+    const amountColumn = sheet?.getRow(1).values;
+    const column = Array.isArray(amountColumn) ? amountColumn.indexOf("申请金额（元）") : -1;
+    expect(column).toBeGreaterThan(0);
+    expect(sheet!.getColumn(column).values).toEqual(expect.arrayContaining([0.01, 0.0001, "92233720368547758.0749"]));
+    expect([2, 3, 4].map(row => [sheet!.getRow(row).getCell(column).value, sheet!.getRow(row).getCell(column).numFmt]))
+      .toEqual(expect.arrayContaining([[0.0001, "#,##0.0000"], ["92233720368547758.0749", "@"]]));
+
+    expect(await request(detailPath + "/withdrawal", { approvalInstanceId: submitted.body.approvalInstanceId }))
+      .toMatchObject({ status: 201, body: { status: "draft" } });
+    const returned = await request(detailPath);
+    const refreshed = await request(detailPath + "/draft", { expectedUpdatedAt: returned.body.updatedAt, reason }, token, "PATCH");
+    expect(refreshed).toMatchObject({ status: 200, body: { requestedAmountYuan: "0.0100", requestedAmountCents: "1" } });
+    expect((await request(detailPath + "/draft", { expectedUpdatedAt: refreshed.body.updatedAt, reason, lines: legacyLines }, token, "PATCH")).status).toBe(400);
+    const replacement = await request(detailPath + "/draft", {
+      expectedUpdatedAt: refreshed.body.updatedAt, reason, lines: [exact("0.0001"), exact("0.0100")]
+    }, token, "PATCH");
+    expect(replacement).toMatchObject({ status: 200, body: { requestedAmountYuan: "0.0101", requestedAmountCents: "1" } });
+    expect(await request(detailPath)).toMatchObject({ status: 200, body: {
+      requestedAmountYuan: "0.0101", lines: [{ amountYuan: "0.0001", amountCents: "0" }, { amountYuan: "0.0100", amountCents: "1" }]
+    } });
   }, 45_000);
 
   (enabled ? it : it.skip)("报销四位元金额终审保留项目成本并分开整数分待付", async () => {
