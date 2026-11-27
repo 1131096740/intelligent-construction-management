@@ -592,9 +592,35 @@ run("issue 421b four ledger filters and exports on real PostgreSQL and HTTP", ()
       where: { id: ids.spotVersionA },
       data: { estimatedTotalAmount: new Prisma.Decimal("1234567890123456.7891") }
     });
-    await owner.generalProcurement.update({
-      where: { id: ids.generalA },
-      data: { estimatedAmount: new Prisma.Decimal("1234567890123456.7890") }
+    const generalEstimate = "1234567890123456.7890";
+    await owner.generalProcurement.create({
+      data: {
+        code: "ZHCG-421B-PRECISION",
+        requestKey: "i421b-request-precision",
+        creationFingerprint: "i421b-fingerprint-precision",
+        projectId: ids.projectA,
+        companyEntityId: "i421b-company",
+        companyNameSnapshot: "四川建工智管建筑工程有限公司",
+        applicantUserId: ids.staffA,
+        applicantNameSnapshot: "合同部经办甲",
+        category: "office_supplies",
+        reason: "高精度综合采购",
+        requestProtocolVersion: 2,
+        scope: "project",
+        lines: [{
+          id: "00000000-0000-4000-8000-000000000003",
+          name: "高精度综合采购",
+          specification: null,
+          unit: "项",
+          quantity: "1.0000",
+          unitPrice: generalEstimate,
+          estimatedAmount: generalEstimate,
+          requiredOn: null,
+          note: null
+        }],
+        status: "approved_pending_procurement",
+        estimatedAmount: new Prisma.Decimal(generalEstimate)
+      }
     });
     await owner.expenseClaim.update({
       where: { id: ids.claimA },
@@ -610,8 +636,8 @@ run("issue 421b four ledger filters and exports on real PostgreSQL and HTTP", ()
         { "申请金额（元）": "90071992547409.93" }],
       ["staffA", "/spot-procurements/ledger-export?keyword=LK-421B-A",
         { "预计金额（元）": "1234567890123456.7891" }],
-      ["staffA", "/general-procurements/ledger-export?keyword=办公",
-        { "预计金额（元）": "1234567890123456.7890" }],
+      ["staffA", "/general-procurements/ledger-export?keyword=ZHCG-421B-PRECISION",
+        { "预计金额（元）": generalEstimate }],
       ["manager", "/expense-claims/ledger-export?keyword=差旅",
         {
           "申请金额（元）": "90071992547409.99",
