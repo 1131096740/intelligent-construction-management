@@ -30,6 +30,7 @@
   "services/api/src/company-transfer/company-transfer-legacy-balances.ts": "be597915fb510fa35c6ccb24075c7bba6f889b2d22ffd5dad9439e42d53e4196",
   "services/api/src/company-transfer/company-transfer-legacy.ts": "07140eec7e8c4a4721efdd0a5c48960cd8f69877821bac03294ed635c7dc8d89",
   "services/api/src/company-transfer/company-transfer-read.service.ts": "64235993b8624227ab5ff078d683ab5e13c618cbcd32650b803c7f58b4dca7a1",
+  "services/api/src/contract-template/task09-new-selection-browser.http.spec.ts": "e577191a63e14cae2cfeca3c55e2f6867a2a3be8fd259fa75e630f88c76de7c2",
   "services/api/src/contract/contract-generated-upward-operating-installation.ts": "1378c93e71ac1e155806a340a44f87388bef78152403d2aacf48a8d64fb87144",
   "services/api/src/expense-claim/dto/create-expense-claim.dto.ts": "84f29073c28fa4dcdc0c350d75b8c237f942bd28ac2e459e46f910b1cd01ebba",
   "services/api/src/expense-claim/dto/record-expense-claim-payment.dto.ts": "2589bcdf4ae080b8a75e7e1113b1f22d23d805c0f8fb6f0ff36e6e36d602d592",

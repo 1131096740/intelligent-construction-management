@@ -155,6 +155,11 @@
     "candidate": "64235993b8624227ab5ff078d683ab5e13c618cbcd32650b803c7f58b4dca7a1"
   },
   {
+    "path": "services/api/src/contract-template/task09-new-selection-browser.http.spec.ts",
+    "expected": "32323ef9f399804e8205a5694dc0ad788456082af73acdfb1eb270fd576dfe61",
+    "candidate": "e577191a63e14cae2cfeca3c55e2f6867a2a3be8fd259fa75e630f88c76de7c2"
+  },
+  {
     "path": "services/api/src/contract/contract-generated-upward-operating-installation.ts",
     "expected": "fc475bae761ea3c961ce90689b8c3fed1a76610acc2f0b487a781b56b2f77f2b",
     "candidate": "1378c93e71ac1e155806a340a44f87388bef78152403d2aacf48a8d64fb87144"
