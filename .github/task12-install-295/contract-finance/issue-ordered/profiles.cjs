@@ -441,6 +441,12 @@ profiles.issue426_a01_349 = {
   ...precisionBaseline
 };
 
+const issue418OperatingScopes = Object.freeze([
+  'issue418_recognized_dedup', 'issue418_signed_operating', 'issue418_paired_funds',
+  'issue418_cash_attribution', 'issue418_source_unique', 'issue418_guard', 'issue418_contract_drilldown'
+]);
+const issue418OperatingScopes349 = Object.freeze(issue418OperatingScopes.map(scope => scope + '_349'));
+
 for (const [scope, predecessor] of Object.entries({
   issue400_349: 'issue400_346',
   issue403_349: 'issue403',
@@ -451,7 +457,8 @@ for (const [scope, predecessor] of Object.entries({
   issue416_handover_349: 'issue416_handover_346',
   issue416_his_349: 'issue416_his_346',
   issue420_349: 'issue420_346',
-  issue422_349: 'issue422_346'
+  issue422_349: 'issue422_346',
+  ...Object.fromEntries(issue418OperatingScopes349.map((scope, index) => [scope, issue418OperatingScopes[index]]))
 })) {
   const frozen = profiles[predecessor];
   profiles[scope] = {
@@ -466,9 +473,4 @@ function profileFor(scope) {
   return profiles[scope];
 }
 
-const issue418OperatingScopes = Object.freeze([
-  'issue418_recognized_dedup', 'issue418_signed_operating', 'issue418_paired_funds',
-  'issue418_cash_attribution', 'issue418_source_unique', 'issue418_guard', 'issue418_contract_drilldown'
-]);
-
-module.exports = { profileFor, issue418OperatingScopes };
+module.exports = { profileFor, issue418OperatingScopes, issue418OperatingScopes349 };

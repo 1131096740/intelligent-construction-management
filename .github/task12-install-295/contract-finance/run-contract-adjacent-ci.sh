@@ -7,6 +7,7 @@ issue_lane=false
 if [[ ${2:-} == issue* ]]; then
   [[ $# == 3 ]] || exit 64
   case "$2:$3" in
+    issue418-operating:--expense-witness-349) ;;
     *:--expense-witness-349)
       node -e 'const p=require(process.argv[1]).profileFor(process.argv[2]); if(p.requiredMigrationCount!==349) process.exit(65)' "$plan/issue-ordered/profiles.cjs" "$2" >/dev/null 2>&1 || exit 64 ;;
     issue403:--expense-witness-346|issue404:--expense-witness-346|issue417:--expense-witness-346|issue418-operating:--expense-witness-346) ;;
@@ -110,7 +111,11 @@ if [[ $issue_lane == true ]]; then
       ;;
     issue418-operating)
       # Each profile runs on a fresh database; guarded writers preserve the release ACL.
-      scopes=$(node -p 'require(process.argv[1]).issue418OperatingScopes.join(" ")' "$plan/issue-ordered/profiles.cjs")
+      scopes=$(node -p '
+        const profiles = require(process.argv[1]);
+        const scopes = process.argv[2] === "--expense-witness-349" ? profiles.issue418OperatingScopes349 : profiles.issue418OperatingScopes;
+        scopes.join(" ")
+      ' "$plan/issue-ordered/profiles.cjs" "$3")
       read -r -a profiles <<< "$scopes"
       for scope in "${profiles[@]}"; do
         bash "$plan/issue-ordered/run.sh" "$root" "$work/source" "$sha" "$work/browser" "$scope"
