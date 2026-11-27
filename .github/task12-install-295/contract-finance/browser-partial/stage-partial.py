@@ -91,5 +91,10 @@ for name in sorted(partial_pins.keys() | completion_pins.keys()):
             forward352 = Path(__file__).with_name('partial352.patch').resolve()
             subprocess.run(['git', 'apply', '-p0', '--unidiff-zero', str(forward352)], cwd=target.parent, check=True)
             check(target.read_bytes(), '54f65ce29121e19570019fe1c3c87d5fefa1345c2685059f15c01a3e8a7f2f2a', target.name)
+    if source.name == 'task16-real-browser.pg.spec.ts' and options == ['--company-history-352']:
+        check(target.read_bytes(), 'f1d73217d4a308e3bd8bb436f1b7f62ff3b00c1a22228c1e19c16e59ae551477', target.name)
+        subprocess.run(['patch', '--batch', '--forward', '--fuzz=0', '--silent', str(target),
+                        str(Path(__file__).with_name('status352.patch'))], check=True)
+        check(target.read_bytes(), 'ee97feb71614f3242efb0e1b79793f02eb7a8f4b39bbd1e2c0b5c6dc2f01cc2f', target.name)
     target.chmod(0o644)
     print(name)

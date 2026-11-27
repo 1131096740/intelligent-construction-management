@@ -1,0 +1,11 @@
+--- task16-real-browser.pg.spec.ts
++++ task16-real-browser.pg.spec.ts
+@@ -145,7 +145,7 @@
+    await second.addInitScript((value:unknown)=>localStorage.setItem("jiangkong-web-admin-auth",JSON.stringify(value)),session(keeper));
+    const page=await first.newPage();const required=["/api/payments","/api/projects","/api/contract-relationship-ledger","/api/operating-projections/as-of","/api/payment-executions/work-items","/api/payment-executions/recorded-items"];
+    const waits=required.map(route=>page.waitForResponse((response:{url:()=>string})=>new URL(response.url()).pathname===route,{timeout:15000}));
+-   await page.goto(`http://127.0.0.1:${port}/付款管理`);const responses=await Promise.all(waits);expect(responses.map((response:{status:()=>number})=>response.status())).toEqual(required.map(()=>200));
++   await page.goto(`http://127.0.0.1:${port}/付款管理`);const responses=await Promise.all(waits);const statuses=responses.map((response:{status:()=>number})=>response.status());if(statuses.some((status:number)=>status!==200))throw new Error("TASK398_HTTP_STATUSES_"+statuses.join("_"));
+    const initialProjection=await responses[3]!.json();expect(initialProjection.operating.payableCents).toBe("10000");
+    const panel=page.getByRole("region",{name:"共享实付待办"});await panel.getByRole("button",{name:"办理实付登记",exact:true}).click();
+    const form=page.getByRole("region",{name:"实际付款登记"});await form.locator('[aria-label="实付金额（元）"] input').fill("30");await form.locator('[aria-label="实际付款日期"] input').fill(plan.paidAt);
