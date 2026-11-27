@@ -16,6 +16,15 @@ DECLARE
   runtime_role TEXT := current_setting('app.verify_runtime_role');
   runtime_role_oid OID;
   privilege TEXT;
+  relation TEXT;
+  exact_payload_types CONSTANT TEXT[] := ARRAY[
+    'public."OperatingLedgerFactWritePayloadV2"',
+    'public."OperatingLedgerImpactWritePayloadV2"'
+  ];
+  exact_append_functions CONSTANT TEXT[] := ARRAY[
+    'public."appendOperatingFactThroughService"(public."OperatingLedgerFactWritePayloadV2",text,text)',
+    'public."appendOperatingImpactThroughService"(public."OperatingLedgerImpactWritePayloadV2",text,text)'
+  ];
 BEGIN
   SELECT oid
     INTO runtime_role_oid
@@ -70,10 +79,16 @@ BEGIN
      OR NOT has_table_privilege(runtime_role, 'public."OperatingImpactEntry"', 'SELECT') THEN
     RAISE EXCEPTION 'operating-ledger runtime role cannot read the ledger';
   END IF;
-  FOREACH privilege IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE'] LOOP
-    IF has_table_privilege(runtime_role, 'public."OperatingFact"', privilege)
-       OR has_table_privilege(runtime_role, 'public."OperatingImpactEntry"', privilege) THEN
+  FOREACH relation IN ARRAY ARRAY['public."OperatingFact"', 'public."OperatingImpactEntry"'] LOOP
+    IF has_table_privilege(runtime_role, relation, 'INSERT, UPDATE, DELETE, TRUNCATE')
+       OR has_any_column_privilege(runtime_role, relation, 'INSERT, UPDATE') THEN
       RAISE EXCEPTION 'operating-ledger runtime role retains direct ledger write privilege';
+    END IF;
+  END LOOP;
+  FOREACH relation IN ARRAY ARRAY['public."OperatingLedgerWriteSecret"', 'public."OperatingLedgerWriteContext"'] LOOP
+    IF has_table_privilege(runtime_role, relation, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+       OR has_any_column_privilege(runtime_role, relation, 'SELECT, INSERT, UPDATE, REFERENCES') THEN
+      RAISE EXCEPTION 'operating-ledger runtime role retains direct writer witness privilege';
     END IF;
   END LOOP;
   IF NOT has_function_privilege(
@@ -102,13 +117,30 @@ BEGIN
     'public.issue_contract_bank_holder(text,text,text,text,text,text)',
     'public.record_verified_bank_observation(jsonb,text)',
     'public.append_company_transfer_event(jsonb,text)'
-  ] LOOP
+  ] || exact_append_functions LOOP
     IF NOT has_function_privilege(runtime_role, privilege, 'EXECUTE') OR EXISTS (
       SELECT 1 FROM pg_catalog.pg_proc p,
         LATERAL aclexplode(COALESCE(p.proacl, acldefault('f',p.proowner))) a
       WHERE p.oid = privilege::regprocedure AND a.grantee = 0 AND a.privilege_type = 'EXECUTE'
     ) THEN RAISE EXCEPTION 'financial entry requires runtime EXECUTE and no PUBLIC EXECUTE'; END IF;
   END LOOP;
+  FOREACH privilege IN ARRAY exact_payload_types LOOP
+    IF NOT has_type_privilege(runtime_role, privilege, 'USAGE') OR EXISTS (
+      SELECT 1 FROM pg_catalog.pg_type t,
+        LATERAL aclexplode(COALESCE(t.typacl, acldefault('T',t.typowner))) a
+      WHERE t.oid = privilege::regtype AND a.grantee = 0 AND a.privilege_type = 'USAGE'
+    ) THEN RAISE EXCEPTION 'V2 operating-ledger payload requires runtime USAGE and no PUBLIC USAGE'; END IF;
+  END LOOP;
+  IF EXISTS (
+    SELECT 1 FROM pg_catalog.pg_roles r
+    WHERE r.rolname IN ('jg_task01_runtime', 'jg_task01_observer')
+      AND (
+        EXISTS (SELECT 1 FROM unnest(exact_append_functions) f(signature)
+          WHERE has_function_privilege(r.oid, f.signature, 'EXECUTE'))
+        OR EXISTS (SELECT 1 FROM unnest(exact_payload_types) t(signature)
+          WHERE has_type_privilege(r.oid, t.signature, 'USAGE'))
+      )
+  ) THEN RAISE EXCEPTION 'V2 operating-ledger ACL exceeds the registered application role boundary'; END IF;
   FOREACH privilege IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE'] LOOP
     IF has_table_privilege(
       runtime_role,
