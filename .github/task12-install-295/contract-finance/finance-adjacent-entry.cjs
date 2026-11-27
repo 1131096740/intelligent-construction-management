@@ -2,7 +2,7 @@
 
 const assert=require('node:assert/strict');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness,withCombinedExpenseWitness349}=require('./installer.cjs');
 const {final,digest}=require('./multi-witness.cjs');
 const plan=require('./finance-adjacent-profiles.json');
 const {readFileSync}=require('node:fs');
@@ -13,13 +13,14 @@ const source=require('./contract-finance-source.json');
 const root='/qualification';
 const lane=process.argv[2];
 const mode=process.argv[3];
-const expenseWitness346=mode==='--expense-witness-346';
+const precision=mode==='--expense-witness-349';
+const expenseWitness=precision||mode==='--expense-witness-346';
 const historicalSettlement=mode==='--historical-settlement-334';
 const upwardArchive=mode==='--upward-archive-332';
 const paymentRemainder=mode==='--payment-remainder-331';
 const textDirect=mode==='--text-direct-330';
-const current320=expenseWitness346||historicalSettlement||upwardArchive||paymentRemainder||textDirect||mode==='--current-320';
-const count=expenseWitness346?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
+const current320=expenseWitness||historicalSettlement||upwardArchive||paymentRemainder||textDirect||mode==='--current-320';
+const count=precision?349:expenseWitness?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
 const receipt={schemaVersion:1,purpose:'ORIGINAL_FINANCE_ADJACENT_EXACT_'+count,lane,sourceSha:source.sourceSha,
   migrationSha256:current320?source.tails.at(-1).sha256:digest,business:'NOT_ENTERED',stages:['INPUTS'],status:'STOPPED'};
 
@@ -29,8 +30,9 @@ async function main(){
   assert.equal(process.env.DATABASE_URL,undefined);
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
   assert.equal(source.migrationCount,count);
-  const expenseProfile=expenseWitness346?require('./expense-witness-346-profile.cjs'):undefined;
-  const historicalProfile=(historicalSettlement||expenseWitness346)?require('./historical-settlement-334-profile.cjs'):undefined;
+  const expense346=expenseWitness?require('./expense-witness-346-profile.cjs'):undefined;
+  const expenseProfile=precision?require('./expense-witness-349-profile.cjs'):expense346;
+  const historicalProfile=(historicalSettlement||expenseWitness)?require('./historical-settlement-334-profile.cjs'):undefined;
   const hash=file=>createHash('sha256').update(readFileSync(file)).digest('hex');
   if(expenseProfile){
     expenseProfile.assertSource(source,final);
@@ -76,8 +78,12 @@ async function main(){
     if(expenseProfile){
       historicalProfile.assertFinanceInstallation(receipt,{...source,tails:source.tails.slice(0,39)});
       assert.deepEqual(receipt.expenseWitnessForward,{
+        count:expense346.count,ledgerSha256:expense346.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
+        tails:source.tails.slice(39,expense346.count-295).map(({name,sha256})=>({name,sha256}))
+      });
+      if(precision) assert.deepEqual(receipt.expenseWitnessPrecisionForward,{
         count,ledgerSha256:expenseProfile.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
-        tails:source.tails.slice(39).map(({name,sha256})=>({name,sha256}))
+        tails:source.tails.slice(expense346.count-295).map(({name,sha256})=>({name,sha256}))
       });
     }
     function runCommand(file,args,{cwd,timeoutMs,allowFailure,extra}){
@@ -99,15 +105,18 @@ async function main(){
     const material={
       sourceTree:source.sourceTree,migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails
     };
-    if(expenseProfile) {
+    if(precision) {
+      await withCombinedExpenseWitness349(receipt,consume,{...source,...material});
+      assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness,true);
+    } else if(expenseWitness) {
       await withCombinedExpenseWitness(receipt,consume,material,count);
-      assert.equal(receipt.expenseWitnessCatalogAfterBusiness,true);
     } else {
       await installCurrent(receipt,consume,material);
       assert.equal(receipt.forward320.count,count);
       assert.equal(receipt.forward320.sourceTree,source.sourceTree);
       assert.equal(receipt.forward320.ledgerSha256,source.ledgerSha256);
     }
+    if(expenseWitness) assert.equal(receipt.expenseWitnessCatalogAfterBusiness,true);
     assert.equal(receipt.forward320.sameBaseB7,true);
     assert.equal(receipt.combinedAfterBusiness.count,count);
     if(historicalProfile) {
