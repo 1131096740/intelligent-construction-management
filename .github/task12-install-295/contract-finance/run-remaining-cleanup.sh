@@ -2,8 +2,13 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 ) ) ||
-  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 ) && $6 == --host-only ) ]] || exit 64
+case $#:${5-}:${6-} in
+  5:--signed-settlement-350:|6:--signed-settlement-350:--host-only)
+    [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64 ;;
+  *)
+    [[ $# == 4 || ( $# == 5 && $5 == --expense-witness-34[69] ) ||
+      ( $# == 6 && $5 == --expense-witness-34[69] && $6 == --host-only ) ]] || exit 64 ;;
+esac
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -15,9 +20,9 @@ archive="$repo/.github/task12-install-289"
 scope=cleanup
 mode=${5-}
 expense=false
-if [[ $mode == --expense-witness-346 || $mode == --expense-witness-349 ]]; then
+if [[ $mode == --expense-witness-34[69] || $mode == --signed-settlement-350 ]]; then
   expense=true
-  if [[ $mode == --expense-witness-349 ]]; then
+  if [[ $mode != --expense-witness-346 ]]; then
     [[ $plan == "$repo/.github/task12-install-295/contract-finance" ]] || exit 65
   fi
   [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
@@ -27,10 +32,10 @@ fi
 
 node -e '
   const source=require(process.argv[1]);
-  const count=source.mode==="expense-witness-349"?349:source.mode==="expense-witness-346"?346:source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const count=source.mode==="signed-settlement-350"?350:source.mode==="expense-witness-349"?349:source.mode==="expense-witness-346"?346:source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==count||
     (count>=346?process.argv[7]!=="--"+source.mode:Boolean(process.argv[7])))process.exit(1);
-  if(count===346||count===349) {
+  if(count>=346) {
     const plan=process.argv[6];
     const api=process.argv[8];
     const profile=require(plan+"/"+source.mode+"-profile.cjs");
@@ -71,7 +76,7 @@ done
 source "$plan/remaining-installer-mounts.sh"
 source_mode=$(node -p 'require(process.argv[1]).mode ?? ""' "$prepared/source.json")
 append_remaining_installer "$source_mode" retained
-if [[ $expense == true ]]; then
+if [[ $source_mode == expense-witness-34[69] ]]; then
   witness=payment-execution-${source_mode##*-}.cjs
   args+=(--mount "type=bind,src=$plan/$witness,dst=/qualification/$witness,readonly")
 fi
@@ -79,7 +84,7 @@ node - "$archive" "$prepared/source.json" "$work" "$plan" > "$work/cleanup-mount
 const fs=require('node:fs'), path=require('node:path'),{createHash}=require('node:crypto'),assert=require('node:assert/strict');
 const {spawnSync}=require('node:child_process'),{gunzipSync}=require('node:zlib');
 const [archive,sourceFile,work,plan]=process.argv.slice(2);
-const current=['current-320','text-direct-330','payment-remainder-331','upward-archive-332','historical-settlement-334','expense-witness-346','expense-witness-349'].includes(require(sourceFile).mode);
+const current=['current-320','text-direct-330','payment-remainder-331','upward-archive-332','historical-settlement-334','expense-witness-346','expense-witness-349','signed-settlement-350'].includes(require(sourceFile).mode);
 const lifecycle='fixtures/contract-lifecycle-route.spec.ts';
 const aggregate='fixtures/contract-draft-aggregate-concurrency.spec.ts';
 const oldLifecycle='32b015b36b9093f8354281d4807edb4f304eb657902eeb22faa43a3e952f9d1f';
