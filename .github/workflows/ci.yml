@@ -420,6 +420,15 @@ jobs:
             read -r -a exact_args <<< "$dispatch"
             exec bash "${exact_args[@]}"
           fi
+          if [[ "$count" == 349 ]]; then
+            dispatch=$(node -e "const gate=require('./services/api/prisma/dynamic-gate-349.cjs'); const {migrationBaseline}=require('./services/api/prisma/database-dynamic-gate-manifest.json'); if(!gate.matchesBaseline349(migrationBaseline)) process.exit(65); console.log((gate.commandFor349(process.env.DYNAMIC_GROUP, process.env.CI_SOURCE_SHA, process.env.DYNAMIC_SHARD) ?? []).join(' '));")
+            if [[ -z "$dispatch" ]]; then
+              echo "::error::349 PostgreSQL gate has no admitted runner for $DYNAMIC_GROUP${DYNAMIC_SHARD:+/$DYNAMIC_SHARD}"
+              exit 65
+            fi
+            read -r -a exact_args <<< "$dispatch"
+            exec bash "${exact_args[@]}"
+          fi
           if (( count > 334 )); then
             echo "::error::$count PostgreSQL gate has no admitted baseline"
             exit 65

@@ -473,7 +473,7 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
     ]);
     else assert.match(result.stdout, /334 PostgreSQL gate has no admitted runner/u);
   }
-  for (const count of [335, 347, 349]) {
+  for (const count of [335, 347, 350]) {
     const repinned = executable.replace(/^count=.*$/mu, `count=${count}`);
     const result = spawnSync("bash", ["-c", `exec () { exit 99; }\n${repinned}`], {
       cwd: root, encoding: "utf8",
@@ -484,41 +484,49 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
   }
 });
 
-test("the hosted 346 step routes the complete automatic matrix through isolated wrappers", async () => {
-  const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
-  const job = jobBlock(workflow, "postgresql16-dynamic-gates");
-  const [, command] = /      - name: Run exact-SHA PostgreSQL dynamic gate shard\n[\s\S]*?        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(job);
-  const executable = command.replace(/^          /gmu, "")
-    .replace(/^count=.*$/mu, "count=346")
-    .replace(
-      "require('./services/api/prisma/database-dynamic-gate-manifest.json')",
-      "({ migrationBaseline: { expectedDirectoryCount: 346, " +
-        "terminalMigration: '20261129015000_expense_public_cash_operating_source', " +
-        "terminalMigrationChecksum: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a' } })"
-    )
-    .replaceAll('exec bash "${exact_args[@]}"', 'printf "%s\\n" "${exact_args[@]}"; exit 0');
-  const manifest = JSON.parse(await readFile(join(root, "services/api/prisma/database-dynamic-gate-manifest.json")));
-  const sha = "d".repeat(40);
-  for (const { id, ciExecution } of manifest.coveredGroups) {
-    const shards = id === "pol113_pol115_business_entries" ? ["pol113_pol114", "pol115_workbench"] : [""];
-    for (const shard of shards) {
-      const result = spawnSync("bash", ["-c", executable], { cwd: root, encoding: "utf8",
-        env: { ...process.env, CI_SOURCE_SHA: sha, DYNAMIC_GROUP: id, DYNAMIC_SHARD: shard } });
-      const label = shard ? id + "/" + shard : id;
-      if (ciExecution === "manual-only") {
-        assert.equal(result.status, 65, label);
-        assert.match(result.stdout, /346 PostgreSQL gate has no admitted runner/u);
-        continue;
+for (const [count, terminal, checksum] of [
+  [346, "20261129015000_expense_public_cash_operating_source", "d2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a"],
+  [349, "20261129018000_reimbursement_exact_cash_cost_links", "58b3cc0404a85a97dbb484654245d4bd042e5fb2014f32997244b2597cb5110b"]
+]) {
+  test(`the hosted ${count} step routes the complete automatic matrix through isolated wrappers`, async () => {
+    const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
+    const job = jobBlock(workflow, "postgresql16-dynamic-gates");
+    const [, command] = /      - name: Run exact-SHA PostgreSQL dynamic gate shard\n[\s\S]*?        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(job);
+    const executable = command.replace(/^          /gmu, "")
+      .replace(/^count=.*$/mu, `count=${count}`)
+      .replace(
+        "require('./services/api/prisma/database-dynamic-gate-manifest.json')",
+        `({ migrationBaseline: { expectedDirectoryCount: ${count}, ` +
+          `terminalMigration: '${terminal}', terminalMigrationChecksum: '${checksum}' } })`
+      )
+      .replaceAll('exec bash "${exact_args[@]}"', 'printf "%s\\n" "${exact_args[@]}"; exit 0');
+    const manifest = JSON.parse(await readFile(join(root, "services/api/prisma/database-dynamic-gate-manifest.json")));
+    const sha = "d".repeat(40);
+    for (const { id, ciExecution } of manifest.coveredGroups) {
+      const shards = id === "pol113_pol115_business_entries" ? ["pol113_pol114", "pol115_workbench"] : [""];
+      for (const shard of shards) {
+        const result = spawnSync("bash", ["-c", executable], { cwd: root, encoding: "utf8",
+          env: { ...process.env, CI_SOURCE_SHA: sha, DYNAMIC_GROUP: id, DYNAMIC_SHARD: shard } });
+        const label = shard ? id + "/" + shard : id;
+        if (ciExecution === "manual-only") {
+          assert.equal(result.status, 65, label);
+          assert.match(result.stdout, new RegExp(`${count} PostgreSQL gate has no admitted runner`, "u"));
+          continue;
+        }
+        assert.equal(result.status, 0, label + result.stderr);
+        const [runner, actualSha, ...args] = result.stdout.trim().split("\n");
+        assert.match(runner, /^\.github\/task12-install-295\//u, label);
+        assert.equal(actualSha, sha, label);
+        if (shard) assert.deepEqual(args, count === 349 ? [shard, "--expense-witness-349"] : [shard], label);
+        else assert.ok(args.includes(`--expense-witness-${count}`), label);
+        if (count === 349 && runner.endsWith("run-contract-adjacent-ci.sh") &&
+            args[0].startsWith("issue") && !["issue417", "issue418-operating"].includes(args[0])) {
+          assert.match(args[0], /_349$/u, label);
+        }
       }
-      assert.equal(result.status, 0, label + result.stderr);
-      const [runner, actualSha, ...args] = result.stdout.trim().split("\n");
-      assert.match(runner, /^\.github\/task12-install-295\//u, label);
-      assert.equal(actualSha, sha, label);
-      if (shard) assert.deepEqual(args, [shard], label);
-      else assert.ok(args.includes("--expense-witness-346"), label);
     }
-  }
-});
+  });
+}
 
 test("personnel feedback runs after its real PostgreSQL shard with both browsers and original budgets", async () => {
   const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
