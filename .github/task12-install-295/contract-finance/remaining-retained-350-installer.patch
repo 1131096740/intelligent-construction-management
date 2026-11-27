@@ -1,0 +1,16 @@
+--- a/installer.cjs
++++ b/installer.cjs
+@@ -1655,0 +1656,13 @@
++
++function withCombined350Retained(receipt,consume,material,mode) {
++  need(typeof consume==='function' && material && typeof material==='object','SIGNED_SETTLEMENT_350_ARGUMENTS');
++  const profile=require('./signed-settlement-350-profile.cjs');
++  profile.assertSource(material,require('./multi-witness.cjs').final);
++  return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,profile.count),mode)
++    .then(()=>profile.assertInstallation(receipt,material));
++}
++
++module.exports.withCombined350RetainedCleanup = (receipt,consume,material) =>
++  withCombined350Retained(receipt,consume,material,'cleanup');
++module.exports.withCombined350MultiWitnessForProfile = (receipt,consume,material) =>
++  withCombined350Retained(receipt,consume,material,'profile');

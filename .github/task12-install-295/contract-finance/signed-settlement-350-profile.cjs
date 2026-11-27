@@ -7,6 +7,7 @@ const historical = require('./historical-settlement-334-profile.cjs');
 const mode = 'signed-settlement-350';
 const count = 350;
 const installerSha256 = '092c7fc57d3c8c9a065264cee5b0253b2b91497448198ab02ed46362be6ee2c0';
+const retainedInstallerSha256 = '2fb7824925d00a876b87c06fcf10eea04b12c4e8bae2c08b5d02ca4c01e02284';
 const terminal = {
   name: '20261129019000_signed_settlement_exact_operating_cost',
   sha256: '86ad90ea7fad6231f1d8b24dd8e4eb25d5ba0b1696d3544f5999680ebaa4c6e4',
@@ -115,5 +116,25 @@ function assertCatalog(after, before) {
   }
 }
 
-module.exports = { mode, count, installerSha256, terminal, ledgerSha256, assertSource, assertPrefix, assertRuntimeBaseline,
-  catalogSql, assertCatalog };
+function assertInstallation(receipt, source) {
+  assert.equal(receipt.sourceSha, source.sourceSha, 'SIGNED_SETTLEMENT_350_RECEIPT_SOURCE');
+  const identity = { sameIdentity: true, sourceTree: source.sourceTree };
+  const baseCount = source.predecessor.migrationCount;
+  const previousTails = source.tails.slice(source.predecessor346.migrationCount - baseCount, previous.count - baseCount);
+  assert.deepEqual(receipt.expenseWitnessPrecisionForward, {
+    ...identity, count: previous.count, ledgerSha256: previous.ledgerSha256,
+    tails: previousTails.map(({ name, sha256 }) => ({ name, sha256 }))
+  }, 'SIGNED_SETTLEMENT_350_PREDECESSOR');
+  assert.deepEqual(receipt.signedSettlementForward, {
+    ...identity, count, ledgerSha256, tails: [{ name: terminal.name, sha256: terminal.sha256 }]
+  }, 'SIGNED_SETTLEMENT_350_FORWARD');
+  const after = receipt.combinedAfterBusiness;
+  assert.ok(after?.count === count && after.ledgerSha256 === ledgerSha256 &&
+    after.sameIdentity === true && after.exactB7 === true &&
+    receipt.business === 'CALLBACK_COMPLETED' && receipt.signedSettlementCatalogAfterBusiness === true,
+  'SIGNED_SETTLEMENT_350_POST_BUSINESS');
+  assert.equal(receipt.cleanup, 'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT', 'SIGNED_SETTLEMENT_350_CLEANUP');
+}
+
+module.exports = { mode, count, installerSha256, retainedInstallerSha256, terminal, ledgerSha256, assertSource,
+  assertPrefix, assertRuntimeBaseline, catalogSql, assertCatalog, assertInstallation };
