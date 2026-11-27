@@ -1,0 +1,61 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -91,0 +92,6 @@
++    const orderedDatabase = process.env.JG_ISSUE421_ORDERED_DATABASE;
++    const ordered = /^jg_task01_[a-f0-9]{32}$/u.test(orderedDatabase ?? "") &&
++      target.pathname === "/" + orderedDatabase && target.protocol === "postgresql:" &&
++      target.username === "jg_task01_owner" && Number(target.port) > 1024 &&
++      target.searchParams.get("sslmode") === "require" && target.searchParams.get("sslaccept") === "strict" &&
++      /^\/tmp\/jg394-[A-Za-z0-9]+\/ca\.crt$/u.test(target.searchParams.get("sslcert") ?? "");
+@@ -95 +101 @@
+-      !target.pathname.endsWith("_issue421_ledger")
++      (!target.pathname.endsWith("_issue421_ledger") && !ordered)
+@@ -153,0 +160,22 @@
++    let signingVersionId: string | undefined;
++    if (ordered) {
++      const signingCompany = await owner.companyEntity.create({ data: {
++        id: "i421-company", name: "四川建工智管建筑工程有限公司", isActive: true, currentVersionNo: 1
++      } });
++      const signingVersion = await owner.companyEntityVersion.create({ data: {
++        companyEntityId: signingCompany.id, versionNo: 1, name: signingCompany.name,
++        isActive: signingCompany.isActive, action: "create", actorUserId: ids.director
++      } });
++      signingVersionId = signingVersion.id;
++      const enterprise = await owner.businessParty.create({ data: {
++        name: "隔离台账施工企业", normalizedName: "issue421-enterprise", createdByUserId: ids.director
++      } });
++      const version = await owner.businessPartyVersion.create({ data: {
++        businessPartyId: enterprise.id, versionNo: 1, snapshot: { name: enterprise.name }, createdByUserId: ids.director
++      } });
++      await owner.projectAffiliateAssignment.createMany({ data: [ids.projectA, ids.projectB].map(projectId => ({
++        projectId, businessPartyId: enterprise.id, businessPartyVersionId: version.id,
++        affiliateNameSnapshot: enterprise.name, effectiveFrom: new Date("2020-01-01"),
++        changeReason: "隔离验收施工企业", assignedByUserId: ids.director
++      })) });
++    }
+@@ -161,0 +190 @@
++        companyEntityId: ordered ? "i421-company" : undefined,
+@@ -170 +199 @@
+-        changeType: "initial",
++        changeType: ordered ? "original" : "initial",
+@@ -171,0 +201,2 @@
++        effectiveAt: ordered ? new Date("2026-01-01") : undefined,
++        numericProtocolVersion: 1,
+@@ -174,0 +206 @@
++        companyEntityVersionId: signingVersionId,
+@@ -178 +210 @@
+-        clauseSnapshot: {}
++        clauseSnapshot: ordered ? [] : {}
+@@ -188,0 +221 @@
++        companyEntityId: ordered ? "i421-company" : undefined,
+@@ -197 +230 @@
+-        changeType: "initial",
++        changeType: ordered ? "original" : "initial",
+@@ -198,0 +232,2 @@
++        effectiveAt: ordered ? new Date("2026-01-01") : undefined,
++        numericProtocolVersion: 1,
+@@ -203,0 +239 @@
++        companyEntityVersionId: signingVersionId,
+@@ -207 +243 @@
+-        clauseSnapshot: {}
++        clauseSnapshot: ordered ? [] : {}

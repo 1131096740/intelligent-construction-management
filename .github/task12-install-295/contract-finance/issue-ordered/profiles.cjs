@@ -407,7 +407,8 @@ profiles.issue404_349 = {
 profiles.issue421_349 = {
   ...profiles.issue421_346,
   sourceDigest: '2591cfb1fc6ca2830122064f8b0228b5e7b5b622d165efcb2dbe184cac21e9de',
-  fixtureDigest: 'c27ac7328476cd5a6612e1490825ddf02266566ff994f4f3aea9064109eea305',
+  fixturePatch: 'issue421-349.fixture.patch',
+  fixtureDigest: '1daf038be342eeb788cb13e88bbced59ecde72dc102d8a7d8714c38285b6054d',
   titles: [
     ...profiles.issue421_346.titles.slice(0, -1),
     'exports filtered contracts and preserves original amounts in contract and settlement workbooks'
