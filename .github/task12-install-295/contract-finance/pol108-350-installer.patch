@@ -1,0 +1,32 @@
+--- installer.cjs
++++ installer.cjs
+@@ -237 +237 @@
+-function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic} = {}) {
++function runCommand(file, args, {stdin, timeoutMs = 120_000, extra, allowFailure, multiWitnessDiagnostic, cwd} = {}) {
+@@ -240 +240 @@
+-    cwd:process.env.JG_RUN_ROOT || '/tmp', env:{ ...baseEnv, HOME:'/tmp', ...extra },
++    cwd:cwd ?? (process.env.JG_RUN_ROOT || '/tmp'), env:{ ...baseEnv, HOME:'/tmp', ...extra },
+@@ -375 +375 @@
+-statement_timeout='60s'
++${receipt.purpose==='ORIGINAL_POL108_EXACT_350' ? "track_functions='all'\ntrack_io_timing=on\n" : ''}statement_timeout='60s'
+@@ -1655,0 +1656,20 @@
++
++
++module.exports.withPol108At350 = (receipt,shard,material) => {
++  need(receipt.purpose==='ORIGINAL_POL108_EXACT_350' && ['core','facts','impacts'].includes(shard),'POL108_350_SCOPE');
++  const source=require('./contract-finance-source.json');
++  return module.exports.withCombinedSignedSettlement350(receipt,context=>{
++    need(context.candidateTree===source.sourceTree,'POL108_350_SOURCE_TREE');
++    const {predecessor334,predecessor346,predecessor349}=source;
++    require('./historical-settlement-334-profile.cjs').assertFinanceInstallation(receipt,
++      {...source,tails:source.tails.slice(0,predecessor334.migrationCount-295)});
++    const checkpoint=(start,end)=>({
++      count:end.migrationCount,ledgerSha256:end.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
++      tails:source.tails.slice(start.migrationCount-295,end.migrationCount-295).map(({name,sha256})=>({name,sha256}))
++    });
++    need(equal(receipt.expenseWitnessForward,checkpoint(predecessor334,predecessor346)) &&
++      equal(receipt.expenseWitnessPrecisionForward,checkpoint(predecessor346,predecessor349)) &&
++      equal(receipt.signedSettlementForward,checkpoint(predecessor349,source)),'POL108_350_FORWARD_LEDGER');
++    return require('./pol108-289.cjs').runPol108(context,shard,receipt,runCommand,baseEnv,need);
++  },material);
++};

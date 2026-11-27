@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 historical, archive, common, out, shard, count = sys.argv[1:]
-if count not in {'295', '329', '330', '331', '332', '334', '346', '349'}:
+if count not in {'295', '329', '330', '331', '332', '334', '346', '349', '350'}:
     raise SystemExit('POL108_MIGRATION_COUNT')
 historical,archive,common,out=map(Path,(historical,archive,common,out))
 plan=Path(__file__).parent
@@ -40,24 +40,47 @@ if shard=='core':
         original = 'COUNT(*) FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL) = 295'
         if text.count(original) != 1:
             raise SystemExit('POL108_320_LEDGER_COUNT_ANCHOR')
-        cases.write_text(text.replace(original, original.removesuffix('295') + count))
+        text = text.replace(original, original.removesuffix('295') + count)
+        if count == '350':
+            anchor = '''                AND EXISTS (SELECT FROM "_prisma_migrations"
+                  WHERE migration_name = '20261119003500_fund_balance_correction_controlled_round'
+'''
+            checkpoints = '''                AND EXISTS (SELECT FROM "_prisma_migrations"
+                  WHERE migration_name = '20261129018000_reimbursement_exact_cash_cost_links'
+                    AND checksum = '58b3cc0404a85a97dbb484654245d4bd042e5fb2014f32997244b2597cb5110b'
+                    AND finished_at IS NOT NULL AND rolled_back_at IS NULL)
+                AND EXISTS (SELECT FROM "_prisma_migrations"
+                  WHERE migration_name = '20261129019000_signed_settlement_exact_operating_cost'
+                    AND checksum = '86ad90ea7fad6231f1d8b24dd8e4eb25d5ba0b1696d3544f5999680ebaa4c6e4'
+                    AND finished_at IS NOT NULL AND rolled_back_at IS NULL)
+'''
+            if text.count(anchor) != 1:
+                raise SystemExit('POL108_350_CORE_CHECKPOINT_ANCHOR')
+            text = text.replace(anchor, checkpoints + anchor)
+        cases.write_text(text)
         core_fingerprints = {
             '346': '90ebf581a9ba6d2019560facab6a6329c5b0626c2908b73a526015fbc1437e77',
             '349': 'e3c97dd22f1481fc5c3651ea74608ee255959f1406db78b5cec54351bfc7be89',
+            '350': '6e94dde323576d1c6e4a98ee36b1205567fa9e5c8858a2d2a7a3ee0d28845de3',
         }
         if count in core_fingerprints and digest(cases) != core_fingerprints[count]:
             raise SystemExit('POL108_'+count+'_CORE_FIXTURE')
 installer=out/'installer.cjs'
-if count in {'334', '346', '349'}:
+if count in {'334', '346', '349', '350'}:
     subprocess.run(['node', str(plan/'stage-historical-takeover-333.cjs'), str(out), 'historical-settlement-334'],check=True)
 else:
     shutil.copyfile(common/'installer.cjs',installer)
-if count in {'346', '349'}:
-    deltas = ['installer.patch', 'installer-349.patch'] if count == '349' else ['installer.patch']
+if count in {'346', '349', '350'}:
+    deltas = ['installer.patch']
+    if count in {'349', '350'}:
+        deltas.append('installer-349.patch')
+    if count == '350':
+        deltas.append('installer-350.patch')
     for delta in deltas:
         subprocess.run(['git', 'apply', '--unidiff-zero', str((plan/'expense-witness'/delta).resolve())],
                        cwd=out, check=True)
-    profile = (plan/f'expense-witness-{count}-profile.cjs').resolve()
+    mode = 'signed-settlement-350' if count == '350' else f'expense-witness-{count}'
+    profile = (plan/f'{mode}-profile.cjs').resolve()
     canonical = subprocess.check_output(
         ['node', '-p', 'require(process.argv[1]).installerSha256', str(profile)], text=True).strip()
     if digest(installer) != canonical:
@@ -66,6 +89,7 @@ if count in {'346', '349'}:
     installer_fingerprints = {
         '346': 'fd1c86f6bc0654199efdeed8ba3753ad8376d99d2b660e9a70e1cf3564110719',
         '349': '6c49a48ceb13a8c04b1cc6ab135de854dcdfef8dd7117070b2881cf1e3e137e5',
+        '350': '049c6c7959490d8e33e38104cb250e8f3a32c31a3e7623d455708d6fe0968b66',
     }
     if digest(installer) != installer_fingerprints[count]:
         raise SystemExit('POL108_'+count+'_INSTALLER_POSTIMAGE')

@@ -3,15 +3,16 @@ const assert=require('node:assert/strict');
 const source=require('./contract-finance-source.json');
 const {sourceSha}=source;
 const mode=process.argv.at(-1);
-const precision=mode==='--expense-witness-349'?require('./expense-witness-349-profile.cjs'):undefined;
-const expenseProfile=precision??(mode==='--expense-witness-346'?require('./expense-witness-346-profile.cjs'):undefined);
+const signed=mode==='--signed-settlement-350'?require('./signed-settlement-350-profile.cjs'):undefined;
+const precision=signed||mode==='--expense-witness-349'?require('./expense-witness-349-profile.cjs'):undefined;
+const expenseProfile=signed??precision??(mode==='--expense-witness-346'?require('./expense-witness-346-profile.cjs'):undefined);
 const historicalSettlement=mode==='--historical-settlement-334';
 const upwardArchive=mode==='--upward-archive-332';
 const paymentRemainder=mode==='--payment-remainder-331';
 const textDirect=mode==='--text-direct-330';
 const current320=Boolean(expenseProfile)||historicalSettlement||upwardArchive||paymentRemainder||textDirect||mode==='--current-320';
 const count=expenseProfile?expenseProfile.count:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
-const {withPol108At295,withPol108At320,withPol108At330,withPol108At331,withPol108At332,withPol108At334,withPol108At346,withPol108At349}=require('./installer.cjs');
+const {withPol108At295,withPol108At320,withPol108At330,withPol108At331,withPol108At332,withPol108At334,withPol108At346,withPol108At349,withPol108At350}=require('./installer.cjs');
 const historicalProfile=(expenseProfile||historicalSettlement)?require('./historical-settlement-334-profile.cjs'):undefined;
 const upwardArchiveProfile=upwardArchive?require('./upward-archive-332-profile.cjs'):undefined;
 const {selectShards}=require('./pol108-shards.cjs');
@@ -31,7 +32,7 @@ Promise.resolve().then(()=>{
       historicalProfile?.assertSource(source,require('./multi-witness.cjs').final);
     }
     upwardArchiveProfile?.assertSource(source,sourceSha,require('./multi-witness.cjs').final);
-    const install=precision?withPol108At349:expenseProfile?withPol108At346:historicalSettlement?withPol108At334:upwardArchive?withPol108At332:paymentRemainder?withPol108At331:textDirect?withPol108At330:withPol108At320;
+    const install=signed?withPol108At350:precision?withPol108At349:expenseProfile?withPol108At346:historicalSettlement?withPol108At334:upwardArchive?withPol108At332:paymentRemainder?withPol108At331:textDirect?withPol108At330:withPol108At320;
     const material={sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails};
     return install(receipt,shard,precision?{...source,...material}:material);
   }
@@ -40,7 +41,7 @@ Promise.resolve().then(()=>{
   assert.equal(receipt.installOnly295?.count,295);
   if(current320){
     assert.equal(receipt.installOnly295.ledgerSha256,source.predecessor.ledgerSha256);
-    const forward=precision?receipt.expenseWitnessPrecisionForward:expenseProfile?receipt.expenseWitnessForward:receipt.forward320;
+    const forward=signed?receipt.signedSettlementForward:precision?receipt.expenseWitnessPrecisionForward:expenseProfile?receipt.expenseWitnessForward:receipt.forward320;
     assert.equal(forward.count,count);
     assert.equal(forward.sourceTree,source.sourceTree);
     assert.equal(forward.ledgerSha256,source.ledgerSha256);
@@ -65,6 +66,7 @@ Promise.resolve().then(()=>{
       });
     }
   }
+  signed?.assertInstallation(receipt,source);
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.operatingProjection.tests,original.titles.length);
   assert.equal(receipt.combinedAfterBusiness?.exactB7,true);
