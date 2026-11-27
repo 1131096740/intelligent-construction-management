@@ -7,7 +7,7 @@ const { createHash, randomUUID } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { stripVTControlCharacters } = require('node:util');
 const { admitSource } = require('./install-only292.cjs');
-const { withCombined334HistoricalSettlement, withCombinedExpenseWitness } = require('./installer.cjs');
+const { withCombined334HistoricalSettlement, withCombinedExpenseWitness, withCombinedExpenseWitness349 } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
 const historical = require('./historical-settlement-334-profile.cjs');
 const { stageWebWorkspace } = require('./task12-pol109-stage-browser.cjs');
@@ -16,8 +16,9 @@ const { summarizeBrowserWitness } = require('./browser-witness.cjs');
 const recipes = require('./pol115-334-cases.json');
 const inputs = require('./pol115-334-inputs.json');
 const source = require('./contract-finance-source.json');
-const expenseWitness = source.mode === 'expense-witness-346' ? require('./expense-witness-346-profile.cjs') : null;
-const profile = expenseWitness ?? historical;
+const precision = source.mode === 'expense-witness-349';
+const expenseWitness = precision || source.mode === 'expense-witness-346' ? require('./expense-witness-346-profile.cjs') : null;
+const profile = precision ? require('./expense-witness-349-profile.cjs') : expenseWitness ?? historical;
 
 const root = '/qualification';
 const workspace = path.join(root, 'workspace');
@@ -138,6 +139,12 @@ async function runOriginal(context) {
     assert.equal(receipt.expenseWitnessForward.sameIdentity, true);
   }
 
+  if (precision) {
+    assert.equal(receipt.expenseWitnessPrecisionForward.count, profile.count);
+    assert.equal(receipt.expenseWitnessPrecisionForward.ledgerSha256, profile.ledgerSha256);
+    assert.equal(receipt.expenseWitnessPrecisionForward.sameIdentity, true);
+  }
+
   const { stdout } = await context.sql(`SELECT (current_user=session_user AND
     current_user='jg_task01_owner' AND current_user::regrole::oid=10 AND
     EXISTS(SELECT FROM pg_database WHERE datname=current_database() AND datdba=10) AND
@@ -223,7 +230,7 @@ async function main() {
     assert.equal(sha256(fs.readFileSync(path.join(api, file))), digest, 'POL115_334_FIXTURE_DIGEST');
   }
   const baseline = require(path.join(api, 'prisma/migration-baseline.cjs'));
-  if (expenseWitness) expenseWitness.assertRuntimeBaseline(baseline);
+  if (expenseWitness) profile.assertRuntimeBaseline(baseline);
   else {
     const admitted = baseline.loadCanonicalMigrationBaseline();
     assert.equal(admitted.expectedDirectoryCount, 334);
@@ -233,12 +240,15 @@ async function main() {
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
 
   const material = { sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails };
-  if (expenseWitness) {
+  if (precision) {
+    await withCombinedExpenseWitness349(receipt, runOriginal, { ...source, ...material });
+    assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness, true);
+  } else if (expenseWitness) {
     await withCombinedExpenseWitness(receipt, runOriginal, material, expenseWitness.count);
-    assert.equal(receipt.expenseWitnessCatalogAfterBusiness, true);
   } else {
     await withCombined334HistoricalSettlement(receipt, runOriginal, material);
   }
+  if (expenseWitness) assert.equal(receipt.expenseWitnessCatalogAfterBusiness, true);
   assert.equal(receipt.combinedAfterBusiness.count, source.migrationCount);
   assert.equal(receipt.combinedAfterBusiness.ledgerSha256, source.ledgerSha256);
   assert.equal(receipt.combinedAfterBusiness.sameIdentity, true);
