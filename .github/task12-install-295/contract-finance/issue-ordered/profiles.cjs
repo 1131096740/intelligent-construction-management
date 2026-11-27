@@ -429,6 +429,26 @@ profiles.issue426_a01_349 = {
   ...precisionBaseline
 };
 
+for (const [scope, predecessor] of Object.entries({
+  issue400_349: 'issue400_346',
+  issue403_349: 'issue403',
+  issue405_349: 'issue405_346',
+  issue411_349: 'issue411_346',
+  issue413_349: 'issue413_346',
+  issue414_349: 'issue414_346',
+  issue416_handover_349: 'issue416_handover_346',
+  issue416_his_349: 'issue416_his_346',
+  issue420_349: 'issue420_346',
+  issue422_349: 'issue422_346'
+})) {
+  const frozen = profiles[predecessor];
+  profiles[scope] = {
+    ...frozen,
+    ...(frozen.fixtureDigest && { fixturePatch: frozen.fixturePatch ?? predecessor + '.fixture.patch' }),
+    ...precisionBaseline
+  };
+}
+
 function profileFor(scope) {
   assert.ok(Object.hasOwn(profiles, scope), 'ORDERED_334_SCOPE');
   return profiles[scope];

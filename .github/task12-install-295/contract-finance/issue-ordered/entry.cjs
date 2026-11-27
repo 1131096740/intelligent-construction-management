@@ -98,7 +98,7 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
   const secret = () => randomBytes(32).toString('hex');
   receipt.stages.push(profile.stage);
   const writeSecret = profile.requiresOperatingLedgerWriteSecret ? secret() : undefined;
-  if (precision && writeSecret) {
+  if (scope === 'issue426_a01_349') {
     await sql(`INSERT INTO public."OperatingLedgerWriteSecret" ("id", "secretHash")
       VALUES (1, public.crypt('${writeSecret}', public.gen_salt('bf')));`);
   }
