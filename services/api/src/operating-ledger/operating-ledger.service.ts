@@ -1,6 +1,8 @@
 import { CONTRACT_WORK_COMPLETION_SOURCE } from "../contract/contract-work-completion-operating-source.adapter";
 import { EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE } from "../expense-claim/expense-claim-operating-source.adapter";
 import { normalizeOperatingMoney, normalizeOperatingSourceSnapshot, operatingNumericSnapshot, requireLegacyOperatingCents, sameOperatingMoney, type OperatingMoneyInput } from "./operating-money-protocol";
+import { SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE } from "../settlement/signed-settlement-operating-source.adapter";
+import { readSignedSettlementOperatingNumericFacts } from "../settlement/signed-settlement-operating-precision";
 import { repaymentOwnershipDate } from "../company-transfer/company-transfer-ownership";
 import { randomUUID } from "node:crypto";
 
@@ -1300,6 +1302,10 @@ function validateOperatingMoneyScope(input: AppendOperatingFactInput, entryKind:
     }
     return;
   }
+  if (input.sourceType === SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE) {
+    validateSignedSettlementOperatingMoneyScope(input, entryKind);
+    return;
+  }
   if (input.sourceType === "project_owner_settlement_entry") {
     const reduction = input.direction === "outflow";
     const impactDirection = reduction ? "decrease" : "increase";
@@ -1322,6 +1328,49 @@ function validateOperatingMoneyScope(input: AppendOperatingFactInput, entryKind:
   }
   if (input.sourceType === "contract_economic_review" && (input.amountYuan === null || input.amountYuan === "0.0000")) throw new BadRequestException("履约复核调整仅支持已确认的非零承诺金额");
   if (entryKind !== "original" || !["contract_version", "contract_economic_review"].includes(input.sourceType) || input.factKind !== "downstream_contract" || input.direction !== "neutral" || input.paymentExecutionId || input.fundExecutionId || input.fundExecutionCaseId || input.impacts.length !== 1 || input.impacts.some(impact => impact.numericProtocolVersion !== 2 || impact.impactKind !== "contract_commitment_reference" || impact.sourceImpactKey !== "contract_commitment_reference" || impact.subjectRole !== "debtor" || (input.amountYuan === null ? impact.direction !== "notice" : !["increase", "decrease"].includes(impact.direction)) || impact.amountYuan !== input.amountYuan || impact.paymentExecutionId || impact.fundExecutionId || impact.fundExecutionCaseId || impact.executionAllocationLineId)) throw new BadRequestException("新版合同承诺影响必须与原事实的待确定状态及金额一致，不得改作成本、实付或冲销");
+}
+
+function validateSignedSettlementOperatingMoneyScope(
+  input: Extract<AppendOperatingFactInput, { numericProtocolVersion: 2 }>,
+  entryKind: OperatingFactEntryKind
+) {
+  const { contractKind, relationship, signedAmountYuan, operatingNumericFacts } = input.sourceSnapshot;
+  const upward = contractKind === "upward";
+  const invalid = () => new BadRequestException("已签结算经营分录须与冻结的原值、方向和待付一致");
+  if (entryKind !== "original" || input.factKind !== "downstream_settlement" || input.direction !== "neutral" ||
+      input.evidenceLevel !== "A" || input.currencyCode !== "CNY" || input.sourceSnapshot.formalStatus !== "confirmed" ||
+      !(contractKind === "downstream" || contractKind === "outside_fact" || upward) ||
+      input.operatingLevel !== (upward ? "participating_company" : "project") ||
+      (upward ? relationship !== "upward" : contractKind === "outside_fact" ? relationship !== "outside" :
+        relationship !== "inside" && relationship !== "outside") ||
+      typeof signedAmountYuan !== "string" || input.amountYuan !== signedAmountYuan.replace(/^-/u, "") ||
+      input.paymentExecutionId || input.fundExecutionId || input.fundExecutionCaseId ||
+      input.impacts.some(impact => impact.paymentExecutionId || impact.fundExecutionId ||
+        impact.fundExecutionCaseId || impact.executionAllocationLineId)) throw invalid();
+
+  const basis = readSignedSettlementOperatingNumericFacts(operatingNumericFacts, signedAmountYuan, upward);
+  const payable = BigInt(basis.payableDeltaCents);
+  const direction = signedAmountYuan.startsWith("-") ? "decrease" : "increase";
+  const primaryKind = upward ? "receivable_increase" : "confirmed_cost";
+  const primaryRole = upward ? "creditor" : "debtor";
+  const primarySubject = input.subjects[primaryRole];
+  const primary = input.impacts.find(impact => impact.impactKind === primaryKind);
+  if (input.impacts.length !== (payable === 0n ? 1 : 2) || !primary ||
+      primary.sourceImpactKey !== primaryKind || primary.amountYuan !== input.amountYuan ||
+      primary.direction !== direction || primary.subjectRole !== primaryRole ||
+      primary.subject?.kind !== primarySubject?.kind || primary.subject?.id !== primarySubject?.id ||
+      (upward && (primary.impactSnapshot?.relationship !== "upward" ||
+        primary.impactSnapshot?.projectConsolidation !== "exclude_internal"))) throw invalid();
+
+  if (payable !== 0n) {
+    const payableDirection = payable < 0n ? "decrease" : "increase";
+    const payableKind = payable < 0n ? "payable_decrease" : "payable_increase";
+    const impact = input.impacts.find(row => row.impactKind === payableKind);
+    if (!impact || impact.sourceImpactKey !== payableKind ||
+        impact.amountYuan !== businessAmountFromLegacyCents(payable < 0n ? -payable : payable) ||
+        impact.direction !== payableDirection || impact.subjectRole !== "creditor" ||
+        impact.subject?.kind !== input.subjects.creditor?.kind || impact.subject?.id !== input.subjects.creditor?.id) throw invalid();
+  }
 }
 
 function normalizeFactInput(input: AppendOperatingFactInput): AppendOperatingFactInput {

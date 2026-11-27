@@ -1,6 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type { PrimaryCostCategoryCode } from "@jiangkong/shared-domain";
+import { businessAmountFromLegacyCents, type PrimaryCostCategoryCode } from "@jiangkong/shared-domain";
 
 import {
   frozenAffiliateFromJson,
@@ -13,6 +13,11 @@ import {
   requiredJsonText,
   sourceJson
 } from "../operating-ledger/formal-operating-source.helpers";
+import {
+  operatingNumericSnapshot,
+  type OperatingMoneyInput
+} from "../operating-ledger/operating-money-protocol";
+import { readSignedSettlementOperatingNumericFacts } from "./signed-settlement-operating-precision";
 import type { AppendOperatingFactInput } from "../operating-ledger/operating-ledger.service";
 import type {
   OperatingSourceAdapter,
@@ -46,6 +51,7 @@ interface FrozenContractSource {
   companyEntityId: string | null;
   affiliateAssignmentId: string | null;
   affiliateBusinessPartyVersionId: string | null;
+  operatingNumericFacts?: unknown;
 }
 
 export class SignedSettlementOperatingSourceAdapter
@@ -110,16 +116,22 @@ export class SignedSettlementOperatingSourceAdapter
       "operatingLedgerEffectiveDate",
       "已签结算"
     );
-    const signedAmountCents = requiredJsonMoney(
-      source,
-      "amountCents",
-      "已签结算"
-    );
-    if (signedAmountCents === 0n) {
-      throw new BadRequestException("零金额已签结算不产生经营金额事实");
+    const signedAmountYuan = source.operatingNumericFacts === undefined
+      ? undefined : requiredJsonText(source, "signedAmountYuan", "已签结算");
+    const numericBasis = signedAmountYuan === undefined ? undefined
+      : readSignedSettlementOperatingNumericFacts(source.operatingNumericFacts, signedAmountYuan, contractKind === "upward");
+    let amount: OperatingMoneyInput;
+    let positive: boolean;
+    if (signedAmountYuan === undefined) {
+      const signedCents = requiredJsonMoney(source, "amountCents", "已签结算");
+      if (signedCents === 0n) throw new BadRequestException("零金额已签结算不产生经营金额事实");
+      amount = { amountCents: absolute(signedCents) };
+      positive = signedCents > 0n;
+    } else {
+      amount = settlementMoneyV2(signedAmountYuan.replace(/^-/u, ""));
+      positive = !signedAmountYuan.startsWith("-");
     }
-    const amountCents = absolute(signedAmountCents);
-    const impactDirection = signedAmountCents > 0n ? "increase" : "decrease";
+    const impactDirection = positive ? "increase" : "decrease";
     const debtor = payerSubject(source, affiliate.businessPartyVersionId);
     const counterpartyVersionId = requiredJsonText(
       source,
@@ -137,12 +149,12 @@ export class SignedSettlementOperatingSourceAdapter
         idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:internal-receivable`,
         sourceImpactKey: "receivable_increase",
         impactKind: "receivable_increase",
-        amountCents,
+        ...amount,
         direction: impactDirection,
         subjectRole: "creditor",
         subject: creditor,
         description:
-          signedAmountCents > 0n
+          positive
             ? "对上已签结算形成施工企业应付我方"
             : "对上已签结算冲减施工企业应付我方",
         impactSnapshot: sourceJson({
@@ -152,11 +164,9 @@ export class SignedSettlementOperatingSourceAdapter
       });
     } else {
       creditor = { kind: "downstream_counterparty", id: counterpartyVersionId };
-      const signedPayableCents = requiredJsonMoney(
-        source,
-        "payableAmountCents",
-        "已签结算"
-      );
+      const signedPayableCents = numericBasis
+        ? BigInt(numericBasis.payableDeltaCents)
+        : requiredJsonMoney(source, "payableAmountCents", "已签结算");
       const contractTypeKey = optionalJsonText(source, "contractTypeKey");
       const costCategoryCode = settlementCostCategoryFor(
         contractTypeKey,
@@ -166,13 +176,13 @@ export class SignedSettlementOperatingSourceAdapter
         idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:confirmed_cost`,
         sourceImpactKey: "confirmed_cost",
         impactKind: "confirmed_cost",
-        amountCents,
+        ...amount,
         direction: impactDirection,
         subjectRole: "debtor",
         subject: debtor,
         costCategoryCode,
         description:
-          signedAmountCents > 0n ? "已签结算确认项目成本" : "负向已签结算冲减项目成本"
+          positive ? "已签结算确认项目成本" : "负向已签结算冲减项目成本"
       });
       if (signedPayableCents !== 0n) {
         impacts.push({
@@ -181,7 +191,9 @@ export class SignedSettlementOperatingSourceAdapter
             signedPayableCents > 0n ? "payable_increase" : "payable_decrease",
           impactKind:
             signedPayableCents > 0n ? "payable_increase" : "payable_decrease",
-          amountCents: absolute(signedPayableCents),
+          ...(numericBasis
+            ? settlementMoneyV2(businessAmountFromLegacyCents(absolute(signedPayableCents))!)
+            : { amountCents: absolute(signedPayableCents) }),
           direction: signedPayableCents > 0n ? "increase" : "decrease",
           subjectRole: "creditor",
           subject: creditor,
@@ -210,7 +222,7 @@ export class SignedSettlementOperatingSourceAdapter
         factKind: "downstream_settlement",
         operatingLevel,
         evidenceLevel: "A",
-        amountCents,
+        ...amount,
         currencyCode: "CNY",
         direction: "neutral",
         isBeforeOperatingLedgerEffectiveDate: occurredBeforeEffectiveDate(
@@ -255,11 +267,24 @@ export class SignedSettlementOperatingSourceAdapter
     ) {
       throw new BadRequestException("已确认已签结算的编号、金额或复核事实不完整");
     }
-    const signedCents = new Prisma.Decimal(row.amountYuan)
-      .times(100)
-      .toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP);
-    if (signedCents.isZero()) {
-      throw new BadRequestException("已签结算金额不足一分，无法登记经营金额");
+    const signedYuan = new Prisma.Decimal(row.amountYuan);
+    const signedAmountYuan = signedYuan.toFixed(4);
+    let moneySnapshot: Prisma.InputJsonObject;
+    if (frozen.operatingNumericFacts === undefined) {
+      const signedCents = signedYuan.times(100).toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP);
+      if (signedCents.isZero()) {
+        throw new BadRequestException("已签结算金额不足一分，无法登记经营金额");
+      }
+      moneySnapshot = { amountCents: signedCents.toFixed(0), payableAmountCents: signedCents.toFixed(0) };
+    } else {
+      const numericBasis = readSignedSettlementOperatingNumericFacts(
+        frozen.operatingNumericFacts, signedAmountYuan, row.contractKind === "upward"
+      );
+      moneySnapshot = {
+        signedAmountYuan,
+        operatingNumericFacts: { ...numericBasis },
+        numericFacts: operatingNumericSnapshot(settlementMoneyV2(signedAmountYuan.replace(/^-/u, "")))
+      };
     }
     const attachmentFileIds = row.attachments.map(
       (attachment) => attachment.fileId
@@ -311,8 +336,7 @@ export class SignedSettlementOperatingSourceAdapter
         companyEntityIdSnapshot: frozen.companyEntityId,
         counterpartyVersionId: frozen.counterpartyVersionId,
         counterpartyName: frozen.counterparty,
-        amountCents: signedCents.toFixed(0),
-        payableAmountCents: signedCents.toFixed(0),
+        ...moneySnapshot,
         occurredAt: occurredAt.toISOString(),
         confirmedByUserId: row.reviewedByUserId,
         confirmedAt: occurredAt.toISOString(),
@@ -379,10 +403,15 @@ function frozenContractSource(
     payerVersionId: text("payerVersionId"),
     companyEntityId: text("companyEntityId"),
     affiliateAssignmentId: text("affiliateAssignmentId"),
+    operatingNumericFacts: record.operatingNumericFacts,
     affiliateBusinessPartyVersionId: text(
       "affiliateBusinessPartyVersionId"
     )
   };
+}
+
+function settlementMoneyV2(amountYuan: string): Extract<OperatingMoneyInput, { numericProtocolVersion: 2 }> {
+  return { numericProtocolVersion: 2, amountCents: null, amountYuan };
 }
 
 function payerSubject(

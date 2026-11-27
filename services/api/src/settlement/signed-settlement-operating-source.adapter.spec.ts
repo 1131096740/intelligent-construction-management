@@ -110,6 +110,69 @@ describe("SignedSettlementOperatingSourceAdapter", () => {
     );
   });
 
+  it.each([
+    ["-0.0050", "1.0100", "1.0050", "0", "0.0050"],
+    ["-0.0050", "1.0050", "1.0000", "-1", "0.0050"],
+    ["-0.0001", "1.0000", "0.9999", "0", "0.0001"]
+  ])("keeps signed cost %s and uses the frozen cumulative payable delta", async (amount, before, after, delta, magnitude) => {
+    const { tx } = fixture();
+    const row = signedSettlement();
+    const operatingNumericFacts = {
+      protocolVersion: 2, cumulativeBeforeYuan: before, cumulativeAfterYuan: after, payableDeltaCents: delta
+    };
+    tx.signedContractSettlement.findUnique.mockResolvedValue(signedSettlement({
+      amountYuan: new Prisma.Decimal(amount),
+      confirmedContractSource: { ...row.confirmedContractSource, operatingNumericFacts }
+    }));
+    const adapter = new SignedSettlementOperatingSourceAdapter();
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1", sourceType: SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE, sourceBusinessId: row.id
+    });
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+    expect(input).toMatchObject({
+      numericProtocolVersion: 2, amountCents: null, amountYuan: magnitude,
+      sourceSnapshot: { signedAmountYuan: amount, operatingNumericFacts,
+        numericFacts: { protocolVersion: 2, amountState: "known", amountYuan: magnitude } }
+    });
+    expect(input.impacts).toHaveLength(delta === "0" ? 1 : 2);
+    expect(input.impacts[0]).toMatchObject({
+      sourceImpactKey: "confirmed_cost", numericProtocolVersion: 2, amountCents: null,
+      amountYuan: magnitude, direction: "decrease"
+    });
+    if (delta === "-1") {
+      expect(input.impacts[1]).toMatchObject({
+        sourceImpactKey: "payable_decrease", numericProtocolVersion: 2, amountCents: null,
+        amountYuan: "0.0100", direction: "decrease"
+      });
+    }
+  });
+
+  it("keeps a sub-cent upward reduction as an internal receivable only", async () => {
+    const { tx } = fixture();
+    const row = signedSettlement();
+    tx.signedContractSettlement.findUnique.mockResolvedValue(signedSettlement({
+      contractKind: "upward",
+      amountYuan: new Prisma.Decimal("-0.0001"),
+      confirmedContractSource: {
+        ...row.confirmedContractSource, relationship: "upward", payerKind: "construction_enterprise",
+        operatingNumericFacts: {
+          protocolVersion: 2, cumulativeBeforeYuan: "1.0050", cumulativeAfterYuan: "1.0049", payableDeltaCents: "0"
+        }
+      }
+    }));
+    const adapter = new SignedSettlementOperatingSourceAdapter();
+    const snapshot = await adapter.readSourceSnapshot(tx as never, {
+      projectId: "project-1", sourceType: SIGNED_SETTLEMENT_OPERATING_SOURCE_TYPE, sourceBusinessId: row.id
+    });
+    const { input } = adapter.toOperatingFactInput(snapshot!);
+    expect(input).toMatchObject({ operatingLevel: "participating_company", amountYuan: "0.0001" });
+    expect(input.impacts).toHaveLength(1);
+    expect(input.impacts[0]).toMatchObject({
+      sourceImpactKey: "receivable_increase", amountYuan: "0.0001", direction: "decrease",
+      impactSnapshot: { relationship: "upward", projectConsolidation: "exclude_internal" }
+    });
+  });
+
   it("maps a negative settlement to cost and payable decreases with the same magnitude", async () => {
     const { tx } = fixture();
     tx.signedContractSettlement.findUnique.mockResolvedValue(
