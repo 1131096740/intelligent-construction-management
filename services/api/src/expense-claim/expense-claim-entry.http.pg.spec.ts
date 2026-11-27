@@ -270,6 +270,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
 
     const { requestedAmountCents, lines: legacyLines, ...claim } = selfInput(applicantUserId, "reimbursement");
     const { amountCents, ...line } = legacyLines![0];
+    let cashExpenseCode: string | null = null;
     for (const scenario of [
       { exact: "12.3400", payable: "1234", amounts: ["12.3400"], status: "approved_pending_payment", costBearingCompanyEntityId: company.id },
       { exact: "0.0100", payable: "1", amounts: ["0.0050", "0.0050"], status: "approved_pending_payment", costBearingCompanyEntityId: company.id },
@@ -311,6 +312,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       }
       expect(await prisma.expenseClaimPaymentExecution.count({ where: { expenseClaimId: created.body.id } })).toBe(0);
       if (scenario.exact === "12.3456") {
+        cashExpenseCode = fact.sourceBusinessCode;
         const keeperId = approvalActorIds[0]!;
         const keeperToken = approvalTokens[0]!;
         const cash = await prisma.registeredFundAccount.create({ data: { kind: "public_cash", scopeKey: "public_cash" } });
@@ -411,18 +413,25 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const projection = await request(projectionPath + "?numericProtocolVersion=2", undefined, financeToken);
     expect(projection).toMatchObject({ status: 200, body: {
       schema: "operating_projection/V2",
-      operating: { confirmedCostCents: null, confirmedCostYuan: "100.0151", payableCents: "1" },
-      costAttribution: { unattributedCostCents: null, unattributedCostYuan: "0.0001" }
+      operating: { confirmedCostCents: null, confirmedCostYuan: "124.7007", payableCents: "1235" },
+      costAttribution: { unattributedCostCents: null, unattributedCostYuan: "0.0057", publicCashCostCents: "1234" }
     } });
-    const detail = await request(projectionPath + "/details?numericProtocolVersion=2&sourceType=expense_claim_approval", undefined, financeToken);
-    expect(detail).toMatchObject({ status: 200, body: {
-      items: expect.arrayContaining(["0.0050", "0.0100", "100.0050", "100.0100", "0.0001"].map(signedImpactYuan =>
-        expect.objectContaining({ numericProtocolVersion: 2, signedImpactCents: null, signedImpactYuan })))
-    } });
-    const rows = (detail.body as unknown as { items: Array<{ signedImpactYuan: string }> }).items;
-    expect(rows.map(item => item.signedImpactYuan).sort()).toEqual(
-      ["0.0001", "0.0050", "0.0050", "0.0100", "100.0050", "100.0100"].sort()
+    const detailQuery = "/details?numericProtocolVersion=2&sourceType=expense_claim_approval";
+    const detail = await request(projectionPath + detailQuery, undefined, financeToken);
+    expect(detail.status).toBe(200);
+    type DetailLine = { numericProtocolVersion?: 1 | 2; sourceBusinessCode: string; signedImpactYuan?: string; signedImpactCents: string | null };
+    const rows = (detail.body as unknown as { items: DetailLine[] }).items;
+    const preciseAmounts = rows.filter(item => item.numericProtocolVersion === 2).map(item => item.signedImpactYuan);
+    expect(preciseAmounts.sort()).toEqual(
+      ["0.0001", "0.0050", "0.0050", "0.0100", "12.3456", "12.3500", "100.0050", "100.0100"].sort()
     );
+    expect(rows.filter(item => item.numericProtocolVersion !== 2).map(item => item.signedImpactCents)).toEqual(["1234", "1234"]);
+    expect(cashExpenseCode).not.toBeNull();
+    const companyDetail = await request(projectionPath + detailQuery +
+      `&companyEntityId=${companyEntityId}&costCategoryCode=project_daily_expense`, undefined, financeToken);
+    expect(companyDetail.status).toBe(200);
+    expect((companyDetail.body as unknown as { items: DetailLine[] }).items.filter(row => row.sourceBusinessCode === cashExpenseCode))
+      .toMatchObject([{ signedImpactCents: null, signedImpactYuan: "12.3400" }]);
     const exportResponse = await fetch(baseUrl + "/operating-projections/export", {
       method: "POST", headers: { authorization: `Bearer ${financeToken}`, "content-type": "application/json" },
       body: JSON.stringify({ numericProtocolVersion: "2", scopeKind: "project", projectId,
@@ -431,7 +440,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     expect(exportResponse.ok).toBe(true);
     expect(exportResponse.headers.get("content-type")).toContain("text/csv");
     const csv = await exportResponse.text();
-    for (const amount of ["0.0001", "0.0050", "100.0050"]) expect(csv).toContain(`"${amount}"`);
+    for (const amount of ["0.0001", "0.0050", "12.3456", "100.0050"]) expect(csv).toContain(`"${amount}"`);
   }, 60_000);
 
   function seedHistoricalLoan(status: "draft" | "approved_pending_disbursement" | "disbursed", reason: string, loanProjectId = projectId, requestedAmountCents = 1n) {
