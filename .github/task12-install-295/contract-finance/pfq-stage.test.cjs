@@ -14,13 +14,14 @@ const staged=join(work,'staged');
 const staged334=join(work,'staged334');
 const staged346=join(work,'staged346');
 const staged349=join(work,'staged349');
-const modes=[undefined,'--current-320','--text-direct-330','--payment-remainder-331','--upward-archive-332','--historical-settlement-334','--expense-witness-346','--expense-witness-349'];
-const migrationCounts=[295,329,330,331,332,334,346,349];
+const staged350=join(work,'staged350');
+const modes=[undefined,'--current-320','--text-direct-330','--payment-remainder-331','--upward-archive-332','--historical-settlement-334','--expense-witness-346','--expense-witness-349','--signed-settlement-350'];
+const migrationCounts=[295,329,330,331,332,334,346,349,350];
 const lanes=['pre115-clean','pre116-legacy','duplicate','cross-business','replacement-child','replacement-parent','app'];
 const predecessor=(count,ledgerSha256)=>({count,ledgerSha256,sameIdentity:true,sameBaseB7:true});
 
 before(()=>{
-  for(const [directory,mode] of [[staged,[]],[staged334,['--historical-settlement-334']],[staged346,['--expense-witness-346']],[staged349,['--expense-witness-349']]]){
+  for(const [directory,mode] of [[staged,[]],[staged334,['--historical-settlement-334']],[staged346,['--expense-witness-346']],[staged349,['--expense-witness-349']],[staged350,['--signed-settlement-350']]]){
     const result=spawnSync('python3',[
       join(__dirname,'stage-pfq.py'),join(repo,'.github/task12-install-289'),join(repo,'.github/task12-install-290'),
       common,directory,...mode,
@@ -28,7 +29,7 @@ before(()=>{
     assert.equal(result.status,0,result.stderr);
     for(const name of ['multi-witness.cjs','scope.json']) copyFileSync(join(common,name),join(directory,name));
     for(const name of ['historical-settlement-334-profile.cjs','historical-takeover-333-profile.cjs','upward-archive-332-profile.cjs',
-      'expense-witness-345-profile.cjs','expense-witness-346-profile.cjs','expense-witness-349-profile.cjs','expense-witness-prefixes.json'])
+      'expense-witness-345-profile.cjs','expense-witness-346-profile.cjs','expense-witness-349-profile.cjs','signed-settlement-350-profile.cjs','expense-witness-prefixes.json'])
       copyFileSync(join(__dirname,name),join(directory,name));
     writeFileSync(join(directory,'mock-runtime.cjs'),`(${mockRuntime.toString()})()`);
     const appMount=join(directory,'workspace/services/api/prisma');
@@ -53,11 +54,11 @@ function mockRuntime(){
       assert.equal(name,source.migrationCount===295?'withPfq295':'withPfq320');
       assert.equal(mode,'--pfq-'+output.lane+'-289-local');
       assert.deepEqual(material,source.migrationCount===295?undefined:{
-        ...(source.migrationCount===349?source:{mode:source.mode}),sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails,
+        ...(source.migrationCount>=349?source:{mode:source.mode}),sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails,
       });
       installer[installerMethod]=async (result,consume,_material,target)=>{
         assert.equal(target,source.migrationCount===346?346:undefined);
-        if(source.migrationCount===349) assert.deepEqual(_material,material);
+        if(source.migrationCount>=349) assert.deepEqual(_material,material);
         const {pfqPositive,pfqPostconsume,...beforeCallback}=receipt;
         Object.assign(result,beforeCallback);
         const fixture=require('./task12-pfq-positive-fixtures.json')[mode];
@@ -117,7 +118,8 @@ function run(index,lane,fault){
   const previous=require('./historical-takeover-333-profile.cjs');
   const expense=require('./expense-witness-346-profile.cjs');
   const precision=require('./expense-witness-349-profile.cjs');
-  const ledgerSha256=[base295,ledger329,ledger330,ledger331,ledger332,historical.ledgerSha256,expense.ledgerSha256,precision.ledgerSha256][index];
+  const signed=require('./signed-settlement-350-profile.cjs');
+  const ledgerSha256=[base295,ledger329,ledger330,ledger331,ledger332,historical.ledgerSha256,expense.ledgerSha256,precision.ledgerSha256,signed.ledgerSha256][index];
   const source={sourceSha:'a'.repeat(40),sourceTree:'b'.repeat(40),migrationCount:count,ledgerSha256,
     mode:mode?.slice(2),predecessor:{migrationCount:295,ledgerSha256:base295},
     predecessor330:{migrationCount:330,ledgerSha256:ledger330},predecessor331:{migrationCount:331,ledgerSha256:ledger331},
@@ -134,7 +136,7 @@ function run(index,lane,fault){
     source.predecessor334={migrationCount:334,ledgerSha256:historical.ledgerSha256};
     source.tails.push(...require('./expense-witness-prefixes.json').slice(1).map(item=>item.terminal),expense.terminal);
   }
-  if(count===349){
+  if(count>=349){
     source.predecessor346={migrationCount:346,ledgerSha256:expense.ledgerSha256};
     source.tails.push(
       {name:'20261129016000_reimbursement_business_amount_precision',
@@ -144,8 +146,12 @@ function run(index,lane,fault){
       precision.terminal
     );
   }
-  const receipt={releaseTree:'67644d9465a0ab4ee80ede099139d9c129d66f14',business:'CALLBACK_COMPLETED',
-    orderedTails:[{size:295}],installOnly295:{count:295,ledgerSha256:base295},
+  if(count===350){
+    source.predecessor349={migrationCount:349,ledgerSha256:precision.ledgerSha256};
+    source.tails.push(signed.terminal);
+  }
+  const receipt={sourceSha:source.sourceSha,releaseTree:'67644d9465a0ab4ee80ede099139d9c129d66f14',business:'CALLBACK_COMPLETED',
+    orderedTails:[{size:295}],installOnly295:{count:295,ledgerSha256:base295,nonOwnerDenied:fault!=='non-owner'},
     textDirectPredecessor:predecessor(329,ledger329),paymentRemainderPredecessor:predecessor(330,ledger330),
     upwardArchivePredecessor:predecessor(331,ledger331),pfqPostconsume:{count,exactB7:true},
     combinedAfterBusiness:{count,ledgerSha256,sameIdentity:true,exactB7:true},
@@ -179,27 +185,37 @@ function run(index,lane,fault){
       count:346,ledgerSha256:expense.ledgerSha256,sameIdentity:fault!=='successor',sourceTree:source.sourceTree,
       tails:source.tails.slice(39,51).map(({name,sha256})=>({name,sha256}))
     };
-    receipt.pfqObserved346={rows:346+Number(recovery&&(count===349||fault!=='rollback-row')),
+    receipt.pfqObserved346={rows:346+Number(recovery&&(count>=349||fault!=='rollback-row')),
       sha256:recovery?'d'.repeat(64):expense.ledgerSha256};
     receipt.expenseWitnessCatalogAfterBusiness=fault!=='expense-catalog';
   }
-  if(count===349){
+  if(count>=349){
     const recovery=Boolean(receipt.pfqRecovery);
     receipt.expenseWitnessPrecisionForward={
-      count,ledgerSha256,sameIdentity:fault!=='precision-successor',sourceTree:source.sourceTree,
-      tails:source.tails.slice(51).map(({name,sha256})=>({name,sha256}))
+      count:349,ledgerSha256:precision.ledgerSha256,sameIdentity:fault!=='precision-successor',sourceTree:source.sourceTree,
+      tails:source.tails.slice(51,54).map(({name,sha256})=>({name,sha256}))
     };
-    receipt.pfqObserved349={rows:count+Number(recovery&&fault!=='rollback-row'),
-      sha256:recovery?'e'.repeat(64):ledgerSha256};
+    receipt.pfqObserved349={rows:349+Number(recovery&&fault!=='rollback-row'),
+      sha256:recovery?'e'.repeat(64):precision.ledgerSha256};
     receipt.expenseWitnessPrecisionCatalogAfterBusiness=fault!=='precision-catalog';
+  }
+  if(count===350){
+    const recovery=Boolean(receipt.pfqRecovery);
+    receipt.signedSettlementForward={
+      count,ledgerSha256,sameIdentity:fault!=='signed-successor',sourceTree:source.sourceTree,
+      tails:source.tails.slice(54).map(({name,sha256})=>({name,sha256}))
+    };
+    receipt.pfqObserved350={rows:count+Number(recovery&&fault!=='signed-rollback-row'),
+      sha256:recovery?'f'.repeat(64):ledgerSha256};
+    receipt.signedSettlementCatalogAfterBusiness=fault!=='signed-catalog';
   }
   if(fault==='terminal') source.tails[source.tails.length-1]={...source.tails.at(-1),sha256:'0'.repeat(64)};
   if(fault==='predecessor') receipt.upwardArchivePredecessor.sameIdentity=false;
   if(fault==='source-predecessor') source.predecessor333.ledgerSha256='0'.repeat(64);
   if(fault==='postconsume') receipt.combinedAfterBusiness.ledgerSha256=ledger331;
   const installerMethod=['withCombined295MultiWitness','withCombined320ContractPayment','withCombined330TextAgreement',
-    'withCombined331PaymentRemainder','withCombined332UpwardArchive','withCombined334HistoricalSettlement','withCombinedExpenseWitness','withCombinedExpenseWitness349'][index];
-  const directory=count===349?staged349:count===346?staged346:count===334?staged334:staged;
+    'withCombined331PaymentRemainder','withCombined332UpwardArchive','withCombined334HistoricalSettlement','withCombinedExpenseWitness','withCombinedExpenseWitness349','withCombinedSignedSettlement350'][index];
+  const directory=count===350?staged350:count===349?staged349:count===346?staged346:count===334?staged334:staged;
   writeFileSync(join(directory,'contract-finance-source.json'),JSON.stringify(source));
   writeFileSync(join(directory,'mock-receipt.json'),JSON.stringify({receipt,installerMethod,fault:['terminal','source-predecessor'].includes(fault)?'before-runtime':fault}));
   const result=spawnSync(process.execPath,['--require',join(directory,'mock-runtime.cjs'),join(directory,'entry.cjs'),lane,...(mode?[mode]:[])],{encoding:'utf8'});
@@ -249,5 +265,15 @@ test('staged PFQ 349 rejects wrong migration evidence, including the recovery ro
     assert.equal(status,1);
     assert.equal(output.status,'STOPPED');
     assert.notEqual(output.failure.code,'UNEXPECTED_RUNTIME_ENTRY');
+  }
+});
+
+test('staged PFQ 350 rejects wrong signed migration evidence, ACL, rollback row or catalog',()=>{
+  for(const fault of ['terminal','source-predecessor','non-owner','precision-successor','rollback-row',
+    'signed-successor','signed-rollback-row','postconsume','expense-catalog','precision-catalog','signed-catalog']){
+    const {status,output}=run(8,'replacement-parent',fault);
+    assert.equal(status,1,fault);
+    assert.equal(output.status,'STOPPED',fault);
+    assert.notEqual(output.failure.code,'UNEXPECTED_RUNTIME_ENTRY',fault);
   }
 });

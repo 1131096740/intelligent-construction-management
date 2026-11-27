@@ -2,8 +2,9 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 ) ) ||
-  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 ) && $6 == --host-only ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --signed-settlement-350 ) ) ||
+  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --signed-settlement-350 ) && $6 == --host-only ) ]] || exit 64
+if [[ ${5-} == --signed-settlement-350 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 count=295
 mode=()
 case ${5-} in
@@ -14,6 +15,7 @@ case ${5-} in
   --historical-settlement-334) mode=(--historical-settlement-334); count=334 ;;
   --expense-witness-346) mode=(--expense-witness-346); count=346 ;;
   --expense-witness-349) mode=(--expense-witness-349); count=349 ;;
+  --signed-settlement-350) mode=(--signed-settlement-350); count=350 ;;
 esac
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
@@ -44,10 +46,11 @@ if (( count >= 346 )); then
   [[ $plan == "$repo/.github/task12-install-295/contract-finance" ]] || exit 65
   [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$repo/.github/task12-install-289/pfq" "$repo/.github/task12-install-290") ]] || exit 65
   cmp -s "$prepared/source.json" <(node "$plan/check-ledger.cjs" "$repo" "$sha" "${mode[0]}") || exit 65
-  node - "$expense_profile" "$prepared/prepared/context/workspace" <<'JS'
-const [profile,workspace]=process.argv.slice(2);
-require(profile).assertRuntimeBaseline(
-  require(workspace+'/services/api/prisma/migration-baseline.cjs'));
+  node - "$expense_profile" "$prepared/prepared/context/workspace/services/api" "$prepared/source.json" "$plan" <<'JS'
+const [profileFile,api,sourceFile,plan]=process.argv.slice(2);
+const profile=require(profileFile);
+if(profile.count===350) require(plan+'/bank/migration-inputs-346.cjs')(api,require(sourceFile),profile);
+else profile.assertRuntimeBaseline(require(api+'/prisma/migration-baseline.cjs'));
 JS
 fi
 
@@ -99,8 +102,11 @@ if (( count >= 346 )); then
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
 fi
-if (( count == 349 )); then
-  args+=(--mount "type=bind,src=$expense_profile,dst=/qualification/expense-witness-349-profile.cjs,readonly")
+if (( count >= 349 )); then
+  args+=(--mount "type=bind,src=$plan/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
+fi
+if (( count == 350 )); then
+  args+=(--mount "type=bind,src=$expense_profile,dst=/qualification/signed-settlement-350-profile.cjs,readonly")
 fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")

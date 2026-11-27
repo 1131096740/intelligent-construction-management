@@ -1,13 +1,16 @@
 from pathlib import Path
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
 
 mode = sys.argv[5] if len(sys.argv) == 6 else None
-if len(sys.argv) not in (5, 6) or mode not in (None, '--historical-settlement-334', '--expense-witness-346', '--expense-witness-349'):
+if len(sys.argv) not in (5, 6) or mode not in (None, '--historical-settlement-334', '--expense-witness-346', '--expense-witness-349', '--signed-settlement-350'):
     raise SystemExit('PFQ_STAGING_MODE')
+if mode == '--signed-settlement-350' and os.getenv('GITHUB_ACTIONS') == 'true':
+    raise SystemExit('PFQ_350_LOCAL_ONLY')
 historical, archive, common, out = map(Path,sys.argv[1:5])
 plan=Path(__file__).parent
 pins=json.loads((archive/'profile.json').read_text())['pfqAssembly']
@@ -56,14 +59,14 @@ if len(sys.argv) == 6:
         raise SystemExit('PFQ_334_INSTALLER_POSTIMAGE')
     if sha(entry) != '5b34c78754a353d92dd23dea6680e7b548193fa1054e9b8e95b15487f1bcf1ce':
         raise SystemExit('PFQ_334_ENTRY_POSTIMAGE')
-if mode in ('--expense-witness-346', '--expense-witness-349'):
+if mode in ('--expense-witness-346', '--expense-witness-349', '--signed-settlement-350'):
     subprocess.run(['patch','--batch','--forward','--fuzz=0','--silent','-p1','-i',str((plan/'pfq-346.patch').resolve())],
                    cwd=out,check=True)
     if sha(installer) != '7c295260e5db55cef1552f13ee3eacc8f385bdedc12f1b1d20ccfaabd461ded4':
         raise SystemExit('PFQ_346_INSTALLER_POSTIMAGE')
     if sha(entry) != '2f851fbabd0d61c95df4833f81944ee80b29a4e1b343ff13c2fb1becd279081e':
         raise SystemExit('PFQ_346_ENTRY_POSTIMAGE')
-if mode == '--expense-witness-349':
+if mode in ('--expense-witness-349', '--signed-settlement-350'):
     # The shared precision catalog witnesses operate on PFQ's qualified migration ledger.
     # The physical ledger also keeps the original rollback row in recovery lanes.
     subprocess.run(['git','apply','--unidiff-zero',str((plan/'pfq-349.patch').resolve())],cwd=out,check=True)
@@ -71,5 +74,11 @@ if mode == '--expense-witness-349':
         raise SystemExit('PFQ_349_INSTALLER_POSTIMAGE')
     if sha(entry) != '96f2ebddc9cc67ba262e6d86ccbe42f578551826cc565b7c5e436be7dc88438f':
         raise SystemExit('PFQ_349_ENTRY_POSTIMAGE')
+if mode == '--signed-settlement-350':
+    subprocess.run(['git','apply','--unidiff-zero',str((plan/'pfq-350.patch').resolve())],cwd=out,check=True)
+    if sha(installer) != 'df168a40a98e490b778f7b8be6c31bfa77ecfe09f777cc0d1e977f0c2317cbba':
+        raise SystemExit('PFQ_350_INSTALLER_POSTIMAGE')
+    if sha(entry) != 'ccfa5bc7ed938c76b0cfe5171abe5175debf777e96b1f8e4230e2b9bd758f4c6':
+        raise SystemExit('PFQ_350_ENTRY_POSTIMAGE')
 for file in out.iterdir():
     file.chmod(0o644)
