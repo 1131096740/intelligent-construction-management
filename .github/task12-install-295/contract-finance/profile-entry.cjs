@@ -2,12 +2,13 @@
 
 const assert=require('node:assert/strict');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitnessForProfile,withCombined320MultiWitnessForProfile,withCombined330MultiWitnessForProfile,withCombined331MultiWitnessForProfile,withCombined332MultiWitnessForProfile,withCombined334MultiWitnessForProfile,withCombined346MultiWitnessForProfile,withCombined349MultiWitnessForProfile,withCombined350MultiWitnessForProfile}=require('./installer.cjs');
+const {withCombined295MultiWitnessForProfile,withCombined320MultiWitnessForProfile,withCombined330MultiWitnessForProfile,withCombined331MultiWitnessForProfile,withCombined332MultiWitnessForProfile,withCombined334MultiWitnessForProfile,withCombined346MultiWitnessForProfile,withCombined349MultiWitnessForProfile,withCombined350MultiWitnessForProfile,withCombined352MultiWitnessForProfile}=require('./installer.cjs');
 const {final,digest}=require('./multi-witness.cjs');
 const {runRetained,verifyInputs}=require('./remaining-retained.cjs');
 const source=require('./contract-finance-source.json');
-const signed=source.mode==='signed-settlement-350';
-const expense=['expense-witness-346','expense-witness-349','signed-settlement-350'].includes(source.mode)?
+const company=source.mode==='company-history-352';
+const signed=company||source.mode==='signed-settlement-350';
+const expense=['expense-witness-346','expense-witness-349','signed-settlement-350','company-history-352'].includes(source.mode)?
   require('./'+source.mode+'-profile.cjs'):undefined;
 const historicalSettlement=source.mode==='historical-settlement-334';
 const historical=historicalSettlement?require('./historical-settlement-334-profile.cjs'):undefined;
@@ -47,7 +48,7 @@ async function main(){
   receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   const consume=context=>runRetained(context,receipt,lane);
   if(expense){
-    const installExpense=signed?withCombined350MultiWitnessForProfile:
+    const installExpense=company?withCombined352MultiWitnessForProfile:signed?withCombined350MultiWitnessForProfile:
       count===349?withCombined349MultiWitnessForProfile:withCombined346MultiWitnessForProfile;
     await installExpense(receipt,consume,{...source,
       migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails});

@@ -2,14 +2,15 @@
 
 const assert = require('node:assert/strict');
 const {admitSource} = require('./install-only292.cjs');
-const {withCombined295RetainedCleanup,withCombined320RetainedCleanup,withCombined330RetainedCleanup,withCombined331RetainedCleanup,withCombined332RetainedCleanup,withCombined334RetainedCleanup,withCombined346RetainedCleanup,withCombined349RetainedCleanup,withCombined350RetainedCleanup} = require('./installer.cjs');
+const {withCombined295RetainedCleanup,withCombined320RetainedCleanup,withCombined330RetainedCleanup,withCombined331RetainedCleanup,withCombined332RetainedCleanup,withCombined334RetainedCleanup,withCombined346RetainedCleanup,withCombined349RetainedCleanup,withCombined350RetainedCleanup,withCombined352RetainedCleanup} = require('./installer.cjs');
 const {final, digest} = require('./multi-witness.cjs');
 const {runRetained} = require('./remaining-retained.cjs');
 
 const root = '/qualification';
 const source = require('./contract-finance-source.json');
-const signed=source.mode==='signed-settlement-350';
-const expense=['expense-witness-346','expense-witness-349','signed-settlement-350'].includes(source.mode)?
+const company=source.mode==='company-history-352';
+const signed=company||source.mode==='signed-settlement-350';
+const expense=['expense-witness-346','expense-witness-349','signed-settlement-350','company-history-352'].includes(source.mode)?
   require('./'+source.mode+'-profile.cjs'):undefined;
 const historicalSettlement=source.mode==='historical-settlement-334';
 const historical=historicalSettlement?require('./historical-settlement-334-profile.cjs'):undefined;
@@ -45,7 +46,8 @@ async function main() {
   const consume=context=>runRetained(context,receipt,'cleanup');
   if(expense){
     const material={sourceTree:source.sourceTree,migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails};
-    if(signed) await withCombined350RetainedCleanup(receipt,consume,{...source,...material});
+    if(company) await withCombined352RetainedCleanup(receipt,consume,{...source,...material});
+    else if(signed) await withCombined350RetainedCleanup(receipt,consume,{...source,...material});
     else if(count===349) await withCombined349RetainedCleanup(receipt,consume,{...source,...material});
     else await withCombined346RetainedCleanup(receipt,consume,material);
     if(!signed) require('./payment-execution-'+count+'.cjs').assertInstallation(receipt,source);

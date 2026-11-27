@@ -8,7 +8,7 @@ append_remaining_installer() {
   if [[ $source_mode == signed-settlement-350 || $source_mode == company-history-352 ]]; then
     [[ ${GITHUB_ACTIONS:-} != true ]] || return 64
     case "$source_mode:$retained" in
-      signed-settlement-350:retained|signed-settlement-350:owner|company-history-352:owner) ;;
+      signed-settlement-350:retained|signed-settlement-350:owner|company-history-352:owner|company-history-352:retained) ;;
       *) return 64 ;;
     esac
   fi
@@ -34,6 +34,7 @@ append_remaining_installer() {
       case $count in
         346) expected=56f967b52054cf6d756997316a700324f2a8ac83bda6063f6fde20cd5ca0bb22 ;;
         349) expected=8b502a6438c3a8a2f3ea100775c339ddde0602d8ffbe60c197ea0ab3a437b207 ;;
+        352) expected=4f265fd9fb44813b1bdc5a2afc7e91ccee5d4f21c7dc1b6e7c33f21219ca2c6f ;;
         350) expected=$(node -p 'require(process.argv[1]).retainedInstallerSha256' "$plan/$source_mode-profile.cjs") ;;
       esac
       [[ $(shasum -a 256 "$installer" | cut -d ' ' -f1) == "$expected" ]] || return 65

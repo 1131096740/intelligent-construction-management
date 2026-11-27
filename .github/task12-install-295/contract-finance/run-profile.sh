@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 case $#:${5-}:${6-} in
-  5:--signed-settlement-350:|6:--signed-settlement-350:--host-only)
+  5:--signed-settlement-350:|6:--signed-settlement-350:--host-only|5:--company-history-352:|6:--company-history-352:--host-only)
     [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64 ;;
   *)
     [[ $# == 4 || ( $# == 5 && $5 == --expense-witness-34[69] ) ||
@@ -22,17 +22,17 @@ finance="$root/.github/task12-install-295/contract-finance"
 common="$finance/common"
 workspace="$prepared/prepared/context/workspace"
 mode=${5-}
-if [[ $mode == --signed-settlement-350 ]]; then
+if [[ $mode == --signed-settlement-350 || $mode == --company-history-352 ]]; then
   [[ $plan == "$finance" ]] || exit 65
 fi
-if [[ $mode == --expense-witness-34[69] || $mode == --signed-settlement-350 ]]; then
+if [[ $mode == --expense-witness-34[69] || $mode == --signed-settlement-350 || $mode == --company-history-352 ]]; then
   [[ -z $(git -C "$root" status --porcelain --untracked-files=all -- "$plan" "$historical") ]] || exit 65
   node "$plan/check-ledger.cjs" "$root" "$sha" "$5" | cmp -s "$prepared/source.json" - || exit 65
 fi
 node - "$prepared/source.json" "$sha" "$prior/remaining-special.json" "$historical" "$workspace" "$common/multi-witness.cjs" "$plan/upward-archive-332-profile.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan" "${5-}" <<'JS'
 const [sourceFile,sha,profilesFile,prior,workspace,terminalFile,upwardProfile,historicalProfile,plan,option]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
-const count=source.mode==='signed-settlement-350'?350:source.mode==='expense-witness-349'?349:source.mode==='expense-witness-346'?346:source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
+const count=source.mode==='company-history-352'?352:source.mode==='signed-settlement-350'?350:source.mode==='expense-witness-349'?349:source.mode==='expense-witness-346'?346:source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
 if(source.sourceSha!==sha||source.migrationCount!==count||
   (count>=346?option!=='--'+source.mode:option!=='')||
   (count!==295?source.predecessor.ledgerSha256:source.ledgerSha256)!==terminal.final)process.exit(65);
@@ -64,7 +64,7 @@ git -C "$root" show "$sha:.github/task12-install-295/contract-finance/common/ins
   cmp -s - "$common/installer.cjs" || exit 65
 
 upward_mount=()
-if [[ $mode != --expense-witness-34[69] && $mode != --signed-settlement-350 ]]; then
+if [[ $mode != --expense-witness-34[69] && $mode != --signed-settlement-350 && $mode != --company-history-352 ]]; then
   upward_mount=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 fi
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
