@@ -28,6 +28,10 @@ for old, new in changes:
 p.write_text(s)
 PY
 shasum -a 256 "$out/workspace/services/api/src/database/issue436-company-history-expense.pg.spec.ts" > "$out/fixture.sha256"
+if [[ ${JG_FORWARD_435_BUSINESS:-0} == 1 ]]; then
+  python3 "$(dirname "$0")/build-435-fixture.py" "$candidate" "$out/workspace/services/api/src/database/issue411-third-company-repayment.pg.spec.ts"
+  shasum -a 256 "$out/workspace/services/api/src/database/issue411-third-company-repayment.pg.spec.ts" >> "$out/fixture.sha256"
+fi
 cat > "$out/Dockerfile" <<'DOCKER'
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}

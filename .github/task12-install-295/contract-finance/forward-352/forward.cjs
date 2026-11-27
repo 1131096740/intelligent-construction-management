@@ -48,6 +48,10 @@ module.exports = async function forward352(context) {
   if (process.env.JG_FORWARD_352_BUSINESS === '1') {
     enter('ISSUE436_352_BUSINESS');
     await require('./business.cjs')({ endpoint, database: roleIdentity.database, runId, workDir, jsonSql, receipt });
+    if (process.env.JG_FORWARD_435_BUSINESS === '1') {
+      enter('ISSUE435_352_BUSINESS');
+      await require('./business435.cjs')({ endpoint, database: roleIdentity.database, runId, workDir, receipt });
+    }
     assert.deepEqual(await jsonSql(finalSql), final, 'FORWARD_352_POST_BUSINESS_CATALOG');
     const after = await jsonSql(control.inspectSql());
     assert.deepEqual(after.ledger, expected, 'FORWARD_352_POST_BUSINESS_LEDGER');

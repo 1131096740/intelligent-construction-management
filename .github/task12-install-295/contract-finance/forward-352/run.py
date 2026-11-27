@@ -50,7 +50,7 @@ for name in old:
         raise RuntimeError('350 predecessor migration changed: ' + name)
 tail = proof / 'forward-352'
 tail.mkdir()
-for helper in ['forward.cjs', 'business.cjs']:
+for helper in ['forward.cjs', 'business.cjs', 'business435.cjs']:
     (tail / helper).write_bytes((Path(__file__).resolve().parent / helper).read_bytes())
 rows = []
 for name in new[350:]:
@@ -78,7 +78,7 @@ new=old+"\\n      await require('/qualification/forward-352/forward.cjs')({folde
 assert s.count(old)==1
 p.write_text(s.replace(old,new))
 PYHOOK
-args+=(--env "JG_FORWARD_352_BUSINESS=${JG_FORWARD_352_BUSINESS:-0}" --env "JG_FORWARD_352_INSTALLER_SHA=$(shasum -a 256 "$work/installer.cjs" | cut -d' ' -f1)"
+args+=(--env "JG_FORWARD_435_BUSINESS=${JG_FORWARD_435_BUSINESS:-0}" --env "JG_FORWARD_352_BUSINESS=${JG_FORWARD_352_BUSINESS:-0}" --env "JG_FORWARD_352_INSTALLER_SHA=$(shasum -a 256 "$work/installer.cjs" | cut -d' ' -f1)"
   --mount "type=bind,src=''' + str(tail) + ''',dst=/qualification/forward-352,readonly")'''
 runner = replace_once(runner, 'append_remaining_installer "$source_mode" owner', injection)
 script = proof / 'run.sh'
@@ -101,5 +101,9 @@ if result.returncode == 0:
         case = receipt.get('issue436_352', {})
         if (case.get('total'), case.get('passed'), case.get('skipped'), case.get('exit')) != (1, 1, 0, 0):
             raise RuntimeError('352 business receipt is incomplete')
+    if os.environ.get('JG_FORWARD_435_BUSINESS') == '1':
+        case = receipt.get('issue435_352', {})
+        if (case.get('selected'), case.get('passed'), case.get('exit')) != (2, 2, 0):
+            raise RuntimeError('435 business receipt is incomplete')
 (proof / 'exit').write_text(str(result.returncode) + '\n')
 raise SystemExit(result.returncode)
