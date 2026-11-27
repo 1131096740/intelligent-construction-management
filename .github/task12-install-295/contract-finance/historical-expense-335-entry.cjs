@@ -6,14 +6,15 @@ const { createHash } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { admitSource } = require('./install-only292.cjs');
-const { withCombined335HistoricalExpense, withCombinedExpenseWitness, withCombinedExpenseWitness349, withCombinedSignedSettlement350 } = require('./installer.cjs');
+const { withCombined335HistoricalExpense, withCombinedExpenseWitness, withCombinedExpenseWitness349, withCombinedSignedSettlement350, withCombinedCompanyHistory352 } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
 const history = require('./historical-expense-335-profile.cjs');
 const source = require('./contract-finance-source.json');
-const signed = source.mode === 'signed-settlement-350';
+const company = source.mode === 'company-history-352';
+const signed = company || source.mode === 'signed-settlement-350';
 const precision = signed || source.mode === 'expense-witness-349';
 const combined = precision || source.mode === 'expense-witness-346';
-const profile = signed ? require('./signed-settlement-350-profile.cjs')
+const profile = company ? require('./company-history-352-profile.cjs') : signed ? require('./signed-settlement-350-profile.cjs')
   : precision ? require('./expense-witness-349-profile.cjs')
   : combined ? require('./expense-witness-346-profile.cjs') : history;
 
@@ -102,14 +103,17 @@ async function main() {
   assert.equal(createHash('sha256').update(fs.readFileSync(path.join(root, 'installer.cjs'))).digest('hex'),
     profile.installerSha256);
   assert.equal(createHash('sha256').update(fs.readFileSync(raceScript)).digest('hex'),
-    signed ? history.race350Sha256 : precision ? history.race349Sha256 : history.raceSha256);
+    company ? '590937ecb3d37f7014507872470053b5b80c16dc4eb1e8be5d149565fb024a6b' : signed ? history.race350Sha256 : precision ? history.race349Sha256 : history.raceSha256);
   if (signed) {
     require('./migration-inputs-346.cjs')(api, source, profile);
     assert.equal(createHash('sha256').update(fs.readFileSync(path.join(api, spec))).digest('hex'), history.issue417SpecSha256);
   }
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
   const material = { sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails };
-  if (signed) {
+  if (company) {
+    await withCombinedCompanyHistory352(receipt, consume, { ...source, ...material });
+    profile.assertInstallation(receipt, source);
+  } else if (signed) {
     await withCombinedSignedSettlement350(receipt, consume, { ...source, ...material });
     profile.assertInstallation(receipt, source);
   } else if (precision) {
@@ -126,7 +130,7 @@ async function main() {
   assert.equal(base334.ledgerSha256, source.predecessor334.ledgerSha256);
   assert.equal(base334.sameIdentity, true);
   assert.equal(base334.sameBaseB7, true);
-  const forward = signed ? receipt.signedSettlementForward
+  const forward = company ? receipt.companyHistoryForward : signed ? receipt.signedSettlementForward
     : precision ? receipt.expenseWitnessPrecisionForward
     : combined ? receipt.expenseWitnessForward : receipt.forward320;
   assert.equal(forward.sourceTree, source.sourceTree);

@@ -9,11 +9,12 @@ const cases = require('../pol115/cases.json');
 const [prepared, sha, output, scope] = process.argv.slice(2);
 const hash = value => createHash('sha256').update(value).digest('hex');
 const source = require(path.join(prepared, 'source.json'));
-const signed = source.mode === 'signed-settlement-350';
+const company = source.mode === 'company-history-352';
+const signed = company || source.mode === 'signed-settlement-350';
 const precision = signed || source.mode === 'expense-witness-349';
 const witness = require('../expense-witness-346-profile.cjs');
 const history = require('../historical-expense-335-profile.cjs');
-const profile = signed ? require('../signed-settlement-350-profile.cjs')
+const profile = company ? require('../company-history-352-profile.cjs') : signed ? require('../signed-settlement-350-profile.cjs')
   : precision ? require('../expense-witness-349-profile.cjs')
   : source.mode === witness.mode ? witness : require('../expense-witness-345-profile.cjs');
 if (signed) assert.notEqual(process.env.GITHUB_ACTIONS, 'true', 'EXPENSE_WITNESS_350_LOCAL_ONLY');
@@ -60,6 +61,11 @@ if (precision) {
     execFileSync('git', ['apply', '--unidiff-zero', path.join(__dirname, 'issue417-race-350.patch')], { cwd: output });
     assert.equal(hash(fs.readFileSync(staged)), history.race350Sha256);
     assert.equal(hash(fs.readFileSync(path.join(api, history.issue417Spec))), history.issue417SpecSha256);
+    if (company) {
+      execFileSync('git', ['apply', '--unidiff-zero', path.join(__dirname, 'installer-352.patch')], { cwd: output });
+      execFileSync('git', ['apply', '--unidiff-zero', path.join(__dirname, 'issue417-race-352.patch')], { cwd: output });
+      assert.equal(hash(fs.readFileSync(staged)), '590937ecb3d37f7014507872470053b5b80c16dc4eb1e8be5d149565fb024a6b');
+    }
   }
   fs.chmodSync(staged, 0o644);
 }
@@ -69,7 +75,7 @@ if (profile.count >= 346) fs.chmodSync(installer, 0o644);
 const input = { sourceSha: sha, sourceTree: source.sourceTree, ledgerSha256: source.ledgerSha256, installerSha256,
   fixtures: { [file]: hash(adapted), [helper]: hash(helperBytes) },
   recipe: { registered: recipe.reported, namesSha256: recipe.namesSha256 },
-  ...(signed ? { issue417: { specSha256: history.issue417SpecSha256, raceSha256: history.race350Sha256 } } : {}) };
+  ...(signed ? { issue417: { specSha256: history.issue417SpecSha256, raceSha256: company ? '590937ecb3d37f7014507872470053b5b80c16dc4eb1e8be5d149565fb024a6b' : history.race350Sha256 } } : {}) };
 const inputFile = path.join(output, 'expense-witness-inputs.json');
 fs.writeFileSync(inputFile, JSON.stringify(input) + '\n', { flag: 'wx' });
 if (profile.count >= 346) fs.chmodSync(inputFile, 0o644);
