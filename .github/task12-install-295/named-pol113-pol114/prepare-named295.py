@@ -279,7 +279,7 @@ for name, pin in pins['runtime'].items():
         material = patch(material,(plan/'browser-330-diagnostics.patch').read_bytes())
     write(context/name,material)
 if precision:
-    write(context/'pol113-progress.cjs',read_pinned(plan/'pol113-progress.cjs','5d462fa9b4d869262e43037de944264954fab50d1cde5f87c2ad4ed8c9d396a2'))
+    write(context/'pol113-progress.cjs',read_pinned(plan/'pol113-progress.cjs','35bfc192bea1804be86ca7a9553f91aed31fb624da2dfa4ba709cb4bac9446f2'))
 for name, pin in pins['named'].items():
     material = overlay((historical/'source/services/api/prisma'/name).read_bytes(),pin) if 'base' in pin else read_pinned(donor/pin['file'],pin['result'])
     write(context/'named-authority-modules'/name,material)

@@ -7,6 +7,7 @@ const maxEvents=64;
 const events=['SUITE_START','CASE_START','CASE_END','RUN_ERROR','SUITE_END'];
 const projects=['desktop','mobile'];
 const outcomes=['passed','failed','timedOut','skipped','interrupted'];
+const failureKinds=['ASSERTION','BROWSER_CLOSED','TIMEOUT','NETWORK_ERROR','UNCLASSIFIED'];
 
 function safeEvent(row) {
   if(!row||!events.includes(row.event)||!Number.isSafeInteger(row.elapsedMs)||row.elapsedMs<0) return undefined;
@@ -16,6 +17,8 @@ function safeEvent(row) {
   if(typeof row.caseSha256==='string'&&/^[a-f0-9]{64}$/u.test(row.caseSha256)) event.caseSha256=row.caseSha256;
   if(outcomes.includes(row.status)) event.status=row.status;
   if(Number.isSafeInteger(row.durationMs)&&row.durationMs>=0) event.durationMs=row.durationMs;
+  if(failureKinds.includes(row.failureKind)) event.failureKind=row.failureKind;
+  if(Number.isSafeInteger(row.failureLine)&&row.failureLine>0&&row.failureLine<=10000) event.failureLine=row.failureLine;
   return event;
 }
 
@@ -24,6 +27,19 @@ function caseIdentity(test) {
     project:test.parent.project()?.name,
     caseSha256:createHash('sha256').update(JSON.stringify(test.titlePath())).digest('hex'),
   };
+}
+
+function failureIdentity(test,result) {
+  const error=result.errors?.[0]??result.error;
+  if(!error&&result.status!=='timedOut') return {};
+  const message=typeof error?.message==='string'?error.message.slice(0,4096):'';
+  let failureKind='UNCLASSIFIED';
+  if(/(?:target|page|context|browser).*has been closed/iu.test(message)) failureKind='BROWSER_CLOSED';
+  else if(result.status==='timedOut'||/TimeoutError|Timeout [0-9]+ms exceeded|timed out/iu.test(message)) failureKind='TIMEOUT';
+  else if(error?.matcherResult||/\bexpect\(|AssertionError/u.test(message)) failureKind='ASSERTION';
+  else if(/net::ERR_|ECONNREFUSED|ERR_CONNECTION/iu.test(message)) failureKind='NETWORK_ERROR';
+  const failureLine=error?.location?.file===test.location?.file?error?.location?.line:undefined;
+  return {failureKind,failureLine};
 }
 
 class Progress {
@@ -44,7 +60,7 @@ class Progress {
   onBegin(_config,suite){ this.emit('SUITE_START',{cases:suite.allTests().length}); }
   onTestBegin(test){ this.emit('CASE_START',caseIdentity(test)); }
   onTestEnd(test,result){
-    this.emit('CASE_END',{...caseIdentity(test),status:result.status,durationMs:result.duration});
+    this.emit('CASE_END',{...caseIdentity(test),status:result.status,durationMs:result.duration,...failureIdentity(test,result)});
   }
   onError(){ this.emit('RUN_ERROR'); }
   onEnd(result){ this.emit('SUITE_END',{status:result.status}); }
