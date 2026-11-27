@@ -4,7 +4,6 @@ umask 077
 
 [[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --company-history-352 ) ) ||
   ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --company-history-352 ) && $6 == --host-only ) ]] || exit 64
-if [[ ${5-} == --company-history-352 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3

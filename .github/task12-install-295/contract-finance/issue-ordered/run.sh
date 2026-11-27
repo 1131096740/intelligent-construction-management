@@ -4,7 +4,7 @@ umask 077
 
 [[ $# == 5 || ( $# == 6 && $6 == --host-only ) ]] || exit 64
 scope=$5
-if [[ ( $scope == *_350 || $scope == *_352 ) && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
+if [[ $scope == *_350 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3

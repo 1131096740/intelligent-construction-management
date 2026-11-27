@@ -5,7 +5,7 @@ umask 077
 signed_350=false
 case $#:${2-}:${3-} in
   2:--signed-settlement-350:|3:--signed-settlement-350:--host-only|2:--company-history-352:|3:--company-history-352:--host-only)
-    [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
+    [[ ${2-} != --signed-settlement-350 || ${GITHUB_ACTIONS:-} != true ]] || exit 64
     signed_350=true ;;
   *)
     [[ $# == 1 || ( $# == 2 && ( $2 == --current-320 || $2 == --text-direct-330 || $2 == --payment-remainder-331 || $2 == --upward-archive-332 || $2 == --historical-settlement-334 || $2 == --expense-witness-34[69] ) ) ||

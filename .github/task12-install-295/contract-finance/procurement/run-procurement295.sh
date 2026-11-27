@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 if [[ ${6-} == --signed-settlement-350 || ${6-} == --company-history-352 ]]; then
-  [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
+  [[ ${6-} != --signed-settlement-350 || ${GITHUB_ACTIONS:-} != true ]] || exit 64
   case $# in
     6) ;;
     7) [[ $7 == --host-only ]] || exit 64 ;;

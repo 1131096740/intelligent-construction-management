@@ -4,7 +4,7 @@ umask 077
 
 case $#:${6-}:${7-} in
   6:--signed-settlement-350:|7:--signed-settlement-350:--host-only|6:--company-history-352:|7:--company-history-352:--host-only)
-    [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64 ;;
+    [[ ${6-} != --signed-settlement-350 || ${GITHUB_ACTIONS:-} != true ]] || exit 64 ;;
   *)
     [[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 || $6 == --expense-witness-34[69] ) ) ||
       ( $# == 7 && $6 == --expense-witness-34[69] && $7 == --host-only ) ]] || exit 64 ;;

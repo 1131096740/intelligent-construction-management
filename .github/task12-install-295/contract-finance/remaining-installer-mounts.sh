@@ -6,7 +6,7 @@ append_remaining_installer() {
   local retained=${2:-}
   local installer="$common/installer.cjs"
   if [[ $source_mode == signed-settlement-350 || $source_mode == company-history-352 ]]; then
-    [[ ${GITHUB_ACTIONS:-} != true ]] || return 64
+    [[ $source_mode != signed-settlement-350 || ${GITHUB_ACTIONS:-} != true ]] || return 64
     case "$source_mode:$retained" in
       signed-settlement-350:retained|signed-settlement-350:owner|company-history-352:owner|company-history-352:retained) ;;
       *) return 64 ;;

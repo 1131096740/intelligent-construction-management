@@ -22,7 +22,7 @@ count=$(node -e '
   if(count===346||count===349||count===350||count===352) require(process.argv[6]+"/"+source.mode+"-profile.cjs").assertSource(source,require(process.argv[4]).final);
   console.log(count);
 '  "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan")
-if [[ ( $count == 350 || $count == 352 ) && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
+if [[ $count == 350 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 host_only=false
 if [[ ${5-} == --host-only ]]; then
   [[ $count == 346 || $count == 349 || $count == 350 || $count == 352 ]] || exit 64

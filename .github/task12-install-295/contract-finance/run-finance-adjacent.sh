@@ -4,7 +4,7 @@ umask 077
 
 [[ $# == 5 || ( $# == 6 && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 || $6 == --expense-witness-346 || $6 == --expense-witness-349 || $6 == --signed-settlement-350 || $6 == --company-history-352 ) ) ||
   ( $# == 7 && ( $6 == --historical-settlement-334 || $6 == --expense-witness-346 || $6 == --expense-witness-349 || $6 == --signed-settlement-350 || $6 == --company-history-352 ) && $7 == --host-only ) ]] || exit 64
-if [[ ( ${6-} == --signed-settlement-350 || ${6-} == --company-history-352 ) && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
+if [[ ${6-} == --signed-settlement-350 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3

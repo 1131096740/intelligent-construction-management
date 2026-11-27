@@ -14,7 +14,7 @@ common="$base/common"
 [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$base") ]] || exit 65
 mode=$(node -p 'require(process.argv[1]).mode' "$prepared/source.json")
 if [[ $mode == signed-settlement-350 || $mode == company-history-352 ]]; then
-  [[ ${GITHUB_ACTIONS:-} != true && ${5-} == --issue417-history-expense ]] || exit 64
+  [[ ( $mode != signed-settlement-350 || ${GITHUB_ACTIONS:-} != true ) && ${5-} == --issue417-history-expense ]] || exit 64
   node "$base/check-ledger.cjs" "$repo" "$sha" "--$mode" | cmp -s "$prepared/source.json" - || exit 65
 fi
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-expense-witness.XXXXXXXX")

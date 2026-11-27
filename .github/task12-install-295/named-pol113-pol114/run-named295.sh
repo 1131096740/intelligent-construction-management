@@ -10,7 +10,7 @@ evidence=$5
 [[ "$ref" =~ ^[a-f0-9]{40}$ ]]
 plan=$(cd "$(dirname "$0")" && pwd -P)
 source_mode=$(node -p 'require(process.argv[1]).mode' "$prepared/source.json")
-if [[ ( $source_mode == signed-settlement-350 || $source_mode == company-history-352 ) && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
+if [[ $source_mode == signed-settlement-350 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 node - "$generated/context/candidate-admission.json" "$prepared/source.json" "$ref" "$plan" <<'JS'
 const [candidateFile,sourceFile,sha,plan]=process.argv.slice(2);
 const a=require(candidateFile),s=require(sourceFile);

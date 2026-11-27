@@ -25,7 +25,7 @@ count=$(node -e '
   console.log(count);
 ' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan/expense-witness-346-profile.cjs" "$plan/expense-witness-349-profile.cjs" "$plan/signed-settlement-350-profile.cjs" "$plan/company-history-352-profile.cjs")
 if [[ $count == 350 || $count == 352 ]]; then
-  [[ ${GITHUB_ACTIONS:-} != true && ( $scope == cash-handover || $scope == principal-return ) ]] || exit 64
+  [[ ( $count != 350 || ${GITHUB_ACTIONS:-} != true ) && ( $scope == cash-handover || $scope == principal-return ) ]] || exit 64
   [[ $plan == "$repo/.github/task12-install-295/contract-finance" ]] || exit 65
   selected=signed-settlement-350
   if [[ $count == 352 ]]; then selected=company-history-352; fi

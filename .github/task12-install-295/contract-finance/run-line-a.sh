@@ -21,12 +21,11 @@ entry=line-a-entry.cjs
 mode=$(node -p 'require(process.argv[1]).mode' "$source")
 case "$mode:${4:-}:${5:-}" in
   company-history-352:--a28-continuation:|company-history-352:--a28-continuation:--host-only)
-    [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
     entry=historical-takeover-333-entry.cjs ;;
   company-history-352:original:|company-history-352:original:--host-only|\
   signed-settlement-350:original:|signed-settlement-350:original:--host-only|\
   signed-settlement-350:--a01-signed-subcent-350:|signed-settlement-350:--a01-signed-subcent-350:--host-only)
-    [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64 ;;
+    [[ "$mode" != signed-settlement-350 || ${GITHUB_ACTIONS:-} != true ]] || exit 64 ;;
   expense-witness-349:original:|expense-witness-349:original:--host-only) ;;
   expense-witness-349:--a28-continuation:|expense-witness-349:--a28-continuation:--host-only)
     entry=historical-takeover-333-entry.cjs ;;

@@ -14,7 +14,7 @@ for option in "${@:5}"; do
     --upward-archive-332) [[ $mode == 295 ]] || exit 64; mode=332 ;;
     --historical-settlement-334) [[ $mode == 295 ]] || exit 64; mode=334 ;;
     --expense-witness-346|--expense-witness-349) [[ $mode == 295 ]] || exit 64; mode=${option##*-} ;;
-    --signed-settlement-350|--company-history-352) [[ $mode == 295 && ${GITHUB_ACTIONS:-} != true ]] || exit 64; mode=${option##*-} ;;
+    --signed-settlement-350|--company-history-352) [[ $mode == 295 && ( $option != --signed-settlement-350 || ${GITHUB_ACTIONS:-} != true ) ]] || exit 64; mode=${option##*-} ;;
     --host-only) [[ -z $host_only ]] || exit 64; host_only=1 ;;
     --*) exit 64 ;;
     *) [[ -z $selected_lane ]] || exit 64; selected_lane=$option ;;

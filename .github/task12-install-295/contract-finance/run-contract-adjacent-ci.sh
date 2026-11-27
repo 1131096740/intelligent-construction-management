@@ -40,7 +40,6 @@ JS
   esac
 fi
 if [[ ${3-} == --company-history-352 ]]; then
-  [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
   if [[ $2 == pol275 ]]; then
     [[ ( $# == 4 || ( $# == 5 && $5 == --host-only ) ) && $4 == a187dc73a133114e1cfbbc891a4aec923abe2545 ]] || exit 64
   else

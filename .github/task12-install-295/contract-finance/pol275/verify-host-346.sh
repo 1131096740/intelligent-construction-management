@@ -7,7 +7,7 @@ sha=$3
 count=${4:-346}
 mode=expense-witness-$count
 if [[ $count == 350 || $count == 352 ]]; then
-  [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
+  [[ $count != 350 || ${GITHUB_ACTIONS:-} != true ]] || exit 64
   mode=signed-settlement-350
   if [[ $count == 352 ]]; then mode=company-history-352; fi
 fi

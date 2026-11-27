@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 022
 [[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 || $5 == --signed-settlement-350 || $5 == --company-history-352 ) ) ]] || exit 64
-if [[ ( ${5-} == --signed-settlement-350 || ${5-} == --company-history-352 ) && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
+if [[ ${5-} == --signed-settlement-350 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 count=295
 case ${5-} in
   --current-320) count=329 ;;

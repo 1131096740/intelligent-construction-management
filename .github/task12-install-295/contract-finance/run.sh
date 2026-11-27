@@ -4,7 +4,7 @@ umask 077
 
 signed_finance=false
 if [[ ${2-} == --signed-settlement-350 || ${2-} == --company-history-352 ]]; then
-  [[ ${GITHUB_ACTIONS:-} != true && ${3-} == a187dc73a133114e1cfbbc891a4aec923abe2545 ]] || exit 64
+  [[ ( ${2-} != --signed-settlement-350 || ${GITHUB_ACTIONS:-} != true ) && ${3-} == a187dc73a133114e1cfbbc891a4aec923abe2545 ]] || exit 64
   case "$#:${4-}:${5-}" in
     3::|4:--host-only:) ;;
     4:--full-finance:|5:--full-finance:--host-only) signed_finance=true ;;

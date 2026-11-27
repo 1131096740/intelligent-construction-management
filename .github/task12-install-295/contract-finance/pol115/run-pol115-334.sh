@@ -15,7 +15,6 @@ common="$base/common"
 [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$common/installer.cjs"   "$base/stage-historical-takeover-333.cjs" "$base/historical-takeover-333-profile.cjs"   "$base/historical-settlement-334-profile.cjs" "$base/upward-archive-332-profile.cjs"   "$base/historical-takeover-333-installer.patch" "$base/historical-settlement-334-installer.patch"   "$base/task12-pol109-stage-browser.cjs" "$base/expense-witness/installer.patch" "$base/expense-witness/installer-349.patch" "$base/expense-witness-349-profile.cjs" "$base/expense-witness-345-profile.cjs" "$base/expense-witness-346-profile.cjs" "$base/expense-witness-prefixes.json") ]] || exit 65
 source_mode=$(node -p 'require(process.argv[1]).mode' "$prepared/source.json")
 if [[ $source_mode == company-history-352 ]]; then
-  [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
   [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$base") ]] || exit 65
   node "$base/check-ledger.cjs" "$repo" "$sha" --company-history-352 | cmp -s "$prepared/source.json" - || exit 65
 fi
