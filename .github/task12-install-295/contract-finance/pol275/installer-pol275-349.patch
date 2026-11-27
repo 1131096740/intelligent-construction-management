@@ -1,0 +1,8 @@
+--- installer.cjs
++++ installer.cjs
+@@ -318 +318 @@
+-    ORIGINAL_POL275_WARM_EXACT_332:"warm",ORIGINAL_POL275_WARM_EXACT_346:"warm",
++    ORIGINAL_POL275_WARM_EXACT_332:"warm",ORIGINAL_POL275_WARM_EXACT_346:"warm",ORIGINAL_POL275_WARM_EXACT_349:"warm",
+@@ -320 +320 @@
+-  const pol275ForwardCount=forward320?.expenseWitness?.count??(forward320?.upwardArchive?332:forward320?.paymentRemainder?331:forward320?.textDirect?330:329);
++  const pol275ForwardCount=forward320?.expenseWitnessPrecision?.count??forward320?.expenseWitness?.count??(forward320?.upwardArchive?332:forward320?.paymentRemainder?331:forward320?.textDirect?330:329);

@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 5 || ( $# == 6 && $5 == warm && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 || $6 == --expense-witness-346 ) ) ||
-  ( $# == 7 && $5 == warm && $6 == --expense-witness-346 && $7 == --host-only ) ]] || exit 64
+[[ $# == 5 || ( $# == 6 && $5 == warm && ( $6 == --current-320 || $6 == --text-direct-330 || $6 == --payment-remainder-331 || $6 == --upward-archive-332 || $6 == --historical-settlement-334 || $6 == --expense-witness-346 || $6 == --expense-witness-349 ) ) ||
+  ( $# == 7 && $5 == warm && ( $6 == --expense-witness-346 || $6 == --expense-witness-349 ) && $7 == --host-only ) ]] || exit 64
 count=295
 mode=()
 case ${6-} in
@@ -13,6 +13,7 @@ case ${6-} in
   --upward-archive-332) count=332; mode=(--upward-archive-332) ;;
   --historical-settlement-334) count=334; mode=(--historical-settlement-334) ;;
   --expense-witness-346) count=346; mode=(--expense-witness-346) ;;
+  --expense-witness-349) count=349; mode=(--expense-witness-349) ;;
 esac
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
@@ -48,8 +49,8 @@ node -e '
   if(count===334) require(base+"/historical-settlement-334-profile.cjs").assertSource(source,sealed295);
   if(count===331||count===332)require(base+"/"+source.mode+"-profile.cjs").assertSource(source,process.argv[2],sealed295);
 ' "$prepared/source.json" "$sha" "$count" "$base"
-if [[ $count == 346 ]]; then
-  bash "$plan/verify-host-346.sh" "$repo" "$prepared" "$sha"
+if [[ $count == 346 || $count == 349 ]]; then
+  bash "$plan/verify-host-346.sh" "$repo" "$prepared" "$sha" "$count"
 fi
 if [[ ${7-} != --host-only ]]; then
   image=$(cat "$build/image.id")
@@ -85,8 +86,8 @@ if [[ $lane == warm ]]; then
 else
   install -m 0644 "$pol/collision-observation.cjs" "$work/collision-observation.cjs"
 fi
-if [[ $count == 346 ]]; then
-  bash "$plan/stage-346.sh" "$work" warm
+if [[ $count == 346 || $count == 349 ]]; then
+  bash "$plan/stage-346.sh" "$work" warm "$count"
 else
   if [[ $count == 334 ]]; then
     node "$base/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
@@ -106,7 +107,9 @@ fi
 chmod 644 "$work/installer.cjs"
 node --check "$work/installer.cjs"
 if [[ ${7-} == --host-only ]]; then
-  printf '%s\nPOL275_WARM_346_HOST_READY sha=%s\n' "$work" "$sha"
+  node --check "$plan/pol275-entry.cjs"
+  node --check "$plan/exact-$count.cjs"
+  printf '%s\nPOL275_WARM_%s_HOST_READY sha=%s\n' "$work" "$count" "$sha"
   exit 0
 fi
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
@@ -136,18 +139,21 @@ if [[ $lane == warm ]]; then
 else
   args+=(--mount "type=bind,src=$work/collision-observation.cjs,dst=/qualification/collision-observation.cjs,readonly")
 fi
-if [[ $count == 334 || $count == 346 ]]; then
+if [[ $count == 334 || $count == 346 || $count == 349 ]]; then
   for file in upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
     args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
   done
 fi
-if [[ $count == 346 ]]; then
+if [[ $count == 346 || $count == 349 ]]; then
   for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
     args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
   done
   args+=(--env "JG_POL275_SOURCE_SHA=$sha"
     --mount "type=bind,src=$base/bank/migration-inputs-346.cjs,dst=/qualification/migration-inputs-346.cjs,readonly"
-    --mount "type=bind,src=$plan/exact-346.cjs,dst=/qualification/exact-346.cjs,readonly")
+    --mount "type=bind,src=$plan/exact-$count.cjs,dst=/qualification/exact-$count.cjs,readonly")
+fi
+if [[ $count == 349 ]]; then
+  args+=(--mount "type=bind,src=$base/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
 fi
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
