@@ -5,6 +5,7 @@ import {
   reduceOperatingProjection,
   toOperatingProjectionAggregate,
   toOperatingProjectionDetailedView,
+  toOperatingProjectionPublicDetail,
   type ProjectionFactInput,
   type ProjectionV2FactInput,
   type ProjectionRestrictionSourceInput
@@ -144,6 +145,123 @@ describe("经营金额双协议", () => {
         sourceType: "contract_work_completion", impactCount: 1, amountYuan: "100.0123"
       }));
     }
+  });
+
+  const reimbursement = (
+    id: string,
+    requestedAmountYuan: string,
+    lineAmounts: string[],
+    companyPayableAmountCents: string,
+    payableYuan?: string
+  ): ProjectionV2FactInput => {
+    const lines = lineAmounts.map((amountYuan, index) => ({ id: `${id}-line-${index}`, amountYuan }));
+    const money = { numericProtocolVersion: 2 as const, amountCents: null, direction: "increase" };
+    return {
+      ...fact({
+        id, sourceType: "expense_claim_approval", sourceBusinessId: id, factKind: "expense",
+        direction: "outflow",
+        sourceSnapshot: { claimType: "reimbursement", requestedAmountYuan, companyPayableAmountCents, reimbursementLines: lines },
+        ...(payableYuan ? { costBearingCompanySubject: { kind: "participating_company", id: "company-1", name: "承担公司" } } : {})
+      }),
+      numericProtocolVersion: 2, amountCents: null, amountYuan: requestedAmountYuan,
+      impacts: [
+        ...lines.map(line => ({
+          ...money, id: line.id, impactKind: "confirmed_cost", costCategoryCode: "project_daily_expense",
+          amountYuan: line.amountYuan, impactSnapshot: { lineId: line.id }
+        })),
+        ...(payableYuan ? [{
+          ...money, id: `${id}-payable`, impactKind: "payable_increase", subjectRole: "payee", amountYuan: payableYuan
+        }] : [])
+      ]
+    };
+  };
+  const reimbursementContext = {
+    numericProtocolVersion: 2 as const,
+    scope: { kind: "project" as const, projectId: "project-1", projectIds: ["project-1"] },
+    readAt: "2026-10-19T00:00:00.000Z", cutoffAt: "2026-10-19T00:00:00.000Z", riskByProject: []
+  };
+
+  it("保留报销原始四位成本、归属和逐行明细，按分清偿应付且零应付仍确认成本", () => {
+    const approved = reimbursement("approval", "100.0050", ["100.0000", "0.0050"], "10001", "100.0100");
+    const noPayment = reimbursement("subcent", "0.0001", ["0.0001"], "0");
+    const paid = fact({ id: "paid", sourceType: "expense_claim_payment_execution", factKind: "expense",
+      impacts: [{ id: "paid-payable", impactKind: "payable_decrease", amountCents: 10001n, direction: "decrease" }] });
+    const rows = [approved, noPayment, paid];
+    const direct = reduceOperatingProjection({ ...reimbursementContext, facts: rows });
+    const stream = new OperatingProjectionStreamAccumulator(reimbursementContext);
+    for (const row of rows) {
+      stream.startFacts([{ ...row, impacts: [] }]);
+      stream.addImpacts(row.impacts.map(impact => ({ ...impact, factId: row.id })));
+      stream.finishFacts();
+    }
+    const paged = reduceOperatingProjection({ ...reimbursementContext, facts: [], ...stream.result() });
+    for (const result of [direct, paged]) {
+      expect(result.operating).toMatchObject({ confirmedCostCents: null, confirmedCostYuan: "100.0051", payableCents: "0" });
+      expect(result.profitAndLoss.currentOperatingProfitYuan).toBe("-100.0051");
+      expect(result.distribution.projectedProfitCeilingCents).toBe("-10001");
+      expect(result.relationshipTotals.find(row => row.relationship === "non_contract"))
+        .toMatchObject({ confirmedCostCents: null, confirmedCostYuan: "100.0051", payableCents: "0" });
+      expect(result.costAttribution).toMatchObject({
+        byBearingCompany: [{ id: "company-1", costCents: null, costYuan: "100.0050" }],
+        unattributedCostCents: null, unattributedCostYuan: "0.0001"
+      });
+    }
+    expect(direct.details.filter(row => row.sourceType === "expense_claim_approval").map(row => row.signedImpactYuan))
+      .toEqual(["100.0000", "0.0050", "100.0100", "0.0001"]);
+    expect(toOperatingProjectionPublicDetail(approved, approved.impacts[1], reimbursementContext.cutoffAt))
+      .toMatchObject({ amountYuan: "0.0050", signedImpactYuan: "0.0050" });
+  });
+
+  it("利润可分配上限扣减新报销实付口径和四位成本", () => {
+    const approved = reimbursement("new-payable", "1.0050", ["1.0050"], "101", "1.0100");
+    const opening = fact({ id: "opening", impacts: [
+      { id: "income", impactKind: "confirmed_income", amountCents: 1000n, direction: "increase" },
+      { id: "cash", impactKind: "construction_enterprise_funds_increase", amountCents: 800n,
+        direction: "increase", subjectKind: "construction_enterprise", subjectId: "enterprise-v1" }
+    ] });
+    const result = reduceOperatingProjection({ ...reimbursementContext, facts: [approved, opening] });
+    expect(result.operating.payableCents).toBe("101");
+    expect(result.distribution).toEqual({
+      cashCeilingCents: "699", projectedProfitCeilingCents: "899", currentDistributableProfitCents: "699"
+    });
+  });
+
+  it("公司视图只计已确认现金切片，全项目原费用和待归属差额保持四位", () => {
+    const row = reimbursement("allocated", "8.0050", ["8.0050"], "801", "8.0100");
+    row.costBearingCompanySubject = null;
+    const [cost, payable] = row.impacts;
+    const slices = [{ companyEntityVersionId: "company-version", companyName: "归属公司", amountCents: 300n }];
+    const allocated = { ...cost, costBearingSlices: slices, publicCashCostAmountCents: 300n };
+    const project = reduceOperatingProjection({
+      ...reimbursementContext, facts: [{ ...row, impacts: [allocated, payable] }]
+    });
+    expect(project.operating.confirmedCostYuan).toBe("8.0050");
+    expect(project.costAttribution).toMatchObject({
+      byBearingCompany: [{ id: "company-version", costYuan: "3.0000" }],
+      unattributedCostYuan: "5.0050", publicCashCostCents: "300"
+    });
+
+    const scope = { ...reimbursementContext.scope, filters: { companyEntityId: "company" } };
+    const companyContext = { ...reimbursementContext, scope, companyEntityVersionIds: ["company-version"] };
+    const selected = { ...allocated, projectedCostYuan: "3.0000" };
+    const stream = new OperatingProjectionStreamAccumulator(companyContext);
+    stream.startFacts([{ ...row, impacts: [] }]);
+    stream.addImpacts([selected, payable].map(impact => ({ ...impact, factId: row.id })));
+    stream.finishFacts();
+    const company = reduceOperatingProjection({ ...companyContext, facts: [], ...stream.result() });
+    expect(company.operating.confirmedCostYuan).toBe("3.0000");
+    expect(company.costAttribution.unattributedCostYuan).toBe("0.0000");
+    expect(toOperatingProjectionPublicDetail(row, selected, companyContext.cutoffAt).signedImpactYuan).toBe("3.0000");
+  });
+
+  it("即使分录数量正确也拒绝重复报销明细", () => {
+    const row = reimbursement("duplicate", "0.0100", ["0.0050", "0.0050"], "1", "0.0100");
+    const [first, , payable] = row.impacts;
+    row.impacts = [first, { ...first, id: "another-row-for-same-line" }, payable];
+    expect(() => reduceOperatingProjection({ ...reimbursementContext, facts: [row] })).toThrow(/重复/);
+    const stream = new OperatingProjectionStreamAccumulator(reimbursementContext);
+    stream.startFacts([{ ...row, impacts: [] }]);
+    expect(() => stream.addImpacts(row.impacts.map(impact => ({ ...impact, factId: row.id })))).toThrow(/重复/);
   });
 
   it("V1读取不得误消费V2分页摘要后返回零承诺", () => {

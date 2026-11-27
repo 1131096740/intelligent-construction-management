@@ -1832,13 +1832,14 @@ export interface OperatingProjectionAggregateReadModel {
   asOf: { businessDate: string; readAt: string; retroactiveFactCount: number };
   integrity: { statusLabel: string; moneyComplete: boolean; notices: string[] };
   commitments: { contractCommitmentCents: string };
-  relationshipTotals?: Array<{ relationship: string; label: string; contractCommitmentCents: string; confirmedCostCents: string | null; receivableCents: string | null; payableCents: string | null; interSubjectBalanceCents: string; interSubjectReceivableCents: string; interSubjectPayableCents: string }>;
+  relationshipTotals?: Array<{ relationship: string; label: string; contractCommitmentCents: string; confirmedCostCents: string | null; confirmedCostYuan?: string | null; receivableCents: string | null; payableCents: string | null; interSubjectBalanceCents: string; interSubjectReceivableCents: string; interSubjectPayableCents: string }>;
   operating: {
     confirmedIncomeCents: string;
     confirmedCostCents: string | null;
     confirmedCostYuan?: string | null;
     internalReceivableCents?: string | null;
     receivableCents: string | null;
+    receivableYuan?: string | null;
     payableCents: string | null;
   };
   costAttribution?: {
@@ -1847,8 +1848,10 @@ export interface OperatingProjectionAggregateReadModel {
       id: string;
       name: string | null;
       costCents: string | null;
+      costYuan?: string | null;
     }>;
     unattributedCostCents: string | null;
+    unattributedCostYuan?: string | null;
     publicCashCostCents: string | null;
     needsReview?: true;
   };
@@ -2894,7 +2897,7 @@ export async function downloadOperatingProjectionExport(body: {
   const response = await apiFetch("/operating-projections/export", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
+    body: JSON.stringify({ ...body, numericProtocolVersion: "2" })
   });
   await ensureOk(response, "导出经营投影失败");
   const blob = await response.blob();
@@ -7344,7 +7347,7 @@ export function revokeApprovalDelegation(delegationId: string) {
 }
 
 export function fetchContractFinancialBalances(input:{projectId?:string;companyEntityId?:string;asOf?:string}) {
- const query=new URLSearchParams();
+ const query=new URLSearchParams({ numericProtocolVersion: "2" });
  if(input.companyEntityId)query.set("companyEntityId",input.companyEntityId);
  if(input.asOf)query.set("asOf",input.asOf);
  if(input.projectId)return readJson<OperatingProjectionAggregateReadModel>(`/operating-projections/project/${encodeURIComponent(input.projectId)}?${query}`);

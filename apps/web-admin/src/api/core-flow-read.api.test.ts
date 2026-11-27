@@ -1193,7 +1193,8 @@ describe("core flow read API client", () => {
         scopeKind: "project",
         projectId: "project-1",
         exportKind: "project_operating_ledger_detail",
-        confirmationPassword: "current-password"
+        confirmationPassword: "current-password",
+        numericProtocolVersion: "2"
       })
     }));
     expect(anchor.download).toBe("项目经营台账明细.csv");

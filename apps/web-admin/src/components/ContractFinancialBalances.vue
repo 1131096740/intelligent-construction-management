@@ -62,13 +62,13 @@ function checkedAmount(value: string | null) { return value === null ? "待核�
             :key="row.relationship"
           >
             <strong>{{ row.label }}</strong>
-            <p>确认成本：{{ checkedAmount(row.confirmedCostCents) }}</p>
+            <p>确认成本：{{ row.confirmedCostYuan == null ? checkedAmount(row.confirmedCostCents) : `${row.confirmedCostYuan} 元` }}</p>
             <p>应收余额：{{ checkedAmount(row.receivableCents) }}</p>
             <p>应付余额：{{ checkedAmount(row.payableCents) }}</p>
             <p>代付往来应收：{{ amount(row.interSubjectReceivableCents) }} 元；应还代付款：{{ amount(row.interSubjectPayableCents) }} 元</p>
           </article>
         </div>
-        <p>对外应收：{{ checkedAmount(data.operating.receivableCents) }}；应付余额：{{ checkedAmount(data.operating.payableCents) }}。</p>
+        <p>对外应收：{{ data.operating.receivableYuan == null ? checkedAmount(data.operating.receivableCents) : `${data.operating.receivableYuan} 元` }}；应付余额：{{ checkedAmount(data.operating.payableCents) }}。</p>
         <p v-if="!companyEntityId">
           对上内部应收：{{ checkedAmount(data.operating.internalReceivableCents === undefined ? '0' : data.operating.internalReceivableCents) }}（项目合并单列）。
         </p>
