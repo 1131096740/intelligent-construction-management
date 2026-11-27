@@ -103,5 +103,15 @@
     "path": "services/api/src/operational-write-freeze/operational-write-freeze.registry.ts",
     "expected": "86b58394c010a1988eef862ade413c6f36017788fa7824a23a6cbc353af65692",
     "candidate": "d7c0316b15a660992bd6b626f9cbf26efb8ef11075c3de515bbc9a32bce40e81"
+  },
+  {
+    "path": "services/api/src/database/task16-real-browser-scope.spec.ts",
+    "expected": "06f18cf30346330345f24a9b3e3d3cab53570053baf8183f564c0f3057eb39d5",
+    "candidate": "a91555e2433d3dc34f841bee9027bc96ab0e4fc1cfe8c0502e62eb99055af2bc"
+  },
+  {
+    "path": "services/api/src/database/task16-real-browser-scope.ts",
+    "expected": "c4e7517be9efbe27e42f595d3cdc6f2d5d9da7677720f8d4f0cdf60a0132adc1",
+    "candidate": "1fe2ebe644c8832ac7d8dd7fceeceb5edca14e5a0a0e500a20c77b1d547ed8fa"
   }
 ]
