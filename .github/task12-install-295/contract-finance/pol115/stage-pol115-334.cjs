@@ -16,8 +16,9 @@ const selected = pol115Scope(cases, scope);
 assert.match(candidateSha, /^[a-f0-9]{40}$/u);
 const source = require(path.join(prepared, 'source.json'));
 assert.equal(source.sourceSha, candidateSha);
-const expenseWitness = source.mode === 'expense-witness-346' ? require('../expense-witness-346-profile.cjs') : null;
-const profile = expenseWitness ?? historical;
+const precision = source.mode === 'expense-witness-349';
+const expenseWitness = precision || source.mode === 'expense-witness-346' ? require('../expense-witness-346-profile.cjs') : null;
+const profile = precision ? require('../expense-witness-349-profile.cjs') : expenseWitness ?? historical;
 profile.assertSource(source, final);
 
 const workspace = path.join(prepared, 'prepared/context/workspace');
@@ -40,7 +41,7 @@ function write(relative, bytes) {
   const target = path.join(output, 'fixtures', relative);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, bytes, { flag: 'wx', mode: 0o644 });
-  if (source.migrationCount === 346) fs.chmodSync(target, 0o644);
+  if (expenseWitness) fs.chmodSync(target, 0o644);
 }
 function once(text, before, after) {
   assert.equal(text.split(before).length, 2, before);
@@ -107,17 +108,21 @@ for (const row of selected) {
   fixtureHashes[file] = hash(adapted);
 }
 execFileSync(process.execPath, [path.join(__dirname, '../stage-historical-takeover-333.cjs'), output, historical.mode], { stdio: 'inherit' });
+const installer = path.join(output, 'installer.cjs');
 if (expenseWitness) {
   execFileSync('git', ['apply', '--unidiff-zero', path.join(__dirname, '../expense-witness/installer.patch')], { cwd: output });
+  assert.equal(hash(read(installer)), expenseWitness.installerSha256);
 }
-const installer = path.join(output, 'installer.cjs');
+if (precision) {
+  execFileSync('git', ['apply', '--unidiff-zero', path.join(__dirname, '../expense-witness/installer-349.patch')], { cwd: output });
+}
 assert.equal(hash(read(installer)), profile.installerSha256);
-if (source.migrationCount === 346) fs.chmodSync(installer, 0o644);
+if (expenseWitness) fs.chmodSync(installer, 0o644);
 const receipt = { sourceSha: candidateSha, sourceTree: source.sourceTree, scope, ledgerSha256: source.ledgerSha256,
   installerSha256: profile.installerSha256, fixtureSha256: fixtureHashes,
   declared: selected.reduce((sum, row) => sum + row.declared, 0),
   currentCases: selected.reduce((sum, row) => sum + row.reported, 0) };
 const inputFile = path.join(output, 'pol115-334-inputs.json');
 fs.writeFileSync(inputFile, JSON.stringify(receipt) + '\n', { flag: 'wx', mode: 0o644 });
-if (source.migrationCount === 346) fs.chmodSync(inputFile, 0o644);
+if (expenseWitness) fs.chmodSync(inputFile, 0o644);
 console.log(JSON.stringify({ status: 'POL115_' + source.migrationCount + '_HOST_READY', ...receipt }));
