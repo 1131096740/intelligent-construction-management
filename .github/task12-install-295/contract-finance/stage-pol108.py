@@ -98,7 +98,11 @@ if count in {'346', '349', '350', '352'}:
         ['node', '-p', 'require(process.argv[1]).installerSha256', str(profile)], text=True).strip()
     if digest(installer) != canonical:
         raise SystemExit('POL108_'+count+'_INSTALLER_PREIMAGE')
-    patch(installer, plan/f'pol108-{count}-installer.patch')
+    if count == '352':
+        subprocess.run(['git', 'apply', '--unidiff-zero', str((plan/'pol108-352-installer.patch').resolve())],
+                       cwd=out, check=True)
+    else:
+        patch(installer, plan/f'pol108-{count}-installer.patch')
     installer_fingerprints = {
         '346': 'fd1c86f6bc0654199efdeed8ba3753ad8376d99d2b660e9a70e1cf3564110719',
         '349': '6c49a48ceb13a8c04b1cc6ab135de854dcdfef8dd7117070b2881cf1e3e137e5',

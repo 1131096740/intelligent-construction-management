@@ -6,9 +6,9 @@
 
 | 证据 | 状态 |
 | --- | --- |
-| Controller 源码路由 | 已扫描 270 条 |
+| Controller 源码路由 | 已扫描 282 条 |
 | Web API 请求 | 已扫描 177 条 |
-| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 884 条；源码缺运行时 0 条，运行时缺源码 0 条 |
+| 实际 Nest route manifest | 已通过 `app.init()` 读取，共 898 条；源码缺运行时 0 条，运行时缺源码 0 条 |
 | 生产或生产等价旧路由命中 | 缺失；不得据静态矩阵执行删除 |
 | route-usage 候选退出 | 已读取 58 条合同专项候选；物理删除授权固定为否 |
 
@@ -18,7 +18,7 @@
 | --- | ---: |
 | matched | 128 |
 | frontend_without_backend | 0 |
-| backend_without_frontend | 84 |
+| backend_without_frontend | 96 |
 | backend_internal_only | 0 |
 | legacy_candidate | 0 |
 | exit_candidate | 58 |
@@ -43,6 +43,18 @@
 | POST | `/company-entities` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | PATCH | `/company-entities/:param` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/company-entities/:param/history` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/company-entities/:param/history-expenses/batches` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/company-entities/:param/history-expenses/batches` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/company-entities/:param/history-expenses/batches/:param` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/company-entities/:param/history-expenses/batches/:param/activation` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/company-entities/:param/history-expenses/batches/:param/confirmations` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| PATCH | `/company-entities/:param/history-expenses/batches/:param/rows/:param` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/company-entities/:param/history-expenses/batches/:param/rows/:param/corrections` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/company-entities/:param/history-expenses/capability` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/company-entities/:param/history-expenses/excel-precheck` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/company-entities/:param/history-expenses/excel-template` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| GET | `/company-entities/:param/history-expenses/ledger` | — |  | backend_without_frontend | 补入口 | 否 | — |
+| POST | `/company-entities/:param/history-expenses/precheck` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | POST | `/company-entities/:param/status` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/company-entities/management` | — |  | backend_without_frontend | 补入口 | 否 | — |
 | GET | `/company-entities/management-capability` | — |  | backend_without_frontend | 补入口 | 否 | — |

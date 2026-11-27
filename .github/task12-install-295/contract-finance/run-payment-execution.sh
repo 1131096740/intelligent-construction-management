@@ -156,6 +156,8 @@ const kind = /MODULE_NOT_FOUND|Cannot find module/u.test(text) ? 'MODULE_NOT_FOU
   : /EACCES|permission denied/iu.test(text) ? 'PERMISSION_DENIED'
   : /SyntaxError/u.test(text) ? 'SYNTAX_ERROR' : 'UNCLASSIFIED';
 console.error(`PAYMENT_EXECUTION_START_FAILURE_KIND ${kind}`);
+const path = /(?:open|access|scandir|stat) '(\/qualification\/[A-Za-z0-9_./-]+)'/u.exec(text)?.[1];
+if (path) console.error(`PAYMENT_EXECUTION_START_FAILURE_PATH ${path}`);
 JS
     exit 1
   fi
