@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 56,
-    "exportedFunctionCount": 763,
-    "transportWrapperCount": 744,
+    "exportedFunctionCount": 764,
+    "transportWrapperCount": 745,
     "pureExportCount": 19,
-    "mainRequestBindingCount": 817,
+    "mainRequestBindingCount": 829,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 771,
-    "productionConsumerCount": 632,
+    "requestEdgeCount": 772,
+    "productionConsumerCount": 633,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -1240,7 +1240,8 @@
         "apps/web-admin/src/api/company-entity.api.test.ts"
       ],
       "productionConsumers": [
-        "apps/web-admin/src/pages/company-entities/CompanyEntityListPage.vue"
+        "apps/web-admin/src/pages/company-entities/CompanyEntityListPage.vue",
+        "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
       ],
       "unreachableConsumers": []
     },
@@ -16577,7 +16578,22 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 165,
+          "sourceLine": 187,
+          "method": "POST",
+          "path": "/company-entities/:param/history-expenses/batches/:param/activation",
+          "normalizedPath": "/company-entities/:param/history-expenses/batches/:param/activation",
+          "normalizedKey": "POST /company-entities/:param/history-expenses/batches/:param/activation",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "activateHistoryExpenseBatch",
+              "send"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 187,
           "method": "POST",
           "path": "/projects/:param/history-expenses/batches/:param/activation",
           "normalizedPath": "/projects/:param/history-expenses/batches/:param/activation",
@@ -16605,7 +16621,22 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 165,
+          "sourceLine": 187,
+          "method": "POST",
+          "path": "/company-entities/:param/history-expenses/batches/:param/confirmations",
+          "normalizedPath": "/company-entities/:param/history-expenses/batches/:param/confirmations",
+          "normalizedKey": "POST /company-entities/:param/history-expenses/batches/:param/confirmations",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "confirmHistoryExpenseBatch",
+              "send"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 187,
           "method": "POST",
           "path": "/projects/:param/history-expenses/batches/:param/confirmations",
           "normalizedPath": "/projects/:param/history-expenses/batches/:param/confirmations",
@@ -16633,7 +16664,22 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 165,
+          "sourceLine": 187,
+          "method": "POST",
+          "path": "/company-entities/:param/history-expenses/batches/:param/rows/:param/corrections",
+          "normalizedPath": "/company-entities/:param/history-expenses/batches/:param/rows/:param/corrections",
+          "normalizedKey": "POST /company-entities/:param/history-expenses/batches/:param/rows/:param/corrections",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "correctHistoryExpenseRow",
+              "send"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 187,
           "method": "POST",
           "path": "/projects/:param/history-expenses/batches/:param/rows/:param/corrections",
           "normalizedPath": "/projects/:param/history-expenses/batches/:param/rows/:param/corrections",
@@ -16661,7 +16707,22 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 165,
+          "sourceLine": 187,
+          "method": "POST",
+          "path": "/company-entities/:param/history-expenses/batches",
+          "normalizedPath": "/company-entities/:param/history-expenses/batches",
+          "normalizedKey": "POST /company-entities/:param/history-expenses/batches",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "createHistoryExpenseBatch",
+              "send"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 187,
           "method": "POST",
           "path": "/projects/:param/history-expenses/batches",
           "normalizedPath": "/projects/:param/history-expenses/batches",
@@ -16689,7 +16750,21 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 198,
+          "sourceLine": 220,
+          "method": "GET",
+          "path": "/company-entities/:param/history-expenses/excel-template",
+          "normalizedPath": "/company-entities/:param/history-expenses/excel-template",
+          "normalizedKey": "GET /company-entities/:param/history-expenses/excel-template",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "downloadHistoryExpenseTemplate"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 220,
           "method": "GET",
           "path": "/projects/:param/history-expenses/excel-template",
           "normalizedPath": "/projects/:param/history-expenses/excel-template",
@@ -16709,6 +16784,33 @@
       "unreachableConsumers": []
     },
     {
+      "name": "fetchCompanyHistoryExpenseLedger",
+      "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
+      "kind": "transport",
+      "returnProvenance": "transparent_main_response",
+      "requests": [
+        {
+          "kind": "main",
+          "sourceLine": 163,
+          "method": "GET",
+          "path": "/company-entities/:param/history-expenses/ledger",
+          "normalizedPath": "/company-entities/:param/history-expenses/ledger",
+          "normalizedKey": "GET /company-entities/:param/history-expenses/ledger",
+          "bodyKind": "none",
+          "localCallChains": [
+            [
+              "fetchCompanyHistoryExpenseLedger"
+            ]
+          ]
+        }
+      ],
+      "productionConsumers": [
+        "apps/web-admin/src/pages/projects/HistoryExpensePage.vue"
+      ],
+      "testConsumers": [],
+      "unreachableConsumers": []
+    },
+    {
       "name": "fetchHistoryExpenseBatch",
       "apiFile": "apps/web-admin/src/api/history-expense.api.ts",
       "kind": "transport",
@@ -16716,7 +16818,22 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 165,
+          "sourceLine": 187,
+          "method": "GET",
+          "path": "/company-entities/:param/history-expenses/batches/:param",
+          "normalizedPath": "/company-entities/:param/history-expenses/batches/:param",
+          "normalizedKey": "GET /company-entities/:param/history-expenses/batches/:param",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "fetchHistoryExpenseBatch",
+              "send"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 187,
           "method": "GET",
           "path": "/projects/:param/history-expenses/batches/:param",
           "normalizedPath": "/projects/:param/history-expenses/batches/:param",
@@ -16744,7 +16861,22 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 165,
+          "sourceLine": 187,
+          "method": "GET",
+          "path": "/company-entities/:param/history-expenses/batches",
+          "normalizedPath": "/company-entities/:param/history-expenses/batches",
+          "normalizedKey": "GET /company-entities/:param/history-expenses/batches",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "fetchHistoryExpenseBatches",
+              "send"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 187,
           "method": "GET",
           "path": "/projects/:param/history-expenses/batches",
           "normalizedPath": "/projects/:param/history-expenses/batches",
@@ -16772,7 +16904,22 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 165,
+          "sourceLine": 187,
+          "method": "GET",
+          "path": "/company-entities/:param/history-expenses/capability",
+          "normalizedPath": "/company-entities/:param/history-expenses/capability",
+          "normalizedKey": "GET /company-entities/:param/history-expenses/capability",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "fetchHistoryExpenseCapability",
+              "send"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 187,
           "method": "GET",
           "path": "/projects/:param/history-expenses/capability",
           "normalizedPath": "/projects/:param/history-expenses/capability",
@@ -16800,7 +16947,21 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 206,
+          "sourceLine": 228,
+          "method": "POST",
+          "path": "/company-entities/:param/history-expenses/excel-precheck",
+          "normalizedPath": "/company-entities/:param/history-expenses/excel-precheck",
+          "normalizedKey": "POST /company-entities/:param/history-expenses/excel-precheck",
+          "bodyKind": "form_data",
+          "localCallChains": [
+            [
+              "precheckHistoryExpenseExcel"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 228,
           "method": "POST",
           "path": "/projects/:param/history-expenses/excel-precheck",
           "normalizedPath": "/projects/:param/history-expenses/excel-precheck",
@@ -16827,7 +16988,22 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 165,
+          "sourceLine": 187,
+          "method": "POST",
+          "path": "/company-entities/:param/history-expenses/precheck",
+          "normalizedPath": "/company-entities/:param/history-expenses/precheck",
+          "normalizedKey": "POST /company-entities/:param/history-expenses/precheck",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "precheckHistoryExpenses",
+              "send"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 187,
           "method": "POST",
           "path": "/projects/:param/history-expenses/precheck",
           "normalizedPath": "/projects/:param/history-expenses/precheck",
@@ -16855,7 +17031,22 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 165,
+          "sourceLine": 187,
+          "method": "PATCH",
+          "path": "/company-entities/:param/history-expenses/batches/:param/rows/:param",
+          "normalizedPath": "/company-entities/:param/history-expenses/batches/:param/rows/:param",
+          "normalizedKey": "PATCH /company-entities/:param/history-expenses/batches/:param/rows/:param",
+          "bodyKind": "json",
+          "localCallChains": [
+            [
+              "verifyHistoryExpenseRow",
+              "send"
+            ]
+          ]
+        },
+        {
+          "kind": "main",
+          "sourceLine": 187,
           "method": "PATCH",
           "path": "/projects/:param/history-expenses/batches/:param/rows/:param",
           "normalizedPath": "/projects/:param/history-expenses/batches/:param/rows/:param",

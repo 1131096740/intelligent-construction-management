@@ -23,10 +23,17 @@ const columns = [
   ["paymentDate", "付款日期"]
 ] as const;
 
+const companyCategoryLabels = {
+  ...PRIMARY_COST_CATEGORY_LABELS,
+  project_daily_expense: "公司日常费用",
+  other_project_cost: "其他公司费用"
+} as const;
 const categoryByLabel = new Map(Object.entries(PRIMARY_COST_CATEGORY_LABELS).map(([key, label]) => [label as string, key]));
+categoryByLabel.set(companyCategoryLabels.project_daily_expense, "project_daily_expense");
+categoryByLabel.set(companyCategoryLabels.other_project_cost, "other_project_cost");
 const paymentByLabel = new Map(Object.entries(HISTORY_EXPENSE_PAYMENT_STATUS_LABELS).map(([key, label]) => [label as string, key]));
 
-export async function exportHistoryExpenseTemplate() {
+export async function exportHistoryExpenseTemplate(scope: "project" | "company" = "project") {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "建工智管";
   const sheet = workbook.addWorksheet(sheetName, { views: [{ state: "frozen", ySplit: 1 }] });
@@ -38,7 +45,7 @@ export async function exportHistoryExpenseTemplate() {
   sheet.getColumn("occurredAt").numFmt = "yyyy-mm-dd";
   sheet.getColumn("paymentDate").numFmt = "yyyy-mm-dd";
   for (const [column, labels] of [
-    [4, Object.values(PRIMARY_COST_CATEGORY_LABELS)],
+    [4, Object.values(scope === "company" ? companyCategoryLabels : PRIMARY_COST_CATEGORY_LABELS)],
     [6, Object.values(HISTORY_EXPENSE_PAYMENT_STATUS_LABELS)]
   ] as const) {
     const validation: ExcelJS.DataValidation = {

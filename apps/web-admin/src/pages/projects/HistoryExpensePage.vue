@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from "vue";
 import { MessagePlugin, type UploadFile } from "tdesign-vue-next";
 import { fetchProjects, type ProjectOptionReadModel } from "../../api/core-flow-read.api";
+import { useAuthStore } from "../../auth/auth.store";
+import { fetchCompanyEntityManagement, type CompanyEntityModel } from "../../api/company-entity.api";
 import { formatUnknownApiError } from "../../api/error-message";
 import {
   activateHistoryExpenseBatch,
@@ -9,12 +11,14 @@ import {
   correctHistoryExpenseRow,
   createHistoryExpenseBatch,
   downloadHistoryExpenseTemplate,
+  fetchCompanyHistoryExpenseLedger,
   fetchHistoryExpenseBatch,
   fetchHistoryExpenseBatches,
   fetchHistoryExpenseCapability,
   precheckHistoryExpenseExcel,
   precheckHistoryExpenses,
   verifyHistoryExpenseRow,
+  type CompanyHistoryExpenseLedger,
   type HistoryExpenseBatchListItem,
   type HistoryExpenseBatchReadModel,
   type HistoryExpenseCapability,
@@ -26,8 +30,21 @@ import {
 } from "../../api/history-expense.api";
 import { centsTextToYuanText } from "../../lib/money";
 
+const auth = useAuthStore();
+const canSeeCompanyHistory = computed(() => auth.user?.globalRoleKeys.some(role =>
+  role === "comprehensive_director" || role === "finance_staff" || role === "finance_director") ?? false);
 const projects = ref<ProjectOptionReadModel[]>([]);
+const companies = ref<CompanyEntityModel[]>([]);
+const scopeKind = ref<"project" | "company">("project");
+const selectedCompanyId = ref("");
+const companyLedger = ref<CompanyHistoryExpenseLedger | null>(null);
 const selectedProjectId = ref("");
+const selectedScope = computed(() => scopeKind.value === "project"
+  ? selectedProjectId.value
+  : selectedCompanyId.value ? { companyEntityId: selectedCompanyId.value } : "");
+const companyOptions = computed(() => companies.value.map(company => ({
+  value: company.id, label: company.isActive ? company.name : `${company.name}（已停用）`
+})));
 const capability = ref<HistoryExpenseCapability | null>(null);
 const batches = ref<HistoryExpenseBatchListItem[]>([]);
 const detail = ref<HistoryExpenseBatchReadModel | null>(null);
@@ -45,6 +62,7 @@ const verifyDialog = ref(false);
 const verifyTarget = ref<HistoryExpenseRowReadModel | null>(null);
 const verifyOutcome = ref<HistoryExpenseReviewOutcome>("verified");
 const verifyNote = ref("");
+const verifySource = ref("");
 
 const correctionDialog = ref(false);
 const correctionTarget = ref<HistoryExpenseRowReadModel | null>(null);
@@ -102,6 +120,8 @@ const categoryAliases: Record<string, string> = {
   现场费用: "site_construction_and_measures",
   项目日常费用: "project_daily_expense",
   日常费用: "project_daily_expense",
+  公司日常费用: "project_daily_expense",
+  其他公司费用: "other_project_cost",
   施工企业扣费: "construction_enterprise_deduction",
   其他项目成本: "other_project_cost",
   其他: "other_project_cost"
@@ -136,6 +156,8 @@ function amount(cents: string | null | undefined) {
 }
 
 function categoryLabel(code: string | null | undefined) {
+  if (scopeKind.value === "company" && code === "project_daily_expense") return "公司日常费用";
+  if (scopeKind.value === "company" && code === "other_project_cost") return "其他公司费用";
   return (
     {
       material: "材料成本",
@@ -161,7 +183,7 @@ async function loadProjects() {
   try {
     projects.value = await fetchProjects();
     selectedProjectId.value ||= projects.value[0]?.id ?? "";
-    if (selectedProjectId.value) await loadProject();
+    if (selectedScope.value) await loadProject();
   } catch (error) {
     message.value = formatUnknownApiError(error, "读取项目失败");
   } finally {
@@ -170,16 +192,19 @@ async function loadProjects() {
 }
 
 async function loadProject() {
-  if (!selectedProjectId.value) return;
+  const scope = selectedScope.value;
+  if (!scope) return;
   loading.value = true;
   message.value = "";
   try {
-    const [cap, list] = await Promise.all([
-      fetchHistoryExpenseCapability(selectedProjectId.value),
-      fetchHistoryExpenseBatches(selectedProjectId.value)
+    const [cap, list, ledger] = await Promise.all([
+      fetchHistoryExpenseCapability(scope),
+      fetchHistoryExpenseBatches(scope),
+      typeof scope === "string" ? null : fetchCompanyHistoryExpenseLedger(scope.companyEntityId)
     ]);
     capability.value = cap;
     batches.value = list;
+    companyLedger.value = ledger;
     detail.value = null;
     precheck.value = null;
     excelPreview.value = null;
@@ -199,7 +224,27 @@ function setExcelFiles(files: UploadFile[]) {
 
 function onProjectChange() {
   setExcelFiles([]);
-  void loadProject();
+  pasteText.value = "";
+  capability.value = null;
+  batches.value = [];
+  detail.value = null;
+  companyLedger.value = null;
+  if (selectedScope.value) void loadProject();
+}
+
+async function changeScope() {
+  if (scopeKind.value === "company") {
+    loading.value = true;
+    try {
+      companies.value = (await fetchCompanyEntityManagement({ status: "all" })).filter(company => company.dataStatus === "complete");
+      selectedCompanyId.value ||= companies.value[0]?.id ?? "";
+    } catch (error) {
+      message.value = formatUnknownApiError(error, "读取我方公司主体失败");
+    } finally {
+      loading.value = false;
+    }
+  }
+  onProjectChange();
 }
 
 async function downloadTemplate() {
@@ -212,7 +257,7 @@ async function downloadTemplate() {
   downloadingTemplate.value = true;
   excelError.value = "";
   try {
-    const blob = await downloadHistoryExpenseTemplate(selectedProjectId.value);
+    const blob = await downloadHistoryExpenseTemplate(selectedScope.value);
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -279,7 +324,7 @@ async function runPrecheck() {
   actionLoading.value = true;
   message.value = "";
   try {
-    precheck.value = await precheckHistoryExpenses(selectedProjectId.value, rows);
+    precheck.value = await precheckHistoryExpenses(selectedScope.value, rows);
     MessagePlugin.success(
       `预检完成：${precheck.value.summary.totalRows} 行，阻断 ${precheck.value.blockingRows} 行`
     );
@@ -307,7 +352,7 @@ async function runExcelPrecheck() {
   excelPreview.value = null;
   precheck.value = null;
   try {
-    const imported = await precheckHistoryExpenseExcel(selectedProjectId.value, file);
+    const imported = await precheckHistoryExpenseExcel(selectedScope.value, file);
     excelPreview.value = imported;
     precheck.value = imported.precheck;
     MessagePlugin.success(
@@ -335,7 +380,7 @@ async function createBatch() {
   actionLoading.value = true;
   message.value = "";
   try {
-    const created = await createHistoryExpenseBatch(selectedProjectId.value, rows);
+    const created = await createHistoryExpenseBatch(selectedScope.value, rows);
     MessagePlugin.success(created.idempotent ? "相同内容已导入过，已打开原批次" : "批次已创建，请财务逐行核实");
     await loadProject();
     await openBatch(created.id);
@@ -355,7 +400,7 @@ function onBatchRowClick({ row }: { row: HistoryExpenseBatchListItem }) {
 async function openBatch(batchId: string) {
   loading.value = true;
   try {
-    detail.value = await fetchHistoryExpenseBatch(selectedProjectId.value, batchId);
+    detail.value = await fetchHistoryExpenseBatch(selectedScope.value, batchId);
   } catch (error) {
     message.value = formatUnknownApiError(error, "读取历史费用批次详情失败");
   } finally {
@@ -367,6 +412,7 @@ function openVerify(row: HistoryExpenseRowReadModel) {
   verifyTarget.value = row;
   verifyOutcome.value = "verified";
   verifyNote.value = "";
+  verifySource.value = String(row.values.sourceDescription ?? "");
   verifyDialog.value = true;
 }
 
@@ -386,7 +432,7 @@ async function submitVerify() {
   actionLoading.value = true;
   try {
     detail.value = await verifyHistoryExpenseRow(
-      selectedProjectId.value,
+      selectedScope.value,
       detail.value!.id,
       target.id,
       {
@@ -395,7 +441,9 @@ async function submitVerify() {
         note: verifyNote.value.trim() || undefined,
         ...(verifyOutcome.value === "not_occurred"
           ? { values: { ...target.values, amountYuan: "0", paidAmountYuan: null } }
-          : {})
+          : scopeKind.value === "company" && verifySource.value.trim()
+            ? { values: { sourceDescription: verifySource.value.trim() } }
+            : {})
       }
     );
     verifyDialog.value = false;
@@ -434,7 +482,7 @@ async function submitCorrection() {
   actionLoading.value = true;
   try {
     detail.value = await correctHistoryExpenseRow(
-      selectedProjectId.value,
+      selectedScope.value,
       detail.value.id,
       correctionTarget.value.id,
       {
@@ -445,7 +493,7 @@ async function submitCorrection() {
           paymentStatus: correctionPaymentStatus.value,
           paidAmountYuan: correctionPaidAmount.value || null,
           payerCompanyName: correctionPayer.value || null,
-          costBearingCompanyName: correctionCompany.value || null,
+          costBearingCompanyName: scopeKind.value === "company" ? null : correctionCompany.value || null,
           payeeName: correctionPayee.value || null,
           sourceDescription: correctionSource.value
         }
@@ -469,7 +517,7 @@ async function submitConfirm() {
   if (!operationAllowed || !detail.value) return;
   actionLoading.value = true;
   try {
-    await confirmHistoryExpenseBatch(selectedProjectId.value, detail.value.id, {
+    await confirmHistoryExpenseBatch(selectedScope.value, detail.value.id, {
       expectedRevision: detail.value.revision,
       idempotencyKey: crypto.randomUUID(),
       note: "主管复核历史费用行"
@@ -490,11 +538,16 @@ async function submitActivate() {
   actionLoading.value = true;
   try {
     detail.value = await activateHistoryExpenseBatch(
-      selectedProjectId.value,
+      selectedScope.value,
       detail.value.id,
       { expectedRevision: detail.value.revision }
     );
     MessagePlugin.success("已核实行已入账，待核对行保留");
+    if (scopeKind.value === "company") {
+      const batchId = detail.value.id;
+      await loadProject();
+      await openBatch(batchId);
+    }
   } catch (error) {
     message.value = formatUnknownApiError(error, "历史费用入账失败");
   } finally {
@@ -515,31 +568,49 @@ onMounted(loadProjects);
       <div>
         <span class="page-eyebrow">项目经营</span>
         <h1>历史费用核实入账</h1>
-        <p>先选项目，按网格登记历史无合同费用；财务逐行核实，主管复核后只把已核实行入账，待核对行保留。</p>
+        <p>按项目或实际承担公司登记历史无合同费用，财务逐行核实后由主管复核入账。</p>
       </div>
       <t-button :loading="loading" :disabled="actionLoading" @click="loadProject">刷新</t-button>
     </div>
 
     <t-alert v-if="message" theme="error" :close="false">{{ message }}</t-alert>
 
-    <t-card class="panel" title="项目">
-      <label class="field">
+    <t-card class="panel" title="归属">
+      <t-radio-group v-if="canSeeCompanyHistory" v-model="scopeKind" :disabled="loading || actionLoading" @change="changeScope">
+        <t-radio value="project">项目费用</t-radio>
+        <t-radio value="company">公司日常费用</t-radio>
+      </t-radio-group>
+      <label v-if="scopeKind === 'project'" class="field">
         <span>项目</span>
         <t-select
           v-model="selectedProjectId"
           :options="projectOptions"
           :loading="loading"
           filterable
-          :disabled="actionLoading"
+          :disabled="loading || actionLoading"
           @change="onProjectChange"
         />
       </label>
+      <label v-else class="field">
+        <span>实际承担公司</span>
+        <t-select
+          v-model="selectedCompanyId"
+          :options="companyOptions"
+          :loading="loading"
+          filterable
+          :disabled="loading || actionLoading"
+          @change="onProjectChange"
+        />
+      </label>
+      <p v-if="scopeKind === 'company'" class="helper-text">
+        公司日常费用不关联项目。同一批次只选一个实际承担公司，付款公司可另填。
+      </p>
       <p class="helper-text">
         历史费用不补造合同、不要求结算；付款状态不清楚时选择「付款状态待核对」，系统不会当作已付或未付。
       </p>
     </t-card>
 
-    <t-card v-if="selectedProjectId && capability?.actions.manage" class="panel" title="批量登记历史费用">
+    <t-card v-if="selectedScope && capability?.actions.manage" class="panel" title="批量登记历史费用">
       <p class="helper-text">
         每行一条，列顺序：业务编号 / 发生日期 / 用途 / 类别 / 金额 / 付款情况 / 已付金额 / 付款公司 / 收款方 / 承担公司 / 已有依据。
         可使用 Excel 模板或直接粘贴（Tab 分隔）。付款公司可留空，待核对不影响费用与实付确认。
@@ -607,6 +678,15 @@ onMounted(loadProjects);
           </template>
           <template #actions>—</template>
         </t-table>
+      </div>
+    </t-card>
+
+    <t-card v-if="companyLedger" class="panel" title="公司日常历史费用台账">
+      <div class="summary">
+        <div><span>历史费用净成本</span><strong>{{ amount(companyLedger.costCents) }}</strong></div>
+        <div><span>历史已付</span><strong>{{ amount(companyLedger.paidCents) }}</strong></div>
+        <div><span>历史未付余额</span><strong>{{ amount(companyLedger.outstandingCents) }}</strong></div>
+        <div><span>付款状态待核对金额</span><strong>{{ amount(companyLedger.unknownPaymentCostCents) }}</strong></div>
       </div>
     </t-card>
 
@@ -684,14 +764,14 @@ onMounted(loadProjects);
             核实
           </t-button>
           <t-button
-            v-if="detail.canCorrect && row.generatedFactId"
+            v-if="detail.canCorrect && row.generatedFactId && row.reviewStatus !== 'corrected'"
             size="small"
             variant="outline"
             @click="openCorrection(row)"
           >
             更正
           </t-button>
-          <span v-else-if="row.generatedFactId" class="note">已入账</span>
+          <span v-else-if="row.generatedFactId && row.reviewStatus !== 'corrected'" class="note">已入账</span>
         </template>
       </t-table>
     </t-card>
@@ -730,7 +810,7 @@ onMounted(loadProjects);
       </label>
       <label class="field">
         <span>成本承担公司</span>
-        <t-input v-model="correctionCompany" />
+        <t-input v-model="correctionCompany" :disabled="scopeKind === 'company'" />
       </label>
       <label class="field">
         <span>收款方</span>
@@ -746,6 +826,10 @@ onMounted(loadProjects);
       <p v-if="verifyTarget" class="helper-text">
         第 {{ verifyTarget.rowNo }} 行 {{ verifyTarget.businessRef }}：{{ verifyTarget.values.purpose }}
       </p>
+      <label v-if="scopeKind === 'company'" class="field">
+        <span>补充依据</span>
+        <t-textarea v-model="verifySource" />
+      </label>
       <label class="field">
         <span>核实结论</span>
         <t-select v-model="verifyOutcome" :options="outcomeOptions" />

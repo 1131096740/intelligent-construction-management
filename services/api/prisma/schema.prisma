@@ -393,6 +393,7 @@ model RegisteredFundTransferAction {
 }
 
 model CompanyEntity {
+  historyExpenseBatches               CompanyHistoryExpenseBatch[]
   bearingExpenseClaims ExpenseClaim[] @relation("ExpenseCostBearingCompany")
   spotPaymentsAsOriginalDebtor        SpotProcurementPayment[]            @relation("SpotFirstApprovedDebtor")
   registeredOperationalDebts          RegisteredOperationalPayment[]      @relation("OperationalPaymentDebtor")
@@ -2367,6 +2368,89 @@ model HistoricalWageSummaryAuthorityAttestation {
 }
 
 // 通用历史经营接管与合同接管分离；批次只保存草稿、复核和激活坐标，正式事实仍写入 OperatingFact。
+// Company-only historical expenses carry no project or bank movement authority.
+model CompanyHistoryExpenseBatch {
+  id                    String   @id @default(uuid())
+  companyEntityId       String
+  batchNo               String
+  importFingerprint     String
+  revision              Int      @default(1)
+  confirmedRevision     Int?
+  confirmationKey       String?  @unique
+  confirmedAt           DateTime?
+  confirmedByUserId     String?
+  activatedAt           DateTime?
+  createdByUserId       String
+  createdAt             DateTime @default(now())
+  company               CompanyEntity @relation(fields: [companyEntityId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  rows                  CompanyHistoryExpenseRow[]
+  facts                 CompanyHistoryExpenseFact[]
+
+  @@unique([companyEntityId, importFingerprint], map: "CompanyHistoryExpenseBatch_company_import_key")
+  @@unique([companyEntityId, batchNo], map: "CompanyHistoryExpenseBatch_company_no_key")
+  @@unique([id, companyEntityId], map: "CompanyHistoryExpenseBatch_id_company_key")
+  @@index([companyEntityId, createdAt])
+}
+
+model CompanyHistoryExpenseRow {
+  id                    String   @id @default(uuid())
+  batchId               String
+  rowNo                 Int
+  businessRef           String
+  occurredAt            DateTime @db.Date
+  amountCents           BigInt
+  paidCents             BigInt?
+  paymentStatus         String
+  costCategoryCode      String
+  valuesSnapshot        Json
+  issues                Json
+  duplicateStatus       String
+  duplicateNote         String?
+  reviewStatus          String   @default("pending")
+  reviewConclusion      String?
+  revision              Int      @default(1)
+  correctedRowId        String?  @unique
+  batch                 CompanyHistoryExpenseBatch @relation(fields: [batchId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  correctedRow          CompanyHistoryExpenseRow? @relation("CompanyExpenseRowCorrection", fields: [correctedRowId, batchId], references: [id, batchId], onDelete: Restrict, onUpdate: Restrict)
+  correction            CompanyHistoryExpenseRow? @relation("CompanyExpenseRowCorrection")
+  facts                 CompanyHistoryExpenseFact[]
+
+  @@unique([batchId, rowNo])
+  @@unique([id, batchId], map: "CompanyHistoryExpenseRow_id_batch_key")
+  @@unique([correctedRowId, batchId], map: "CompanyHistoryExpenseRow_corrected_batch_key")
+}
+
+model CompanyHistoryExpenseFact {
+  id                           String   @id @default(uuid())
+  batchId                      String
+  rowId                        String
+  companyEntityId              String
+  companyNameSnapshot          String
+  companyCreditCodeSnapshot    String
+  companyVersionNoSnapshot     Int
+  entryKind                    String
+  adjustsFactId                String?
+  businessRef                  String
+  occurredAt                   DateTime @db.Date
+  costCategoryCode             String
+  costCents                    BigInt
+  paidCents                    BigInt?
+  outstandingCents             BigInt?
+  paymentStatus                String
+  valuesSnapshot               Json
+  actorUserId                  String
+  createdAt                    DateTime @default(now())
+  batch                        CompanyHistoryExpenseBatch @relation(fields: [batchId, companyEntityId], references: [id, companyEntityId], onDelete: Restrict, onUpdate: Restrict)
+  row                          CompanyHistoryExpenseRow @relation(fields: [rowId, batchId], references: [id, batchId], onDelete: Restrict, onUpdate: Restrict)
+  adjusts                      CompanyHistoryExpenseFact? @relation("CompanyExpenseFactAdjustment", fields: [adjustsFactId, batchId], references: [id, batchId], onDelete: Restrict, onUpdate: Restrict)
+  adjustments                  CompanyHistoryExpenseFact[] @relation("CompanyExpenseFactAdjustment")
+
+  @@unique([rowId, entryKind])
+  @@unique([adjustsFactId, entryKind], map: "CompanyHistoryExpenseFact_adjusts_kind_key")
+  @@unique([id, batchId], map: "CompanyHistoryExpenseFact_id_batch_key")
+  @@index([companyEntityId, occurredAt, id])
+}
+
 model OperatingTakeoverBatch {
   id                String                             @id @default(uuid())
   projectId         String

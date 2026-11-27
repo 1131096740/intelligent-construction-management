@@ -12,7 +12,10 @@ const projectId = "sample-history-project";
 const batchId = "sample-history-batch";
 const batchNo = "LSFY-BROWSER-001";
 const rowId = "sample-history-row";
-const base = `/api/projects/${projectId}/history-expenses`;
+const projectBase = `/api/projects/${projectId}/history-expenses`;
+const companyId = "sample-history-company";
+const companyName = "合成实际承担公司";
+const companyBase = `/api/company-entities/${companyId}/history-expenses`;
 const values = {
   businessRef: "EXCEL-031",
   occurredAt: "2025-01-02",
@@ -54,7 +57,8 @@ async function makeWorkbook(withExpense = false) {
   return Buffer.from(await workbook.xlsx.writeBuffer() as ArrayBuffer);
 }
 
-async function openHistoryExpense(page: Page, options: { startsWithDraft?: boolean; checkMultipartBytes?: boolean } = {}) {
+async function openHistoryExpense(page: Page, options: { startsWithDraft?: boolean; checkMultipartBytes?: boolean; companyScope?: boolean } = {}) {
+  const base = options.companyScope ? companyBase : projectBase;
   const writes: Array<{ method: string; path: string; body: unknown }> = [];
   const unknownRequests: string[] = [];
   const template = await makeWorkbook();
@@ -114,8 +118,26 @@ async function openHistoryExpense(page: Page, options: { startsWithDraft?: boole
     if (pathname === "/api/projects" && method === "GET") {
       return route.fulfill({ json: [{ id: projectId, code: "TEST-01", name: "合成项目" }] });
     }
+    if (pathname === "/api/company-entities/management" && method === "GET" && options.companyScope) {
+      return route.fulfill({ json: [{ id: companyId, name: companyName, dataStatus: "complete", isActive: true }] });
+    }
+    if (options.companyScope && method === "GET") {
+      if (pathname === `${projectBase}/capability`) {
+        return route.fulfill({ json: { projectId, actions: { manage: true, verify: false, confirm: false, activate: false, correct: false } } });
+      }
+      if (pathname === `${projectBase}/batches`) return route.fulfill({ json: [] });
+      if (pathname === `${companyBase}/ledger`) return route.fulfill({ json: {
+        projectId: null, companyEntityId: companyId, companyName,
+        costCents: stage === "activated" ? corrected ? "1720" : "1034" : "0",
+        paidCents: stage === "activated" ? "235" : "0",
+        outstandingCents: stage === "activated" ? "799" : "0", unknownPaymentCostCents: "0"
+      } });
+    }
     if (pathname === `${base}/capability` && method === "GET") {
-      return route.fulfill({ json: { projectId, actions: { manage: true, verify: true, confirm: true, activate: true, correct: true } } });
+      return route.fulfill({ json: {
+        ...(options.companyScope ? { projectId: null, companyEntityId: companyId, companyName } : { projectId }),
+        actions: { manage: true, verify: true, confirm: true, activate: true, correct: true }
+      } });
     }
     if (pathname === `${base}/excel-template` && method === "GET") {
       return route.fulfill({ contentType: xlsxMime, body: template });
@@ -211,7 +233,7 @@ test("历史费用 Excel 下载模板并按原行预检，明确提交后才创�
 
   await create.click();
   await expect(page.getByText(`批次 ${batchNo}`, { exact: true })).toBeVisible();
-  expect(fixture.writes).toEqual([{ method: "POST", path: `${base}/batches`, body: { rows: [{ values }] } }]);
+  expect(fixture.writes).toEqual([{ method: "POST", path: `${projectBase}/batches`, body: { rows: [{ values }] } }]);
   await expect(page.getByText(sourceFile, { exact: true })).toHaveCount(0);
   expect(fixture.unknownRequests).toEqual([]);
 });
@@ -251,14 +273,48 @@ test("历史费用原粘贴预检、逐行核实、主管复核、入账和更�
   await expect(page.getByRole("cell", { name: "¥11.00", exact: true })).toBeVisible();
   await expect(page.getByText("更正已入账历史费用失败")).toHaveCount(0);
   expect(fixture.writes).toEqual([
-    { method: "PATCH", path: `${base}/batches/${batchId}/rows/${rowId}`, body: { expectedRevision: 1, reviewOutcome: "verified", note: "合成凭据已核实" } },
-    { method: "POST", path: `${base}/batches/${batchId}/confirmations`, body: { expectedRevision: 2, idempotencyKey: expect.any(String), note: "主管复核历史费用行" } },
-    { method: "POST", path: `${base}/batches/${batchId}/activation`, body: { expectedRevision: 3 } },
-    { method: "POST", path: `${base}/batches/${batchId}/rows/${rowId}/corrections`, body: {
+    { method: "PATCH", path: `${projectBase}/batches/${batchId}/rows/${rowId}`, body: { expectedRevision: 1, reviewOutcome: "verified", note: "合成凭据已核实" } },
+    { method: "POST", path: `${projectBase}/batches/${batchId}/confirmations`, body: { expectedRevision: 2, idempotencyKey: expect.any(String), note: "主管复核历史费用行" } },
+    { method: "POST", path: `${projectBase}/batches/${batchId}/activation`, body: { expectedRevision: 3 } },
+    { method: "POST", path: `${projectBase}/batches/${batchId}/rows/${rowId}/corrections`, body: {
       expectedRevision: 2, reason: "按合成原据更正",
       values: { amountYuan: "11.00", paymentStatus: "partially_paid", paidAmountYuan: "2.35",
         payerCompanyName: null, costBearingCompanyName: null, payeeName: null, sourceDescription: "原始收据" }
     } }
+  ]);
+  expect(fixture.unknownRequests).toEqual([]);
+});
+
+
+test("公司日常历史费用按实际承担公司登记，正常入口可查净成本和付款情况", async ({ page }) => {
+  const fixture = await openHistoryExpense(page, { companyScope: true });
+  await page.getByText("公司日常费用", { exact: true }).click();
+  await expect(page.getByText("公司日常历史费用台账", { exact: true })).toBeVisible();
+  await expect(page.getByText("实际承担公司", { exact: true })).toBeVisible();
+  await expect(page.getByText("公司日常费用不关联项目。", { exact: false })).toBeVisible();
+  await expect(page.locator(".t-select input").first()).toHaveValue(companyName);
+  await page.getByPlaceholder(/^历史费用-001/).fill("PASTE-001|2025-01-02|历史道路维护|材料|10.34|部分付款|2.35|另一个付款公司|||原始收据");
+  await page.getByRole("button", { name: "预检", exact: true }).click();
+  await expect(page.getByText(/预检 1 行，阻断 0 行/)).toBeVisible();
+  expect(fixture.writes).toHaveLength(0);
+  await page.getByRole("button", { name: "创建批次", exact: true }).click();
+  await expect(page.getByText(`批次 ${batchNo}`, { exact: true })).toBeVisible();
+  expect(fixture.writes).toMatchObject([{ path: `${companyBase}/batches`, body: { rows: [
+    { values: { payerCompanyName: "另一个付款公司", costBearingCompanyName: null } }
+  ] } }]);
+  await page.getByRole("button", { name: "核实", exact: true }).click();
+  const dialog = page.locator(".t-dialog:visible");
+  await expect(dialog.getByText("核实历史费用行", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "确认", exact: true }).click();
+  await page.getByRole("button", { name: "主管复核", exact: true }).click();
+  await page.getByRole("button", { name: "入账已核实行", exact: true }).click();
+  const ledger = page.locator(".t-card").filter({ hasText: "公司日常历史费用台账" });
+  await expect(ledger.getByText("¥10.34", { exact: true })).toBeVisible();
+  await expect(ledger.getByText("¥2.35", { exact: true })).toBeVisible();
+  await expect(ledger.getByText("¥7.99", { exact: true })).toBeVisible();
+  expect(fixture.writes.map(write => write.path)).toEqual([
+    `${companyBase}/batches`, `${companyBase}/batches/${batchId}/rows/${rowId}`,
+    `${companyBase}/batches/${batchId}/confirmations`, `${companyBase}/batches/${batchId}/activation`
   ]);
   expect(fixture.unknownRequests).toEqual([]);
 });

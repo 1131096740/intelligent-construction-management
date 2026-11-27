@@ -52,6 +52,7 @@ export const OPERATIONAL_WRITE_CONTROLLER_MODULES: Readonly<
   FundMovementController: "finance",
   CompanyTransferController: "finance",
   HistoryExpenseController: "expense",
+  CompanyHistoryExpenseController: "expense",
   HistoricalFinancialTakeoverController: "finance",
   HistoricalWageTakeoverController: "finance",
   InvoiceLedgerController: "finance",

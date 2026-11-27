@@ -10,7 +10,7 @@
   "summary": {
     "activeBusinessActionCount": 423,
     "technicalActionCount": 8,
-    "activeBindingCount": 517,
+    "activeBindingCount": 524,
     "retiredWriteEntryCount": 125,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
@@ -3548,9 +3548,10 @@
       "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
       "capabilityKind": "server_boolean",
       "bindingKeys": [
+        "POST /company-entities/:param/history-expenses/batches/:param/activation",
         "POST /projects/:param/history-expenses/batches/:param/activation"
       ],
-      "bindingCount": 1,
+      "bindingCount": 2,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -3564,9 +3565,10 @@
       "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
       "capabilityKind": "server_boolean",
       "bindingKeys": [
+        "POST /company-entities/:param/history-expenses/batches/:param/confirmations",
         "POST /projects/:param/history-expenses/batches/:param/confirmations"
       ],
-      "bindingCount": 1,
+      "bindingCount": 2,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -3580,9 +3582,10 @@
       "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
       "capabilityKind": "server_boolean",
       "bindingKeys": [
+        "POST /company-entities/:param/history-expenses/batches/:param/rows/:param/corrections",
         "POST /projects/:param/history-expenses/batches/:param/rows/:param/corrections"
       ],
-      "bindingCount": 1,
+      "bindingCount": 2,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -3596,9 +3599,10 @@
       "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
       "capabilityKind": "server_boolean",
       "bindingKeys": [
+        "POST /company-entities/:param/history-expenses/batches",
         "POST /projects/:param/history-expenses/batches"
       ],
-      "bindingCount": 1,
+      "bindingCount": 2,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -3612,9 +3616,10 @@
       "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
       "capabilityKind": "server_boolean",
       "bindingKeys": [
+        "POST /company-entities/:param/history-expenses/excel-precheck",
         "POST /projects/:param/history-expenses/excel-precheck"
       ],
-      "bindingCount": 1,
+      "bindingCount": 2,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -3628,9 +3633,10 @@
       "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
       "capabilityKind": "server_boolean",
       "bindingKeys": [
+        "POST /company-entities/:param/history-expenses/precheck",
         "POST /projects/:param/history-expenses/precheck"
       ],
-      "bindingCount": 1,
+      "bindingCount": 2,
       "productionConsumerCount": 1,
       "causalVerified": true
     },
@@ -3644,9 +3650,10 @@
       "sourceFile": "apps/web-admin/src/pages/projects/HistoryExpensePage.vue",
       "capabilityKind": "server_boolean",
       "bindingKeys": [
+        "PATCH /company-entities/:param/history-expenses/batches/:param/rows/:param",
         "PATCH /projects/:param/history-expenses/batches/:param/rows/:param"
       ],
-      "bindingCount": 1,
+      "bindingCount": 2,
       "productionConsumerCount": 1,
       "causalVerified": true
     },

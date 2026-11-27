@@ -6,29 +6,29 @@
 
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
-| nestRoutes | ready | `2714d1089e8f8807199139fa8f14ce45908af246cddf0b41473549de71d3ea90` |
-| webApiWrappers | ready | `256a95f2ebce2c2c5fed4dbcf943aba547674b6631f9299071ed64c2778b3e73` |
-| webPageActions | ready | `15c50b18bb31233e4288033ae118acafc594e33b5a735a20bee7b70311b2fbc6` |
-| routeUsage | ready | `b7f89a740befb7db002ada2817a6b26c2d6f5a598e1bcc561858b9d338681dfb` |
+| nestRoutes | ready | `01060ccf0d9cafbc45ff8d2af696887f8ae5c61385a70df417136bd446ccc8f3` |
+| webApiWrappers | ready | `535100c1b03bb086200bc8873bf2285f37f0212f686e24f01cb356096a6190f2` |
+| webPageActions | ready | `d0005071b6e8fec9a508551eb070aeb3a46018f18d9a034232754be506f7255f` |
+| routeUsage | ready | `15efedad0ee53879ec8782bd60d5dcd71ac31919f7a258c72b49866c361aa0e3` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
-| routeCount | 886 |
-| pageRouteCount | 604 |
+| routeCount | 898 |
+| pageRouteCount | 616 |
 | externalTakeoverRouteCount | 70 |
 | exitCandidateRouteCount | 138 |
 | internalTaskRouteCount | 74 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 817 |
+| mainRequestBindingCount | 829 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
 | registeredActionCount | 435 |
-| actionBindingCount | 530 |
-| acceptedActionBindingCount | 486 |
+| actionBindingCount | 537 |
+| acceptedActionBindingCount | 493 |
 | unresolvedActionBindingCount | 0 |
 | productionMutationConsumerPairCount | 426 |
 | coveredProductionMutationConsumerPairCount | 426 |
@@ -77,6 +77,11 @@
 | GET | /clearing-cases/capabilities | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchClearingCapabilities | — | not_applicable | — |
 | GET | /clearing-cases | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#fetchClearingCases | — | not_applicable | — |
 | GET | /clearing-cases/reconciliation-risk | internal_task | operator_endpoint | — | — | not_applicable | — |
+| GET | /company-entities/:companyEntityId/history-expenses/batches/:batchId | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#fetchHistoryExpenseBatch | — | not_applicable | — |
+| GET | /company-entities/:companyEntityId/history-expenses/batches | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#fetchHistoryExpenseBatches | — | not_applicable | — |
+| GET | /company-entities/:companyEntityId/history-expenses/capability | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#fetchHistoryExpenseCapability | — | not_applicable | — |
+| GET | /company-entities/:companyEntityId/history-expenses/excel-template | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#downloadHistoryExpenseTemplate | — | not_applicable | — |
+| GET | /company-entities/:companyEntityId/history-expenses/ledger | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#fetchCompanyHistoryExpenseLedger | — | not_applicable | — |
 | GET | /company-entities/:id/history | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityHistory | — | not_applicable | — |
 | GET | /company-entities | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchActiveCompanyEntities | — | not_applicable | — |
 | GET | /company-entities/management-capability | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#fetchCompanyEntityManagementCapability | — | not_applicable | — |
@@ -362,6 +367,7 @@
 | PATCH | /auth/profile | page | auth_store | — | user-self-profile.update.commit | covered | — |
 | PATCH | /clearing-cases/events/:eventId/draft | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#reviseClearingEvent | clearing.event.revise | covered | — |
 | PATCH | /company-entities/:id | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntity | company-entity.update | covered | — |
+| PATCH | /company-entities/:companyEntityId/history-expenses/batches/:batchId/rows/:rowId | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#verifyHistoryExpenseRow | history-expense.verify-row | covered | — |
 | PATCH | /contract-bills/:billId/rows/:rowKey | exit_candidate | none | apps/web-admin/src/api/contract-workbench.api.ts#updateBillRow | — | not_applicable | — |
 | PATCH | /contract-business-scenarios/:scenarioId | exit_candidate | none | apps/web-admin/src/api/contract-scenario.api.ts#updateContractBusinessScenario | — | not_applicable | — |
 | PATCH | /contract-layout-template-versions/:versionId | page | web_api_wrapper | apps/web-admin/src/api/contract-workbench.api.ts#updateLayoutTemplateVersion | layout-template.save | covered | — |
@@ -439,6 +445,12 @@
 | POST | /clearing-cases/events/:eventId/reopen | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#reopenClearingEvent | clearing.event.reopen | covered | — |
 | POST | /clearing-cases/events/:eventId/return | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#returnClearingEvent | clearing.event.return | covered | — |
 | POST | /clearing-cases/events/:eventId/submit | page | web_api_wrapper | apps/web-admin/src/api/clearing.api.ts#submitClearingEvent | clearing.event.submit | covered | — |
+| POST | /company-entities/:companyEntityId/history-expenses/batches/:batchId/activation | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#activateHistoryExpenseBatch | history-expense.activate-batch | covered | — |
+| POST | /company-entities/:companyEntityId/history-expenses/batches/:batchId/confirmations | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#confirmHistoryExpenseBatch | history-expense.confirm-batch | covered | — |
+| POST | /company-entities/:companyEntityId/history-expenses/batches/:batchId/rows/:rowId/corrections | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#correctHistoryExpenseRow | history-expense.correct-row | covered | — |
+| POST | /company-entities/:companyEntityId/history-expenses/batches | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#createHistoryExpenseBatch | history-expense.create-batch | covered | — |
+| POST | /company-entities/:companyEntityId/history-expenses/excel-precheck | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#precheckHistoryExpenseExcel | history-expense.excel-precheck | covered | — |
+| POST | /company-entities/:companyEntityId/history-expenses/precheck | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#precheckHistoryExpenses | history-expense.precheck | covered | — |
 | POST | /company-entities/:id/status | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#updateCompanyEntityStatus | company-entity.status | covered | — |
 | POST | /company-entities | page | web_api_wrapper | apps/web-admin/src/api/company-entity.api.ts#createCompanyEntity | company-entity.create | covered | — |
 | POST | /company-transfers/:id/decision | page | web_api_wrapper | apps/web-admin/src/api/company-transfer.api.ts#decideCompanyTransfer | company-transfer.decideCompanyTransfer | covered | — |

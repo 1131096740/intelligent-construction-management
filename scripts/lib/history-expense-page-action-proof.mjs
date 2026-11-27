@@ -4,8 +4,8 @@
 //   1. the trigger element and the server capability gate on it or on its
 //      opener (project capability `actions.*` / batch detail `can*`);
 //   2. the handler's own capability guard and the exact wrapper call;
-//   3. the trusted single GET that returns the capability read model;
-//   4. the backend `@RequireProjectRole` guard for the same business action.
+//   3. the two scope-specific GETs that return the same capability read model;
+//   4. both backend role guards for the same business action.
 // Nothing here accepts an action unless every pin matches, the wrapper is
 // imported from the expected API module and is called exactly once.
 
@@ -17,6 +17,7 @@ const WEB = "apps/web-admin/src";
 const PAGE = `${WEB}/pages/projects/HistoryExpensePage.vue`;
 const API = `${WEB}/api/history-expense.api.ts`;
 const CONTROLLER = "services/api/src/history-expense/history-expense.controller.ts";
+const COMPANY_CONTROLLER = "services/api/src/history-expense/company-history-expense.controller.ts";
 const ROUTE = "/历史费用核实入账";
 
 const READ = { apiFile: API, name: "fetchHistoryExpenseCapability" };
@@ -26,7 +27,7 @@ const LOAD = {
   pins: ["capability.value = cap;"]
 };
 
-const MANAGE_GATE = "selectedProjectId && capability?.actions.manage";
+const MANAGE_GATE = "selectedScope && capability?.actions.manage";
 
 const ACTIONS = {
   "history-expense.precheck": {
@@ -38,12 +39,13 @@ const ACTIONS = {
     capability: "capability.actions.manage",
     triggerGate: MANAGE_GATE,
     guard: "const operationAllowed = currentCapability?.actions.manage;",
-    call: "precheck.value = await precheckHistoryExpenses(selectedProjectId.value, rows);",
+    call: "precheck.value = await precheckHistoryExpenses(selectedScope.value, rows);",
     capabilityPins: [
       [PAGE, "capability?.actions.manage"],
       [API, "manage: boolean;"]
     ],
     serverPins: ['@RequireProjectRole("history_expense.manage")'],
+    companyServerPin: '@Post("precheck") @RequirePositions("comprehensive_director")',
     wrappers: [{ apiFile: API, name: "precheckHistoryExpenses" }]
   },
   "history-expense.excel-precheck": {
@@ -55,9 +57,10 @@ const ACTIONS = {
     capability: "capability.actions.manage",
     triggerGate: MANAGE_GATE,
     guard: "const operationAllowed = currentCapability?.actions.manage;",
-    call: "const imported = await precheckHistoryExpenseExcel(selectedProjectId.value, file);",
+    call: "const imported = await precheckHistoryExpenseExcel(selectedScope.value, file);",
     capabilityPins: [[PAGE, "capability?.actions.manage"], [API, "manage: boolean;"]],
     serverPins: ['@Post("excel-precheck") @RequireProjectRole("history_expense.manage")'],
+    companyServerPin: '@Post("excel-precheck") @RequirePositions("comprehensive_director")',
     wrappers: [{ apiFile: API, name: "precheckHistoryExpenseExcel" }]
   },
   "history-expense.create-batch": {
@@ -69,12 +72,13 @@ const ACTIONS = {
     capability: "capability.actions.manage",
     triggerGate: MANAGE_GATE,
     guard: "const operationAllowed = currentCapability?.actions.manage;",
-    call: "const created = await createHistoryExpenseBatch(selectedProjectId.value, rows);",
+    call: "const created = await createHistoryExpenseBatch(selectedScope.value, rows);",
     capabilityPins: [
       [PAGE, "capability?.actions.manage"],
       [API, "manage: boolean;"]
     ],
     serverPins: ['@RequireProjectRole("history_expense.manage")'],
+    companyServerPin: '@Post("batches") @RequirePositions("comprehensive_director")',
     wrappers: [{ apiFile: API, name: "createHistoryExpenseBatch" }]
   },
   "history-expense.verify-row": {
@@ -92,7 +96,7 @@ const ACTIONS = {
     },
     guard: "const operationAllowed = currentCapability?.actions.verify;",
     call: `detail.value = await verifyHistoryExpenseRow(
-      selectedProjectId.value,
+      selectedScope.value,
       detail.value!.id,
       target.id,
       {
@@ -101,7 +105,9 @@ const ACTIONS = {
         note: verifyNote.value.trim() || undefined,
         ...(verifyOutcome.value === "not_occurred"
           ? { values: { ...target.values, amountYuan: "0", paidAmountYuan: null } }
-          : {})
+          : scopeKind.value === "company" && verifySource.value.trim()
+            ? { values: { sourceDescription: verifySource.value.trim() } }
+            : {})
       }
     );`,
     capabilityPins: [
@@ -109,6 +115,7 @@ const ACTIONS = {
       [API, "verify: boolean;"]
     ],
     serverPins: ['@RequireProjectRole("history_expense.verify")'],
+    companyServerPin: '@Patch("batches/:batchId/rows/:rowId") @RequirePositions("finance_staff", "finance_director")',
     wrappers: [{ apiFile: API, name: "verifyHistoryExpenseRow" }]
   },
   "history-expense.correct-row": {
@@ -119,14 +126,14 @@ const ACTIONS = {
     handler: "submitCorrection",
     capability: "capability.actions.correct",
     opener: {
-      gate: "detail.canCorrect && row.generatedFactId",
+      gate: "detail.canCorrect && row.generatedFactId && row.reviewStatus !== 'corrected'",
       handler: "openCorrection(row)",
       handlerName: "openCorrection",
       visiblePin: "correctionDialog.value = true;"
     },
     guard: "const operationAllowed = currentCapability?.actions.correct;",
     call: `detail.value = await correctHistoryExpenseRow(
-      selectedProjectId.value,
+      selectedScope.value,
       detail.value.id,
       correctionTarget.value.id,
       {
@@ -137,7 +144,7 @@ const ACTIONS = {
           paymentStatus: correctionPaymentStatus.value,
           paidAmountYuan: correctionPaidAmount.value || null,
           payerCompanyName: correctionPayer.value || null,
-          costBearingCompanyName: correctionCompany.value || null,
+          costBearingCompanyName: scopeKind.value === "company" ? null : correctionCompany.value || null,
           payeeName: correctionPayee.value || null,
           sourceDescription: correctionSource.value
         }
@@ -148,6 +155,7 @@ const ACTIONS = {
       [API, "correct: boolean;"]
     ],
     serverPins: ['@RequireProjectRole("history_expense.correct")'],
+    companyServerPin: '@Post("batches/:batchId/rows/:rowId/corrections") @RequirePositions("finance_director")',
     wrappers: [{ apiFile: API, name: "correctHistoryExpenseRow" }]
   },
   "history-expense.confirm-batch": {
@@ -159,7 +167,7 @@ const ACTIONS = {
     capability: "capability.actions.confirm",
     triggerGate: "detail.canConfirm",
     guard: "const operationAllowed = currentCapability?.actions.confirm;",
-    call: `await confirmHistoryExpenseBatch(selectedProjectId.value, detail.value.id, {
+    call: `await confirmHistoryExpenseBatch(selectedScope.value, detail.value.id, {
       expectedRevision: detail.value.revision,
       idempotencyKey: crypto.randomUUID(),
       note: "主管复核历史费用行"
@@ -169,6 +177,7 @@ const ACTIONS = {
       [API, "confirm: boolean;"]
     ],
     serverPins: ['@RequireProjectRole("history_expense.confirm")'],
+    companyServerPin: '@Post("batches/:batchId/confirmations") @RequirePositions("finance_director")',
     wrappers: [{ apiFile: API, name: "confirmHistoryExpenseBatch" }]
   },
   "history-expense.activate-batch": {
@@ -181,7 +190,7 @@ const ACTIONS = {
     triggerGate: "detail.canActivate",
     guard: "const operationAllowed = currentCapability?.actions.activate;",
     call: `detail.value = await activateHistoryExpenseBatch(
-      selectedProjectId.value,
+      selectedScope.value,
       detail.value.id,
       { expectedRevision: detail.value.revision }
     );`,
@@ -190,6 +199,7 @@ const ACTIONS = {
       [API, "activate: boolean;"]
     ],
     serverPins: ['@RequireProjectRole("history_expense.activate")'],
+    companyServerPin: '@Post("batches/:batchId/activation") @RequirePositions("finance_director")',
     wrappers: [{ apiFile: API, name: "activateHistoryExpenseBatch" }]
   }
 };
@@ -229,9 +239,15 @@ function readIsTrusted(context, read, syntax) {
   const wrapper = context.wrapperIndex.get(identity(syntax, read));
   if (!wrapper || wrapper.returnProvenance !== "transparent_main_response") return null;
   const requests = syntax.normalizedMainRequests(wrapper);
-  if (requests.length !== 1 || requests[0].method?.toUpperCase() !== "GET") return null;
-  const route = context.nestRouteIndex.get(requests[0].normalizedKey);
-  if (!route || route.authentication !== "authenticated" || route.isPublic !== false) return null;
+  const expectedKeys = [
+    "GET /company-entities/:param/history-expenses/capability",
+    "GET /projects/:param/history-expenses/capability"
+  ];
+  if (requests.length !== expectedKeys.length || expectedKeys.some(key => !requests.some(request => request.normalizedKey === key))) return null;
+  for (const key of expectedKeys) {
+    const route = context.nestRouteIndex.get(key);
+    if (!route || route.authentication !== "authenticated" || route.isPublic !== false) return null;
+  }
   return wrapper;
 }
 
@@ -292,13 +308,14 @@ function capabilityPinsAreProven({ context, spec }) {
 }
 
 function serverPinsAreProven(spec) {
-  let controller;
   try {
-    controller = readFileSync(join(REPO_ROOT, CONTROLLER), "utf8");
+    const projectController = readFileSync(join(REPO_ROOT, CONTROLLER), "utf8");
+    const companyController = readFileSync(join(REPO_ROOT, COMPANY_CONTROLLER), "utf8");
+    return spec.serverPins.every(pin => sourceHasPin(projectController, pin)) &&
+      sourceHasPin(companyController, spec.companyServerPin);
   } catch {
     return false;
   }
-  return (spec.serverPins ?? []).every((pin) => sourceHasPin(controller, pin));
 }
 
 function debugFail(action, reason) {

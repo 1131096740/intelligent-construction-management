@@ -65,7 +65,8 @@ export interface HistoryExpenseRowReadModel {
 
 export interface HistoryExpenseBatchReadModel {
   id: string;
-  projectId: string;
+  projectId: string | null;
+  companyEntityId?: string;
   batchNo: string;
   status: string;
   statusLabel: string;
@@ -127,7 +128,8 @@ export interface HistoryExpenseRowInput {
 }
 
 export interface HistoryExpenseCapability {
-  projectId: string;
+  projectId: string | null;
+  companyEntityId?: string;
   paymentStatuses: Array<{ value: HistoryExpensePaymentStatus; label: string }>;
   reviewOutcomes: Array<{ value: HistoryExpenseReviewOutcome; label: string }>;
   actions: {
@@ -139,8 +141,28 @@ export interface HistoryExpenseCapability {
   };
 }
 
-function base(projectId: string) {
-  return `/projects/${encodeURIComponent(projectId)}/history-expenses`;
+export type HistoryExpenseScope = string | { companyEntityId: string };
+
+function base(scope: HistoryExpenseScope) {
+  return typeof scope === "string"
+    ? `/projects/${encodeURIComponent(scope)}/history-expenses`
+    : `/company-entities/${encodeURIComponent(scope.companyEntityId)}/history-expenses`;
+}
+
+export interface CompanyHistoryExpenseLedger {
+  projectId: null;
+  companyEntityId: string;
+  companyName: string;
+  costCents: string;
+  paidCents: string;
+  outstandingCents: string;
+  unknownPaymentCostCents: string;
+}
+
+export async function fetchCompanyHistoryExpenseLedger(companyEntityId: string) {
+  const response = await apiFetch(`/company-entities/${encodeURIComponent(companyEntityId)}/history-expenses/ledger`, { method: "GET" });
+  await ensureOk(response, "读取公司日常历史费用台账失败");
+  return response.json() as Promise<CompanyHistoryExpenseLedger>;
 }
 
 async function ensureOk(response: Response, fallback: string) {
@@ -156,13 +178,13 @@ async function ensureOk(response: Response, fallback: string) {
 }
 
 async function send<T>(
-  projectId: string,
+  scope: HistoryExpenseScope,
   path: string,
   method: "GET" | "POST" | "PATCH",
   body: unknown,
   fallback: string
 ): Promise<T> {
-  const response = await apiFetch(`${base(projectId)}${path}`, {
+  const response = await apiFetch(`${base(scope)}${path}`, {
     method,
     headers: { "content-type": "application/json" },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
@@ -171,9 +193,9 @@ async function send<T>(
   return response.json() as Promise<T>;
 }
 
-export function fetchHistoryExpenseCapability(projectId: string) {
+export function fetchHistoryExpenseCapability(scope: HistoryExpenseScope) {
   return send<HistoryExpenseCapability>(
-    projectId,
+    scope,
     "/capability",
     "GET",
     undefined,
@@ -182,11 +204,11 @@ export function fetchHistoryExpenseCapability(projectId: string) {
 }
 
 export function precheckHistoryExpenses(
-  projectId: string,
+  scope: HistoryExpenseScope,
   rows: HistoryExpenseRowInput[]
 ) {
   return send<HistoryExpensePrecheckResult>(
-    projectId,
+    scope,
     "/precheck",
     "POST",
     { rows },
@@ -194,16 +216,16 @@ export function precheckHistoryExpenses(
   );
 }
 
-export async function downloadHistoryExpenseTemplate(projectId: string) {
-  const response = await apiFetch(`${base(projectId)}/excel-template`, { method: "GET" });
+export async function downloadHistoryExpenseTemplate(scope: HistoryExpenseScope) {
+  const response = await apiFetch(`${base(scope)}/excel-template`, { method: "GET" });
   await ensureOk(response, "下载历史费用导入模板失败");
   return response.blob();
 }
 
-export async function precheckHistoryExpenseExcel(projectId: string, file: File) {
+export async function precheckHistoryExpenseExcel(scope: HistoryExpenseScope, file: File) {
   const form = new FormData();
   form.append("file", file);
-  const response = await apiFetch(`${base(projectId)}/excel-precheck`, { method: "POST", body: form });
+  const response = await apiFetch(`${base(scope)}/excel-precheck`, { method: "POST", body: form });
   await ensureOk(response, "预检历史费用 Excel 失败");
   return response.json() as Promise<{
     rows: HistoryExpenseRowInput[];
@@ -213,12 +235,12 @@ export async function precheckHistoryExpenseExcel(projectId: string, file: File)
 }
 
 export function createHistoryExpenseBatch(
-  projectId: string,
+  scope: HistoryExpenseScope,
   rows: HistoryExpenseRowInput[],
   batchNo?: string
 ) {
   return send<HistoryExpenseBatchReadModel & { idempotent: boolean }>(
-    projectId,
+    scope,
     "/batches",
     "POST",
     { rows, ...(batchNo ? { batchNo } : {}) },
@@ -226,9 +248,9 @@ export function createHistoryExpenseBatch(
   );
 }
 
-export function fetchHistoryExpenseBatches(projectId: string) {
+export function fetchHistoryExpenseBatches(scope: HistoryExpenseScope) {
   return send<HistoryExpenseBatchListItem[]>(
-    projectId,
+    scope,
     "/batches",
     "GET",
     undefined,
@@ -236,9 +258,9 @@ export function fetchHistoryExpenseBatches(projectId: string) {
   );
 }
 
-export function fetchHistoryExpenseBatch(projectId: string, batchId: string) {
+export function fetchHistoryExpenseBatch(scope: HistoryExpenseScope, batchId: string) {
   return send<HistoryExpenseBatchReadModel>(
-    projectId,
+    scope,
     `/batches/${encodeURIComponent(batchId)}`,
     "GET",
     undefined,
@@ -247,7 +269,7 @@ export function fetchHistoryExpenseBatch(projectId: string, batchId: string) {
 }
 
 export function verifyHistoryExpenseRow(
-  projectId: string,
+  scope: HistoryExpenseScope,
   batchId: string,
   rowId: string,
   input: {
@@ -258,7 +280,7 @@ export function verifyHistoryExpenseRow(
   }
 ) {
   return send<HistoryExpenseBatchReadModel>(
-    projectId,
+    scope,
     `/batches/${encodeURIComponent(batchId)}/rows/${encodeURIComponent(rowId)}`,
     "PATCH",
     input,
@@ -267,7 +289,7 @@ export function verifyHistoryExpenseRow(
 }
 
 export function correctHistoryExpenseRow(
-  projectId: string,
+  scope: HistoryExpenseScope,
   batchId: string,
   rowId: string,
   input: {
@@ -277,7 +299,7 @@ export function correctHistoryExpenseRow(
   }
 ) {
   return send<HistoryExpenseBatchReadModel>(
-    projectId,
+    scope,
     `/batches/${encodeURIComponent(batchId)}/rows/${encodeURIComponent(rowId)}/corrections`,
     "POST",
     input,
@@ -286,7 +308,7 @@ export function correctHistoryExpenseRow(
 }
 
 export function confirmHistoryExpenseBatch(
-  projectId: string,
+  scope: HistoryExpenseScope,
   batchId: string,
   input: { expectedRevision: number; idempotencyKey: string; note?: string }
 ) {
@@ -296,7 +318,7 @@ export function confirmHistoryExpenseBatch(
     revision: number;
     confirmedAt: string;
   }>(
-    projectId,
+    scope,
     `/batches/${encodeURIComponent(batchId)}/confirmations`,
     "POST",
     input,
@@ -305,12 +327,12 @@ export function confirmHistoryExpenseBatch(
 }
 
 export function activateHistoryExpenseBatch(
-  projectId: string,
+  scope: HistoryExpenseScope,
   batchId: string,
   input: { expectedRevision: number }
 ) {
   return send<HistoryExpenseBatchReadModel>(
-    projectId,
+    scope,
     `/batches/${encodeURIComponent(batchId)}/activation`,
     "POST",
     input,
