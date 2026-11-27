@@ -1,8 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 umask 077
-[[ ( $# == 1 || ( $# == 2 && ( $2 == --current-320 || $2 == --text-direct-330 || $2 == --payment-remainder-331 || $2 == --upward-archive-332 || $2 == --historical-settlement-334 || $2 == --expense-witness-346 || $2 == --expense-witness-349 ) ) ||
+if [[ ${2-} == --signed-settlement-350 ]]; then
+  [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
+  [[ $1 == pol113 || $1 == pol114 ]] || exit 64
+  case $# in
+    2) ;;
+    3) [[ $3 == --host-only ]] || exit 64 ;;
+    *) exit 64 ;;
+  esac
+else
+  [[ ( $# == 1 || ( $# == 2 && ( $2 == --current-320 || $2 == --text-direct-330 || $2 == --payment-remainder-331 || $2 == --upward-archive-332 || $2 == --historical-settlement-334 || $2 == --expense-witness-346 || $2 == --expense-witness-349 ) ) ||
   ( $# == 3 && ( $2 == --historical-settlement-334 || $2 == --expense-witness-346 || $2 == --expense-witness-349 ) && $3 == --host-only ) ) && ( $1 == pol113 || $1 == pol114 ) ]]
+fi
 mode=$1
 mode_args=()
 if [[ $# -ge 2 ]]; then mode_args=("$2"); fi

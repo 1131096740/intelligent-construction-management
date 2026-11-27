@@ -9,20 +9,23 @@ ref=$4
 evidence=$5
 [[ "$ref" =~ ^[a-f0-9]{40}$ ]]
 plan=$(cd "$(dirname "$0")" && pwd -P)
+source_mode=$(node -p 'require(process.argv[1]).mode' "$prepared/source.json")
+if [[ $source_mode == signed-settlement-350 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 node - "$generated/context/candidate-admission.json" "$prepared/source.json" "$ref" "$plan" <<'JS'
 const [candidateFile,sourceFile,sha,plan]=process.argv.slice(2);
 const a=require(candidateFile),s=require(sourceFile);
-const precision=s.mode==='expense-witness-349';
+const signedSettlement=s.mode==='signed-settlement-350';
+const precision=signedSettlement||s.mode==='expense-witness-349';
 const expenseWitness=precision||s.mode==='expense-witness-346';
 const historicalSettlement=expenseWitness||s.mode==='historical-settlement-334';
 const upwardArchive=historicalSettlement||s.mode==='upward-archive-332';
 const paymentRemainder=upwardArchive||s.mode==='payment-remainder-331';
 const textDirect=s.mode==='text-direct-330'||paymentRemainder;
 const current320=textDirect||s.mode==='current-320';
-const count=precision?349:expenseWitness?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
+const count=signedSettlement?350:precision?349:expenseWitness?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
 if(a.candidateSha!==sha||s.sourceSha!==sha||s.migrationCount!==count||a.migrationCount!==count||
   a.ledger295!==(current320?s.predecessor.ledgerSha256:s.ledgerSha256))process.exit(65);
-if(current320&&((precision?a.ledger349:expenseWitness?a.ledger346:historicalSettlement?a.ledger334:upwardArchive?a.ledger332:a.ledger320)!==s.ledgerSha256||a.sourceTree!==s.sourceTree||
+if(current320&&((signedSettlement?a.ledger350:precision?a.ledger349:expenseWitness?a.ledger346:historicalSettlement?a.ledger334:upwardArchive?a.ledger332:a.ledger320)!==s.ledgerSha256||a.sourceTree!==s.sourceTree||
   JSON.stringify(a.tails)!==JSON.stringify(s.tails)))process.exit(65);
 if(textDirect&&a.ledger329!=="3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2")process.exit(65);
 if(paymentRemainder){
@@ -31,9 +34,11 @@ if(paymentRemainder){
   const base=require(finance+'/common/multi-witness.cjs').final;
   if(historicalSettlement){
     if(expenseWitness){
-      const profile=require(finance+(precision?'/expense-witness-349-profile.cjs':'/expense-witness-346-profile.cjs'));
+      const profile=require(finance+(signedSettlement?'/signed-settlement-350-profile.cjs'
+        :precision?'/expense-witness-349-profile.cjs':'/expense-witness-346-profile.cjs'));
       profile.assertSource(s,base);
       if(precision&&(a.sourceMode!==profile.mode||a.ledger346!==s.predecessor346.ledgerSha256))process.exit(65);
+      if(signedSettlement&&a.ledger349!==s.predecessor349.ledgerSha256)process.exit(65);
       if(a.ledger334!==s.predecessor334.ledgerSha256)process.exit(65);
     } else require(finance+'/historical-settlement-334-profile.cjs').assertSource(s,base);
     if(a.ledger332!==s.predecessor332.ledgerSha256||a.ledger333!==s.predecessor333.ledgerSha256)process.exit(65);
@@ -45,7 +50,7 @@ JS
 (cd "$generated/context" && shasum -a 256 -c ../context.sha256 >/dev/null)
 if [[ ${6-} == --host-only ]]; then
   count=$(node -p 'require(process.argv[1]).migrationCount' "$prepared/source.json")
-  [[ $count == 334 || $count == 346 || $count == 349 ]] || exit 64
+  [[ $count == 334 || $count == 346 || $count == 349 || $count == 350 ]] || exit 64
   printf 'NAMED_%s_HOST_READY mode=%s sha=%s context=%s\n' "$count" "$mode" "$ref" "$(shasum -a 256 "$generated/context.sha256" | cut -d' ' -f1)"
   exit 0
 fi
