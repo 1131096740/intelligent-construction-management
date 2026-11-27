@@ -13,29 +13,29 @@
     "routeCount": 884,
     "exactRouteCount": 884,
     "normalizedRouteCount": 884,
-    "classificationOverrideCount": 299,
+    "classificationOverrideCount": 301,
     "consumerSurfaceOverrideCount": 76,
-    "classificationOverrideSha256": "269b58c52bda4e786da705eb64c08b6ce803b6d42bf4520e65efa9e68b8c9b43",
+    "classificationOverrideSha256": "8ab76be36b8e6846dca04b7ee021dede876a613986c512c84f1e939f82be8231",
     "consumerSurfaceOverrideSha256": "c14620f08f076d0b1bc3a7ecfb258a147bdeb7ca120f68c23cdb9ce10521ad49",
-    "derivedProductionPageCount": 585,
-    "pageRouteCount": 604,
+    "derivedProductionPageCount": 583,
+    "pageRouteCount": 602,
     "externalTakeoverCount": 70,
-    "exitCandidateCount": 136,
+    "exitCandidateCount": 138,
     "internalTaskCount": 74,
     "unclassifiedCount": 0,
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 656,
+      "web_api_wrapper": 654,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 2,
       "operator_endpoint": 72,
-      "none": 147
+      "none": 149
     },
     "blockerCount": 0
   },
   "evidence": {
     "upstreamWebManifestStatus": "ready",
-    "productionWrapperRouteCount": 656,
+    "productionWrapperRouteCount": 654,
     "authStoreRouteCount": 5,
     "productionTicketFollowupCount": 4
   },
@@ -10064,32 +10064,12 @@
           },
           {
             "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-            "wrapper": "fetchProjectFinancingQuotaRequestCapability",
-            "method": "GET",
-            "normalizedPath": "/projects/:param/financing-quotas",
-            "normalizedKey": "GET /projects/:param/financing-quotas",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-            ]
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
             "wrapper": "fetchProjectFinancingQuotaWorkbench",
             "method": "GET",
             "normalizedPath": "/projects/:param/financing-quotas",
             "normalizedKey": "GET /projects/:param/financing-quotas",
             "productionConsumers": [
               "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
-            ]
-          },
-          {
-            "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-            "wrapper": "requestProjectFinancingQuotaWithUpload",
-            "method": "GET",
-            "normalizedPath": "/projects/:param/financing-quotas",
-            "normalizedKey": "GET /projects/:param/financing-quotas",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
             ]
           }
         ],
@@ -29432,29 +29412,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "fnd_05_new_financing_quota_application_retired_history_preserved",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-            "wrapper": "requestProjectFinancingQuotaWithUpload",
-            "method": "POST",
-            "normalizedPath": "/projects/:param/financing-quotas",
-            "normalizedKey": "POST /projects/:param/financing-quotas",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",
@@ -29555,29 +29524,18 @@
       "contractCutoverSurface": false,
       "contractCutoverLegacyWrite": false,
       "contractCutoverTombstoneWrite": false,
-      "usage": "page",
-      "classificationSource": "production_web_evidence",
-      "classificationReason": null,
-      "consumerSurface": "web_api_wrapper",
+      "usage": "exit_candidate",
+      "classificationSource": "registry_override",
+      "classificationReason": "fnd_05_new_financing_quota_application_retired_history_preserved",
+      "consumerSurface": "none",
       "consumerEvidence": {
-        "webApiWrappers": [
-          {
-            "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-            "wrapper": "requestProjectFinancingQuotaWithUpload",
-            "method": "POST",
-            "normalizedPath": "/projects/:param/financing-quotas/file-uploads",
-            "normalizedKey": "POST /projects/:param/financing-quotas/file-uploads",
-            "productionConsumers": [
-              "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-            ]
-          }
-        ],
+        "webApiWrappers": [],
         "authStore": [],
         "ticketFollowups": [],
         "manualSurfaceReason": null
       },
       "deletionAuthorized": false,
-      "exitCandidateSemantics": null
+      "exitCandidateSemantics": "candidate_only_no_deletion_authorization"
     },
     {
       "method": "POST",

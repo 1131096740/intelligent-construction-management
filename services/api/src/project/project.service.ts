@@ -3587,10 +3587,8 @@ export class ProjectService {
           label: "申请垫资额度",
           kind: "primary",
           requiredAction: "project.financing_quota.request",
-          enabled: canPerform("project.financing_quota.request", actorRoleKeys),
-          disabledReason: canPerform("project.financing_quota.request", actorRoleKeys)
-            ? null
-            : "当前账号无项目垫资额度申请权限",
+          enabled: false,
+          disabledReason: "项目垫资额度申请已停止，实际到账请登记项目垫资",
           requiresFile: true
         }),
         rows

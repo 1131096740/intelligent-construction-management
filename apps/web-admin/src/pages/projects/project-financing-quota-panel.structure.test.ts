@@ -35,7 +35,7 @@ const pageActionRegistry = JSON.parse(
   }>;
 };
 
-describe("project financing quota F0/F1/F2 workbench", () => {
+describe("historical project financing quota workbench", () => {
   it("loads the project-scoped read model and mounts the dedicated panel", () => {
     expect(pageSource).toContain("fetchProjectFinancingQuotaWorkbench");
     expect(pageSource).toContain("<ProjectFinancingQuotaPanel");
@@ -74,35 +74,13 @@ describe("project financing quota F0/F1/F2 workbench", () => {
     expect(panelSource).toContain("终止原因：");
   });
 
-  it("shows the request trigger solely from the exact enabled server action requiring a file", () => {
-    expect(panelSource).toContain("workbench.requestAction");
-    expect(panelSource).toContain('action.key === "request_financing_quota"');
-    expect(panelSource).toContain("action.enabled");
-    expect(panelSource).toContain("action.requiresFile === true");
-    expect(panelSource).not.toContain("auth.user");
-    expect(panelSource).not.toContain("globalRoleKeys");
-  });
-
-  it("uses a standard TDesign dialog with yuan amount, reason, optional validity and one required file", () => {
-    expect(panelSource).toContain("<t-dialog");
-    expect(panelSource).toContain("申请金额（元）");
-    expect(panelSource).toContain("申请事由");
-    expect(panelSource).toContain("有效期（选填）");
-    expect(panelSource).toContain("<t-upload");
-    expect(panelSource).toContain(':auto-upload="false"');
-    expect(panelSource).toContain(':multiple="false"');
-    expect(panelSource).toContain(':max="1"');
-    expect(panelSource).not.toContain("SensitiveActionDialog");
-  });
-
-  it("freezes a UUID attempt and invalidates late work on project switch or unmount", () => {
-    expect(panelSource).toContain("crypto.randomUUID()");
-    expect(panelSource).toContain("projectGeneration");
-    expect(panelSource).toContain("onBeforeUnmount");
-    expect(panelSource).toContain("requestContextIsCurrent");
-    expect(panelSource).toContain("requestProjectFinancingQuotaWithUpload");
-    expect(panelSource).toContain("createProjectFinancingQuotaRequestAttemptState");
-    expect(panelSource).toContain("fetchProjectFinancingQuotaRequestCapability");
+  it("keeps actual advance registration and removes new quota application", () => {
+    expect(pageSource).toContain("登记项目垫资");
+    expect(pageSource).toContain("advanceForProject: selectedProjectId");
+    expect(panelSource).not.toContain("workbench.requestAction");
+    expect(panelSource).not.toContain("申请项目垫资额度");
+    expect(apiSource).not.toContain("financing-quotas/file-uploads");
+    expect(pageActionRegistry.actions.some(action => action.id === "project-financing-quota.request")).toBe(false);
   });
 
   it("publishes only the authoritative refreshed workbench back to the owning page", () => {
@@ -110,32 +88,6 @@ describe("project financing quota F0/F1/F2 workbench", () => {
     expect(pageSource).toContain('@updated="handleFinancingQuotaUpdated"');
     expect(pageSource).toContain("function handleFinancingQuotaUpdated");
     expect(pageSource).toContain("nextWorkbench.project.id !== selectedProjectId.value");
-  });
-
-  it("registers only the actual F1 request action against the composite wrapper", () => {
-    const registration = pageActionRegistry.actions.find(
-      (action) => action.id === "project-financing-quota.request"
-    );
-
-    expect(registration?.trigger).toEqual({
-      element: "t-dialog",
-      event: "confirm",
-      handler: "submitRequest"
-    });
-    expect(registration?.capability).toEqual({
-      kind: "detail_action",
-      source: "selectedFinancingQuotaRequestAction"
-    });
-    expect(registration?.wrappers).toEqual([{
-      apiFile: "apps/web-admin/src/api/project-financing-quota.api.ts",
-      name: "requestProjectFinancingQuotaWithUpload"
-    }]);
-    expect(apiSource).toContain("uploadProjectFinancingQuotaAttachment");
-    expect(apiSource).toContain("financing-quotas/file-uploads");
-    expect(apiSource).toContain("encodeURIComponent(projectId)");
-    expect(apiSource).not.toContain('apiFetch("/files"');
-    expect(apiSource).not.toContain('from "./core-flow-read.api"');
-    expect(apiSource).not.toContain("globalRoleKeys");
   });
 
   it("shows F2 review controls only from the exact server-derived approval action", () => {

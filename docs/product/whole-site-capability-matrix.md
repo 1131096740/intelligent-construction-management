@@ -7,31 +7,31 @@
 | 输入 | 状态 | SHA-256 |
 | --- | --- | --- |
 | nestRoutes | ready | `f11bd2f53ac55e99c7d78eb4ae3265cc26551978770d81213bbdc27a2dd19739` |
-| webApiWrappers | ready | `0a289df5c79b1ea3e7d2f050c7c4552d523c4b5916bae5b06613e46137ceb9ee` |
-| webPageActions | ready | `fae2899088eca2cd8c35c44deb9fcbcfd056e39091e79c0d5c714407b895cc78` |
-| routeUsage | ready | `820175b90d802027a7bf629ceb6ac9dd4ade2e03248295472f2551ca5b09380d` |
+| webApiWrappers | ready | `678e00af2d2784bb4ae1258c80f0c4488e2ca8f2243a6d1955e81a4e684a0cf1` |
+| webPageActions | ready | `c8daae4f2eab1398e2d220732c8045b03ff311bbe2b0848fa148af3429807d3c` |
+| routeUsage | ready | `08e141cc7ca20e4a3980f7e6077681ab52f5aaec72cc6e5055a185f39491e80c` |
 
 ## 汇总
 
 | 指标 | 数量 |
 | --- | ---: |
 | routeCount | 884 |
-| pageRouteCount | 604 |
+| pageRouteCount | 602 |
 | externalTakeoverRouteCount | 70 |
-| exitCandidateRouteCount | 136 |
+| exitCandidateRouteCount | 138 |
 | internalTaskRouteCount | 74 |
 | unclassifiedRouteCount | 0 |
-| mainRequestBindingCount | 819 |
+| mainRequestBindingCount | 815 |
 | webRequestWithoutNestCount | 0 |
 | authRequestWithoutNestCount | 0 |
 | orphanWrapperCount | 0 |
 | duplicateMutationRouteCount | 0 |
-| registeredActionCount | 435 |
-| actionBindingCount | 532 |
-| acceptedActionBindingCount | 487 |
+| registeredActionCount | 434 |
+| actionBindingCount | 529 |
+| acceptedActionBindingCount | 485 |
 | unresolvedActionBindingCount | 0 |
-| productionMutationConsumerPairCount | 426 |
-| coveredProductionMutationConsumerPairCount | 426 |
+| productionMutationConsumerPairCount | 425 |
+| coveredProductionMutationConsumerPairCount | 425 |
 | uncoveredProductionMutationConsumerPairCount | 0 |
 | blockerCount | 0 |
 
@@ -269,7 +269,7 @@
 | GET | /projects/:projectId/expense-requests | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#fetchProjectExpenseRequests | — | not_applicable | — |
 | GET | /projects/:projectId/financing-quotas/:quotaId/review-capability | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaReviewAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaReviewCapability | project-financing-quota.review-approve<br>project-financing-quota.review-reject | not_applicable | — |
 | GET | /projects/:projectId/financing-quotas/:quotaId/termination-capability | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaTerminationAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaTerminationCapability | project-financing-quota.terminate | not_applicable | — |
-| GET | /projects/:projectId/financing-quotas | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaReviewAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaTerminationAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaRequestCapability<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaWorkbench<br>apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request<br>project-financing-quota.review-approve<br>project-financing-quota.review-reject<br>project-financing-quota.terminate | not_applicable | — |
+| GET | /projects/:projectId/financing-quotas | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaReviewAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaTerminationAction<br>apps/web-admin/src/api/project-financing-quota.api.ts#fetchProjectFinancingQuotaWorkbench | project-financing-quota.review-approve<br>project-financing-quota.review-reject<br>project-financing-quota.terminate | not_applicable | — |
 | GET | /projects/:projectId/history-expenses/batches/:batchId | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#fetchHistoryExpenseBatch | — | not_applicable | — |
 | GET | /projects/:projectId/history-expenses/batches | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#fetchHistoryExpenseBatches | — | not_applicable | — |
 | GET | /projects/:projectId/history-expenses/capability | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#fetchHistoryExpenseCapability | — | not_applicable | — |
@@ -753,8 +753,8 @@
 | POST | /projects/:projectId/expense-requests | page | web_api_wrapper | apps/web-admin/src/api/core-flow-read.api.ts#createProjectExpenseRequest | project-expense.create-local-role | covered | — |
 | POST | /projects/:projectId/financing-quotas/:quotaId/approval | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaReviewAction | project-financing-quota.review-approve<br>project-financing-quota.review-reject | covered | — |
 | POST | /projects/:projectId/financing-quotas/:quotaId/termination | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#executeProjectFinancingQuotaTerminationAction | project-financing-quota.terminate | covered | — |
-| POST | /projects/:projectId/financing-quotas/file-uploads | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request | covered | — |
-| POST | /projects/:projectId/financing-quotas | page | web_api_wrapper | apps/web-admin/src/api/project-financing-quota.api.ts#requestProjectFinancingQuotaWithUpload | project-financing-quota.request | covered | — |
+| POST | /projects/:projectId/financing-quotas/file-uploads | exit_candidate | none | — | — | not_applicable | — |
+| POST | /projects/:projectId/financing-quotas | exit_candidate | none | — | — | not_applicable | — |
 | POST | /projects/:projectId/history-expenses/batches/:batchId/activation | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#activateHistoryExpenseBatch | history-expense.activate-batch | covered | — |
 | POST | /projects/:projectId/history-expenses/batches/:batchId/confirmations | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#confirmHistoryExpenseBatch | history-expense.confirm-batch | covered | — |
 | POST | /projects/:projectId/history-expenses/batches/:batchId/rows/:rowId/corrections | page | web_api_wrapper | apps/web-admin/src/api/history-expense.api.ts#correctHistoryExpenseRow | history-expense.correct-row | covered | — |

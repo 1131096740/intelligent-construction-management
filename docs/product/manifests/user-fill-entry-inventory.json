@@ -8,10 +8,10 @@
   },
   "status": "ready",
   "summary": {
-    "activeBusinessActionCount": 423,
+    "activeBusinessActionCount": 422,
     "technicalActionCount": 8,
-    "activeBindingCount": 519,
-    "retiredWriteEntryCount": 123,
+    "activeBindingCount": 516,
+    "retiredWriteEntryCount": 125,
     "retainedReadonlyExitCount": 13,
     "uncoveredRetiredWriteCount": 0,
     "staleRetiredWriteCount": 0,
@@ -4849,24 +4849,6 @@
       "causalVerified": true
     },
     {
-      "id": "project-financing-quota.request",
-      "status": "unified_candidate",
-      "usage": "page_action",
-      "routePaths": [
-        "/项目经营"
-      ],
-      "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
-      "capabilityKind": "detail_action",
-      "bindingKeys": [
-        "GET /projects/:param/financing-quotas",
-        "POST /projects/:param/financing-quotas",
-        "POST /projects/:param/financing-quotas/file-uploads"
-      ],
-      "bindingCount": 3,
-      "productionConsumerCount": 1,
-      "causalVerified": true
-    },
-    {
       "id": "project-financing-quota.review-approve",
       "status": "unified_candidate",
       "usage": "page_action",
@@ -7542,6 +7524,20 @@
       "path": "/projects/:projectId/expense-requests/:expenseRequestId/receipt-confirmation",
       "controller": "ProjectExpenseController",
       "handler": "confirmPurchaseReceipt",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/financing-quotas",
+      "controller": "ProjectController",
+      "handler": "requestProjectFinancingQuota",
+      "status": "gone"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/financing-quotas/file-uploads",
+      "controller": "ProjectController",
+      "handler": "uploadProjectFinancingQuotaPrivateFile",
       "status": "gone"
     },
     {

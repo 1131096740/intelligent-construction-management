@@ -4,24 +4,24 @@
   "exitCandidateSemantics": "candidate_only_no_deletion_authorization",
   "expectations": {
     "routeCount": 884,
-    "classificationOverrideCount": 299,
-    "derivedProductionPageCount": 585,
-    "classificationOverrideSha256": "269b58c52bda4e786da705eb64c08b6ce803b6d42bf4520e65efa9e68b8c9b43",
+    "classificationOverrideCount": 301,
+    "derivedProductionPageCount": 583,
+    "classificationOverrideSha256": "8ab76be36b8e6846dca04b7ee021dede876a613986c512c84f1e939f82be8231",
     "consumerSurfaceOverrideSha256": "c14620f08f076d0b1bc3a7ecfb258a147bdeb7ca120f68c23cdb9ce10521ad49",
     "usageCounts": {
-      "page": 604,
+      "page": 602,
       "external_takeover": 70,
-      "exit_candidate": 136,
+      "exit_candidate": 138,
       "internal_task": 74,
       "unclassified": 0
     },
     "consumerSurfaceCounts": {
-      "web_api_wrapper": 656,
+      "web_api_wrapper": 654,
       "auth_store": 5,
       "signed_ticket_delivery": 2,
       "machine_probe": 2,
       "operator_endpoint": 72,
-      "none": 147
+      "none": 149
     }
   },
   "overrides": [
@@ -900,6 +900,18 @@
       "path": "/projects/:projectId/owner-contracts/:ownerContractId/confirmation",
       "usage": "external_takeover",
       "reason": "project_historical_or_affiliate_external_fact"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/financing-quotas",
+      "usage": "exit_candidate",
+      "reason": "fnd_05_new_financing_quota_application_retired_history_preserved"
+    },
+    {
+      "method": "POST",
+      "path": "/projects/:projectId/financing-quotas/file-uploads",
+      "usage": "exit_candidate",
+      "reason": "fnd_05_new_financing_quota_application_retired_history_preserved"
     },
     {
       "method": "POST",

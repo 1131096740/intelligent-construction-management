@@ -22,17 +22,17 @@
     },
     "webApiWrappers": {
       "path": "docs/product/manifests/web-api-wrappers.json",
-      "sha256": "0a289df5c79b1ea3e7d2f050c7c4552d523c4b5916bae5b06613e46137ceb9ee",
+      "sha256": "678e00af2d2784bb4ae1258c80f0c4488e2ca8f2243a6d1955e81a4e684a0cf1",
       "status": "ready",
       "summary": {
         "apiModuleCount": 56,
-        "exportedFunctionCount": 765,
-        "transportWrapperCount": 744,
-        "pureExportCount": 21,
-        "mainRequestBindingCount": 819,
+        "exportedFunctionCount": 761,
+        "transportWrapperCount": 742,
+        "pureExportCount": 19,
+        "mainRequestBindingCount": 815,
         "ticketFollowupCount": 6,
-        "requestEdgeCount": 773,
-        "productionConsumerCount": 632,
+        "requestEdgeCount": 769,
+        "productionConsumerCount": 630,
         "orphanWrapperCount": 0,
         "testOnlyWrapperCount": 0,
         "unreferencedWrapperCount": 0,
@@ -42,51 +42,51 @@
     },
     "webPageActions": {
       "path": "docs/product/manifests/web-page-actions.json",
-      "sha256": "fae2899088eca2cd8c35c44deb9fcbcfd056e39091e79c0d5c714407b895cc78",
+      "sha256": "c8daae4f2eab1398e2d220732c8045b03ff311bbe2b0848fa148af3429807d3c",
       "status": "ready",
       "summary": {
-        "registeredActionCount": 435,
-        "pageActionCount": 108,
+        "registeredActionCount": 434,
+        "pageActionCount": 107,
         "backgroundActionCount": 327,
         "reachableVueFileCount": 237,
         "routeRootCount": 82,
         "totalVueFileCount": 257,
         "parsedVueFileCount": 257,
         "reachableProductionModuleCount": 408,
-        "templateEventDirectiveCount": 1549,
+        "templateEventDirectiveCount": 1544,
         "propCallbackDirectiveCount": 8,
-        "coveredProductionMutationConsumerCount": 426,
-        "candidateProductionMutationConsumerCount": 426,
-        "acceptedProductionMutationConsumerCount": 426,
-        "productionMutationConsumerPairCount": 426,
+        "coveredProductionMutationConsumerCount": 425,
+        "candidateProductionMutationConsumerCount": 425,
+        "acceptedProductionMutationConsumerCount": 425,
+        "productionMutationConsumerPairCount": 425,
         "blockerCount": 0
       }
     },
     "routeUsage": {
       "path": "docs/product/manifests/route-usage.json",
-      "sha256": "820175b90d802027a7bf629ceb6ac9dd4ade2e03248295472f2551ca5b09380d",
+      "sha256": "08e141cc7ca20e4a3980f7e6077681ab52f5aaec72cc6e5055a185f39491e80c",
       "status": "ready",
       "summary": {
         "routeCount": 884,
         "exactRouteCount": 884,
         "normalizedRouteCount": 884,
-        "classificationOverrideCount": 299,
+        "classificationOverrideCount": 301,
         "consumerSurfaceOverrideCount": 76,
-        "classificationOverrideSha256": "269b58c52bda4e786da705eb64c08b6ce803b6d42bf4520e65efa9e68b8c9b43",
+        "classificationOverrideSha256": "8ab76be36b8e6846dca04b7ee021dede876a613986c512c84f1e939f82be8231",
         "consumerSurfaceOverrideSha256": "c14620f08f076d0b1bc3a7ecfb258a147bdeb7ca120f68c23cdb9ce10521ad49",
-        "derivedProductionPageCount": 585,
-        "pageRouteCount": 604,
+        "derivedProductionPageCount": 583,
+        "pageRouteCount": 602,
         "externalTakeoverCount": 70,
-        "exitCandidateCount": 136,
+        "exitCandidateCount": 138,
         "internalTaskCount": 74,
         "unclassifiedCount": 0,
         "consumerSurfaceCounts": {
-          "web_api_wrapper": 656,
+          "web_api_wrapper": 654,
           "auth_store": 5,
           "signed_ticket_delivery": 2,
           "machine_probe": 2,
           "operator_endpoint": 72,
-          "none": 147
+          "none": 149
         },
         "blockerCount": 0
       }
@@ -94,22 +94,22 @@
   },
   "summary": {
     "routeCount": 884,
-    "pageRouteCount": 604,
+    "pageRouteCount": 602,
     "externalTakeoverRouteCount": 70,
-    "exitCandidateRouteCount": 136,
+    "exitCandidateRouteCount": 138,
     "internalTaskRouteCount": 74,
     "unclassifiedRouteCount": 0,
-    "mainRequestBindingCount": 819,
+    "mainRequestBindingCount": 815,
     "webRequestWithoutNestCount": 0,
     "authRequestWithoutNestCount": 0,
     "orphanWrapperCount": 0,
     "duplicateMutationRouteCount": 0,
-    "registeredActionCount": 435,
-    "actionBindingCount": 532,
-    "acceptedActionBindingCount": 487,
+    "registeredActionCount": 434,
+    "actionBindingCount": 529,
+    "acceptedActionBindingCount": 485,
     "unresolvedActionBindingCount": 0,
-    "productionMutationConsumerPairCount": 426,
-    "coveredProductionMutationConsumerPairCount": 426,
+    "productionMutationConsumerPairCount": 425,
+    "coveredProductionMutationConsumerPairCount": 425,
     "uncoveredProductionMutationConsumerPairCount": 0,
     "blockerCount": 0
   },
@@ -11437,18 +11437,6 @@
         },
         {
           "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-          "wrapper": "fetchProjectFinancingQuotaRequestCapability",
-          "method": "GET",
-          "path": "/projects/:param/financing-quotas",
-          "normalizedKey": "GET /projects/:param/financing-quotas",
-          "bodyKind": "none",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-          ],
-          "testConsumers": []
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
           "wrapper": "fetchProjectFinancingQuotaWorkbench",
           "method": "GET",
           "path": "/projects/:param/financing-quotas",
@@ -11460,49 +11448,10 @@
           "testConsumers": [
             "apps/web-admin/src/api/project-financing-quota.api.test.ts"
           ]
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-          "wrapper": "requestProjectFinancingQuotaWithUpload",
-          "method": "GET",
-          "path": "/projects/:param/financing-quotas",
-          "normalizedKey": "GET /projects/:param/financing-quotas",
-          "bodyKind": "none",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/project-financing-quota.api.test.ts"
-          ]
         }
       ],
       "authTransports": [],
       "actions": [
-        {
-          "actionId": "project-financing-quota.request",
-          "bindingIndex": 0,
-          "identity": "project-financing-quota.request\u0000apps/web-admin/src/api/project-financing-quota.api.ts\u0000requestProjectFinancingQuotaWithUpload\u0000GET\u0000GET /projects/:param/financing-quotas\u00000",
-          "usage": "page_action",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "selectedFinancingQuotaRequestAction",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-          "wrapper": "requestProjectFinancingQuotaWithUpload",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-          ],
-          "causalVerified": true,
-          "accepted": false,
-          "blockerCodes": []
-        },
         {
           "actionId": "project-financing-quota.review-approve",
           "bindingIndex": 0,
@@ -41579,53 +41528,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-          "wrapper": "requestProjectFinancingQuotaWithUpload",
-          "method": "POST",
-          "path": "/projects/:param/financing-quotas/file-uploads",
-          "normalizedKey": "POST /projects/:param/financing-quotas/file-uploads",
-          "bodyKind": "form_data",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/project-financing-quota.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "project-financing-quota.request",
-          "bindingIndex": 2,
-          "identity": "project-financing-quota.request\u0000apps/web-admin/src/api/project-financing-quota.api.ts\u0000requestProjectFinancingQuotaWithUpload\u0000POST\u0000POST /projects/:param/financing-quotas/file-uploads\u00002",
-          "usage": "page_action",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "selectedFinancingQuotaRequestAction",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-          "wrapper": "requestProjectFinancingQuotaWithUpload",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {
@@ -41647,53 +41555,12 @@
         "contractCutoverLegacyWrite": false,
         "contractCutoverTombstoneWrite": false
       },
-      "usage": "page",
-      "consumerSurface": "web_api_wrapper",
-      "wrapperRequests": [
-        {
-          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-          "wrapper": "requestProjectFinancingQuotaWithUpload",
-          "method": "POST",
-          "path": "/projects/:param/financing-quotas",
-          "normalizedKey": "POST /projects/:param/financing-quotas",
-          "bodyKind": "json",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-          ],
-          "testConsumers": [
-            "apps/web-admin/src/api/project-financing-quota.api.test.ts"
-          ]
-        }
-      ],
+      "usage": "exit_candidate",
+      "consumerSurface": "none",
+      "wrapperRequests": [],
       "authTransports": [],
-      "actions": [
-        {
-          "actionId": "project-financing-quota.request",
-          "bindingIndex": 1,
-          "identity": "project-financing-quota.request\u0000apps/web-admin/src/api/project-financing-quota.api.ts\u0000requestProjectFinancingQuotaWithUpload\u0000POST\u0000POST /projects/:param/financing-quotas\u00001",
-          "usage": "page_action",
-          "semantic": "business_write",
-          "sourceFile": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
-          "capability": {
-            "kind": "detail_action",
-            "source": "selectedFinancingQuotaRequestAction",
-            "serverDerived": true,
-            "dominatesTrigger": true
-          },
-          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-          "wrapper": "requestProjectFinancingQuotaWithUpload",
-          "productionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-          ],
-          "acceptedProductionConsumers": [
-            "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-          ],
-          "causalVerified": true,
-          "accepted": true,
-          "blockerCodes": []
-        }
-      ],
-      "mutationCoverage": "covered",
+      "actions": [],
+      "mutationCoverage": "not_applicable",
       "blockerCodes": []
     },
     {

@@ -8,13 +8,13 @@
   },
   "summary": {
     "apiModuleCount": 56,
-    "exportedFunctionCount": 765,
-    "transportWrapperCount": 744,
-    "pureExportCount": 21,
-    "mainRequestBindingCount": 819,
+    "exportedFunctionCount": 761,
+    "transportWrapperCount": 742,
+    "pureExportCount": 19,
+    "mainRequestBindingCount": 815,
     "ticketFollowupCount": 6,
-    "requestEdgeCount": 773,
-    "productionConsumerCount": 632,
+    "requestEdgeCount": 769,
+    "productionConsumerCount": 630,
     "orphanWrapperCount": 0,
     "testOnlyWrapperCount": 0,
     "unreferencedWrapperCount": 0,
@@ -18607,20 +18607,6 @@
       "unreachableConsumers": []
     },
     {
-      "name": "createProjectFinancingQuotaRequestAttemptState",
-      "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-      "kind": "pure",
-      "returnProvenance": "unverified",
-      "requests": [],
-      "testConsumers": [
-        "apps/web-admin/src/api/project-financing-quota.api.test.ts"
-      ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-      ],
-      "unreachableConsumers": []
-    },
-    {
       "name": "createProjectFinancingQuotaReviewAttemptState",
       "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
       "kind": "pure",
@@ -18698,7 +18684,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 534,
+          "sourceLine": 468,
           "method": "GET",
           "path": "/projects/:param/financing-quotas",
           "normalizedPath": "/projects/:param/financing-quotas",
@@ -18717,7 +18703,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 626,
+          "sourceLine": 538,
           "method": "GET",
           "path": "/projects/:param/financing-quotas/:param/review-capability",
           "normalizedPath": "/projects/:param/financing-quotas/:param/review-capability",
@@ -18736,7 +18722,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 895,
+          "sourceLine": 807,
           "method": "POST",
           "path": "/projects/:param/financing-quotas/:param/approval",
           "normalizedPath": "/projects/:param/financing-quotas/:param/approval",
@@ -18769,7 +18755,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 534,
+          "sourceLine": 468,
           "method": "GET",
           "path": "/projects/:param/financing-quotas",
           "normalizedPath": "/projects/:param/financing-quotas",
@@ -18788,7 +18774,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 991,
+          "sourceLine": 903,
           "method": "GET",
           "path": "/projects/:param/financing-quotas/:param/termination-capability",
           "normalizedPath": "/projects/:param/financing-quotas/:param/termination-capability",
@@ -18807,7 +18793,7 @@
         },
         {
           "kind": "main",
-          "sourceLine": 1265,
+          "sourceLine": 1177,
           "method": "POST",
           "path": "/projects/:param/financing-quotas/:param/termination",
           "normalizedPath": "/projects/:param/financing-quotas/:param/termination",
@@ -18833,33 +18819,6 @@
       "unreachableConsumers": []
     },
     {
-      "name": "fetchProjectFinancingQuotaRequestCapability",
-      "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-      "kind": "transport",
-      "returnProvenance": "transparent_main_response",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 575,
-          "method": "GET",
-          "path": "/projects/:param/financing-quotas",
-          "normalizedPath": "/projects/:param/financing-quotas",
-          "normalizedKey": "GET /projects/:param/financing-quotas",
-          "bodyKind": "none",
-          "localCallChains": [
-            [
-              "fetchProjectFinancingQuotaRequestCapability"
-            ]
-          ]
-        }
-      ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
-      ],
-      "testConsumers": [],
-      "unreachableConsumers": []
-    },
-    {
       "name": "fetchProjectFinancingQuotaReviewCapability",
       "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
       "kind": "transport",
@@ -18867,7 +18826,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 626,
+          "sourceLine": 538,
           "method": "GET",
           "path": "/projects/:param/financing-quotas/:param/review-capability",
           "normalizedPath": "/projects/:param/financing-quotas/:param/review-capability",
@@ -18896,7 +18855,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 991,
+          "sourceLine": 903,
           "method": "GET",
           "path": "/projects/:param/financing-quotas/:param/termination-capability",
           "normalizedPath": "/projects/:param/financing-quotas/:param/termination-capability",
@@ -18925,7 +18884,7 @@
       "requests": [
         {
           "kind": "main",
-          "sourceLine": 534,
+          "sourceLine": 468,
           "method": "GET",
           "path": "/projects/:param/financing-quotas",
           "normalizedPath": "/projects/:param/financing-quotas",
@@ -18943,86 +18902,6 @@
       ],
       "productionConsumers": [
         "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue"
-      ],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "requestActionEnabled",
-      "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-      "kind": "pure",
-      "returnProvenance": "unverified",
-      "requests": [],
-      "productionConsumers": [],
-      "testConsumers": [],
-      "unreachableConsumers": []
-    },
-    {
-      "name": "requestProjectFinancingQuotaWithUpload",
-      "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-      "kind": "transport",
-      "returnProvenance": "unverified",
-      "requests": [
-        {
-          "kind": "main",
-          "sourceLine": 534,
-          "method": "GET",
-          "path": "/projects/:param/financing-quotas",
-          "normalizedPath": "/projects/:param/financing-quotas",
-          "normalizedKey": "GET /projects/:param/financing-quotas",
-          "bodyKind": "none",
-          "localCallChains": [
-            [
-              "requestProjectFinancingQuotaWithUpload",
-              "executeProjectFinancingQuotaRequest",
-              "refreshRequestedQuota",
-              "fetchProjectFinancingQuotaWorkbench"
-            ],
-            [
-              "requestProjectFinancingQuotaWithUpload",
-              "executeProjectFinancingQuotaRequest",
-              "verifyRequestAction",
-              "fetchProjectFinancingQuotaWorkbench"
-            ]
-          ]
-        },
-        {
-          "kind": "main",
-          "sourceLine": 1485,
-          "method": "POST",
-          "path": "/projects/:param/financing-quotas",
-          "normalizedPath": "/projects/:param/financing-quotas",
-          "normalizedKey": "POST /projects/:param/financing-quotas",
-          "bodyKind": "json",
-          "localCallChains": [
-            [
-              "requestProjectFinancingQuotaWithUpload",
-              "executeProjectFinancingQuotaRequest",
-              "postProjectFinancingQuotaRequest"
-            ]
-          ]
-        },
-        {
-          "kind": "main",
-          "sourceLine": 1524,
-          "method": "POST",
-          "path": "/projects/:param/financing-quotas/file-uploads",
-          "normalizedPath": "/projects/:param/financing-quotas/file-uploads",
-          "normalizedKey": "POST /projects/:param/financing-quotas/file-uploads",
-          "bodyKind": "form_data",
-          "localCallChains": [
-            [
-              "requestProjectFinancingQuotaWithUpload",
-              "executeProjectFinancingQuotaRequest",
-              "uploadProjectFinancingQuotaAttachment"
-            ]
-          ]
-        }
-      ],
-      "testConsumers": [
-        "apps/web-admin/src/api/project-financing-quota.api.test.ts"
-      ],
-      "productionConsumers": [
-        "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue"
       ],
       "unreachableConsumers": []
     },
@@ -24430,15 +24309,7 @@
         },
         {
           "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-          "wrapper": "fetchProjectFinancingQuotaRequestCapability"
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
           "wrapper": "fetchProjectFinancingQuotaWorkbench"
-        },
-        {
-          "apiFile": "apps/web-admin/src/api/project-financing-quota.api.ts",
-          "wrapper": "requestProjectFinancingQuotaWithUpload"
         }
       ]
     },
