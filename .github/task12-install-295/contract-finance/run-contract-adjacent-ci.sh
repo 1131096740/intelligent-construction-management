@@ -42,7 +42,9 @@ fi
 if [[ ${3-} == --company-history-352 ]]; then
   [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
   [[ $# == 3 || ( $# == 4 && $4 == --host-only ) ]] || exit 64
-  scopes=$(node - "$plan/issue-ordered/profiles.cjs" "$2" <<'JS'
+  company_352=true
+  if [[ $2 != settlement && $2 != template && $2 != draft ]]; then
+    scopes=$(node - "$plan/issue-ordered/profiles.cjs" "$2" <<'JS'
 const [file,lane]=process.argv.slice(2);
 const {issueOrderedScopes352}=require(file);
 const allowed=[...issueOrderedScopes352,'issue435_352'];
@@ -55,11 +57,11 @@ const selected=Object.hasOwn(groups,lane)?groups[lane]:[lane];
 if(selected.length===0 || selected.some(scope=>!allowed.includes(scope))) process.exit(64);
 process.stdout.write(selected.join(' '));
 JS
-  ) || exit 64
-  read -r -a signed_issue_scopes <<< "$scopes"
-  company_352=true
-  issue_lane=true
-  signed_issue_ordered=true
+    ) || exit 64
+    read -r -a signed_issue_scopes <<< "$scopes"
+    issue_lane=true
+    signed_issue_ordered=true
+  fi
 fi
 if [[ $issue_lane == false && ${2:-} == issue* ]]; then
   [[ $# == 3 ]] || exit 64
@@ -139,6 +141,8 @@ if [[ ${4-} == --host-only || ( $signed_350 == true && $lane == pol275 && ${5-} 
     for scope in "${signed_issue_scopes[@]}"; do
       bash "$plan/issue-ordered/run.sh" "$root" "$work/source" "$sha" "$work" "$scope" --host-only
     done
+  elif [[ $company_352 == true ]]; then
+    bash "$plan/run-contract-adjacent.sh" "$root" "$work/source" "$sha" "$work" "$lane" "$3" --host-only
   elif [[ $signed_350 == true ]]; then
     case "$lane" in
       issue417) bash "$plan/expense-witness/run.sh" "$root" "$work/source" "$sha" "$work" --issue417-history-expense --host-only ;;
