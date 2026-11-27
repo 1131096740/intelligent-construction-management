@@ -20,6 +20,9 @@ node -e '
 entry=line-a-entry.cjs
 mode=$(node -p 'require(process.argv[1]).mode' "$source")
 case "$mode:${4:-}:${5:-}" in
+  company-history-352:--a28-continuation:|company-history-352:--a28-continuation:--host-only)
+    [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
+    entry=historical-takeover-333-entry.cjs ;;
   company-history-352:original:|company-history-352:original:--host-only|\
   signed-settlement-350:original:|signed-settlement-350:original:--host-only|\
   signed-settlement-350:--a01-signed-subcent-350:|signed-settlement-350:--a01-signed-subcent-350:--host-only)
@@ -64,7 +67,7 @@ const signedSubcent = source.mode === 'signed-settlement-350' || source.mode ===
 if (lane !== 'original' || profile.count === 349 || signedSubcent) {
   profile.assertRuntimeBaseline(require(path.join(api, 'prisma/migration-baseline.cjs')));
 }
-if (lane !== 'original' && !signedSubcent) {
+if (lane === '--a28-continuation' || lane === '--a29-opening') {
   assert.ok(fs.statSync(path.join(api, 'src/contract-takeover/contract-takeover-a28.http.pg.spec.ts')).isFile());
   process.exit(0);
 }

@@ -48,7 +48,7 @@ if [[ ${3-} == --company-history-352 ]]; then
   fi
   company_352=true
   if [[ $2 == issue417 ]]; then issue_lane=true; fi
-  if [[ $2 != browser-partial && $2 != browser-completion && $2 != task398-standard && $2 != pol115-full && $2 != pol115-workbench && $2 != pol115-original && $2 != pol115-spot && $2 != issue417 && $2 != pol275 && $2 != bank && $2 != cash-handover && $2 != principal-return && $2 != company-proxy && $2 != pfq && $2 != pol109 && $2 != pol108-core && $2 != pol108-facts && $2 != pol108-impacts && $2 != onboarding && $2 != procurement && $2 != line-a && $2 != core-payment && $2 != payment-execution && $2 != settlement && $2 != template && $2 != draft && $2 != v7 && $2 != invoice && $2 != pol279 && $2 != pol280 && $2 != expense-execution && $2 != expense-finance && $2 != expense-receipt ]]; then
+  if [[ $2 != historical-takeover-a28 && $2 != browser-partial && $2 != browser-completion && $2 != task398-standard && $2 != pol115-full && $2 != pol115-workbench && $2 != pol115-original && $2 != pol115-spot && $2 != issue417 && $2 != pol275 && $2 != bank && $2 != cash-handover && $2 != principal-return && $2 != company-proxy && $2 != pfq && $2 != pol109 && $2 != pol108-core && $2 != pol108-facts && $2 != pol108-impacts && $2 != onboarding && $2 != procurement && $2 != line-a && $2 != core-payment && $2 != payment-execution && $2 != settlement && $2 != template && $2 != draft && $2 != v7 && $2 != invoice && $2 != pol279 && $2 != pol280 && $2 != expense-execution && $2 != expense-finance && $2 != expense-receipt ]]; then
     scopes=$(node - "$plan/issue-ordered/profiles.cjs" "$2" <<'JS'
 const [file,lane]=process.argv.slice(2);
 const {issueOrderedScopes352}=require(file);
@@ -132,7 +132,7 @@ if [[ ${3:-} == --payment-remainder-331 ]]; then
     *) exit 64 ;;
   esac
 fi
-if [[ $lane == historical-takeover-a28 && ${3:-} != --historical-settlement-334 && ${3:-} != --expense-witness-34[69] ]]; then exit 64; fi
+if [[ $lane == historical-takeover-a28 && ${3:-} != --historical-settlement-334 && ${3:-} != --expense-witness-34[69] && $company_352 != true ]]; then exit 64; fi
 if [[ $lane == historical-takeover-a29 && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
 if [[ $lane == pol115-full && ${3:-} != --historical-settlement-334 && ${3:-} != --expense-witness-346 && ${3:-} != --expense-witness-349 && ${3:-} != --company-history-352 ]]; then exit 64; fi
 if [[ ( $lane == cash-transfer || $lane == project-advance ) && ${3:-} != --upward-archive-332 && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
@@ -148,6 +148,7 @@ if [[ ${4-} == --host-only || ( ( $signed_350 == true || $company_352 == true ) 
     done
   elif [[ $company_352 == true ]]; then
     case "$lane" in
+      historical-takeover-a28) bash "$plan/run-line-a.sh" "$work/source" "$sha" "$work" --a28-continuation --host-only ;;
       browser-partial|browser-completion)
         kind=${lane#browser-}
         bash "$plan/browser-$kind/run-browser-$kind.sh" "$root" "$work/source" "$sha" "$work" "$3" --host-only ;;
@@ -300,7 +301,7 @@ case "$lane" in
     bash "$plan/run-line-a.sh" "$work/source" "$sha" "$work/browser" ${line_a_args[@]+"${line_a_args[@]}"}
     ;;
   historical-takeover-a28)
-    if [[ $3 == --expense-witness-34[69] ]]; then
+    if [[ $3 == --expense-witness-34[69] || $company_352 == true ]]; then
       bash "$plan/run-line-a.sh" "$work/source" "$sha" "$work/browser" --a28-continuation
     else
       bash "$plan/run-line-a.sh" "$work/source" "$sha" "$work/browser"

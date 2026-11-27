@@ -13,10 +13,12 @@ const source = require('./contract-finance-source.json');
 const root = '/qualification';
 const api = path.join(root, 'workspace/services/api');
 const spec = 'src/contract-takeover/contract-takeover-a28.http.pg.spec.ts';
-const precision = source.mode === 'expense-witness-349';
+const company = source.mode === 'company-history-352';
+const precision = company || source.mode === 'expense-witness-349';
 const expenseWitness = precision || source.mode === 'expense-witness-346';
 const historicalSettlement = expenseWitness || source.mode === 'historical-settlement-334';
-const profile = precision ? require('./expense-witness-349-profile.cjs')
+const profile = company ? require('./company-history-352-profile.cjs')
+  : precision ? require('./expense-witness-349-profile.cjs')
   : expenseWitness ? require('./expense-witness-346-profile.cjs')
   : historicalSettlement ? require('./historical-settlement-334-profile.cjs') : require('./historical-takeover-333-profile.cjs');
 const count = source.migrationCount;
@@ -129,21 +131,24 @@ async function main() {
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
   const material = { sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails };
   if (expenseWitness) {
-    if (precision) {
+    if (company) {
+      await installer.withCombinedCompanyHistory352(receipt, consume, { ...source, ...material });
+    } else if (precision) {
       await installer.withCombinedExpenseWitness349(receipt, consume, { ...source, ...material });
     } else {
       await installer.withCombinedExpenseWitness(receipt, consume, material, profile.count);
     }
     const historical = require('./historical-settlement-334-profile.cjs');
     historical.assertFinanceInstallation(receipt, { ...source, tails: source.tails.slice(0, 39) });
-    const forward = precision ? receipt.expenseWitnessPrecisionForward : receipt.expenseWitnessForward;
+    const forward = company ? receipt.companyHistoryForward : precision ? receipt.expenseWitnessPrecisionForward : receipt.expenseWitnessForward;
     assert.equal(forward.count, count);
     assert.equal(forward.sourceTree, source.sourceTree);
     assert.equal(forward.ledgerSha256, profile.ledgerSha256);
     assert.equal(forward.sameIdentity, true);
     const tails = source.tails.map(({ name, sha256 }) => ({ name, sha256 }));
     const boundary = precision ? source.predecessor346.migrationCount - source.predecessor.migrationCount : 39;
-    assert.deepEqual(forward.tails, tails.slice(boundary));
+    assert.deepEqual(forward.tails, tails.slice(company ? source.predecessor350.migrationCount - source.predecessor.migrationCount : boundary));
+    if (company) profile.assertInstallation(receipt, source);
     if (precision) {
       assert.deepEqual(receipt.expenseWitnessForward, {
         count: source.predecessor346.migrationCount, ledgerSha256: source.predecessor346.ledgerSha256,
