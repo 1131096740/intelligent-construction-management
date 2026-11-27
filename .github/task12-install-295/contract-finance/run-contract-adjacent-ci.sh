@@ -43,7 +43,7 @@ if [[ ${3-} == --company-history-352 ]]; then
   [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
   [[ $# == 3 || ( $# == 4 && $4 == --host-only ) ]] || exit 64
   company_352=true
-  if [[ $2 != settlement && $2 != template && $2 != draft && $2 != v7 && $2 != invoice && $2 != pol279 && $2 != pol280 && $2 != expense-execution && $2 != expense-finance && $2 != expense-receipt ]]; then
+  if [[ $2 != core-payment && $2 != payment-execution && $2 != settlement && $2 != template && $2 != draft && $2 != v7 && $2 != invoice && $2 != pol279 && $2 != pol280 && $2 != expense-execution && $2 != expense-finance && $2 != expense-receipt ]]; then
     scopes=$(node - "$plan/issue-ordered/profiles.cjs" "$2" <<'JS'
 const [file,lane]=process.argv.slice(2);
 const {issueOrderedScopes352}=require(file);
@@ -116,7 +116,7 @@ mode_args=()
 if [[ $issue_lane == true ]]; then
   mode_args=("$3")
 elif (( $# >= 3 )); then
-  case "$lane" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|cash-handover|principal-return|payment-execution|task398-standard|task398-ledger-loss|task398-competition|expense-execution|expense-finance|expense-receipt|company-proxy|onboarding|procurement|pfq|browser-partial|browser-completion|pol115-workbench|pol115-full|pol275|line-a|cash-transfer|project-advance|historical-takeover-a28|historical-takeover-a29) mode_args=("$3") ;; *) exit 64;; esac
+  case "$lane" in core-payment|settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|cash-handover|principal-return|payment-execution|task398-standard|task398-ledger-loss|task398-competition|expense-execution|expense-finance|expense-receipt|company-proxy|onboarding|procurement|pfq|browser-partial|browser-completion|pol115-workbench|pol115-full|pol275|line-a|cash-transfer|project-advance|historical-takeover-a28|historical-takeover-a29) mode_args=("$3") ;; *) exit 64;; esac
 fi
 if [[ ${3:-} == --text-direct-330 ]]; then
   case "$lane" in settlement|template|draft|v7|invoice|pol279|pol280|pol108-core|pol108-facts|pol108-impacts|pol109|line-a|onboarding|procurement|task398-standard|task398-ledger-loss|cash-handover|principal-return|pol115-workbench|company-proxy|payment-execution|browser-partial|browser-completion|expense-execution|expense-finance|expense-receipt|pfq|pol275) ;; *) exit 64;; esac
@@ -143,6 +143,8 @@ if [[ ${4-} == --host-only || ( $signed_350 == true && $lane == pol275 && ${5-} 
     done
   elif [[ $company_352 == true ]]; then
     case "$lane" in
+      core-payment) bash "$plan/run-core-payment.sh" "$work/source" "$sha" --host-only core "$3" ;;
+      payment-execution) bash "$plan/run-payment-execution.sh" "$root" "$work/source" "$sha" "$work" --host-only ;;
       settlement|template|draft) bash "$plan/run-contract-adjacent.sh" "$root" "$work/source" "$sha" "$work" "$lane" "$3" --host-only ;;
       v7|invoice|pol279|pol280) bash "$plan/run-finance-adjacent.sh" "$root" "$work/source" "$sha" "$work" "$lane" "$3" --host-only ;;
       expense-execution|expense-finance|expense-receipt) bash "$plan/run-expense.sh" "$root" "$work/source" "$sha" "$work" "${lane#expense-}" "$3" --host-only ;;
@@ -293,9 +295,10 @@ case "$lane" in
   cash-handover|principal-return|cash-transfer|project-advance) bash "$plan/run-task398-cash-principal.sh" "$root" "$work/source" "$sha" "$work/browser" "$lane" ;;
   expense-execution|expense-finance|expense-receipt)
     expense_args=()
-    if [[ ${3:-} == --expense-witness-34[69] || $signed_350 == true ]]; then expense_args=("$3"); fi
+    if [[ ${3:-} == --expense-witness-34[69] || $signed_350 == true || $company_352 == true ]]; then expense_args=("$3"); fi
     bash "$plan/run-expense.sh" "$root" "$work/source" "$sha" "$work/browser" "${lane#expense-}" ${expense_args[@]+"${expense_args[@]}"}
     ;;
+  core-payment) bash "$plan/run-core-payment.sh" "$work/source" "$sha" "$work/browser" core "$3" ;;
   payment-execution) bash "$plan/run-payment-execution.sh" "$root" "$work/source" "$sha" "$work/browser" ;;
   company-proxy) bash "$plan/run-task410-company-proxy.sh" "$root" "$work/source" "$sha" "$work/browser" ;;
   browser-partial|browser-completion)
