@@ -18,11 +18,16 @@ const [file,sha,tree,base,scope]=process.argv.slice(2),source=require(file);
 const profile=require(base+'/issue-ordered/profiles.cjs').profileFor(scope);
 assert.equal(source.sourceSha,sha);
 assert.equal(source.sourceTree,tree);
-const combined=source.mode==='expense-witness-346';
-assert.equal(combined,Boolean(profile.requiredMigrationCount),'ISSUE_ORDERED_MIGRATION_SCOPE');
-const ledger=require(base+(combined?'/expense-witness-346-profile.cjs':'/historical-settlement-334-profile.cjs'));
+const ledgerFiles={
+  'historical-settlement-334':'historical-settlement-334-profile.cjs',
+  'expense-witness-346':'expense-witness-346-profile.cjs',
+  'expense-witness-349':'expense-witness-349-profile.cjs'
+};
+assert.ok(Object.hasOwn(ledgerFiles,source.mode),'ISSUE_ORDERED_MIGRATION_SCOPE');
+const ledger=require(base+'/'+ledgerFiles[source.mode]);
+assert.equal(source.migrationCount,profile.requiredMigrationCount??334,'ISSUE_ORDERED_MIGRATION_SCOPE');
 ledger.assertSource(source,require(base+'/common/multi-witness.cjs').final);
-if(combined){
+if(profile.requiredMigrationCount){
   const required=source.tails[profile.requiredMigrationCount-296];
   assert.equal(required?.name,profile.requiredTerminalMigration);
   assert.equal(required?.sha256,profile.requiredTerminalMigrationSha256);
@@ -47,10 +52,15 @@ if [[ -n $fixture_digest ]]; then
   if [[ $mode == expense-witness-346 ]]; then chmod 0644 "$work/fixture.ts"; fi
 fi
 node "$base/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
-if [[ $mode == expense-witness-346 ]]; then
+if [[ $mode == expense-witness-346 || $mode == expense-witness-349 ]]; then
   git -C "$work" apply --unidiff-zero "$base/expense-witness/installer.patch"
   expected=$(node -e 'console.log(require(process.argv[1]).installerSha256)' "$base/expense-witness-346-profile.cjs")
   [[ $(sha256sum "$work/installer.cjs" | cut -d' ' -f1) == "$expected" ]] || exit 65
+  if [[ $mode == expense-witness-349 ]]; then
+    git -C "$work" apply --unidiff-zero "$base/expense-witness/installer-349.patch"
+    expected=$(node -p 'require(process.argv[1]).installerSha256' "$base/expense-witness-349-profile.cjs")
+    [[ $(sha256sum "$work/installer.cjs" | cut -d' ' -f1) == "$expected" ]] || exit 65
+  fi
   # git apply recreates the bind source under umask 077.
   chmod 0644 "$work/installer.cjs"
 fi
@@ -83,10 +93,13 @@ fi
 for file in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs; do
   args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
 done
-if [[ $mode == expense-witness-346 ]]; then
+if [[ $mode == expense-witness-346 || $mode == expense-witness-349 ]]; then
   for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
     args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
   done
+fi
+if [[ $mode == expense-witness-349 ]]; then
+  args+=(--mount "type=bind,src=$base/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
 fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
@@ -96,8 +109,8 @@ if pgrep -x postgres >/dev/null; then exit 65; fi
 status=0
 docker run "${args[@]}" --entrypoint node "$image" /qualification/issue-ordered-entry.cjs "$scope" >"$work/receipt.json" 2>"$work/private.stderr" || status=$?
 [[ ! -s "$work/receipt.json" ]] || cat "$work/receipt.json"
-if [[ $mode == expense-witness-346 && $status != 0 && ! -s "$work/receipt.json" ]]; then
-  printf 'ISSUE_ORDERED_346_NO_RECEIPT scope=%s exit=%s\n' "$scope" "$status" >&2
+if [[ $mode == expense-witness-* && $status != 0 && ! -s "$work/receipt.json" ]]; then
+  printf 'ISSUE_ORDERED_%s_NO_RECEIPT scope=%s exit=%s\n' "${mode##*-}" "$scope" "$status" >&2
 fi
 (( status == 0 )) || exit "$status"
 node - "$work/receipt.json" "$sha" "$scope" "$prepared/source.json" <<'JS'

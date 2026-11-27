@@ -7,7 +7,7 @@ const { createHash, randomBytes } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { stripVTControlCharacters } = require('node:util');
 const { admitSource } = require('./install-only292.cjs');
-const { withCombined334HistoricalSettlement, withCombinedExpenseWitness } = require('./installer.cjs');
+const { withCombined334HistoricalSettlement, withCombinedExpenseWitness, withCombinedExpenseWitness349 } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
 const historical = require('./historical-settlement-334-profile.cjs');
 const source = require('./contract-finance-source.json');
@@ -18,8 +18,10 @@ const { profileFor } = require('./issue-ordered-profiles.cjs');
 const scope = process.argv[2];
 const profile = profileFor(scope);
 const { file, titles } = profile;
-const combined = source.mode === 'expense-witness-346';
-const ledgerProfile = combined ? require('./expense-witness-346-profile.cjs') : historical;
+const precision = source.mode === 'expense-witness-349';
+const combined = precision || source.mode === 'expense-witness-346';
+const expenseWitness = combined ? require('./expense-witness-346-profile.cjs') : null;
+const ledgerProfile = precision ? require('./expense-witness-349-profile.cjs') : expenseWitness ?? historical;
 const purpose = scope.toUpperCase() + '_ORIGINAL_' + source.migrationCount;
 const receipt = { schemaVersion: 1, purpose, sourceSha: source.sourceSha,
   stages: ['INPUTS'], status: 'STOPPED' };
@@ -73,9 +75,14 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
   assert.deepEqual(url.searchParams.getAll('sslcert'), [path.join(workDir, 'ca.crt')]);
   historical.assertFinanceInstallation(receipt, combined ? { ...source, tails: source.tails.slice(0, 39) } : source);
   if (combined) {
-    assert.equal(receipt.expenseWitnessForward.count, ledgerProfile.count);
-    assert.equal(receipt.expenseWitnessForward.ledgerSha256, ledgerProfile.ledgerSha256);
+    assert.equal(receipt.expenseWitnessForward.count, expenseWitness.count);
+    assert.equal(receipt.expenseWitnessForward.ledgerSha256, expenseWitness.ledgerSha256);
     assert.equal(receipt.expenseWitnessForward.sameIdentity, true);
+  }
+  if (precision) {
+    assert.equal(receipt.expenseWitnessPrecisionForward.count, ledgerProfile.count);
+    assert.equal(receipt.expenseWitnessPrecisionForward.ledgerSha256, ledgerProfile.ledgerSha256);
+    assert.equal(receipt.expenseWitnessPrecisionForward.sameIdentity, true);
   }
   const { stdout } = await sql(`SELECT (
     current_database() = '${database}' AND current_user = session_user AND current_user = 'jg_task01_owner' AND
@@ -90,6 +97,11 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
   const reportFile = path.join(work, 'jest.json');
   const secret = () => randomBytes(32).toString('hex');
   receipt.stages.push(profile.stage);
+  const writeSecret = profile.requiresOperatingLedgerWriteSecret ? secret() : undefined;
+  if (precision) {
+    await sql(`INSERT INTO public."OperatingLedgerWriteSecret" ("id", "secretHash")
+      VALUES (1, public.crypt('${writeSecret}', public.gen_salt('bf')));`);
+  }
   const child = spawnSync(process.execPath, [path.join(api, 'node_modules/jest/bin/jest.js'),
     '--runInBand', '--runTestsByPath', file, '--json', '--outputFile', reportFile], {
     cwd: api, encoding: 'utf8', timeout: 600_000, maxBuffer: 8 * 1024 * 1024,
@@ -97,7 +109,7 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
       NODE_ENV: 'test', CI: 'true', DATABASE_URL: ownerUrl, [profile.orderedDatabaseKey]: database,
       [profile.enableKey]: '1',
       ...(profile.databaseUrlKey && { [profile.databaseUrlKey]: ownerUrl }),
-      ...(profile.requiresOperatingLedgerWriteSecret && { OPERATING_LEDGER_DB_WRITE_SECRET: secret() }),
+      ...(writeSecret && { OPERATING_LEDGER_DB_WRITE_SECRET: writeSecret }),
       FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: path.join(work, 'files'),
       FILE_DOWNLOAD_SECRET: secret(), JWT_ACCESS_SECRET: secret(), JWT_REFRESH_SECRET: secret(),
       APPROVAL_SMS_ENABLED: 'false', SMS_ENABLED: 'false' }
@@ -125,7 +137,8 @@ async function main() {
   assert.equal(process.argv.length, 3);
   assert.notEqual(process.getuid(), 0);
   assert.equal(process.env.DATABASE_URL, undefined);
-  assert.equal(combined, Boolean(profile.requiredMigrationCount), 'ISSUE_ORDERED_MIGRATION_SCOPE');
+  assert.equal(source.migrationCount, profile.requiredMigrationCount ?? 334,
+    'ISSUE_ORDERED_MIGRATION_SCOPE');
   ledgerProfile.assertSource(source, final);
   if (combined) {
     const required = source.tails[profile.requiredMigrationCount - 296];
@@ -145,12 +158,15 @@ async function main() {
   }
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
   const material = { sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails };
-  if (combined) {
+  if (precision) {
+    await withCombinedExpenseWitness349(receipt, consume, { ...source, ...material });
+    assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness, true);
+  } else if (combined) {
     await withCombinedExpenseWitness(receipt, consume, material, ledgerProfile.count);
-    assert.equal(receipt.expenseWitnessCatalogAfterBusiness, true);
   } else {
     await withCombined334HistoricalSettlement(receipt, consume, material);
   }
+  if (combined) assert.equal(receipt.expenseWitnessCatalogAfterBusiness, true);
   assert.equal(receipt.combinedAfterBusiness.count, source.migrationCount);
   assert.equal(receipt.combinedAfterBusiness.ledgerSha256, source.ledgerSha256);
   assert.equal(receipt.combinedAfterBusiness.sameIdentity, true);

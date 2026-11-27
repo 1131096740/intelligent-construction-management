@@ -392,6 +392,22 @@ profiles.issue422_346 = {
   requiredTerminalMigrationSha256: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
 };
 
+profiles.issue426_a01_349 = {
+  file: 'src/expense-claim/expense-claim-a01-precision.http.pg.spec.ts',
+  sourceDigest: 'e517373d18a3c7d1ed48dad5ff43ac0749c84ea518177cb6c8a43303c4749f14',
+  orderedDatabaseKey: 'JG_A01_EXPENSE_PRECISION_DATABASE',
+  enableKey: 'RUN_A01_EXPENSE_PRECISION_PG16',
+  stage: 'A01_EXPENSE_PRECISION',
+  requiresOperatingLedgerWriteSecret: true,
+  titles: [
+    '报销四位元金额按明细精确求和、仅在付款总额取整',
+    '报销四位元金额终审保留项目成本并分开整数分待付'
+  ],
+  requiredMigrationCount: 349,
+  requiredTerminalMigration: '20261129018000_reimbursement_exact_cash_cost_links',
+  requiredTerminalMigrationSha256: '58b3cc0404a85a97dbb484654245d4bd042e5fb2014f32997244b2597cb5110b'
+};
+
 function profileFor(scope) {
   assert.ok(Object.hasOwn(profiles, scope), 'ORDERED_334_SCOPE');
   return profiles[scope];
