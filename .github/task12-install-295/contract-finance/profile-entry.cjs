@@ -2,11 +2,11 @@
 
 const assert=require('node:assert/strict');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitnessForProfile,withCombined320MultiWitnessForProfile,withCombined330MultiWitnessForProfile,withCombined331MultiWitnessForProfile,withCombined332MultiWitnessForProfile,withCombined334MultiWitnessForProfile,withCombined346MultiWitnessForProfile}=require('./installer.cjs');
+const {withCombined295MultiWitnessForProfile,withCombined320MultiWitnessForProfile,withCombined330MultiWitnessForProfile,withCombined331MultiWitnessForProfile,withCombined332MultiWitnessForProfile,withCombined334MultiWitnessForProfile,withCombined346MultiWitnessForProfile,withCombined349MultiWitnessForProfile}=require('./installer.cjs');
 const {final,digest}=require('./multi-witness.cjs');
 const {runRetained,verifyInputs}=require('./remaining-retained.cjs');
 const source=require('./contract-finance-source.json');
-const expense=source.mode==='expense-witness-346'?require('./expense-witness-346-profile.cjs'):undefined;
+const expense=['expense-witness-346','expense-witness-349'].includes(source.mode)?require('./'+source.mode+'-profile.cjs'):undefined;
 const historicalSettlement=source.mode==='historical-settlement-334';
 const historical=historicalSettlement?require('./historical-settlement-334-profile.cjs'):undefined;
 const upwardArchive=source.mode==='upward-archive-332';
@@ -45,9 +45,10 @@ async function main(){
   receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   const consume=context=>runRetained(context,receipt,lane);
   if(expense){
-    await withCombined346MultiWitnessForProfile(receipt,consume,{sourceTree:source.sourceTree,
+    const installExpense=count===349?withCombined349MultiWitnessForProfile:withCombined346MultiWitnessForProfile;
+    await installExpense(receipt,consume,{...source,
       migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails});
-    require('./payment-execution-346.cjs').assertInstallation(receipt,source);
+    require('./payment-execution-'+count+'.cjs').assertInstallation(receipt,source);
   } else if(current){
     const installCurrent=historicalSettlement?withCombined334MultiWitnessForProfile:upwardArchive?withCombined332MultiWitnessForProfile:paymentRemainder?withCombined331MultiWitnessForProfile:textDirect?withCombined330MultiWitnessForProfile:withCombined320MultiWitnessForProfile;
     await installCurrent(receipt,consume,{sourceTree:source.sourceTree,

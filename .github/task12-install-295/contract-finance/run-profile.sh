@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && $5 == --expense-witness-346 ) ||
-  ( $# == 6 && $5 == --expense-witness-346 && $6 == --host-only ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && $5 == --expense-witness-34[69] ) ||
+  ( $# == 6 && $5 == --expense-witness-34[69] && $6 == --host-only ) ]] || exit 64
 root=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -16,21 +16,22 @@ historical="$prior/remaining-special/profile"
 finance="$root/.github/task12-install-295/contract-finance"
 common="$finance/common"
 workspace="$prepared/prepared/context/workspace"
-if [[ ${5:-} == --expense-witness-346 ]]; then
+if [[ ${5:-} == --expense-witness-34[69] ]]; then
   [[ -z $(git -C "$root" status --porcelain --untracked-files=all -- "$plan" "$historical") ]] || exit 65
   node "$plan/check-ledger.cjs" "$root" "$sha" "$5" | cmp -s "$prepared/source.json" - || exit 65
 fi
 node - "$prepared/source.json" "$sha" "$prior/remaining-special.json" "$historical" "$workspace" "$common/multi-witness.cjs" "$plan/upward-archive-332-profile.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan" "${5-}" <<'JS'
 const [sourceFile,sha,profilesFile,prior,workspace,terminalFile,upwardProfile,historicalProfile,plan,option]=process.argv.slice(2);
 const source=require(sourceFile),terminal=require(terminalFile);
-const count=source.mode==='expense-witness-346'?346:source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
+const count=source.mode==='expense-witness-349'?349:source.mode==='expense-witness-346'?346:source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
 if(source.sourceSha!==sha||source.migrationCount!==count||
-  (count===346)!==(option==="--expense-witness-346")||
+  ([346,349].includes(count)&&option!=='--'+source.mode)||
+  (![346,349].includes(count)&&option!=='')||
   (count!==295?source.predecessor.ledgerSha256:source.ledgerSha256)!==terminal.final)process.exit(65);
 if(count===332) require(upwardProfile).assertSource(source,sha,terminal.final);
 if(count===334) require(historicalProfile).assertSource(source,terminal.final);
-if(count===346){
-  const profile=require(plan+'/expense-witness-346-profile.cjs');
+if([346,349].includes(count)){
+  const profile=require(plan+'/'+source.mode+'-profile.cjs');
   profile.assertSource(source,terminal.final);
   require(plan+'/bank/migration-inputs-346.cjs')(workspace+'/services/api',source,profile);
 }
@@ -55,7 +56,7 @@ git -C "$root" show "$sha:.github/task12-install-295/contract-finance/common/ins
   cmp -s - "$common/installer.cjs" || exit 65
 
 upward_mount=()
-if [[ ${5-} != --expense-witness-346 ]]; then
+if [[ ${5-} != --expense-witness-34[69] ]]; then
   upward_mount=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 fi
 args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-drop ALL
@@ -80,14 +81,15 @@ done
 source "$plan/remaining-installer-mounts.sh"
 source_mode=$(node -p 'require(process.argv[1]).mode ?? ""' "$prepared/source.json")
 append_remaining_installer "$source_mode" retained
-if [[ $source_mode == expense-witness-346 ]]; then
-  args+=(--mount "type=bind,src=$plan/payment-execution-346.cjs,dst=/qualification/payment-execution-346.cjs,readonly")
+if [[ $source_mode == expense-witness-34[69] ]]; then
+  witness_count=${source_mode##*-}
+  args+=(--mount "type=bind,src=$plan/payment-execution-$witness_count.cjs,dst=/qualification/payment-execution-$witness_count.cjs,readonly")
 fi
 
 if [[ ${6-} == --host-only ]]; then
   node --check "$work/installer.cjs"
   node --check "$plan/profile-entry.cjs"
-  printf 'REMAINING_PROFILE_WARM_346_HOST_READY sha=%s material=%s\n' "$sha" "$work"
+  printf 'REMAINING_PROFILE_WARM_%s_HOST_READY sha=%s material=%s\n' "$witness_count" "$sha" "$work"
   exit 0
 fi
 
