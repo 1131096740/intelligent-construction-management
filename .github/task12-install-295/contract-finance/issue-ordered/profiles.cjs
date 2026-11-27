@@ -508,10 +508,24 @@ profiles.issue416_his_350 = {
   fixtureDigest: 'eb629ac5831f1d43f1285535a680da26bf00c44c3337edd2726a19c9a48f54f7'
 };
 
+// The 352 matrix stays local-only while the remaining CI lanes are adapted.
+// #411 changed its source and is deliberately excluded until its original and
+// settled-return cases have a separately sealed 352 fixture.
+const companyHistoryBaseline = {
+  requiredMigrationCount: 352,
+  requiredTerminalMigration: '20261129021000_company_history_expense',
+  requiredTerminalMigrationSha256: '8cb43f1ae9a6fb6108280f1ea08df4d2d2edf7c060b39b37dfbeeaff7ae368e5'
+};
+const issueOrderedScopes352 = Object.freeze(issueOrderedScopes350
+  .filter(scope => scope !== 'issue411_350').map(scope => scope.replace(/_350$/u, '_352')));
+for (const scope of issueOrderedScopes352) {
+  profiles[scope] = { ...profiles[scope.replace(/_352$/u, '_350')], ...companyHistoryBaseline };
+}
+
 function profileFor(scope) {
   assert.ok(Object.hasOwn(profiles, scope), 'ORDERED_334_SCOPE');
   return profiles[scope];
 }
 
 module.exports = { profileFor, issue418OperatingScopes, issue418OperatingScopes349,
-  issue418OperatingScopes350, issueOrderedScopes350 };
+  issue418OperatingScopes350, issueOrderedScopes350, issueOrderedScopes352 };

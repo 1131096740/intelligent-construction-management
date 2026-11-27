@@ -8,7 +8,7 @@ const { spawnSync } = require('node:child_process');
 const { stripVTControlCharacters } = require('node:util');
 const { admitSource } = require('./install-only292.cjs');
 const { withCombined334HistoricalSettlement, withCombinedExpenseWitness, withCombinedExpenseWitness349,
-  withCombinedSignedSettlement350 } = require('./installer.cjs');
+  withCombinedSignedSettlement350, withCombinedCompanyHistory352 } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
 const historical = require('./historical-settlement-334-profile.cjs');
 const source = require('./contract-finance-source.json');
@@ -19,12 +19,13 @@ const { profileFor } = require('./issue-ordered-profiles.cjs');
 const scope = process.argv[2];
 const profile = profileFor(scope);
 const { file, titles } = profile;
+const company = source.mode === 'company-history-352';
 const signed = source.mode === 'signed-settlement-350';
 const precision = source.mode === 'expense-witness-349';
-const combined = signed || precision || source.mode === 'expense-witness-346';
+const combined = company || signed || precision || source.mode === 'expense-witness-346';
 const expenseWitness = combined ? require('./expense-witness-346-profile.cjs') : null;
-const precisionProfile = signed || precision ? require('./expense-witness-349-profile.cjs') : null;
-const ledgerProfile = signed ? require('./signed-settlement-350-profile.cjs') : precisionProfile ?? expenseWitness ?? historical;
+const precisionProfile = company || signed || precision ? require('./expense-witness-349-profile.cjs') : null;
+const ledgerProfile = company ? require('./company-history-352-profile.cjs') : signed ? require('./signed-settlement-350-profile.cjs') : precisionProfile ?? expenseWitness ?? historical;
 const purpose = scope.toUpperCase() + '_ORIGINAL_' + source.migrationCount;
 const receipt = { schemaVersion: 1, purpose, sourceSha: source.sourceSha,
   stages: ['INPUTS'], status: 'STOPPED' };
@@ -101,7 +102,7 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
   const secret = () => randomBytes(32).toString('hex');
   receipt.stages.push(profile.stage);
   const writeSecret = profile.requiresOperatingLedgerWriteSecret ? secret() : undefined;
-  if (scope === 'issue426_a01_349' || scope === 'issue426_a01_350' || scope === 'issue434_349') {
+  if (scope === 'issue426_a01_349' || scope === 'issue426_a01_350' || scope === 'issue426_a01_352' || scope === 'issue434_349') {
     await sql(`INSERT INTO public."OperatingLedgerWriteSecret" ("id", "secretHash")
       VALUES (1, public.crypt('${writeSecret}', public.gen_salt('bf')));`);
   }
@@ -154,6 +155,7 @@ async function main() {
   assert.equal(combined, Boolean(profile.requiredMigrationCount), 'ISSUE_ORDERED_MIGRATION_SCOPE');
   assert.equal(precision, profile.requiredMigrationCount === 349, 'ISSUE_ORDERED_PRECISION_SCOPE');
   assert.equal(signed, profile.requiredMigrationCount === 350, 'ISSUE_ORDERED_SIGNED_SCOPE');
+  assert.equal(company, profile.requiredMigrationCount === 352, 'ISSUE_ORDERED_COMPANY_SCOPE');
   ledgerProfile.assertSource(source, final);
   if (combined) {
     const required = source.tails[profile.requiredMigrationCount - 296];
@@ -173,7 +175,10 @@ async function main() {
   }
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
   const material = { sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails };
-  if (signed) {
+  if (company) {
+    await withCombinedCompanyHistory352(receipt, consume, { ...source, ...material });
+    ledgerProfile.assertInstallation(receipt, source);
+  } else if (signed) {
     await withCombinedSignedSettlement350(receipt, consume, { ...source, ...material });
     ledgerProfile.assertInstallation(receipt, source);
   } else if (precision) {
