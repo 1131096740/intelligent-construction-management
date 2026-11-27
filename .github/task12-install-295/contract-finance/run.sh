@@ -2,6 +2,10 @@
 set -euo pipefail
 umask 077
 
+if [[ ${2-} == --signed-settlement-350 ]]; then
+  [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
+  [[ ( $# == 3 || ( $# == 4 && $4 == --host-only ) ) && $3 == a187dc73a133114e1cfbbc891a4aec923abe2545 ]] || exit 64
+else
 [[ ( ( $# == 3 || ( $# == 4 && $4 == --host-only ) ) &&
   ( ${2-} == --historical-settlement-334 || ${2-} == --expense-witness-34[69] ) &&
   $3 == a187dc73a133114e1cfbbc891a4aec923abe2545 ) ||
@@ -9,6 +13,7 @@ umask 077
   ( ( ${2-} == --text-direct-330 || ${2-} == --payment-remainder-331 || ${2-} == --upward-archive-332 ) && ( $# == 2 ||
     ( $# == 3 && ( $3 == --host-only || $3 =~ ^[a-f0-9]{40}$ ) ) ||
     ( $# == 4 && $3 =~ ^[a-f0-9]{40}$ && $4 == --host-only ) ) ) ]] || exit 64
+fi
 sha=$1
 root=$(git rev-parse --show-toplevel)
 plan=$(cd "$(dirname "$0")" && pwd -P)
@@ -29,7 +34,7 @@ prepare_predecessor() {
 mode=${2-}
 restore_predecessor=
 if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 ||
-  $mode == --historical-settlement-334 || $mode == --expense-witness-34[69] ]]; then
+  $mode == --historical-settlement-334 || $mode == --expense-witness-34[69] || $mode == --signed-settlement-350 ]]; then
   [[ $sha =~ ^[a-f0-9]{40}$ && $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
   plan_status=$(git -C "$root" status --porcelain --untracked-files=all -- "$plan")
   [[ -z $plan_status ]] || exit 65
@@ -40,6 +45,12 @@ if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode ==
     prepare_predecessor "$restore_predecessor"
   fi
   if [[ ${3-} == --host-only || ${4-} == --host-only ]]; then
+    if [[ $mode == --signed-settlement-350 ]]; then
+      export RUNNER_TEMP="$work"
+      bash "$plan/run-bank-restore.sh" "$work/predecessor-source" "$restore_predecessor" --host-only \
+        restore "$mode" "$work/source" --host-only
+      exit 0
+    fi
     if [[ $mode == --historical-settlement-334 || $mode == --expense-witness-34[69] ]]; then
       export RUNNER_TEMP="$work"
       bash "$plan/run-bank-restore.sh" "$work/source" "$sha" --host-only bank "$mode" --host-only
@@ -81,6 +92,13 @@ cleanup() {
 trap 'cleanup "$?"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+if [[ $mode == --signed-settlement-350 ]]; then
+  bash "$plan/build.sh" "$work/predecessor-source" "$restore_predecessor" restore "$work/restore"
+  bash "$plan/run-bank-restore.sh" "$work/predecessor-source" "$restore_predecessor" "$work/restore" \
+    restore "$mode" "$work/source"
+  exit 0
+fi
 
 if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 ||
   $mode == --historical-settlement-334 || $mode == --expense-witness-34[69] ]]; then

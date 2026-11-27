@@ -1,15 +1,28 @@
 #!/bin/bash
 set -euo pipefail
 umask 077
+if [[ ${5-} == --signed-settlement-350 ]]; then
+  [[ $4 == restore && ${GITHUB_ACTIONS:-} != true ]] || exit 64
+  case $# in
+    6) ;;
+    7) [[ $7 == --host-only ]] || exit 64 ;;
+    *) exit 64 ;;
+  esac
+else
 [[ $# == 4 || ( $# == 5 && $4 == bank && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-34[69] ) ) ||
   ( $# == 6 && $4 == bank && ( $5 == --historical-settlement-334 || $5 == --expense-witness-34[69] ) && $6 == --host-only ) ||
   ( $# == 6 && $4 == restore && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-34[69] ) ) ||
   ( $# == 7 && $4 == restore && ( $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-34[69] ) && $7 == --host-only ) ]] || exit 64
+fi
 
 prepared=$(cd "$1" && pwd -P)
 sha=$2
 lane=$4
 mode=${5-}
+precision_restore=false
+if [[ $lane == restore && ( $mode == --expense-witness-34[69] || $mode == --signed-settlement-350 ) ]]; then
+  precision_restore=true
+fi
 bank_args=()
 if [[ $lane == bank && -n $mode ]]; then bank_args=("$mode"); fi
 restore_args=()
@@ -59,20 +72,24 @@ const [plan,api,source,mode]=process.argv.slice(2);
 require(plan+'/bank/migration-inputs-346.cjs')(api,require(source),require(plan+'/'+mode+'-profile.cjs'));
 JS
 fi
-if [[ $lane == restore && $mode == --expense-witness-34[69] ]]; then
+if [[ $precision_restore == true ]]; then
   repo=$(git -C "$plan" rev-parse --show-toplevel)
   current_sha=$(git -C "$repo" rev-parse HEAD)
   [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan") ]] || exit 65
   node "$plan/check-ledger.cjs" "$repo" "$current_sha" "$mode" | cmp -s "$current_prepared/source.json" - || exit 65
-  node - "$plan" "$prepared/source.json" "$current_prepared" "${mode##*-}" <<'JS'
-const [plan,oldFile,prepared,count]=process.argv.slice(2);
+  node - "$plan" "$prepared/source.json" "$current_prepared" "${mode#--}" <<'JS'
+const [plan,oldFile,prepared,mode]=process.argv.slice(2);
 const assert=require('node:assert/strict');
+const count=mode.split('-').at(-1);
 const exact=require(plan+'/restore/exact-'+count+'.cjs');
 const old=require(oldFile),current=require(prepared+'/source.json');
-assert.equal(old.sourceSha,exact.fixtureSha,'BACKUP346_PREDECESSOR_SHA');
-assert.equal(exact.hash(require('node:fs').readFileSync(oldFile)),exact.fixtureSourceSha256,'BACKUP346_PREDECESSOR_BYTES');
-require(plan+'/expense-witness-'+count+'-profile.cjs').assertSource(current,old.ledgerSha256);
-exact.assertMigrationBytes(prepared+'/prepared/context/workspace/services/api/prisma/migrations',current);
+assert.equal(old.sourceSha,exact.fixtureSha,'BACKUP'+count+'_PREDECESSOR_SHA');
+assert.equal(exact.hash(require('node:fs').readFileSync(oldFile)),exact.fixtureSourceSha256,'BACKUP'+count+'_PREDECESSOR_BYTES');
+const profile=require(plan+'/'+mode+'-profile.cjs');
+profile.assertSource(current,old.ledgerSha256);
+const prisma=prepared+'/prepared/context/workspace/services/api/prisma';
+if (count==='350') profile.assertRuntimeBaseline(require(prisma+'/migration-baseline.cjs'));
+exact.assertMigrationBytes(prisma+'/migrations',current);
 JS
 elif [[ $lane == restore && ( $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 || $mode == --historical-settlement-334 ) ]]; then
   node - "$prepared/source.json" "$current_prepared/source.json" "$plan" "$mode" <<'JS'
@@ -99,7 +116,7 @@ if [[ ${7-} != --host-only && ${6-} != --host-only ]]; then
   image=$(cat "$image_dir/image.id")
   context_sha=$(cat "$image_dir/context.sha256")
   [[ $image =~ ^sha256:[a-f0-9]{64}$ && $context_sha =~ ^[a-f0-9]{64}$ ]] || exit 65
-  if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 || $mode == --historical-settlement-334 || $mode == --expense-witness-34[69] ]]; then
+  if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 || $mode == --historical-settlement-334 || $mode == --expense-witness-34[69] || $precision_restore == true ]]; then
     [[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$image_dir/Dockerfile" "$prepared/source.json") == "$context_sha" ]] || exit 65
   fi
   [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $context_sha" ]] || exit 65
@@ -111,17 +128,19 @@ printf '%s\n' "$out"
 overlay="$out/overlay"
 python3 "$plan/stage-overlays.py" "$prepared/prepared/context/workspace" "$overlay" "$lane" ${bank_args[@]+"${bank_args[@]}"}
 installer="$plan/common/installer.cjs"
-if [[ $mode == --historical-settlement-334 || $mode == --expense-witness-34[69] ]]; then
-  installer_mode="${mode#--}"
-  if [[ $mode == --expense-witness-34[69] ]]; then installer_mode=historical-settlement-334; fi
-  if [[ $lane == restore && $mode != --expense-witness-34[69] ]]; then installer_mode+=-restore; fi
+if [[ $mode == --historical-settlement-334 || $mode == --expense-witness-34[69] || $precision_restore == true ]]; then
+  installer_mode=historical-settlement-334
+  if [[ $lane == restore && $precision_restore != true ]]; then installer_mode+=-restore; fi
   node "$plan/stage-historical-takeover-333.cjs" "$out" "$installer_mode"
   installer="$out/installer.cjs"
 fi
-if [[ $mode == --expense-witness-34[69] ]]; then
+if [[ $mode == --expense-witness-34[69] || $precision_restore == true ]]; then
   git -C "$out" apply --unidiff-zero "$plan/expense-witness/installer.patch"
-  if [[ $mode == --expense-witness-349 ]]; then
+  if [[ $mode == --expense-witness-349 || $mode == --signed-settlement-350 ]]; then
     git -C "$out" apply --unidiff-zero "$plan/expense-witness/installer-349.patch"
+  fi
+  if [[ $mode == --signed-settlement-350 ]]; then
+    git -C "$out" apply --unidiff-zero "$plan/expense-witness/installer-350.patch"
   fi
   chmod 0644 "$installer"
   node - "$plan/${mode#--}-profile.cjs" "$installer" <<'JS'
@@ -131,7 +150,7 @@ require('node:assert/strict').equal(require('node:crypto').createHash('sha256').
   require(profile).installerSha256,'BANK_346_INSTALLER_SHA');
 JS
 fi
-if [[ $lane == restore && $mode == --expense-witness-34[69] ]]; then
+if [[ $precision_restore == true ]]; then
   count=${mode##*-}
   cat "$plan/restore/installer-$count-tail.cjs" >> "$installer"
   node - "$plan/restore/exact-$count.cjs" "$installer" <<'JS'
@@ -160,8 +179,9 @@ const receipt={status:'BACKUP'+current.migrationCount+'_HOST_INPUTS_VERIFIED',ca
   ...(current.mode==='historical-settlement-334'?{
     predecessor332:current.predecessor332,predecessor333:current.predecessor333,installerSha256:hash(installer)
   }:{}),
-  ...(['expense-witness-346','expense-witness-349'].includes(current.mode)?{
+  ...(['expense-witness-346','expense-witness-349','signed-settlement-350'].includes(current.mode)?{
     ...(current.predecessor346?{predecessor346:current.predecessor346}:{}),
+    ...(current.predecessor349?{predecessor349:current.predecessor349}:{}),
     predecessor334:current.predecessor334,installerSha256:hash(installer),
     canonicalInstallerSha256:require(plan+'/'+profile).installerSha256,
     exactRestoreSha256:hash(plan+'/restore/exact-'+current.migrationCount+'.cjs')
@@ -245,24 +265,28 @@ const [file,head,source,mode,predecessorSource,currentSource]=process.argv.slice
 const {ledgerSha256:ledger294}=require(source);
 const fs=require('node:fs');
 const hash=file=>require('node:crypto').createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-const predecessorSourceSha256=['--text-direct-330','--payment-remainder-331','--upward-archive-332','--historical-settlement-334','--expense-witness-346','--expense-witness-349'].includes(mode)
+const predecessorSourceSha256=['--text-direct-330','--payment-remainder-331','--upward-archive-332','--historical-settlement-334','--expense-witness-346','--expense-witness-349','--signed-settlement-350'].includes(mode)
   ? hash(predecessorSource)
   : undefined;
-const current=['--expense-witness-346','--expense-witness-349'].includes(mode)?{currentSha:require(currentSource).sourceSha,currentSourceSha256:hash(currentSource)}:{};
+const current=['--expense-witness-346','--expense-witness-349','--signed-settlement-350'].includes(mode)?{currentSha:require(currentSource).sourceSha,currentSourceSha256:hash(currentSource)}:{};
 fs.writeFileSync(file,JSON.stringify({status:'FINANCE294_COMMITTED_MIGRATION_INPUTS_ADMITTED_OFFLINE',head,ledger294,predecessorSourceSha256,...current}),
   {flag:'wx',mode:0o644});
 JS
   chmod 0644 "$out/committed-admission.json"
   readonly_mount "$out/committed-admission.json" /qualification/committed-admission.json
   case "$mode" in
-    --expense-witness-346|--expense-witness-349)
+    --expense-witness-346|--expense-witness-349|--signed-settlement-350)
       for profile in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
         readonly_mount "$plan/$profile" "/qualification/$profile"
       done
       readonly_mount "$plan/restore/exact-346.cjs" /qualification/exact-346.cjs
-      if [[ $mode == --expense-witness-349 ]]; then
+      if [[ $mode == --expense-witness-349 || $mode == --signed-settlement-350 ]]; then
         readonly_mount "$plan/restore/exact-349.cjs" /qualification/exact-349.cjs
         readonly_mount "$plan/expense-witness-349-profile.cjs" /qualification/expense-witness-349-profile.cjs
+      fi
+      if [[ $mode == --signed-settlement-350 ]]; then
+        readonly_mount "$plan/restore/exact-350.cjs" /qualification/exact-350.cjs
+        readonly_mount "$plan/signed-settlement-350-profile.cjs" /qualification/signed-settlement-350-profile.cjs
       fi
       ;;
     --historical-settlement-334)
