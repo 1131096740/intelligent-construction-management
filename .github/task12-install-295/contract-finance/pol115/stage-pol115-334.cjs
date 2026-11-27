@@ -16,9 +16,11 @@ const selected = pol115Scope(cases, scope);
 assert.match(candidateSha, /^[a-f0-9]{40}$/u);
 const source = require(path.join(prepared, 'source.json'));
 assert.equal(source.sourceSha, candidateSha);
-const precision = source.mode === 'expense-witness-349';
+const company = source.mode === 'company-history-352';
+if (company) assert.notEqual(process.env.GITHUB_ACTIONS, 'true', 'POL115_352_LOCAL_ONLY');
+const precision = company || source.mode === 'expense-witness-349';
 const expenseWitness = precision || source.mode === 'expense-witness-346' ? require('../expense-witness-346-profile.cjs') : null;
-const profile = precision ? require('../expense-witness-349-profile.cjs') : expenseWitness ?? historical;
+const profile = company ? require('../company-history-352-profile.cjs') : precision ? require('../expense-witness-349-profile.cjs') : expenseWitness ?? historical;
 profile.assertSource(source, final);
 
 const workspace = path.join(prepared, 'prepared/context/workspace');
@@ -115,6 +117,10 @@ if (expenseWitness) {
 }
 if (precision) {
   execFileSync('git', ['apply', '--unidiff-zero', path.join(__dirname, '../expense-witness/installer-349.patch')], { cwd: output });
+}
+if (company) {
+  for (const patch of ['installer-350.patch','installer-352.patch'])
+    execFileSync('git', ['apply', '--unidiff-zero', path.join(__dirname, '../expense-witness', patch)], { cwd: output });
 }
 assert.equal(hash(read(installer)), profile.installerSha256);
 if (expenseWitness) fs.chmodSync(installer, 0o644);

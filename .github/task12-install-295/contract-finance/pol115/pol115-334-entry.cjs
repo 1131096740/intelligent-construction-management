@@ -7,7 +7,7 @@ const { createHash, randomUUID } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { stripVTControlCharacters } = require('node:util');
 const { admitSource } = require('./install-only292.cjs');
-const { withCombined334HistoricalSettlement, withCombinedExpenseWitness, withCombinedExpenseWitness349 } = require('./installer.cjs');
+const { withCombined334HistoricalSettlement, withCombinedExpenseWitness, withCombinedExpenseWitness349, withCombinedCompanyHistory352 } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
 const historical = require('./historical-settlement-334-profile.cjs');
 const { stageWebWorkspace } = require('./task12-pol109-stage-browser.cjs');
@@ -16,9 +16,11 @@ const { summarizeBrowserWitness } = require('./browser-witness.cjs');
 const recipes = require('./pol115-334-cases.json');
 const inputs = require('./pol115-334-inputs.json');
 const source = require('./contract-finance-source.json');
-const precision = source.mode === 'expense-witness-349';
+const company = source.mode === 'company-history-352';
+const precision = company || source.mode === 'expense-witness-349';
 const expenseWitness = precision || source.mode === 'expense-witness-346' ? require('./expense-witness-346-profile.cjs') : null;
-const profile = precision ? require('./expense-witness-349-profile.cjs') : expenseWitness ?? historical;
+const precisionProfile = precision ? require('./expense-witness-349-profile.cjs') : null;
+const profile = company ? require('./company-history-352-profile.cjs') : precision ? precisionProfile : expenseWitness ?? historical;
 
 const root = '/qualification';
 const workspace = path.join(root, 'workspace');
@@ -140,8 +142,8 @@ async function runOriginal(context) {
   }
 
   if (precision) {
-    assert.equal(receipt.expenseWitnessPrecisionForward.count, profile.count);
-    assert.equal(receipt.expenseWitnessPrecisionForward.ledgerSha256, profile.ledgerSha256);
+    assert.equal(receipt.expenseWitnessPrecisionForward.count, precisionProfile.count);
+    assert.equal(receipt.expenseWitnessPrecisionForward.ledgerSha256, precisionProfile.ledgerSha256);
     assert.equal(receipt.expenseWitnessPrecisionForward.sameIdentity, true);
   }
 
@@ -240,7 +242,10 @@ async function main() {
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
 
   const material = { sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails };
-  if (precision) {
+  if (company) {
+    await withCombinedCompanyHistory352(receipt, runOriginal, { ...source, ...material });
+    profile.assertInstallation(receipt, source);
+  } else if (precision) {
     await withCombinedExpenseWitness349(receipt, runOriginal, { ...source, ...material });
     assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness, true);
   } else if (expenseWitness) {

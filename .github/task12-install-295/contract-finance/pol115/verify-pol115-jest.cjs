@@ -26,7 +26,7 @@ function pol115Scope(cases, scope) {
 function verifyPol115ChildReceipt({ cases, source, scope, receipt }) {
   const rows = pol115Scope(cases, scope);
   const [declared, currentPassed] = scopeCounts[scope];
-  assert.ok([334, 346, 349].includes(source.migrationCount), 'POL115_MIGRATION_SCOPE');
+  assert.ok([334, 346, 349, 352].includes(source.migrationCount), 'POL115_MIGRATION_SCOPE');
   assert.equal(receipt.status, 'POL115_' + source.migrationCount + '_ORIGINAL_' + scope.toUpperCase() + '_PASSED');
   assert.equal(receipt.sourceSha, source.sourceSha);
   assert.equal(receipt.scope, scope);

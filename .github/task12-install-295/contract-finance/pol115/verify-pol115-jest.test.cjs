@@ -42,7 +42,7 @@ test('assigns each original POL115 file to one fresh database and leaves Spot se
   assert.deepEqual(pol115Scope(cases, 'spot'), cases.spot);
 });
 
-for (const migrationCount of [334, 346, 349]) {
+for (const migrationCount of [334, 346, 349, 352]) {
   test(`combines ${migrationCount} children with the same candidate ledger and distinct databases`, () => {
     const source = { sourceSha: 'a'.repeat(40), migrationCount, ledgerSha256: 'b'.repeat(64) };
     function child(scope, runId) {
