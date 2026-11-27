@@ -4,7 +4,7 @@ const assert=require('node:assert/strict');
 const {createHash}=require('node:crypto');
 const {readFileSync}=require('node:fs');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness,withCombinedExpenseWitness349}=require('./installer.cjs');
 const {final,digest}=require('./multi-witness.cjs');
 const {mode,consume}=require('./remaining-owner.cjs');
 const source=require('./contract-finance-source.json');
@@ -12,22 +12,30 @@ const root='/qualification';
 const lane=process.argv[2];
 const requestedMode=process.argv[3];
 const historicalSettlement=requestedMode==='--historical-settlement-334';
-const expense=requestedMode==='--expense-witness-346'?require('./expense-witness-346-profile.cjs'):undefined;
+const precision=requestedMode==='--expense-witness-349';
+const expense=precision?require('./expense-witness-349-profile.cjs'):
+  requestedMode==='--expense-witness-346'?require('./expense-witness-346-profile.cjs'):undefined;
 const historical=historicalSettlement||expense?require('./historical-settlement-334-profile.cjs'):undefined;
 const upwardArchive=requestedMode==='--upward-archive-332';
 const paymentRemainder=requestedMode==='--payment-remainder-331';
 const textDirect=requestedMode==='--text-direct-330';
 const current=expense||historicalSettlement||upwardArchive||paymentRemainder||textDirect||requestedMode==='--current-320';
-const count=expense?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current?329:295;
+const count=expense?expense.count:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current?329:295;
 const receipt={schemaVersion:1,purpose:'REMAINING_OWNER_EXACT_'+count,lane,sourceSha:source.sourceSha,
   migrationSha256:current?source.tails.at(-1).sha256:digest,business:'NOT_ENTERED',stages:['INPUTS'],status:'STOPPED'};
 
 function assertExpenseForward(){
   historical.assertFinanceInstallation(receipt,{...source,tails:source.tails.slice(0,39)});
+  const witness=precision?source.predecessor346:source;
+  const boundary=witness.migrationCount-source.predecessor.migrationCount;
   assert.deepEqual(receipt.expenseWitnessForward,{
-    count,ledgerSha256:source.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
-    tails:source.tails.slice(39).map(({name,sha256})=>({name,sha256}))
+    count:346,ledgerSha256:witness.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
+    tails:source.tails.slice(39,boundary).map(({name,sha256})=>({name,sha256}))
   },'REMAINING_OWNER_346_FORWARD');
+  if(precision) assert.deepEqual(receipt.expenseWitnessPrecisionForward,{
+    count,ledgerSha256:source.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
+    tails:source.tails.slice(boundary).map(({name,sha256})=>({name,sha256}))
+  },'REMAINING_OWNER_349_FORWARD');
 }
 
 async function main(){
@@ -43,11 +51,11 @@ async function main(){
     assert.equal(source.predecessor.ledgerSha256,final);
     assert.equal(source.tails.length,count-295);
     if(expense) {
-      assert.equal(source.sourceSha,process.env.JG_REMAINING_OWNER_SOURCE_SHA,'REMAINING_OWNER_346_SHA');
+      assert.equal(source.sourceSha,process.env.JG_REMAINING_OWNER_SOURCE_SHA,'REMAINING_OWNER_'+count+'_SHA');
       expense.assertSource(source,final);
       require('./migration-inputs-346.cjs')(root+'/workspace/services/api',source,expense);
       const installerSha=createHash('sha256').update(readFileSync(__dirname+'/installer.cjs')).digest('hex');
-      assert.equal(installerSha,expense.installerSha256,'REMAINING_OWNER_346_INSTALLER');
+      assert.equal(installerSha,expense.installerSha256,'REMAINING_OWNER_'+count+'_INSTALLER');
     } else {
       const baseline=require('./workspace/services/api/prisma/migration-baseline.cjs').loadCanonicalMigrationBaseline();
       assert.equal(baseline.expectedDirectoryCount,count);
@@ -64,16 +72,18 @@ async function main(){
   receipt.input=admitSource(root,root+'/source/services/api/prisma',root+'/source-seal.txt');
   if(current){
     const installCurrent=expense?withCombinedExpenseWitness:historicalSettlement?withCombined334HistoricalSettlement:upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
-    await installCurrent(receipt,async context=>{
+    const consumeCurrent=async context=>{
       assert.equal(context.candidateTree,source.sourceTree);
       if(expense) assertExpenseForward();
       await consume(context,receipt,lane);
-    },{
-      sourceTree:source.sourceTree,migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails
-    },...(expense?[count]:[]));
+    };
+    const material={sourceTree:source.sourceTree,migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails};
+    if(precision) await withCombinedExpenseWitness349(receipt,consumeCurrent,{...source,...material});
+    else await installCurrent(receipt,consumeCurrent,material,...(expense?[count]:[]));
     if(expense) {
       assertExpenseForward();
       assert.equal(receipt.expenseWitnessCatalogAfterBusiness,true);
+      if(precision) assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness,true);
     } else {
       assert.equal(receipt.forward320.count,count);
       assert.equal(receipt.forward320.sourceTree,source.sourceTree);
