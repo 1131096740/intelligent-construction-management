@@ -18,7 +18,8 @@ function assertInputs(source) {
 
 function assertForward(receipt,source) {
   historical.assertFinanceInstallation(receipt,{...source,tails:source.tails.slice(0,39)});
-  const signed=source.mode==='signed-settlement-350';
+  const company=source.mode==='company-history-352';
+  const signed=company||source.mode==='signed-settlement-350';
   const precision=signed||source.mode==='expense-witness-349';
   const witness=precision?source.predecessor346:source;
   const boundary=witness.migrationCount-source.predecessor.migrationCount;
@@ -34,16 +35,17 @@ function assertForward(receipt,source) {
       tails:source.tails.slice(boundary,end).map(({name,sha256})=>({name,sha256}))
     },'REMAINING_HISTORY_349_FORWARD');
     if(signed) assert.deepEqual(receipt.signedSettlementForward,{
-      count:350,sourceTree:source.sourceTree,ledgerSha256:source.ledgerSha256,sameIdentity:true,
-      tails:source.tails.slice(end).map(({name,sha256})=>({name,sha256}))
+      count:350,sourceTree:source.sourceTree,ledgerSha256:company?source.predecessor350.ledgerSha256:source.ledgerSha256,sameIdentity:true,
+      tails:source.tails.slice(end,company?source.predecessor350.migrationCount-source.predecessor.migrationCount:undefined).map(({name,sha256})=>({name,sha256}))
     },'REMAINING_HISTORY_350_FORWARD');
   }
 }
 
 async function install(receipt,source,consume) {
-  const signed=source.mode==='signed-settlement-350';
+  const company=source.mode==='company-history-352';
+  const signed=company||source.mode==='signed-settlement-350';
   const precision=signed||source.mode==='expense-witness-349';
-  const {withCombinedExpenseWitness,withCombinedExpenseWitness349,withCombinedSignedSettlement350}=require('./installer.cjs');
+  const {withCombinedExpenseWitness,withCombinedExpenseWitness349,withCombinedSignedSettlement350,withCombinedCompanyHistory352}=require('./installer.cjs');
   const consumeOwned=async context=>{
     assert.equal(context.candidateTree,source.sourceTree);
     assert.equal(receipt.installOnly295.nonOwnerDenied,true);
@@ -51,12 +53,14 @@ async function install(receipt,source,consume) {
     await consume(context);
   };
   const material={sourceTree:source.sourceTree,migrations:api+'/prisma/migrations',tails:source.tails};
-  if(signed) await withCombinedSignedSettlement350(receipt,consumeOwned,{...source,...material});
+  if(company) await withCombinedCompanyHistory352(receipt,consumeOwned,{...source,...material});
+  else if(signed) await withCombinedSignedSettlement350(receipt,consumeOwned,{...source,...material});
   else if(precision) await withCombinedExpenseWitness349(receipt,consumeOwned,{...source,...material});
   else await withCombinedExpenseWitness(receipt,consumeOwned,material,346);
   assertForward(receipt,source);
   assert.equal(receipt.combinedAfterBusiness.count,source.migrationCount);
-  if(signed) require('./signed-settlement-350-profile.cjs').assertInstallation(receipt,source);
+  if(company) require('./company-history-352-profile.cjs').assertInstallation(receipt,source);
+  else if(signed) require('./signed-settlement-350-profile.cjs').assertInstallation(receipt,source);
   assert.equal(receipt.historicalTakeoverCatalogAfterBusiness,true);
   assert.equal(receipt.historicalSettlementCatalogAfterBusiness,true);
   assert.equal(receipt.expenseWitnessCatalogAfterBusiness,true);

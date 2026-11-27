@@ -7,6 +7,7 @@ verify_history_346() {
   case $count in
     346|349) mode=expense-witness-$count ;;
     350) mode=signed-settlement-350 ;;
+    352) mode=company-history-352 ;;
     *) return 64 ;;
   esac
   [[ "$plan" == "$repo/.github/task12-install-295/contract-finance" ]] || return 65
@@ -39,7 +40,8 @@ const receipt={status:'REMAINING_HISTORY_'+source.migrationCount+'_HOST_READY',l
   installerSha256:hash(work+'/installer.cjs'),
   files:Object.fromEntries(files.map(file=>[basename(file),hash(file)])),database:'NOT_STARTED'};
 if(source.migrationCount>=349) receipt.predecessor346=source.predecessor346;
-if(source.migrationCount===350) receipt.predecessor349=source.predecessor349;
+if(source.migrationCount>=350) receipt.predecessor349=source.predecessor349;
+if(source.migrationCount===352) receipt.predecessor350=source.predecessor350;
 fs.writeFileSync(work+'/host-receipt.json',JSON.stringify(receipt,null,2)+'\n',{flag:'wx'});
 console.log(work+'/host-receipt.json');
 JS

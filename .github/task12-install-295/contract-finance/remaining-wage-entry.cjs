@@ -10,7 +10,8 @@ const root='/qualification';
 const source=require('./contract-finance-source.json');
 const requestedMode=process.argv[2];
 const historicalSettlement=requestedMode==='--historical-settlement-334';
-const signed=requestedMode==='--signed-settlement-350';
+const company=requestedMode==='--company-history-352';
+const signed=company||requestedMode==='--signed-settlement-350';
 const precision=requestedMode==='--expense-witness-349';
 const expense=signed||precision||requestedMode==='--expense-witness-346'?require('./remaining-history-346.cjs'):undefined;
 const historical=historicalSettlement?require('./historical-settlement-334-profile.cjs'):undefined;
@@ -18,7 +19,7 @@ const upwardArchive=requestedMode==='--upward-archive-332';
 const paymentRemainder=requestedMode==='--payment-remainder-331';
 const textDirect=requestedMode==='--text-direct-330';
 const current=expense||historicalSettlement||upwardArchive||paymentRemainder||textDirect||requestedMode==='--current-320';
-const count=signed?350:precision?349:expense?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current?329:295;
+const count=company?352:signed?350:precision?349:expense?346:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current?329:295;
 const receipt={schemaVersion:1,purpose:'REMAINING_WAGE_STATEMENT_'+count,
   sourceSha:source.sourceSha,stages:['INPUTS'],status:'STOPPED'};
 
