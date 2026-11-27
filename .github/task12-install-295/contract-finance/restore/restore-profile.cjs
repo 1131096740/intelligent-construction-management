@@ -20,4 +20,7 @@ const expense346=profile(346,successor.businessCount+1,[...successor.addedBusine
 // The reimbursement precision tail changes columns, constraints and routines on the same tables.
 const expense349=Object.freeze({...expense346,count:349});
 
-module.exports={legacy,successor,textDirect,expense346,expense349};
+// The signed settlement tail preserves the business and technical table inventory.
+const signed350=Object.freeze({...expense349,count:350});
+
+module.exports={legacy,successor,textDirect,expense346,expense349,signed350};

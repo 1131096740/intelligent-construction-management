@@ -8,7 +8,7 @@ const {restoreBusinessDatabase} = require('./restore.cjs');
 const {ledgerSha256: ledger294} = require('./combined294-source.json');
 const {final:finalLedger}=require('./multi-witness.cjs');
 const notice = require('./terminal.cjs');
-const {legacy,successor,textDirect,expense346,expense349}=require('./restore-profile.cjs');
+const {legacy,successor,textDirect,expense346,expense349,signed350}=require('./restore-profile.cjs');
 const {paymentRowsSql,paymentRows}=require('./text-direct-330.cjs');
 const forwardInventory=require('./forward-320-inventory.json');
 
@@ -38,7 +38,7 @@ async function verifyLease(context,forward320,textDirectSource) {
     const digest=textDirectSource?.ledgerSha256??forwardInventory.ledgerSha256;
     assert.equal(sha(JSON.stringify(ledger.slice(0,329))),forwardInventory.ledgerSha256,'BACKUP320_LIVE_LEDGER');
     assert.equal(sha(JSON.stringify(ledger)),digest,'BACKUP_FORWARD_LIVE_LEDGER');
-    if(count===346||count===349) require('./exact-'+count+'.cjs').assertLedger(ledger,textDirectSource);
+    if([346,349,350].includes(count)) require('./exact-'+count+'.cjs').assertLedger(ledger,textDirectSource);
     assert.equal(forward320.ledgerSha256,digest,'BACKUP320_FORWARD_LEDGER');
     assert.equal(forward320.count,count,'BACKUP320_FORWARD_COUNT');
     assert.equal(forward320.sameIdentity,true,'BACKUP320_FORWARD_INSTANCE');
@@ -82,9 +82,10 @@ async function runNamedBackup(context,receipt,namedRoles,forward320,textDirectSo
   assert.ok(receipt.settlementFixture,'BACKUP_ORIGINAL_FIXTURE_REQUIRED');
   assert.deepEqual(receipt.businessOracle,expectedCorrection);
   const expenseCount=textDirectSource?.migrationCount;
-  const precision=expenseCount===349;
+  const signed=expenseCount===350;
+  const precision=signed||expenseCount===349;
   const expense=precision||expenseCount===346;
-  const profile=precision?expense349:expense?expense346:textDirectSource?textDirect:forward320?successor:legacy;
+  const profile=signed?signed350:precision?expense349:expense?expense346:textDirectSource?textDirect:forward320?successor:legacy;
   const enter=stage=>receipt.stages.push(stage);
   await verifyLease(context,forward320,textDirectSource);
   enter(textDirectSource?'BACKUP'+textDirectSource.migrationCount+'_NAMED_EXPORT_IMPORT':
@@ -95,7 +96,9 @@ async function runNamedBackup(context,receipt,namedRoles,forward320,textDirectSo
       textDirectSource?{historical:receipt.historicalPayment295,
         terminal:textDirectSource.tails[34],paymentRemainder:textDirectSource.migrationCount>=331,
         ...(expense?{expenseSource:textDirectSource}:{}),
-        ...(precision?{precisionCatalog:receipt.expenseWitnessPrecisionCatalog?.[349]}:{})}:undefined);
+        ...(signed?{signedCatalog:receipt.signedSettlementCatalog}:{}),
+        ...(precision?{precisionCatalog:signed?receipt.signedSettlementCatalog?.expense:
+          receipt.expenseWitnessPrecisionCatalog?.[349]}:{})}:undefined);
     assert.equal(receipt.restore.businessTables,profile.businessCount);
     assert.equal(receipt.restore.restoredDataPayloads,profile.businessCount);
     assert.equal(receipt.restore.protectedTables,profile.technical.length);

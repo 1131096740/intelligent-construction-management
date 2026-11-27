@@ -7,7 +7,7 @@ const {spawnSync}=require('node:child_process');
 const {createHash}=require('node:crypto');
 const {pgDumpArgs,classifyArchive}=require('./archive-contract.cjs');
 const {key,operatingVerifier,operatingContext}=require('./technical-relations.json');
-const {legacy,successor,textDirect,expense346,expense349}=require('./restore-profile.cjs');
+const {legacy,successor,textDirect,expense346,expense349,signed350}=require('./restore-profile.cjs');
 const {paymentRowsSql,paymentRows,paymentCatalogChecks}=require('./text-direct-330.cjs');
 const {scope,exactCatalog,catalogSql}=require('./successor.cjs');
 const notice=require('./terminal.cjs');
@@ -296,10 +296,11 @@ function importAsNamedBackup(sql,invoke,tables,sequences,dataArchive,dataList,pr
 
 async function restoreBusinessDatabase(context,credentials,enter,forward320,textDirectInputs) {
   const expenseSource=textDirectInputs?.expenseSource;
-  const precision=expenseSource?.migrationCount===349;
-  const profile=precision?expense349:expenseSource?expense346:textDirectInputs?textDirect:forward320?successor:legacy;
-  assert.equal([330,331,332,334,346,349].includes(forward320?.count),Boolean(textDirectInputs),'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
-  assert.equal([346,349].includes(forward320?.count),Boolean(expenseSource),'BACKUP346_SOURCE_REQUIRED');
+  const signed=expenseSource?.migrationCount===350;
+  const precision=signed||expenseSource?.migrationCount===349;
+  const profile=signed?signed350:precision?expense349:expenseSource?expense346:textDirectInputs?textDirect:forward320?successor:legacy;
+  assert.equal([330,331,332,334,346,349,350].includes(forward320?.count),Boolean(textDirectInputs),'BACKUP330_PAYMENT_PREIMAGE_REQUIRED');
+  assert.equal([346,349,350].includes(forward320?.count),Boolean(expenseSource),'BACKUP346_SOURCE_REQUIRED');
   if(expenseSource) assert.equal(forward320.count,expenseSource.migrationCount,'BACKUP_EXPENSE_SOURCE_COUNT');
   const expectedTree=forward320?.sourceTree ?? scope.tree;
   assert.match(expectedTree,/^[a-f0-9]{40}$/u);
@@ -327,10 +328,11 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
   }
   const paymentProof=paymentChecks?readTextDirect330(source):undefined;
   const paymentRemainderProof=textDirectInputs?.paymentRemainder?readPaymentRemainder331(source):undefined;
-  const historical=[334,346,349].includes(forward320?.count)?require('./historical-settlement-334-profile.cjs'):undefined;
+  const historical=[334,346,349,350].includes(forward320?.count)?require('./historical-settlement-334-profile.cjs'):undefined;
   const exact=expenseSource?require('./exact-'+expenseSource.migrationCount+'.cjs'):undefined;
   const precisionProfile=precision?require('./expense-witness-349-profile.cjs'):undefined;
   const expense=expenseSource?require('./expense-witness-346-profile.cjs'):undefined;
+  const signedProfile=signed?require('./signed-settlement-350-profile.cjs'):undefined;
   function readUpwardArchive332(db) {
     const ledger = JSON.parse(sql(owner,db,`SELECT jsonb_agg(jsonb_build_object(
       'name',migration_name,'sha256',checksum,'finished',finished_at IS NOT NULL,
@@ -355,7 +357,7 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
     },'BACKUP332_UPWARD_ARCHIVE_POSTIMAGES');
     return {ledgerSha256,postimages};
   }
-  const upwardArchiveProof=[332,334,346,349].includes(forward320?.count)?readUpwardArchive332(source):undefined;
+  const upwardArchiveProof=[332,334,346,349,350].includes(forward320?.count)?readUpwardArchive332(source):undefined;
   function readHistoricalSettlement334(db) {
     const previous=require('./historical-takeover-333-profile.cjs');
     const checks=JSON.parse(sql(owner,db,previous.catalogSql));
@@ -533,6 +535,11 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
       exact.assertRestoredCatalog(precisionProof,readPrecision(restoreDb));
       assert.deepEqual(readPrecision(source),precisionProof,'BACKUP349_SOURCE_PRECISION_CATALOG_UNCHANGED');
     }
+    if(signedProfile) {
+      const readSigned = db => JSON.parse(sql(owner,db,signedProfile.catalogSql));
+      exact.assertRestoredSignedCatalog(textDirectInputs.signedCatalog,readSigned(restoreDb));
+      assert.deepEqual(readSigned(source),textDirectInputs.signedCatalog,'BACKUP350_SOURCE_SIGNED_CATALOG_UNCHANGED');
+    }
     if (forward320) {
       for (const role of [backupRole,bankRuntime])
         for (const table of profile.technical)
@@ -553,7 +560,8 @@ async function restoreBusinessDatabase(context,credentials,enter,forward320,text
       ...(upwardArchiveProof?{upwardArchive332:{...upwardArchiveProof,sourceAndRestoredMatched:true}}:{}),
       ...(historicalProof?{historicalSettlement334:{ledgerSha256:historical.ledgerSha256,sourceAndRestoredMatched:true}}:{}),
       ...(expenseProof?{['expense'+forward320.count]:{ledgerSha256:forward320.ledgerSha256,sourceAndRestoredMatched:true,
-        ...(precision?{precisionCatalogMatched:true}:{})}}:{}),
+        ...(precision?{precisionCatalogMatched:true}:{}),
+        ...(signed?{signedCatalogMatched:true}:{})}}:{}),
       ...(paymentProof?{textDirect330:{...paymentProof,oldColumnProjectionMatched:true,newColumnNull:true,
         sourceAndRestoredCatalogMatched:true,sourceAndRestoredNamedExecutionDenied:true}}:{})};
   } finally {
