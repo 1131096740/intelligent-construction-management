@@ -46,11 +46,14 @@ function diagnoseFailure(step, errors, suite) {
   const reason = matchLabel(reasons, message);
   const coldStatus = suite === 'spot' && stripVTControlCharacters(message)
     .match(/^(?:Error: )?POL115_SPOT_COLD_HTTP 200 ([1-5]\d{2})$/mu);
+  const statusAssertion = suite === 'expense_self_service' && stripVTControlCharacters(message)
+    .match(/Expected:\s*(200)\s*\n\s*Received:\s*([1-5]\d{2})\b/u);
   const frames = (step?.error?.stack ?? error?.stack ?? '').slice(0, 4_096);
   const frame = [...frames.matchAll(/(?:[\\/])([a-z0-9.-]+\.e2e\.ts):(\d{1,4}):\d{1,4}(?=[)\s]|$)/gu)]
     .find(([, file, line]) => suites[file] === suite && lineNumber(Number(line)));
   return { ...(operation && { operation }), ...(reason && { reason }), ...(frame && { stepLine: Number(frame[2]) }),
-    ...(coldStatus && { expectedStatus: 200, receivedStatus: Number(coldStatus[1]) }) };
+    ...(coldStatus && { expectedStatus: 200, receivedStatus: Number(coldStatus[1]) }),
+    ...(statusAssertion && { expectedStatus: 200, receivedStatus: Number(statusAssertion[2]) }) };
 }
 
 function testIdentity(test) {
@@ -154,7 +157,7 @@ function summarizeBrowserWitness(output) {
         failures.push({ ...progress, ...detail, status,
           ...(typeof operation === 'string' && Object.hasOwn(operations, operation) && { operation }),
           ...(typeof reason === 'string' && Object.hasOwn(reasons, reason) && { reason }),
-          ...(suite === 'spot' && expectedStatus === 200 && httpStatus(receivedStatus) && { expectedStatus, receivedStatus }),
+          ...(['spot', 'expense_self_service'].includes(suite) && expectedStatus === 200 && httpStatus(receivedStatus) && { expectedStatus, receivedStatus }),
           ...(Number.isInteger(durationMs) && durationMs >= 0 && durationMs <= 900_000 && { durationMs }) });
       }
     }

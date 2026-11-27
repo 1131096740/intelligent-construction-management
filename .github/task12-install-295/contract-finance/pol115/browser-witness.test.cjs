@@ -81,3 +81,22 @@ test('keeps only the numeric status from the Spot cold-start assertion', (t) => 
   assert.deepEqual(summarizeBrowserWitness(text)?.failures, [{ suite: 'spot', project: 'mobile', testLine: 416,
     category: 'assertion', stepLine: 425, status: 'failed', durationMs: 91, expectedStatus: 200, receivedStatus: 502 }]);
 });
+
+test('records only status codes from an expense self-service assertion', (t) => {
+  const output = [];
+  const write = t.mock.method(process.stdout, 'write', chunk => { output.push(chunk); return true; });
+  const witness = new BrowserWitness();
+  const entry = { location: { file: '/private/expense-self-service-real.e2e.ts', line: 27 },
+    parent: { project: () => ({ name: 'mobile' }) } };
+  const error = { message: 'Expected: 200\nReceived: 500\nprivate-test-value' };
+  witness.onTestBegin(entry);
+  witness.onTestEnd(entry, { status: 'failed', duration: 91, errors: [error], steps: [
+    { category: 'expect', title: 'expect.toBe', location: { ...entry.location, line: 11 }, steps: [], error }
+  ] });
+  write.mock.restore();
+  const text = output.join('');
+  assert.equal(text.includes('private-test-value'), false);
+  assert.deepEqual(summarizeBrowserWitness(text)?.failures, [{ suite: 'expense_self_service', project: 'mobile',
+    testLine: 27, category: 'assertion', stepLine: 11, status: 'failed', durationMs: 91,
+    expectedStatus: 200, receivedStatus: 500 }]);
+});
