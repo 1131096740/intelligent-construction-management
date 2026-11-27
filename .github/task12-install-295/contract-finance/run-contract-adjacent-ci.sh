@@ -49,7 +49,7 @@ fi
     $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts || $2 == pol109 ) && $3 == --expense-witness-349 ) ||
   ( $# == 4 && ( $2 == payment-execution || $2 == task398-competition || $2 == pol109 || $2 == cash-transfer || $2 == project-advance ) &&
     $3 == --expense-witness-346 && $4 == --host-only ) ||
-  ( $# == 4 && $2 == pol275 && ( $3 == --historical-settlement-334 || $3 == --expense-witness-346 ) && $4 == a187dc73a133114e1cfbbc891a4aec923abe2545 ) ||
+  ( $# == 4 && $2 == pol275 && ( $3 == --historical-settlement-334 || $3 == --expense-witness-34[69] ) && $4 == a187dc73a133114e1cfbbc891a4aec923abe2545 ) ||
   ( $# == 4 && $2 == pol275 && ( $3 == --current-320 || $3 == --text-direct-330 || $3 == --payment-remainder-331 || $3 == --upward-archive-332 ) && $4 =~ ^[a-f0-9]{40}$ ) ]] || exit 64
 sha=$1
 lane=$2
