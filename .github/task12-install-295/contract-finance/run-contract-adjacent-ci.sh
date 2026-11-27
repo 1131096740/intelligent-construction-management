@@ -11,7 +11,7 @@ if [[ ${3-} == --signed-settlement-350 ]]; then
   [[ $# == 3 || ( $# == 4 && $4 == --host-only ) ]] || exit 64
   signed_350=true
   case "$2" in
-    line-a|payment-execution|procurement) ;;
+    line-a|payment-execution|procurement|onboarding|settlement|template|draft|expense-execution|expense-finance|expense-receipt) ;;
     issue417) issue_lane=true ;;
     *)
       scopes=$(node - "$plan/issue-ordered/profiles.cjs" "$2" <<'JS'
@@ -116,6 +116,12 @@ if [[ ${4-} == --host-only ]]; then
       issue417) bash "$plan/expense-witness/run.sh" "$root" "$work/source" "$sha" "$work" --issue417-history-expense --host-only ;;
       line-a) bash "$plan/run-line-a.sh" "$work/source" "$sha" "$work" original --host-only ;;
       payment-execution) bash "$plan/run-payment-execution.sh" "$root" "$work/source" "$sha" "$work" --host-only ;;
+      settlement|template|draft)
+        bash "$plan/run-contract-adjacent.sh" "$root" "$work/source" "$sha" "$work" "$lane" "$3" --host-only ;;
+      expense-execution|expense-finance|expense-receipt)
+        bash "$plan/run-expense.sh" "$root" "$work/source" "$sha" "$work" "${lane#expense-}" "$3" --host-only ;;
+      onboarding)
+        bash "$plan/onboarding/run-onboarding295.sh" "$root" "$work/source" "$sha" "$work" "$3" --host-only ;;
       procurement)
         for kind in general16 project11; do
           bash "$plan/procurement/run-procurement295.sh" "$root" "$work/source" "$sha" "$work" "$kind" "$3" --host-only
@@ -229,7 +235,7 @@ case "$lane" in
   cash-handover|principal-return|cash-transfer|project-advance) bash "$plan/run-task398-cash-principal.sh" "$root" "$work/source" "$sha" "$work/browser" "$lane" ;;
   expense-execution|expense-finance|expense-receipt)
     expense_args=()
-    if [[ ${3:-} == --expense-witness-34[69] ]]; then expense_args=("$3"); fi
+    if [[ ${3:-} == --expense-witness-34[69] || $signed_350 == true ]]; then expense_args=("$3"); fi
     bash "$plan/run-expense.sh" "$root" "$work/source" "$sha" "$work/browser" "${lane#expense-}" ${expense_args[@]+"${expense_args[@]}"}
     ;;
   payment-execution) bash "$plan/run-payment-execution.sh" "$root" "$work/source" "$sha" "$work/browser" ;;
