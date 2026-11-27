@@ -6,12 +6,14 @@ const { createHash } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { admitSource } = require('./install-only292.cjs');
-const { withCombined335HistoricalExpense, withCombinedExpenseWitness } = require('./installer.cjs');
+const { withCombined335HistoricalExpense, withCombinedExpenseWitness, withCombinedExpenseWitness349 } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
 const history = require('./historical-expense-335-profile.cjs');
 const source = require('./contract-finance-source.json');
-const combined = source.mode === 'expense-witness-346';
-const profile = combined ? require('./expense-witness-346-profile.cjs') : history;
+const precision = source.mode === 'expense-witness-349';
+const combined = precision || source.mode === 'expense-witness-346';
+const profile = precision ? require('./expense-witness-349-profile.cjs')
+  : combined ? require('./expense-witness-346-profile.cjs') : history;
 
 const root = '/qualification';
 const api = path.join(root, 'workspace/services/api');
@@ -96,21 +98,25 @@ async function main() {
   }
   assert.equal(createHash('sha256').update(fs.readFileSync(path.join(root, 'installer.cjs'))).digest('hex'),
     profile.installerSha256);
-  assert.equal(createHash('sha256').update(fs.readFileSync(raceScript)).digest('hex'), history.raceSha256);
+  assert.equal(createHash('sha256').update(fs.readFileSync(raceScript)).digest('hex'), precision ? history.race349Sha256 : history.raceSha256);
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
   const material = { sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails };
-  if (combined) {
+  if (precision) {
+    await withCombinedExpenseWitness349(receipt, consume, { ...source, ...material });
+    assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness, true);
+  } else if (combined) {
     await withCombinedExpenseWitness(receipt, consume, material, profile.count);
-    assert.equal(receipt.expenseWitnessCatalogAfterBusiness, true);
   } else {
     await withCombined335HistoricalExpense(receipt, consume, material);
   }
+  if (combined) assert.equal(receipt.expenseWitnessCatalogAfterBusiness, true);
   const base334 = combined ? receipt.forward320 : receipt.historicalExpensePredecessor;
   assert.equal(base334.count, 334);
   assert.equal(base334.ledgerSha256, source.predecessor334.ledgerSha256);
   assert.equal(base334.sameIdentity, true);
   assert.equal(base334.sameBaseB7, true);
-  const forward = combined ? receipt.expenseWitnessForward : receipt.forward320;
+  const forward = precision ? receipt.expenseWitnessPrecisionForward
+    : combined ? receipt.expenseWitnessForward : receipt.forward320;
   assert.equal(forward.sourceTree, source.sourceTree);
   assert.equal(forward.ledgerSha256, profile.ledgerSha256);
   assert.equal(receipt.combinedAfterBusiness.count, profile.count);

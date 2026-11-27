@@ -7,7 +7,7 @@ issue_lane=false
 if [[ ${2:-} == issue* ]]; then
   [[ $# == 3 ]] || exit 64
   case "$2:$3" in
-    issue418-operating:--expense-witness-349) ;;
+    issue417:--expense-witness-349|issue418-operating:--expense-witness-349) ;;
     *:--expense-witness-349)
       node -e 'const p=require(process.argv[1]).profileFor(process.argv[2]); if(p.requiredMigrationCount!==349) process.exit(65)' "$plan/issue-ordered/profiles.cjs" "$2" >/dev/null 2>&1 || exit 64 ;;
     issue403:--expense-witness-346|issue404:--expense-witness-346|issue417:--expense-witness-346|issue418-operating:--expense-witness-346) ;;

@@ -6,6 +6,7 @@ const predecessor = require('./historical-settlement-334-profile.cjs');
 const mode = 'historical-expense-335';
 const count = 335;
 const installerSha256 = 'f9c32bfec9aae7ba4f85dd8c907f88dce99237151b909877a62daed2ad9c51c4';
+const race349Sha256 = '6334110c93624a9dfc291d54ac60b3bfd0c0a1add109390313a4268836455693';
 const raceSha256 = '81a9d2524be2b739b2ec036d9744fc8c307615c41ce711a8ef3cc84e30975ede';
 const ledgerSha256 = 'd88146269c6cd32c12facd8561b6b629bf591b3637e307370d2123f030bb92f8';
 const terminal = Object.freeze({
@@ -73,4 +74,4 @@ function assertCatalog(catalog, after) {
   }
 }
 
-module.exports = { mode, count, installerSha256, raceSha256, terminal, ledgerSha256, catalogSql, assertSource, assertCatalog };
+module.exports = { mode, count, installerSha256, raceSha256, race349Sha256, terminal, ledgerSha256, catalogSql, assertSource, assertCatalog };

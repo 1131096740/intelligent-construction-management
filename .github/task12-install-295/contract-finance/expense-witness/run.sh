@@ -13,7 +13,7 @@ base="$plan/.."
 common="$base/common"
 [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$base") ]] || exit 65
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-expense-witness.XXXXXXXX")
-node "$plan/stage.cjs" "$prepared" "$sha" "$work"
+node "$plan/stage.cjs" "$prepared" "$sha" "$work" "${5-}"
 if [[ ${5-} == --host-only || ${6-} == --host-only ]]; then
   printf '%s\n' "$work"
   exit 0
@@ -42,9 +42,15 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
 entry=expense-witness-entry.cjs
 if [[ ${5-} == --issue417-history-expense ]]; then
   entry=historical-expense-335-entry.cjs
-  for file in "$entry" historical-expense-335-profile.cjs historical-expense-335-race.cjs; do
+  for file in "$entry" historical-expense-335-profile.cjs; do
     args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
   done
+  race="$base/historical-expense-335-race.cjs"
+  if [[ -f $work/historical-expense-335-race.cjs ]]; then
+    race="$work/historical-expense-335-race.cjs"
+    args+=(--mount "type=bind,src=$base/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
+  fi
+  args+=(--mount "type=bind,src=$race,dst=/qualification/historical-expense-335-race.cjs,readonly")
 fi
 for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs; do
   args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
@@ -68,8 +74,8 @@ const assert=require('node:assert/strict');
 const [file,sha,sourceFile,scope]=process.argv.slice(2),r=require(file),source=require(sourceFile);
 assert.equal(r.sourceSha,sha);
 if (scope === '--issue417-history-expense') {
-  assert.equal(source.migrationCount,346);
-  assert.equal(r.status,'ISSUE417_HISTORY_EXPENSE_EXACT_346_PASSED');
+  assert.ok([346,349].includes(source.migrationCount));
+  assert.equal(r.status,'ISSUE417_HISTORY_EXPENSE_EXACT_'+source.migrationCount+'_PASSED');
   assert.equal(r.original.operatingLedgerPort,'ORIGINAL_RECORDED_INPUTS');
   assert.equal(r.original.complete,true);
   assert.equal(r.sceneRace.staleSceneWriteSqlstate,'40001');
