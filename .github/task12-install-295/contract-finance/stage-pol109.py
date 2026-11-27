@@ -17,6 +17,7 @@ current_tails = {
     (332, 'upward-archive-332'): '20261129001000_contract_upward_archive_verifier_pin_forward',
     (334, 'historical-settlement-334'): '20261129003000_historical_signed_settlement_continuation',
     (346, 'expense-witness-346'): '20261129015000_expense_public_cash_operating_source',
+    (349, 'expense-witness-349'): '20261129018000_reimbursement_exact_cash_cost_links',
 }
 current_tail = current_tails.get((count, source_record.get('mode')))
 if current_tail:
@@ -60,7 +61,7 @@ def exactly(text,needle,new):
     return text.replace(needle,new)
 
 owned_http = out/'project-close-profit.owned282.http.pg.spec.ts'
-if count in (332, 334, 346):
+if count in (332, 334, 346, 349):
     current_http = (workspace/'services/api/src/project-close-profit/project-close-profit.http.pg.spec.ts').read_text()
     scenario_start = '    // A27 incomplete operating details\n'
     scenario_end = '    // End A27 incomplete operating details\n'
@@ -88,11 +89,11 @@ for target in [owned_http,out/'task12-pol109-ci.cjs']:
         text=exactly(text,"path.join(context.workDir,'prefixes/combined289/schema.prisma')",'context.combinedSchemaPath')
         text=exactly(text,'23b6784cf8f944d22d9f779240871befc1b7d4bef96fc405f32d31a79894ed56',
                           '65530c8905be0e71ecd6bb6ddb740d22b3ba7ddc14f2a68500a5b0be694e6ce6')
-        if count == 346:
+        if count in (346, 349):
             text=exactly(text,"RUN_POL109_PROJECT_CLOSE_PG16:'1',",
                              "RUN_POL109_PROJECT_CLOSE_PG16:'1',POL109_A27_FORMAL_V2:'1',")
             text=exactly(text,'output.stats?.expected===5','output.stats?.expected===6')
-        if count in (332, 334, 346):
+        if count in (332, 334, 346, 349):
             anchor = "      receipt.toolFailure={stage,code,signal,overflow,"
             diagnostics = r"""      if(stage==='JEST'){
         let report;

@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 historical, archive, common, out, shard, count = sys.argv[1:]
-if count not in {'295', '329', '330', '331', '332', '334', '346'}:
+if count not in {'295', '329', '330', '331', '332', '334', '346', '349'}:
     raise SystemExit('POL108_MIGRATION_COUNT')
 historical,archive,common,out=map(Path,(historical,archive,common,out))
 plan=Path(__file__).parent
@@ -41,24 +41,34 @@ if shard=='core':
         if text.count(original) != 1:
             raise SystemExit('POL108_320_LEDGER_COUNT_ANCHOR')
         cases.write_text(text.replace(original, original.removesuffix('295') + count))
-        if count == '346' and digest(cases) != '90ebf581a9ba6d2019560facab6a6329c5b0626c2908b73a526015fbc1437e77':
-            raise SystemExit('POL108_346_CORE_FIXTURE')
+        core_fingerprints = {
+            '346': '90ebf581a9ba6d2019560facab6a6329c5b0626c2908b73a526015fbc1437e77',
+            '349': 'e3c97dd22f1481fc5c3651ea74608ee255959f1406db78b5cec54351bfc7be89',
+        }
+        if count in core_fingerprints and digest(cases) != core_fingerprints[count]:
+            raise SystemExit('POL108_'+count+'_CORE_FIXTURE')
 installer=out/'installer.cjs'
-if count in {'334', '346'}:
+if count in {'334', '346', '349'}:
     subprocess.run(['node', str(plan/'stage-historical-takeover-333.cjs'), str(out), 'historical-settlement-334'],check=True)
 else:
     shutil.copyfile(common/'installer.cjs',installer)
-if count == '346':
-    delta = (plan/'expense-witness/installer.patch').resolve()
-    subprocess.run(['git', 'apply', '--unidiff-zero', str(delta)], cwd=out, check=True)
-    profile = (plan/'expense-witness-346-profile.cjs').resolve()
+if count in {'346', '349'}:
+    deltas = ['installer.patch', 'installer-349.patch'] if count == '349' else ['installer.patch']
+    for delta in deltas:
+        subprocess.run(['git', 'apply', '--unidiff-zero', str((plan/'expense-witness'/delta).resolve())],
+                       cwd=out, check=True)
+    profile = (plan/f'expense-witness-{count}-profile.cjs').resolve()
     canonical = subprocess.check_output(
         ['node', '-p', 'require(process.argv[1]).installerSha256', str(profile)], text=True).strip()
     if digest(installer) != canonical:
-        raise SystemExit('POL108_346_INSTALLER_PREIMAGE')
-    patch(installer, plan/'pol108-346-installer.patch')
-    if digest(installer) != 'fd1c86f6bc0654199efdeed8ba3753ad8376d99d2b660e9a70e1cf3564110719':
-        raise SystemExit('POL108_346_INSTALLER_POSTIMAGE')
+        raise SystemExit('POL108_'+count+'_INSTALLER_PREIMAGE')
+    patch(installer, plan/f'pol108-{count}-installer.patch')
+    installer_fingerprints = {
+        '346': 'fd1c86f6bc0654199efdeed8ba3753ad8376d99d2b660e9a70e1cf3564110719',
+        '349': '6c49a48ceb13a8c04b1cc6ab135de854dcdfef8dd7117070b2881cf1e3e137e5',
+    }
+    if digest(installer) != installer_fingerprints[count]:
+        raise SystemExit('POL108_'+count+'_INSTALLER_POSTIMAGE')
 else:
     patch(installer,plan/'pol108-installer.patch')
 if count == '334':
