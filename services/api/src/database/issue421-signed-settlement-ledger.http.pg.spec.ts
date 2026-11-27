@@ -428,21 +428,67 @@ run("issue 421a signed settlement ledger and exports on real PostgreSQL and HTTP
     expect(limitedExport.sheet!.rowCount).toBeLessThanOrEqual(2);
 
     const amountYuan = "1234567890123456.7890";
-    await owner.contractVersion.update({
+    const contractName = "高精度幕墙分包合同";
+    const signingCompany = await owner.contractVersion.findUniqueOrThrow({
       where: { id: ids.versionA },
+      select: { companyEntityIdSnapshot: true, companyEntityNameSnapshot: true, companyEntityVersionId: true }
+    });
+    const preciseContract = await owner.contract.create({
       data: {
-        numericProtocolVersion: 2,
-        amountCents: 123_456_789_012_345_679n,
-        amountYuan: new Prisma.Decimal(amountYuan)
+        projectId: ids.projectA,
+        code: "HT-421-PRECISION",
+        name: contractName,
+        counterparty: "高精度结算测试单位",
+        contractTypeKey: "labor_subcontract",
+        companyEntityId: signingCompany.companyEntityIdSnapshot,
+        companyEntityName: signingCompany.companyEntityNameSnapshot
       }
     });
-    await owner.signedContractSettlement.update({
-      where: { id: ids.signedA },
-      data: { amountYuan: new Prisma.Decimal(amountYuan) }
+    const preciseVersion = await owner.contractVersion.create({
+      data: {
+        ...signingCompany,
+        contractId: preciseContract.id,
+        versionNo: 1,
+        changeType: "original",
+        status: "effective",
+        effectiveAt: new Date("2026-01-01"),
+        numericProtocolVersion: 2,
+        amountCents: 123_456_789_012_345_679n,
+        amountYuan: new Prisma.Decimal(amountYuan),
+        signingSubjectType: "our_company",
+        draftData: {},
+        templateSnapshot: {},
+        clauseSnapshot: []
+      }
+    });
+    await owner.signedContractSettlement.create({
+      data: {
+        projectId: ids.projectA,
+        contractKind: "downstream",
+        contractId: preciseContract.id,
+        ownerUserId: ids.staffA,
+        number: "JS-421-PRECISION",
+        amountYuan: new Prisma.Decimal(amountYuan),
+        state: "confirmed",
+        submittedAt: new Date("2026-11-20T00:30:00.000Z"),
+        reviewedAt: new Date("2026-11-20T01:30:00.000Z"),
+        reviewedByUserId: ids.director,
+        confirmationNo: 1n,
+        confirmedContractSource: {
+          relationship: "inside",
+          sourceRecordId: preciseVersion.id,
+          sourceVersion: 1,
+          contractTypeKey: "labor_subcontract",
+          name: contractName,
+          signingParty: "四川建工智管建筑工程有限公司",
+          counterparty: "高精度结算测试单位",
+          payerKind: "participating_company"
+        }
+      }
     });
     const cases = [
-      ["director", "/contracts/ledger-export?keyword=幕墙", "合同金额（元）", "2"],
-      ["staffA", "/settlements/signed-ledger-export?keyword=幕墙", "结算金额（元）"]
+      ["director", "/contracts/ledger-export?keyword=高精度幕墙", "合同金额（元）", "2"],
+      ["staffA", "/settlements/signed-ledger-export?keyword=高精度幕墙", "结算金额（元）"]
     ] as const;
     for (const [actor, endpoint, header, protocol] of cases) {
       const exported = await callWorkbook(actor, endpoint, protocol);

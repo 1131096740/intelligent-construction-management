@@ -404,6 +404,17 @@ profiles.issue404_349 = {
   ...precisionBaseline
 };
 
+profiles.issue421_349 = {
+  ...profiles.issue421_346,
+  sourceDigest: '2591cfb1fc6ca2830122064f8b0228b5e7b5b622d165efcb2dbe184cac21e9de',
+  fixtureDigest: 'c27ac7328476cd5a6612e1490825ddf02266566ff994f4f3aea9064109eea305',
+  titles: [
+    ...profiles.issue421_346.titles.slice(0, -1),
+    'exports filtered contracts and preserves original amounts in contract and settlement workbooks'
+  ],
+  ...precisionBaseline
+};
+
 profiles.issue421b_349 = {
   ...profiles.issue421b_346,
   sourceDigest: '97ed2e5c88635df6b1fec4f4743634070ff01c070361b6cfeba0cd1d5f9e56b4',
