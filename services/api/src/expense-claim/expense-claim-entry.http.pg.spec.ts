@@ -209,11 +209,11 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const detailPath = path + "/" + created.body.id;
     expect(await request(detailPath)).toMatchObject({ status: 200, body: {
       requestedAmountYuan: "0.0100", requestedAmountCents: "1",
-      lines: [{ amountYuan: "0.0050" }, { amountYuan: "0.0050" }]
+      lines: [{ amountYuan: "0.0050", amountCents: "1" }, { amountYuan: "0.0050", amountCents: "0" }]
     } });
     expect(await request(detailPath + "/submission", {})).toMatchObject({ status: 201, body: { companyPayableAmountCents: "1" } });
     const snapshot = await prisma.expenseClaimEntrySnapshot.findFirstOrThrow({ where: { expenseClaimId: created.body.id } });
-    expect(snapshot.valuesSnapshot).toMatchObject({ requestedAmountYuan: "0.0100", requestedAmountCents: "1", numericProtocolVersion: 2, lines: [{ amountYuan: "0.0050" }, { amountYuan: "0.0050" }] });
+    expect(snapshot.valuesSnapshot).toMatchObject({ requestedAmountYuan: "0.0100", requestedAmountCents: "1", numericProtocolVersion: 2, lines: [{ amountYuan: "0.0050", amountCents: "1" }, { amountYuan: "0.0050", amountCents: "0" }] });
 
     const zeroPayable = await request(path, { ...claim, reason, requestedAmountYuan: "0.0001", lines: [exact("0.0001")] });
     expect(zeroPayable).toMatchObject({ status: 201, body: { requestedAmountYuan: "0.0001", requestedAmountCents: "0" } });

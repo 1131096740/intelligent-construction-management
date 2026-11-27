@@ -1152,8 +1152,8 @@ export class ExpenseClaimService {
     if (!this.files) throw new ServiceUnavailableException("费用附件服务暂不可用，请稍后重试");
     const fileId = requiredText(input.fileId, "请选择费用附件");
     return this.prisma.$transaction(async (tx) => {
-      const claims = await tx.$queryRaw<Array<{ id: string; claimType: string; status: string; projectId: string | null; handledByUserId: string }>>(
-        Prisma.sql`SELECT "id", "claimType", "status", "projectId", "handledByUserId" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`
+      const claims = await tx.$queryRaw<Array<{ id: string; claimType: string; status: string; projectId: string | null; handledByUserId: string; requestedAmountCents: bigint }>>(
+        Prisma.sql`SELECT "id", "claimType", "status", "projectId", "handledByUserId", "requestedAmountCents" FROM "ExpenseClaim" WHERE "id" = ${claimId} FOR UPDATE`
       );
       const claim = claims[0];
       if (!claim) throw new NotFoundException("费用申请不存在");

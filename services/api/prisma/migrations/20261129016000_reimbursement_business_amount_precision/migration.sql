@@ -20,7 +20,7 @@ ALTER TABLE "ExpenseClaimLine"
   ADD CONSTRAINT "ExpenseClaimLine_amount_positive_check" CHECK (
     ("amountYuan" IS NULL AND "amountCents" > 0)
     OR ("amountYuan" IS NOT NULL AND "amountYuan" > 0
-      AND "amountCents"::numeric = round("amountYuan" * 100))
+      AND "amountCents"::numeric BETWEEN floor("amountYuan" * 100) AND ceil("amountYuan" * 100))
   );
 
 COMMIT;

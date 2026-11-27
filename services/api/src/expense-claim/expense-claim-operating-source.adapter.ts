@@ -61,6 +61,7 @@ type ExpenseClaimApprovalRow = {
   applicantPhoneSnapshot: string | null;
   payeeNameSnapshot: string | null;
   requestedAmountCents: bigint;
+  requestedAmountYuan?: Prisma.Decimal | null;
   companyPayableAmountCents: bigint;
   approvedAt: Date | null;
 };
@@ -235,7 +236,8 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
           expenseCategory: true,
           occurredOn: true,
           purpose: true,
-          amountCents: true
+          amountCents: true,
+          amountYuan: true
         },
         orderBy: { sortOrder: "asc" }
       }),
@@ -290,6 +292,7 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
         applicantPhoneSnapshot: row.applicantPhoneSnapshot,
         payeeNameSnapshot: row.payeeNameSnapshot,
         requestedAmountCents: row.requestedAmountCents.toString(),
+        ...(row.requestedAmountYuan == null ? {} : { requestedAmountYuan: row.requestedAmountYuan.toFixed(4) }),
         companyPayableAmountCents: row.companyPayableAmountCents.toString(),
         approvedAt: row.approvedAt.toISOString(),
         confirmedByUserId: confirmation.actorUserId,
@@ -300,7 +303,8 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
           expenseCategory: line.expenseCategory,
           occurredOn: line.occurredOn.toISOString(),
           purpose: line.purpose,
-          amountCents: line.amountCents.toString()
+          amountCents: line.amountCents.toString(),
+          ...(line.amountYuan == null ? {} : { amountYuan: line.amountYuan.toFixed(4) })
         })),
         operatingLedgerEffectiveDate: effectiveDate.toISOString(),
         affiliate
@@ -813,6 +817,7 @@ function expenseClaimApprovalSelect() {
     applicantPhoneSnapshot: true,
     payeeNameSnapshot: true,
     requestedAmountCents: true,
+    requestedAmountYuan: true,
     companyPayableAmountCents: true,
     approvedAt: true,
     status: true
@@ -925,12 +930,13 @@ function reimbursementCostImpacts(
   if (!Array.isArray(lines) || !lines.length) {
     throw new BadRequestException("报销确认快照缺少费用明细");
   }
-  const impacts = lines.map((entry) => {
+  const impacts = lines.flatMap((entry) => {
     const line = requiredJsonRecord(entry, "报销费用明细");
     const amountCents = requiredJsonMoney(line, "amountCents", "报销费用明细");
+    if (amountCents === 0n && typeof line.amountYuan === "string" && typeof source.requestedAmountYuan === "string") return [];
     if (amountCents <= 0n) throw new BadRequestException("报销费用明细金额必须大于 0");
     const sortOrder = requiredJsonText(line, "sortOrder", "报销费用明细");
-    return {
+    return [{
       idempotencyKey: `${snapshot.sourceType}:${snapshot.sourceBusinessId}:confirmed_cost:${sortOrder}`,
       sourceImpactKey: `confirmed_cost:${sortOrder}`,
       impactKind: "confirmed_cost" as const,
@@ -942,9 +948,10 @@ function reimbursementCostImpacts(
       impactSnapshot: sourceJson({
         lineId: requiredJsonText(line, "id", "报销费用明细"),
         occurredOn: requiredJsonText(line, "occurredOn", "报销费用明细"),
-        purpose: requiredJsonText(line, "purpose", "报销费用明细")
+        purpose: requiredJsonText(line, "purpose", "报销费用明细"),
+        ...(typeof line.amountYuan === "string" ? { amountYuan: line.amountYuan } : {})
       })
-    };
+    }];
   });
   const total = impacts.reduce((sum, impact) => sum + impact.amountCents, 0n);
   if (total !== requestedAmountCents) {
