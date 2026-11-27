@@ -43,7 +43,7 @@ fi
     $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts || $2 == pol109 ||
     $2 == pfq || $2 == task398-standard || $2 == cash-transfer || $2 == project-advance || $issue_lane == true ) && $3 == --expense-witness-346 ) ||
   ( $# == 3 && ( $issue_lane == true || $2 == pol115-full || $2 == pol115-workbench ||
-    $2 == pfq || $2 == settlement || $2 == template || $2 == draft || $2 == v7 || $2 == invoice || $2 == pol279 || $2 == pol280 ||
+    $2 == line-a || $2 == historical-takeover-a28 || $2 == pfq || $2 == settlement || $2 == template || $2 == draft || $2 == v7 || $2 == invoice || $2 == pol279 || $2 == pol280 ||
     $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts || $2 == pol109 ) && $3 == --expense-witness-349 ) ||
   ( $# == 4 && ( $2 == payment-execution || $2 == task398-competition || $2 == pol109 || $2 == cash-transfer || $2 == project-advance ) &&
     $3 == --expense-witness-346 && $4 == --host-only ) ||
@@ -66,7 +66,7 @@ if [[ ${3:-} == --payment-remainder-331 ]]; then
     *) exit 64 ;;
   esac
 fi
-if [[ $lane == historical-takeover-a28 && ${3:-} != --historical-settlement-334 && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
+if [[ $lane == historical-takeover-a28 && ${3:-} != --historical-settlement-334 && ${3:-} != --expense-witness-34[69] ]]; then exit 64; fi
 if [[ $lane == historical-takeover-a29 && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
 if [[ $lane == pol115-full && ${3:-} != --historical-settlement-334 && ${3:-} != --expense-witness-346 && ${3:-} != --expense-witness-349 ]]; then exit 64; fi
 if [[ ( $lane == cash-transfer || $lane == project-advance ) && ${3:-} != --upward-archive-332 && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
@@ -130,11 +130,11 @@ fi
 case "$lane" in
   line-a)
     line_a_args=()
-    if [[ ${3:-} == --historical-settlement-334 || ${3:-} == --expense-witness-346 ]]; then line_a_args=(original); fi
+    if [[ ${3:-} == --historical-settlement-334 || ${3:-} == --expense-witness-34[69] ]]; then line_a_args=(original); fi
     bash "$plan/run-line-a.sh" "$work/source" "$sha" "$work/browser" ${line_a_args[@]+"${line_a_args[@]}"}
     ;;
   historical-takeover-a28)
-    if [[ $3 == --expense-witness-346 ]]; then
+    if [[ $3 == --expense-witness-34[69] ]]; then
       bash "$plan/run-line-a.sh" "$work/source" "$sha" "$work/browser" --a28-continuation
     else
       bash "$plan/run-line-a.sh" "$work/source" "$sha" "$work/browser"
