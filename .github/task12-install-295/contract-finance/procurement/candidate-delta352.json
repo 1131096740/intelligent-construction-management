@@ -123,5 +123,20 @@
     "path": "services/api/src/expense-claim/expense-claim.service.spec.ts",
     "expected": "509550e06797e74897e0c471211f3b046c7af5e6a9dda1677d691518ee1fb3a1",
     "candidate": "8ced58d671f3ef35cfb8ef48a321f3788276a06749e10e9b6e87979c72e55de8"
+  },
+  {
+    "path": "services/api/prisma/task16-current259-payment-case.test.cjs",
+    "expected": "3a5f0ad07a37cbda453f311069e5e2e78ae16d11db2280b08c9a1c92926096cf",
+    "candidate": "a0ff3b7ad2a854a19e567cd2c446962436ae804d320e9ca7300dd27d5cff46f8"
+  },
+  {
+    "path": "services/api/scripts/business-zeroing-policy.cjs",
+    "expected": "42722a432f8e03ab1cc15339439b49af9953454438fd18d75c93e5505b5d6195",
+    "candidate": "cc8581b795bf86a1d9e8e7f9d68bbcb3b7436f90a9f5021d8d2d93ec289bb1e4"
+  },
+  {
+    "path": "services/api/scripts/business-zeroing-tool.test.cjs",
+    "expected": "d44e510d9ce7d8a545886d5dd398e1c99fac613debfb2b8af72846194947b2e1",
+    "candidate": "fb09393a28c9b1ddc4efcee08d77f2718ff7c061bb5a612c7b8db534da4a8fea"
   }
 ]

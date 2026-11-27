@@ -28,5 +28,7 @@
   "services/api/src/operational-write-freeze/operational-write-freeze.registry.ts": "d7c0316b15a660992bd6b626f9cbf26efb8ef11075c3de515bbc9a32bce40e81",
   "services/api/prisma/run-database-dynamic-gate-local.cjs": "b76712e690a49826d3186439adc275f67b407ee02d033ac6ea0c52b65fde3d97",
   "services/api/src/expense-claim/expense-claim.service.spec.ts": "8ced58d671f3ef35cfb8ef48a321f3788276a06749e10e9b6e87979c72e55de8",
-  "services/api/prisma/task16-current259-payment-case.test.cjs": "a0ff3b7ad2a854a19e567cd2c446962436ae804d320e9ca7300dd27d5cff46f8"
+  "services/api/prisma/task16-current259-payment-case.test.cjs": "a0ff3b7ad2a854a19e567cd2c446962436ae804d320e9ca7300dd27d5cff46f8",
+  "services/api/scripts/business-zeroing-policy.cjs": "cc8581b795bf86a1d9e8e7f9d68bbcb3b7436f90a9f5021d8d2d93ec289bb1e4",
+  "services/api/scripts/business-zeroing-tool.test.cjs": "fb09393a28c9b1ddc4efcee08d77f2718ff7c061bb5a612c7b8db534da4a8fea"
 }
