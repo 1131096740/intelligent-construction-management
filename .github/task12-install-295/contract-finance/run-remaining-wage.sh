@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 ) ) ||
-  ( $# == 6 && $5 == --expense-witness-346 && $6 == --host-only ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 ) ) ||
+  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 ) && $6 == --host-only ) ]] || exit 64
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -23,21 +23,22 @@ count=$(node -e '
     console.log(332);
   }
   else if(source.mode==="expense-witness-346"&&source.migrationCount===346)console.log(346);
+  else if(source.mode==="expense-witness-349"&&source.migrationCount===349)console.log(349);
   else if(source.mode===undefined&&source.migrationCount===295)console.log(295);
   else process.exit(65);
 ' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$plan/common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs")
 mode_args=()
-case "$count" in 329) mode_args=(--current-320);; 330) mode_args=(--text-direct-330);; 331) mode_args=(--payment-remainder-331);; 332) mode_args=(--upward-archive-332);; 334) mode_args=(--historical-settlement-334);; 346) mode_args=(--expense-witness-346);; esac
+case "$count" in 329) mode_args=(--current-320);; 330) mode_args=(--text-direct-330);; 331) mode_args=(--payment-remainder-331);; 332) mode_args=(--upward-archive-332);; 334) mode_args=(--historical-settlement-334);; 346|349) mode_args=("--expense-witness-$count");; esac
 if [[ $# -ge 5 && ${mode_args[0]:-} != "$5" ]]; then exit 65; fi
 [[ $sha =~ ^[a-f0-9]{40}$ ]] || exit 65
 common="$plan/common"
 archive="$repo/.github/task12-install-289"
 scope=wage
 
-if [[ $count == 346 ]]; then
-  [[ ${5-} == --expense-witness-346 ]] || exit 65
+if (( count >= 346 )); then
+  [[ ${5-} == "--expense-witness-$count" ]] || exit 65
   source "$plan/remaining-history-346.sh"
-  verify_history_346 "$repo" "$prepared" "$sha" "$plan"
+  verify_history_346 "$repo" "$prepared" "$sha" "$plan" "$count"
 fi
 if [[ ${6-} != --host-only ]]; then
   build=$(cd "$4" && pwd -P)
@@ -83,11 +84,11 @@ for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof
 done
 source "$plan/remaining-installer-mounts.sh"
 source_mode=$(node -p 'require(process.argv[1]).mode ?? ""' "$prepared/source.json")
-if [[ $count != 346 ]]; then
+if (( count < 346 )); then
   args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
 fi
 append_remaining_installer "$source_mode"
-if [[ $count == 346 ]]; then append_history_346; fi
+if (( count >= 346 )); then append_history_346; fi
 args+=(--mount "type=bind,src=$work/wage.cjs,dst=/qualification/wage.cjs,readonly"
   --mount "type=bind,src=$archive_wage/wage-material.json,dst=/qualification/wage-material.json,readonly"
   --mount "type=bind,src=$archive_wage/wage-statement-constraints.spec.ts,dst=/qualification/workspace/services/api/src/database/wage-statement-constraints.spec.ts,readonly")

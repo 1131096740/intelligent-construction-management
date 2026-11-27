@@ -12,7 +12,7 @@ async function runHistoricalWage(context,receipt,source){
  const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
  const {ownerUrl,runId,database,workDir}=context;
  assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
- const count=source.mode==='expense-witness-346'?346:source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
+ const count=source.mode==='expense-witness-349'?349:source.mode==='expense-witness-346'?346:source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
  assert.equal(source.migrationCount,count);
  if(count!==295) assert.equal(context.candidateTree,source.sourceTree);
  assert.equal(receipt.installOnly295.count,295);
