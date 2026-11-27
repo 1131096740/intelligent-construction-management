@@ -7,7 +7,8 @@ from pathlib import Path
 
 archive, common, stage = map(Path, sys.argv[1:4])
 mode_args = sys.argv[4:]
-assert mode_args in ([], ['--historical-settlement-334'], ['--expense-witness-346'], ['--expense-witness-349'])
+assert mode_args in ([], ['--historical-settlement-334'], ['--expense-witness-346'],
+                     ['--expense-witness-349'], ['--signed-settlement-350'])
 plan = Path(__file__).parent
 pins = json.loads((archive / 'material.json').read_text())
 for mode, scope in pins.items():
@@ -52,7 +53,7 @@ if mode_args:
     profiles['receipt']['sha256'] = overlays[-1][-1]
     (app / 'profiles.json').write_text(json.dumps(profiles, indent=2) + '\n')
 
-if mode_args in (['--expense-witness-346'], ['--expense-witness-349']):
+if mode_args in (['--expense-witness-346'], ['--expense-witness-349'], ['--signed-settlement-350']):
     historical = stage / 'installer-historical.cjs'
     shutil.copyfile(installer, historical)
     forward = json.loads((plan / 'expense-346-fixtures.json').read_text())
@@ -68,20 +69,21 @@ if mode_args in (['--expense-witness-346'], ['--expense-witness-349']):
         if hashlib.sha256((stage / name).read_bytes()).hexdigest() != after:
             raise SystemExit(f'EXPENSE_346_POSTIMAGE {name}')
     key = 'app/receipt/' + profiles['receipt']['spec']
-    if mode_args == ['--expense-witness-349']:
-        # Bind the shared precision witnesses to this runner's qualified ledger.
-        forward = json.loads((plan / 'expense-349-fixtures.json').read_text())
+    # Each precision profile builds on its pinned predecessor.
+    versions = {'--expense-witness-349': (349,), '--signed-settlement-350': (349, 350)}
+    for version in versions.get(mode_args[0], ()):
+        forward = json.loads((plan / f'expense-{version}-fixtures.json').read_text())
         for name, (before, _) in forward.items():
             if hashlib.sha256((stage / name).read_bytes()).hexdigest() != before:
-                raise SystemExit(f'EXPENSE_349_PREIMAGE {name}')
+                raise SystemExit(f'EXPENSE_{version}_PREIMAGE {name}')
         subprocess.run(
-            ['git', 'apply', '--unidiff-zero', str((plan / 'expense-349.patch').resolve())],
+            ['git', 'apply', '--unidiff-zero', str((plan / f'expense-{version}.patch').resolve())],
             cwd=stage,
             check=True,
         )
         for name, (_, after) in forward.items():
             if hashlib.sha256((stage / name).read_bytes()).hexdigest() != after:
-                raise SystemExit(f'EXPENSE_349_POSTIMAGE {name}')
+                raise SystemExit(f'EXPENSE_{version}_POSTIMAGE {name}')
     profiles['receipt']['sha256'] = forward[key][-1]
     (app / 'profiles.json').write_text(json.dumps(profiles, indent=2) + '\n')
 
