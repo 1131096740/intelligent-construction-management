@@ -1584,7 +1584,7 @@ describe("ExpenseClaimService", () => {
     });
     expect(tx.expenseClaim.update).toHaveBeenCalledWith({
       where: { id: claim.id }, data: { reason: input.reason, requestedAmountCents: 65n, updatedAt: expect.any(Date) },
-      select: { id: true, status: true, updatedAt: true, requestedAmountCents: true }
+      select: { id: true, status: true, updatedAt: true, requestedAmountCents: true, requestedAmountYuan: true }
     });
   });
 

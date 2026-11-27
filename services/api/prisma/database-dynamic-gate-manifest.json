@@ -5,7 +5,7 @@
   "migrationBaseline": {
     "expectedDirectoryCount": 347,
     "terminalMigration": "20261129016000_reimbursement_business_amount_precision",
-    "terminalMigrationChecksum": "4a4871de05e43887e51c5be3c01ba993206010c7461655d70a3d3f3ca018ddf9",
+    "terminalMigrationChecksum": "d5a34145bce2ed278c214df066190106d455032939112eefe2ea5fb8a4d157a4",
     "postgresMajorVersion": 16,
     "containerImage": "postgres:16",
     "allowImagePull": false

@@ -32,12 +32,14 @@ export function exactReimbursementAmounts(lines: ExpenseClaimLineDto[], declared
   if (declared !== undefined && declared !== requestedAmountYuan) {
     throw new BadRequestException("费用明细合计必须等于申请金额");
   }
-  return {
-    requestedAmountYuan,
-    requestedAmountCents,
-    lineAmounts: amounts.map((amountYuan) => ({
-      amountYuan,
-      amountCents: BigInt(businessAmountToLegacyCents(amountYuan)!)
-    }))
-  };
+  let cumulativeYuan = "0.0000";
+  let cumulativeCents = 0n;
+  const lineAmounts = amounts.map((amountYuan) => {
+    cumulativeYuan = sumBusinessAmounts([cumulativeYuan, amountYuan])!;
+    const roundedCents = BigInt(businessAmountToLegacyCents(cumulativeYuan)!);
+    const amountCents = roundedCents - cumulativeCents;
+    cumulativeCents = roundedCents;
+    return { amountYuan, amountCents };
+  });
+  return { requestedAmountYuan, requestedAmountCents, lineAmounts };
 }
