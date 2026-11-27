@@ -473,7 +473,7 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
     ]);
     else assert.match(result.stdout, /334 PostgreSQL gate has no admitted runner/u);
   }
-  for (const count of [335, 347, 350]) {
+  for (const count of [335, 347, 350, 351, 352]) {
     const repinned = executable.replace(/^count=.*$/mu, `count=${count}`);
     const result = spawnSync("bash", ["-c", `exec () { exit 99; }\n${repinned}`], {
       cwd: root, encoding: "utf8",
@@ -494,7 +494,7 @@ for (const [count, terminal, checksum] of [
     const [, command] = /      - name: Run exact-SHA PostgreSQL dynamic gate shard\n[\s\S]*?        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(job);
     const executable = command.replace(/^          /gmu, "")
       .replace(/^count=.*$/mu, `count=${count}`)
-      .replace(
+      .replaceAll(
         "require('./services/api/prisma/database-dynamic-gate-manifest.json')",
         `({ migrationBaseline: { expectedDirectoryCount: ${count}, ` +
           `terminalMigration: '${terminal}', terminalMigrationChecksum: '${checksum}' } })`
