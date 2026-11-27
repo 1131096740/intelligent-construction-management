@@ -25,7 +25,10 @@ const ledgerFiles={
 };
 assert.ok(Object.hasOwn(ledgerFiles,source.mode),'ISSUE_ORDERED_MIGRATION_SCOPE');
 const ledger=require(base+'/'+ledgerFiles[source.mode]);
-assert.equal(source.migrationCount,profile.requiredMigrationCount??334,'ISSUE_ORDERED_MIGRATION_SCOPE');
+const precision=source.mode==='expense-witness-349';
+const combined=precision||source.mode==='expense-witness-346';
+assert.equal(combined,Boolean(profile.requiredMigrationCount),'ISSUE_ORDERED_MIGRATION_SCOPE');
+assert.equal(precision,profile.requiredMigrationCount===349,'ISSUE_ORDERED_PRECISION_SCOPE');
 ledger.assertSource(source,require(base+'/common/multi-witness.cjs').final);
 if(profile.requiredMigrationCount){
   const required=source.tails[profile.requiredMigrationCount-296];

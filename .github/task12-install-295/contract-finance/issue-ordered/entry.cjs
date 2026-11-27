@@ -137,8 +137,8 @@ async function main() {
   assert.equal(process.argv.length, 3);
   assert.notEqual(process.getuid(), 0);
   assert.equal(process.env.DATABASE_URL, undefined);
-  assert.equal(source.migrationCount, profile.requiredMigrationCount ?? 334,
-    'ISSUE_ORDERED_MIGRATION_SCOPE');
+  assert.equal(combined, Boolean(profile.requiredMigrationCount), 'ISSUE_ORDERED_MIGRATION_SCOPE');
+  assert.equal(precision, profile.requiredMigrationCount === 349, 'ISSUE_ORDERED_PRECISION_SCOPE');
   ledgerProfile.assertSource(source, final);
   if (combined) {
     const required = source.tails[profile.requiredMigrationCount - 296];

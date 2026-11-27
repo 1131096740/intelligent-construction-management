@@ -406,6 +406,12 @@ profiles.issue404_349 = {
 
 profiles.issue421b_349 = {
   ...profiles.issue421b_346,
+  sourceDigest: '97ed2e5c88635df6b1fec4f4743634070ff01c070361b6cfeba0cd1d5f9e56b4',
+  fixtureDigest: 'a368ce8658b95f2bc0d992b1b520aa50383824976f8f1859a9af9889eb89d3b1',
+  titles: [
+    ...profiles.issue421b_346.titles.slice(0, -1),
+    'filters expense claims by access and exports high precision facts in all four ledgers'
+  ],
   ...precisionBaseline
 };
 
