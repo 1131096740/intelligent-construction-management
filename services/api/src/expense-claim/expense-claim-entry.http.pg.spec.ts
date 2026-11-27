@@ -271,6 +271,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const { requestedAmountCents, lines: legacyLines, ...claim } = selfInput(applicantUserId, "reimbursement");
     const { amountCents, ...line } = legacyLines![0];
     for (const scenario of [
+      { exact: "12.3400", payable: "1234", amounts: ["12.3400"], status: "approved_pending_payment", costBearingCompanyEntityId: company.id },
       { exact: "0.0100", payable: "1", amounts: ["0.0050", "0.0050"], status: "approved_pending_payment", costBearingCompanyEntityId: company.id },
       { exact: "100.0050", payable: "10001", amounts: ["100.0050"], status: "approved_pending_payment", costBearingCompanyEntityId: company.id },
       { exact: "0.0001", payable: "0", amounts: ["0.0001"], status: "offset_completed", costBearingCompanyEntityId: null }
@@ -294,10 +295,19 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       });
       expect(facts).toHaveLength(1);
       const [fact] = facts;
-      expect(fact).toMatchObject({ numericProtocolVersion: 2, amountCents: null, costBearingCompanySubjectId: scenario.costBearingCompanyEntityId });
-      expect(fact.amountYuan?.toFixed(4)).toBe(scenario.exact);
-      expect(fact.impacts.filter(impact => impact.impactKind === "confirmed_cost").map(impact => impact.amountYuan?.toFixed(4))).toEqual(scenario.amounts);
-      expect(fact.impacts.filter(impact => impact.impactKind === "payable_increase").map(impact => impact.amountYuan?.toFixed(4))).toEqual(scenario.payable === "0" ? [] : scenario.payable === "1" ? ["0.0100"] : ["100.0100"]);
+      expect(fact.costBearingCompanySubjectId).toBe(scenario.costBearingCompanyEntityId);
+      const costs = fact.impacts.filter(impact => impact.impactKind === "confirmed_cost");
+      const payables = fact.impacts.filter(impact => impact.impactKind === "payable_increase");
+      if (scenario.exact === "12.3400") {
+        expect(fact).toMatchObject({ numericProtocolVersion: 1, amountCents: 1234n, amountYuan: null });
+        expect(costs).toMatchObject([{ numericProtocolVersion: 1, amountCents: 1234n }]);
+        expect(payables).toMatchObject([{ numericProtocolVersion: 1, amountCents: 1234n }]);
+      } else {
+        expect(fact).toMatchObject({ numericProtocolVersion: 2, amountCents: null });
+        expect(fact.amountYuan?.toFixed(4)).toBe(scenario.exact);
+        expect(costs.map(impact => impact.amountYuan?.toFixed(4))).toEqual(scenario.amounts);
+        expect(payables.map(impact => impact.amountYuan?.toFixed(4))).toEqual(scenario.payable === "0" ? [] : scenario.payable === "1" ? ["0.0100"] : ["100.0100"]);
+      }
       expect(await prisma.expenseClaimPaymentExecution.count({ where: { expenseClaimId: created.body.id } })).toBe(0);
       if (scenario.exact === "100.0050") {
         const scopeKey = `company:${companyEntityId}`;
