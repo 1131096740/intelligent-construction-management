@@ -138,5 +138,10 @@
     "path": "services/api/scripts/business-zeroing-tool.test.cjs",
     "expected": "d44e510d9ce7d8a545886d5dd398e1c99fac613debfb2b8af72846194947b2e1",
     "candidate": "fb09393a28c9b1ddc4efcee08d77f2718ff7c061bb5a612c7b8db534da4a8fea"
+  },
+  {
+    "path": "services/api/src/contract-template/task10-net-export.http.spec.ts",
+    "expected": "d9f99116703d618104d75c4ad394ced33660e1e2daccbac560a5e864a83c68fe",
+    "candidate": "7790330b975e45d9c002174a2dbaf7d44b9c3a2ffddb403e44d0052f192eb301"
   }
 ]
