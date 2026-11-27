@@ -5,6 +5,11 @@
     "candidate": "17231dea14c1b8cddee9b55a4386eba14850f4dc0eb3802b44c49a9b38dec4e9"
   },
   {
+    "path": "apps/web-admin/e2e/project-financing-quota-termination.e2e.ts",
+    "expected": "854147ee0099e9cedc9b0145fe108ad57696159a07592bd6fa471a80fba9c031",
+    "candidate": "ab2057952b318d0668395a49d8355ab7eb311f02b0f8f1d0bc7f61f1b7b5d9c4"
+  },
+  {
     "path": "apps/web-admin/src/api/core-flow-read.api.test.ts",
     "expected": "33395aaa091223d42dd2e7cd1ddcb2a5d80af7277189ec688d8d0e1eabfc5469",
     "candidate": "99bbc1ea9774e7a5c301b58fe7180276904a8dfab17e3b92bb10726c01013203"
@@ -23,6 +28,16 @@
     "path": "apps/web-admin/src/api/operating-read-fetch.test.ts",
     "expected": "cf8959118cd02800748d22388525878a1579f6f7689adc93f69a24fdcd56aad3",
     "candidate": "14d0173e8a40bf482cabb59ddd120ebafc92b98f638fa1290a630de6b8071b29"
+  },
+  {
+    "path": "apps/web-admin/src/api/project-financing-quota.api.test.ts",
+    "expected": "87803bac7da756348281388b6b463e49f781269a5fc77dd87e34f64e28af1c02",
+    "candidate": "da10242abf47731eebb5c6878abedbf1982b87e142c800d8112a08cc2c880ba1"
+  },
+  {
+    "path": "apps/web-admin/src/api/project-financing-quota.api.ts",
+    "expected": "286c3c632c9ceebc85d3de9afa289d1fa06a3a2a477e126b58412856f61ca9bf",
+    "candidate": "c77c459614a53740156949eb3afa4d1d8bf6167a1a7c865ec55bcf31fe58ebfe"
   },
   {
     "path": "apps/web-admin/src/components/ContractFinancialBalances.vue",
@@ -63,6 +78,21 @@
     "path": "apps/web-admin/src/pages/projects/ProjectOperatingOverviewPage.vue",
     "expected": "d407ee01a3f21c2a94805c9b6a0c1be27187170a73965b521c57267a4c81cde6",
     "candidate": "283793be6392d02e3d1029a49bf943e30f15c5d1e0cc6c4633312422d1adfd20"
+  },
+  {
+    "path": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.test.ts",
+    "expected": "26bf392a78139175536f1e7d6517481c6b1f56d7cfe21a3d567bc9ed4ba5a854",
+    "candidate": "257ab24bf2f389262245d2dddef753a9621dde0d203558c357a7d9b231123202"
+  },
+  {
+    "path": "apps/web-admin/src/pages/projects/components/ProjectFinancingQuotaPanel.vue",
+    "expected": "7d4d72a6ff2ed9ff6d42c404a9ae887b8a2fb8b854f87084de0f14d217089fca",
+    "candidate": "c403487d4c6d61230763acda806b808100991798d2032e38fad971fdc2a2cd7d"
+  },
+  {
+    "path": "apps/web-admin/src/pages/projects/project-financing-quota-panel.structure.test.ts",
+    "expected": "72159fb3f032007be713c82c0c25d2024e77df282963c584d309ca4dcf8c3dc1",
+    "candidate": "56c7beb609e4dc397cc83c77038893ead428fdaece4a1061c2ca6cc4869b6a1d"
   },
   {
     "path": "packages/shared-domain/src/business-decimal.ts",
@@ -178,6 +208,21 @@
     "path": "services/api/src/payment/payment-read.service.ts",
     "expected": "7d2378c22ec148759df4848beb7ddc684537735390815d112eb4cda3170d9197",
     "candidate": "696f1f441d45103b416996e2ab5c1e092349400418300b74eadefe7370c3c88b"
+  },
+  {
+    "path": "services/api/src/project/project-financing-quota-workbench.spec.ts",
+    "expected": "7e7f8731af4aa1c0cdc35b08d1e86e4d7c0cc8340fcb009ea09f9c1048e2dcec",
+    "candidate": "f9e3a817a0f712094dbb81e310e8e49dabd5e4ab7a966c7f3bdda4a1e389840c"
+  },
+  {
+    "path": "services/api/src/project/project.service.ts",
+    "expected": "352ec201dcaa4ee99cfc33181046901bb9a389d4028243f53c40f7753ec65e27",
+    "candidate": "ee30e34e946a37c591653f8297ca673a75157b7604c4fb01acce256171de240c"
+  },
+  {
+    "path": "services/api/src/retired-write-entry/retired-write-entry.guard.ts",
+    "expected": "958e7639f5740b4e08af17be0a7040d69863f29d37c2ed185839dacd20c3c329",
+    "candidate": "499b5c74b9ad5cbb8e86912bb5066e4d8dff9a382aa5c99cd9ff313d013aea27"
   },
   {
     "path": "services/api/src/spot-procurement/spot-procurement-read.service.ts",
