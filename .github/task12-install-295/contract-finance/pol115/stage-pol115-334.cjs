@@ -81,7 +81,7 @@ for (const row of selected) {
         '  async function historicalQuota(projectId: string, session: Session, input: { idempotencyKey: string; amountCents: string; reason: string; attachmentFileId: string }) {',
         '    const retired = await json(`/projects/${projectId}/financing-quotas`, session, "POST", input);',
         '    expect(retired).toMatchObject({ status: 410, body: { code: "OLD_WRITE_ENTRY_RETIRED" } });',
-        '    expect(await prisma.projectFinancingQuota.count({ where: { requestIdempotencyKey: input.idempotencyKey } })).toBe(0);',
+        '    expect(await app.get(PrismaService).projectFinancingQuota.count({ where: { requestIdempotencyKey: input.idempotencyKey } })).toBe(0);',
         '    return app.get(ProjectService).requestProjectFinancingQuota(projectId, (session.user as { id: string }).id, input);',
         '  }',
         '',
