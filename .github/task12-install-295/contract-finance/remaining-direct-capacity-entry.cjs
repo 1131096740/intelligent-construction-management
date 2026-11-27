@@ -8,7 +8,7 @@ const {consume}=require('./remaining-direct-capacity.cjs');
 
 const root='/qualification';
 const source=require('./contract-finance-source.json');
-const expense=['expense-witness-346','expense-witness-349','signed-settlement-350'].includes(source.mode)
+const expense=['expense-witness-346','expense-witness-349','signed-settlement-350','company-history-352'].includes(source.mode)
   ?require('./payment-execution-'+source.migrationCount+'.cjs'):undefined;
 const historicalSettlement=source.mode==='historical-settlement-334';
 const historical=historicalSettlement?require('./historical-settlement-334-profile.cjs'):undefined;

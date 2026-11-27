@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 case $#:${5-}:${6-} in
-  5:--signed-settlement-350:|6:--signed-settlement-350:--host-only)
+  5:--signed-settlement-350:|6:--signed-settlement-350:--host-only|5:--company-history-352:|6:--company-history-352:--host-only)
     [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64 ;;
   *)
     [[ $# == 4 || ( $# == 5 && $5 == --expense-witness-34[69] ) ||
@@ -20,7 +20,7 @@ archive="$repo/.github/task12-install-289"
 scope=direct-capacity
 mode=${5-}
 expense=false
-if [[ $mode == --expense-witness-34[69] || $mode == --signed-settlement-350 ]]; then
+if [[ $mode == --expense-witness-34[69] || $mode == --signed-settlement-350 || $mode == --company-history-352 ]]; then
   expense=true
   if [[ $mode != --expense-witness-346 ]]; then
     [[ $plan == "$repo/.github/task12-install-295/contract-finance" ]] || exit 65
@@ -32,7 +32,7 @@ fi
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const expected=source.mode==="signed-settlement-350"?350:source.mode==="expense-witness-349"?349:source.mode==="expense-witness-346"?346:source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
+  const expected=source.mode==="company-history-352"?352:source.mode==="signed-settlement-350"?350:source.mode==="expense-witness-349"?349:source.mode==="expense-witness-346"?346:source.mode==="historical-settlement-334"?334:source.mode==="upward-archive-332"?332:source.mode==="payment-remainder-331"?331:source.mode==="text-direct-330"?330:source.mode==="current-320"?329:295;
   if(source.sourceSha!==process.argv[2]||source.migrationCount!==expected||
     (expected>=346?process.argv[7]!=="--"+source.mode:Boolean(process.argv[7])))process.exit(1);
   if(expected>=346) {
