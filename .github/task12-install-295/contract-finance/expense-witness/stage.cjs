@@ -17,7 +17,7 @@ const history = require('../historical-expense-335-profile.cjs');
 const profile = company ? require('../company-history-352-profile.cjs') : signed ? require('../signed-settlement-350-profile.cjs')
   : precision ? require('../expense-witness-349-profile.cjs')
   : source.mode === witness.mode ? witness : require('../expense-witness-345-profile.cjs');
-if (signed) assert.notEqual(process.env.GITHUB_ACTIONS, 'true', 'EXPENSE_WITNESS_350_LOCAL_ONLY');
+if (signed && !company) assert.notEqual(process.env.GITHUB_ACTIONS, 'true', 'EXPENSE_WITNESS_350_LOCAL_ONLY');
 if (precision) assert.equal(scope, '--issue417-history-expense', 'EXPENSE_WITNESS_' + profile.count + '_SCOPE');
 assert.equal(source.sourceSha, sha);
 profile.assertSource(source, final);

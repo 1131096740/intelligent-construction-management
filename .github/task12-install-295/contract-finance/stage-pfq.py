@@ -9,7 +9,7 @@ import sys
 mode = sys.argv[5] if len(sys.argv) == 6 else None
 if len(sys.argv) not in (5, 6) or mode not in (None, '--historical-settlement-334', '--expense-witness-346', '--expense-witness-349', '--signed-settlement-350', '--company-history-352'):
     raise SystemExit('PFQ_STAGING_MODE')
-if mode in ('--signed-settlement-350','--company-history-352') and os.getenv('GITHUB_ACTIONS') == 'true':
+if mode == '--signed-settlement-350' and os.getenv('GITHUB_ACTIONS') == 'true':
     raise SystemExit('PFQ_350_LOCAL_ONLY')
 historical, archive, common, out = map(Path,sys.argv[1:5])
 plan=Path(__file__).parent

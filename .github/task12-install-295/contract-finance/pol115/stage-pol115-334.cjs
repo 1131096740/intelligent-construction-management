@@ -17,7 +17,6 @@ assert.match(candidateSha, /^[a-f0-9]{40}$/u);
 const source = require(path.join(prepared, 'source.json'));
 assert.equal(source.sourceSha, candidateSha);
 const company = source.mode === 'company-history-352';
-if (company) assert.notEqual(process.env.GITHUB_ACTIONS, 'true', 'POL115_352_LOCAL_ONLY');
 const precision = company || source.mode === 'expense-witness-349';
 const expenseWitness = precision || source.mode === 'expense-witness-346' ? require('../expense-witness-346-profile.cjs') : null;
 const profile = company ? require('../company-history-352-profile.cjs') : precision ? require('../expense-witness-349-profile.cjs') : expenseWitness ?? historical;

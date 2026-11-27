@@ -43,8 +43,12 @@ test('the 352 receipt requires the installed predecessor, same database and clea
     ...receipt.combinedAfterBusiness, count: 350 } }, source), /COMPANY_HISTORY_352_POST_BUSINESS/u);
 });
 
-test('352 ledger preparation remains unavailable to hosted CI until the full matrix is admitted', () => {
-  const result = spawnSync(process.execPath, args, { encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: 'true' } });
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /SIGNED_SETTLEMENT_350_LOCAL_ONLY/u);
+test('hosted 352 preparation uses the same sealed ledger and leaves 350 blocked', () => {
+  const env = { ...process.env, GITHUB_ACTIONS: 'true' };
+  const result = spawnSync(process.execPath, args, { encoding: 'utf8', env });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(JSON.parse(result.stdout).ledgerSha256, profile.ledgerSha256);
+  const old = spawnSync(process.execPath, [args[0], repo, sha, '--signed-settlement-350'], { encoding: 'utf8', env });
+  assert.notEqual(old.status, 0);
+  assert.match(old.stderr, /SIGNED_SETTLEMENT_350_LOCAL_ONLY/u);
 });

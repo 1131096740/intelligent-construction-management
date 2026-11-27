@@ -20,7 +20,7 @@ count = source['migrationCount']
 source_mode = source.get('mode')
 company = source_mode == 'company-history-352'
 signed_settlement = company or source_mode == 'signed-settlement-350'
-if signed_settlement and os.environ.get('GITHUB_ACTIONS') == 'true':
+if signed_settlement and not company and os.environ.get('GITHUB_ACTIONS') == 'true':
     sys.exit(64)
 precision = signed_settlement or source_mode == 'expense-witness-349'
 expense_witness = precision or source_mode == 'expense-witness-346'

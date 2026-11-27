@@ -10,7 +10,7 @@ assert.ok(process.argv.length===4||(process.argv.length===5&&['--current-320','-
 const textDirect=mode==='--text-direct-330';
 const companyHistory352=mode==='--company-history-352' ? require('./company-history-352-profile.cjs') : null;
 const signedSettlement350=mode==='--signed-settlement-350' || companyHistory352 ? require('./signed-settlement-350-profile.cjs') : null;
-if (signedSettlement350) assert.notEqual(process.env.GITHUB_ACTIONS,'true','SIGNED_SETTLEMENT_350_LOCAL_ONLY');
+if (signedSettlement350 && !companyHistory352) assert.notEqual(process.env.GITHUB_ACTIONS,'true','SIGNED_SETTLEMENT_350_LOCAL_ONLY');
 const expenseWitness349=mode==='--expense-witness-349' || signedSettlement350 ? require('./expense-witness-349-profile.cjs') : null;
 const expenseWitness=expenseWitness349 ?? (mode==='--expense-witness-346' ? require('./expense-witness-346-profile.cjs')
   : mode==='--expense-witness-345' ? require('./expense-witness-345-profile.cjs') : null);
