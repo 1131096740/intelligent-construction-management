@@ -159,7 +159,7 @@ describe("OperatingProjectionService", () => {
     const payable = {
       ...exact("8.0100"), id: "payable", factId: costFact.id, fact: costFact,
       sourceType: costFact.sourceType, sourceBusinessId: costFact.sourceBusinessId, sourceImpactKey: "payable_increase",
-      impactKind: "payable_increase", direction: "increase", subjectRole: "payee", subjectKind: "person", subjectId: "payee-1",
+      impactKind: "payable_increase", direction: "increase", subjectRole: "payee", subjectKind: "employee", subjectId: "payee-1",
       costCategoryCode: null, fundPurpose: null, impactSnapshot: { numericFacts: { protocolVersion: 2, amountState: "known", amountYuan: "8.0100" } }
     };
     const link = {

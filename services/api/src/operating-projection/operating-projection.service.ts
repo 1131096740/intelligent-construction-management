@@ -2099,7 +2099,7 @@ async function readFactDetailPageInTransaction(
       if (context.suppressedSettlementFactIds.has(fact.id)) continue;
       const impact = projectExpenseCashCostImpact(storedImpact, fact.sourceType, context.expenseCashByImpactId.get(storedImpact.id),
         context.scope.filters?.companyEntityId, companyVersionIds);
-      if (!impact || ("projectedCostYuan" in impact && impact.projectedCostYuan === null) || !projectionFactMatchesFilters(
+      if (!impact || !projectionFactMatchesFilters(
         fact,
         impact,
         context.scope.filters,
