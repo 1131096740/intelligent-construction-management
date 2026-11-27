@@ -451,7 +451,7 @@ profiles.issue426_a01_349 = {
 profiles.issue434_349 = {
   file: 'src/database/general-procurement-http-postgres.spec.ts',
   sourceDigest: 'f15a36a770d87d0728a2a2efe770cd07d4a5ffae69252b0f2f77c1e74410bce9',
-  fixtureDigest: 'bf35633e59a524370df96a7f566238460d03d9b0dab63a95ed510ad03b2f6af0',
+  fixtureDigest: 'a9d017a619fb5052e6522fd0ca9439465f45162ef238377780bb5d6d6e98601e',
   orderedDatabaseKey: 'JG_ISSUE434_ORDERED_DATABASE',
   enableKey: 'RUN_GENERAL_PROCUREMENT_PG16',
   stage: 'ISSUE434_ACTUAL_PURCHASE_APPROVAL_HTTP',
