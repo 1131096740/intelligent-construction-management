@@ -22,6 +22,31 @@ import {
   type OperatingImpactKind
 } from "@jiangkong/shared-domain";
 
+const YUAN_PROJECTION_SCALE = 10_000n;
+const PROJECTION_YUAN_TEXT = /^(-?)(0|[1-9]\d*)(?:\.(\d{1,4}))?$/u;
+
+// Report totals can exceed the storage range of any single fact or impact.
+function formatProjectionYuan(units: bigint): string {
+  const magnitude = units < 0n ? -units : units;
+  return `${units < 0n ? "-" : ""}${magnitude / YUAN_PROJECTION_SCALE}.${(magnitude % YUAN_PROJECTION_SCALE).toString().padStart(4, "0")}`;
+}
+
+function projectionYuanFromCents(cents: string | bigint | null): string | null {
+  return cents === null ? null : formatProjectionYuan(BigInt(cents) * 100n);
+}
+
+function sumProjectionYuan(values: readonly (string | null)[]): string | null {
+  let units = 0n;
+  for (const value of values) {
+    if (value === null) return null;
+    const match = PROJECTION_YUAN_TEXT.exec(value);
+    if (!match) throw new Error("经营投影金额格式不正确，请核对原始资料");
+    const [, sign, integer, fraction = ""] = match;
+    units += BigInt(`${sign}${integer}${fraction.padEnd(4, "0")}`);
+  }
+  return formatProjectionYuan(units);
+}
+
 export interface ConfirmedCostBearingSlice {
   companyEntityVersionId: string;
   companyName: string;
@@ -487,7 +512,7 @@ function toV2Aggregate(projection: OperatingProjectionV2ReadModel): OperatingPro
     current.impactCount += row.impactCount;
     current.riskItemCount += "riskItemCount" in row ? row.riskItemCount : 0;
     current.signedImpactCents = row.signedImpactCents === null || current.signedImpactCents === null ? null : (BigInt(current.signedImpactCents) + BigInt(row.signedImpactCents)).toString();
-    current.knownSubtotalYuan = sumBusinessAmounts([current.knownSubtotalYuan, "knownSubtotalYuan" in row ? row.knownSubtotalYuan : businessAmountFromLegacyCents(row.signedImpactCents)])!;
+    current.knownSubtotalYuan = sumProjectionYuan([current.knownSubtotalYuan, "knownSubtotalYuan" in row ? row.knownSubtotalYuan : projectionYuanFromCents(row.signedImpactCents)])!;
     current.unknownCount += "unknownCount" in row ? row.unknownCount : 0;
     current.amountYuan = current.unknownCount ? null : current.knownSubtotalYuan;
     groups.set(row.sourceType, current);
@@ -1607,7 +1632,7 @@ export class OperatingProjectionStreamAccumulator {
       if (!state.selected) group.count += 1;
       state.selected = true;
       group.impactCount = (group.impactCount ?? 0) + 1;
-      group.knownSubtotalYuan = sumBusinessAmounts([group.knownSubtotalYuan, value.signedAmountYuan])!;
+      group.knownSubtotalYuan = sumProjectionYuan([group.knownSubtotalYuan, value.signedAmountYuan])!;
       group.amountYuan = group.knownSubtotalYuan;
       this.decimalSeed.sourceGroups[SIGNED_SETTLEMENT_SOURCE] = group;
       return;
@@ -1632,11 +1657,11 @@ export class OperatingProjectionStreamAccumulator {
       if (!state.selected) group.count += 1;
       state.selected = true;
       group.impactCount = (group.impactCount ?? 0) + 1;
-      group.knownSubtotalYuan = sumBusinessAmounts([group.knownSubtotalYuan, impact.projectedCostYuan ?? impact.amountYuan])!;
+      group.knownSubtotalYuan = sumProjectionYuan([group.knownSubtotalYuan, impact.projectedCostYuan ?? impact.amountYuan])!;
       group.amountYuan = group.knownSubtotalYuan;
       this.decimalSeed.sourceGroups[EXPENSE_CLAIM_APPROVAL_SOURCE_TYPE] = group;
       if ("costYuan" in value) {
-        this.decimalSeed.confirmedCostYuan = sumBusinessAmounts([this.decimalSeed.confirmedCostYuan ?? "0.0000", value.costYuan])!;
+        this.decimalSeed.confirmedCostYuan = sumProjectionYuan([this.decimalSeed.confirmedCostYuan ?? "0.0000", value.costYuan])!;
         foldExactCostAttribution(this.decimalSeed.reimbursementAttribution ??= newExactCostAttribution(), fact, impact, value.costYuan);
       } else {
         this.decimalSeed.reimbursementPayableCents = (this.decimalSeed.reimbursementPayableCents ?? 0n) + value.payableCents;
@@ -1649,9 +1674,9 @@ export class OperatingProjectionStreamAccumulator {
       state.impactCount += 1;
       if (!matchesFilters(fact, impact, this.context.scope.filters, this.context.constructionEnterpriseSubjectIds, this.context.companyEntityVersionIds)) return;
       state.selected = true;
-      this.decimalSeed.confirmedCostYuan = sumBusinessAmounts([this.decimalSeed.confirmedCostYuan ?? "0.0000", amount])!;
+      this.decimalSeed.confirmedCostYuan = sumProjectionYuan([this.decimalSeed.confirmedCostYuan ?? "0.0000", amount])!;
       const group = this.decimalSeed.sourceGroups[CONTRACT_WORK_COMPLETION_SOURCE] ?? { count: 0, amountYuan: "0.0000", knownSubtotalYuan: "0.0000", unknownCount: 0 };
-      const total = sumBusinessAmounts([group.knownSubtotalYuan, amount])!;
+      const total = sumProjectionYuan([group.knownSubtotalYuan, amount])!;
       this.decimalSeed.sourceGroups[CONTRACT_WORK_COMPLETION_SOURCE] = { ...group, count: group.count + 1, amountYuan: total, knownSubtotalYuan: total };
       return;
     }
@@ -1664,7 +1689,7 @@ export class OperatingProjectionStreamAccumulator {
     if (!matchesFilters(fact, impact, this.context.scope.filters, this.context.constructionEnterpriseSubjectIds, this.context.companyEntityVersionIds)) return;
     state.selected = true;
     const signed = amount === null ? null : impact.direction === "decrease" && amount !== "0.0000" ? `-${amount}` : amount;
-    const add = (target: ProjectionYuanSummary, value: string | null) => { if (value === null) target.unknownCount += 1; else target.knownSubtotalYuan = sumBusinessAmounts([target.knownSubtotalYuan, value])!; target.amountYuan = target.unknownCount ? null : target.knownSubtotalYuan; };
+    const add = (target: ProjectionYuanSummary, value: string | null) => { if (value === null) target.unknownCount += 1; else target.knownSubtotalYuan = sumProjectionYuan([target.knownSubtotalYuan, value])!; target.amountYuan = target.unknownCount ? null : target.knownSubtotalYuan; };
     add(this.decimalSeed.commitment, signed);
     const sourceType = fact.sourceType === "contract_economic_review" ? "contract_economic_review" : "contract_version";
     const group = this.decimalSeed.sourceGroups[sourceType] ?? { count: 0, amountYuan: "0.0000", knownSubtotalYuan: "0.0000", unknownCount: 0 };
@@ -1927,7 +1952,7 @@ export class OperatingProjectionStreamAccumulator {
       const evidence = this.decimalSeed.evidence[level];
       evidence.count += 1;
       if (fact.amountYuan === null) evidence.unknownCount += 1;
-      else evidence.knownSubtotalYuan = sumBusinessAmounts([evidence.knownSubtotalYuan, fact.amountYuan])!;
+      else evidence.knownSubtotalYuan = sumProjectionYuan([evidence.knownSubtotalYuan, fact.amountYuan])!;
     }
     this.decimalFacts.clear();
     for (const state of this.stateByFactId.values()) {
@@ -2332,14 +2357,14 @@ function foldExactCostAttribution(
   }));
   const bearing = fact.costBearingCompanySubject;
   if (bearing) portions.push({ kind: bearing.kind, id: bearing.id, name: bearing.name ?? "", amountYuan: unallocated });
-  else totals.unassignedYuan = sumBusinessAmounts([totals.unassignedYuan, unallocated])!;
+  else totals.unassignedYuan = sumProjectionYuan([totals.unassignedYuan, unallocated])!;
   for (const portion of portions) {
     const key = `${portion.kind}\u0000${portion.id}`;
     const prior = totals.byCompany.get(key);
     totals.byCompany.set(key, { ...portion, name: portion.name || prior?.name || null,
-      amountYuan: sumBusinessAmounts([prior?.amountYuan ?? "0.0000", portion.amountYuan])! });
+      amountYuan: sumProjectionYuan([prior?.amountYuan ?? "0.0000", portion.amountYuan])! });
   }
-  totals.totalYuan = sumBusinessAmounts([totals.totalYuan ?? "0.0000", costYuan])!;
+  totals.totalYuan = sumProjectionYuan([totals.totalYuan ?? "0.0000", costYuan])!;
   totals.publicCashCents += cash;
   totals.needsReview ||= Boolean(impact.cashAttributionNeedsReview);
 }
@@ -2350,22 +2375,22 @@ function versionedCostAttribution(
   ...contributions: ExactCostAttribution[]
 ): OperatingProjectionV2ReadModel["costAttribution"] {
   const byCompany = new Map(legacy.byBearingCompany.map(row => [
-    `${row.kind}\u0000${row.id}`, { ...row, costYuan: businessAmountFromLegacyCents(row.costCents) }
+    `${row.kind}\u0000${row.id}`, { ...row, costYuan: projectionYuanFromCents(row.costCents) }
   ]));
   for (const contribution of contributions) {
     for (const [key, row] of contribution.byCompany) {
       const prior = byCompany.get(key);
       byCompany.set(key, { kind: row.kind, id: row.id, name: row.name ?? prior?.name ?? null, costCents: null,
-        costYuan: uncertainCompanies.has(key) ? null : sumBusinessAmounts([prior ? prior.costYuan : "0.0000", row.amountYuan]) });
+        costYuan: uncertainCompanies.has(key) ? null : sumProjectionYuan([prior ? prior.costYuan : "0.0000", row.amountYuan]) });
     }
   }
-  const unassignedYuan = sumBusinessAmounts(contributions.map(row => row.unassignedYuan))!;
+  const unassignedYuan = sumProjectionYuan(contributions.map(row => row.unassignedYuan))!;
   const publicCashCents = contributions.reduce((total, row) => total + row.publicCashCents, 0n);
   return {
     ...legacy,
     byBearingCompany: [...byCompany.values()].sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id)),
     unattributedCostCents: unassignedYuan === "0.0000" ? legacy.unattributedCostCents : null,
-    unattributedCostYuan: sumBusinessAmounts([businessAmountFromLegacyCents(legacy.unattributedCostCents), unassignedYuan]),
+    unattributedCostYuan: sumProjectionYuan([projectionYuanFromCents(legacy.unattributedCostCents), unassignedYuan]),
     publicCashCostCents: legacy.publicCashCostCents === null ? null : (BigInt(legacy.publicCashCostCents) + publicCashCents).toString(),
     ...(contributions.some(row => row.needsReview) ? { needsReview: true } : {})
   };
@@ -2381,8 +2406,8 @@ function distributionWithExactOperatingAmounts(
   const cashCeiling = oldPayable === null || payableCents === null || oldCashCeiling === null
     ? null
     : nonNegative(BigInt(oldCashCeiling) - nonNegative(BigInt(payableCents)) + nonNegative(BigInt(oldPayable)));
-  const remainingProfit = sumBusinessAmounts([
-    estimatedProfitYuan, businessAmountFromLegacyCents(-BigInt(base.restrictions.temporaryProfitDistributionCents))
+  const remainingProfit = sumProjectionYuan([
+    estimatedProfitYuan, projectionYuanFromCents(-BigInt(base.restrictions.temporaryProfitDistributionCents))
   ]);
   // A whole-cent transfer must fit under the exact business ceiling.
   const units = remainingProfit === null ? null : BigInt(remainingProfit.replace(".", ""));
@@ -2410,7 +2435,7 @@ function signedOwnerSettlementImpact(fact: ProjectionV2FactInput, impact: Projec
 
 function addOwnerSettlementImpact(totals: DecimalOwnerSettlementTotals, impact: ProjectionV2ImpactInput, signed: string) {
   const bucket = impact.impactKind === "confirmed_income" ? "incomeYuan" : "receivableYuan";
-  totals[bucket] = sumBusinessAmounts([totals[bucket], signed])!;
+  totals[bucket] = sumProjectionYuan([totals[bucket], signed])!;
 }
 
 type SignedSettlementSource = {
@@ -2501,15 +2526,15 @@ function foldSignedSettlementImpact(
   const { kind, signedAmountYuan } = value;
   uncertainty?.addImpact(fact, kind);
   if (kind === "receivable_increase") {
-    totals.internalReceivableYuan = sumBusinessAmounts([totals.internalReceivableYuan ?? "0.0000", signedAmountYuan]);
+    totals.internalReceivableYuan = sumProjectionYuan([totals.internalReceivableYuan ?? "0.0000", signedAmountYuan]);
     return;
   }
   const contractKey = contractKeyFromSnapshot(fact.sourceSnapshot);
   if (contractKey && !totals.payableByContract.has(contractKey)) totals.payableByContract.set(contractKey, 0n);
   if (kind === "confirmed_cost") {
-    totals.costYuan = sumBusinessAmounts([totals.costYuan ?? "0.0000", signedAmountYuan]);
+    totals.costYuan = sumProjectionYuan([totals.costYuan ?? "0.0000", signedAmountYuan]);
     totals.costByRelationship.set(source.relationship,
-      sumBusinessAmounts([totals.costByRelationship.get(source.relationship) ?? "0.0000", signedAmountYuan])!);
+      sumProjectionYuan([totals.costByRelationship.get(source.relationship) ?? "0.0000", signedAmountYuan])!);
     foldExactCostAttribution(totals.attribution, fact, impact, signedAmountYuan);
     if (uncertainty) {
       const bearing = fact.costBearingCompanySubject;
@@ -2571,20 +2596,20 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
   const summary = (known: string, unknownCount = 0): ProjectionYuanSummary => ({ amountYuan: unknownCount ? null : known, knownSubtotalYuan: known, unknownCount });
   const add = (target: ProjectionYuanSummary, value: string | null) => {
     if (value === null) target.unknownCount += 1;
-    else target.knownSubtotalYuan = sumBusinessAmounts([target.knownSubtotalYuan, value])!;
+    else target.knownSubtotalYuan = sumProjectionYuan([target.knownSubtotalYuan, value])!;
     target.amountYuan = target.unknownCount ? null : target.knownSubtotalYuan;
   };
-  const commitment = summary(businessAmountFromLegacyCents(result.commitments.contractCommitmentCents)!);
+  const commitment = summary(projectionYuanFromCents(result.commitments.contractCommitmentCents)!);
   if (decimalSeed) {
     add(commitment, decimalSeed.commitment.knownSubtotalYuan);
     commitment.unknownCount += decimalSeed.commitment.unknownCount;
     commitment.amountYuan = commitment.unknownCount ? null : commitment.knownSubtotalYuan;
   }
-  const relationships = new Map((result.relationshipTotals ?? []).map(row => [row.relationship, { row, value: summary(businessAmountFromLegacyCents(row.contractCommitmentCents)!), hasDecimal: false }]));
-  const evidenceRow = (level: EvidenceLevel): ProjectionYuanSummary & { factCount: number; amountCents: string | null } => ({ ...result.evidence[level], ...summary(businessAmountFromLegacyCents(result.evidence[level].amountCents)!) });
+  const relationships = new Map((result.relationshipTotals ?? []).map(row => [row.relationship, { row, value: summary(projectionYuanFromCents(row.contractCommitmentCents)!), hasDecimal: false }]));
+  const evidenceRow = (level: EvidenceLevel): ProjectionYuanSummary & { factCount: number; amountCents: string | null } => ({ ...result.evidence[level], ...summary(projectionYuanFromCents(result.evidence[level].amountCents)!) });
   const evidence: OperatingProjectionV2ReadModel["evidence"] = { A: evidenceRow("A"), B: evidenceRow("B"), C: evidenceRow("C"), gapFactCount: result.evidence.gapFactCount, gapAmountCents: result.evidence.gapAmountCents };
   const details: OperatingProjectionV2ReadModel["details"] = result.details.map(row => ({ ...row, signedImpactYuan: businessAmountFromLegacyCents(row.signedImpactCents), amountState: row.signedImpactCents === null ? "unknown" : "known" }));
-  const sourceDrilldown: OperatingProjectionV2ReadModel["sourceDrilldown"] = result.sourceDrilldown.map(row => ({ ...row, ...summary(businessAmountFromLegacyCents(row.signedImpactCents)!) }));
+  const sourceDrilldown: OperatingProjectionV2ReadModel["sourceDrilldown"] = result.sourceDrilldown.map(row => ({ ...row, ...summary(projectionYuanFromCents(row.signedImpactCents)!) }));
   let selectedDecimalCount = (decimalSeed?.sourceGroups.contract_version?.count ?? 0) + (decimalSeed?.sourceGroups.contract_economic_review?.count ?? 0);
   let confirmedCostYuan = decimalSeed?.confirmedCostYuan;
   let reimbursementPayableCents = decimalSeed?.reimbursementPayableCents ?? 0n;
@@ -2621,7 +2646,7 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
     add(evidence.A, fact.amountYuan);
     sourceDrilldown.push({ projectId: fact.projectId, sourceType: fact.sourceType, sourceTypeLabel: sourceTypeLabel(fact.sourceType),
       sourceBusinessId: fact.sourceBusinessId, sourceBusinessCode: fact.sourceBusinessCode, factCount: 1, impactCount: impacts.length,
-      signedImpactCents: null, ...summary(sumBusinessAmounts(signedAmounts)!) });
+      signedImpactCents: null, ...summary(sumProjectionYuan(signedAmounts)!) });
     for (const impact of impacts) {
       details.push({
         ...toOperatingProjectionPublicDetail(fact, impact, input.cutoffAt),
@@ -2643,7 +2668,7 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
         const value = exactReimbursementImpact(fact, impact, source, seen);
         if (!matchesFilters(fact, impact, input.scope.filters, input.constructionEnterpriseSubjectIds, input.companyEntityVersionIds)) return false;
         if ("costYuan" in value) {
-          confirmedCostYuan = sumBusinessAmounts([confirmedCostYuan ?? "0.0000", value.costYuan])!;
+          confirmedCostYuan = sumProjectionYuan([confirmedCostYuan ?? "0.0000", value.costYuan])!;
           foldExactCostAttribution(reimbursementAttribution, fact, impact, value.costYuan);
         } else reimbursementPayableCents += value.payableCents;
         return true;
@@ -2655,7 +2680,7 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
       add(evidence.A, fact.amountYuan);
       sourceDrilldown.push({ projectId: fact.projectId, sourceType: fact.sourceType, sourceTypeLabel: sourceTypeLabel(fact.sourceType),
         sourceBusinessId: fact.sourceBusinessId, sourceBusinessCode: fact.sourceBusinessCode, factCount: 1, impactCount: selected.length,
-        signedImpactCents: null, ...summary(sumBusinessAmounts(selected.map(impact => impact.projectedCostYuan ?? impact.amountYuan))!) });
+        signedImpactCents: null, ...summary(sumProjectionYuan(selected.map(impact => impact.projectedCostYuan ?? impact.amountYuan))!) });
       for (const impact of selected) {
         details.push({
           ...toOperatingProjectionPublicDetail(fact, impact, input.cutoffAt),
@@ -2696,7 +2721,7 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
       const impact = fact.impacts[0];
       const amount = contractWorkCompletionCost(fact, impact);
       if (!matchesFilters(fact, impact, input.scope.filters, input.constructionEnterpriseSubjectIds, input.companyEntityVersionIds)) continue;
-      confirmedCostYuan = sumBusinessAmounts([confirmedCostYuan ?? "0.0000", amount])!;
+      confirmedCostYuan = sumProjectionYuan([confirmedCostYuan ?? "0.0000", amount])!;
       if (fact.confirmedAt > input.cutoffAt) result.asOf.retroactiveFactCount += 1;
       evidence.A.factCount += 1;
       evidence.A.amountCents = null;
@@ -2726,7 +2751,7 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
     details.push({ factId: fact.id, impactId: impact.id, projectId: fact.projectId, projectCode: fact.projectCode, projectName: fact.projectName, sourceType: fact.sourceType, sourceTypeLabel: sourceTypeLabel(fact.sourceType), sourceBusinessId: fact.sourceBusinessId, sourceBusinessCode: fact.sourceBusinessCode, factKind: fact.factKind, factKindLabel: factKindLabel(fact.factKind), contractRelationshipLabel: CONTRACT_RELATIONSHIP_LABELS[operatingContractRelationship(fact.sourceType, fact.sourceSnapshot)], evidenceLevel: fact.evidenceLevel, occurredAt: fact.occurredAt, confirmedAt: fact.confirmedAt, confirmedAfterAsOf: fact.confirmedAt > input.cutoffAt, impactKind: impact.impactKind, impactKindLabel: impactKindLabel(impact.impactKind), direction: impact.direction, signedImpactCents: null, ...(fact.sourceNumericProtocolVersion===1?{numericProtocolVersion:1 as const,sourceNumericProtocolVersion:1 as const,sourceAmountCents:fact.sourceAmountCents!.toString()}:{numericProtocolVersion:2 as const}), signedImpactYuan: signedYuan, amountState: signedYuan === null ? "unknown" : "known", subjectRole: impact.subjectRole ?? null, subjectKind: impact.subjectKind ?? null, subjectId: impact.subjectId ?? null, costCategoryCode: null, fundPurpose: null, description: impact.description ?? null, sourceReferenceIds: sourceReferenceIds(fact.sourceSnapshot) });
   }
   if (signedSettlement?.costYuan != null) {
-    confirmedCostYuan = sumBusinessAmounts([confirmedCostYuan ?? "0.0000", signedSettlement.costYuan])!;
+    confirmedCostYuan = sumProjectionYuan([confirmedCostYuan ?? "0.0000", signedSettlement.costYuan])!;
   }
   const exactInternalReceivable = signedSettlement?.internalReceivableYuan;
   const includeInternalReceivable = input.scope.kind === "company" || Boolean(input.scope.filters?.companyEntityId);
@@ -2738,16 +2763,16 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
     receivableCents: ownerSettlement || (includeInternalReceivable && exactInternalReceivable != null) ? null : result.operating.receivableCents,
     ...(exactInternalReceivable != null ? {
       internalReceivableCents: null,
-      internalReceivableYuan: sumBusinessAmounts([businessAmountFromLegacyCents(result.operating.internalReceivableCents ?? null), exactInternalReceivable])
+      internalReceivableYuan: sumProjectionYuan([projectionYuanFromCents(result.operating.internalReceivableCents ?? null), exactInternalReceivable])
     } : {}),
     confirmedCostCents: confirmedCostYuan === undefined ? result.operating.confirmedCostCents : null,
-    confirmedCostYuan: sumBusinessAmounts([businessAmountFromLegacyCents(result.operating.confirmedCostCents),
+    confirmedCostYuan: sumProjectionYuan([projectionYuanFromCents(result.operating.confirmedCostCents),
       confirmedCostYuan ?? "0.0000"]),
-    confirmedIncomeYuan: sumBusinessAmounts([
-      businessAmountFromLegacyCents(result.operating.confirmedIncomeCents), ownerSettlement?.incomeYuan ?? "0.0000"
+    confirmedIncomeYuan: sumProjectionYuan([
+      projectionYuanFromCents(result.operating.confirmedIncomeCents), ownerSettlement?.incomeYuan ?? "0.0000"
     ])!,
-    receivableYuan: sumBusinessAmounts([
-      businessAmountFromLegacyCents(result.operating.receivableCents), ownerSettlement?.receivableYuan ?? "0.0000",
+    receivableYuan: sumProjectionYuan([
+      projectionYuanFromCents(result.operating.receivableCents), ownerSettlement?.receivableYuan ?? "0.0000",
       includeInternalReceivable ? exactInternalReceivable ?? "0.0000" : "0.0000"
     ])
   };
@@ -2755,12 +2780,12 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
   const profitAndLoss = {
     ...result.profitAndLoss,
     currentOperatingProfitCents: ownerSettlement || confirmedCostYuan !== undefined ? null : result.profitAndLoss.currentOperatingProfitCents,
-    currentOperatingProfitYuan: sumBusinessAmounts([
-      businessAmountFromLegacyCents(result.profitAndLoss.currentOperatingProfitCents), ownerSettlement?.incomeYuan ?? "0.0000", costDecrease
+    currentOperatingProfitYuan: sumProjectionYuan([
+      projectionYuanFromCents(result.profitAndLoss.currentOperatingProfitCents), ownerSettlement?.incomeYuan ?? "0.0000", costDecrease
     ]),
     currentEstimatedProfitCents: ownerSettlement || confirmedCostYuan !== undefined ? null : result.profitAndLoss.currentEstimatedProfitCents,
-    currentEstimatedProfitYuan: sumBusinessAmounts([
-      businessAmountFromLegacyCents(result.profitAndLoss.currentEstimatedProfitCents), ownerSettlement?.incomeYuan ?? "0.0000", costDecrease
+    currentEstimatedProfitYuan: sumProjectionYuan([
+      projectionYuanFromCents(result.profitAndLoss.currentEstimatedProfitCents), ownerSettlement?.incomeYuan ?? "0.0000", costDecrease
     ])
   };
   const contractDrilldown = new Map(result.contractDrilldown.map(row => [row.contractKey, row]));
@@ -2797,11 +2822,11 @@ export function reduceOperatingProjection(input: ReduceOperatingProjectionInput 
         contractCommitmentYuan: value.amountYuan, knownContractCommitmentYuan: value.knownSubtotalYuan,
         unknownContractCommitmentCount: value.unknownCount,
         confirmedCostCents: expense === null && signedCost === undefined ? row.confirmedCostCents : null,
-        confirmedCostYuan: sumBusinessAmounts([businessAmountFromLegacyCents(row.confirmedCostCents), expense ?? "0.0000", signedCost ?? "0.0000"]),
+        confirmedCostYuan: sumProjectionYuan([projectionYuanFromCents(row.confirmedCostCents), expense ?? "0.0000", signedCost ?? "0.0000"]),
         payableCents: addCents(row.payableCents, signedPayable + (row.relationship === "non_contract" ? reimbursementPayableCents : 0n)),
         ...(row.relationship === "upward" && exactInternalReceivable != null ? {
           receivableCents: null,
-          receivableYuan: sumBusinessAmounts([businessAmountFromLegacyCents(row.receivableCents), exactInternalReceivable])
+          receivableYuan: sumProjectionYuan([projectionYuanFromCents(row.receivableCents), exactInternalReceivable])
         } : {})
       };
     }),
