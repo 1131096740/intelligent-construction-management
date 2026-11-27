@@ -1,6 +1,8 @@
 {
   "apps/web-admin/src/api/company-transfer.api.ts": "3d8c0012e434aa61c8ac00d88d7adf06ff2cab3a8f05e667a3a09ea16812f463",
+  "apps/web-admin/src/api/history-expense.api.ts": "c883e66ea775f626c9d1227b3862f19e786606f9b691936ba6b95f780ca45102",
   "apps/web-admin/src/pages/fund-movements/CompanyTransferPage.vue": "df46dc742f87086eabb8185ec8ac4fe5e7231ca0bb9b3445c97fb843bf3c9448",
+  "apps/web-admin/src/pages/projects/HistoryExpensePage.vue": "a209f9c0907413d59ef67a8374a1b8e88d577ec808a029b6a8860eb78ac9f656",
   "services/api/prisma/database-dynamic-gate-manifest.json": "f9b300c3817dfe546fbd53ac065ede604319c7d1aa33b0e409091c9edec7316d",
   "services/api/prisma/schema.prisma": "d9edfcc928f927554673b9203d5bc6803464d15d05b498a28ccdd4e91b6a4210",
   "services/api/src/audit/audit.service.ts": "7cc4af48194cdae04a4be3a126973d9898a8674d865d78dde113d29757fc24b4",
@@ -19,9 +21,9 @@
   "services/api/src/company-transfer/company-transfer.balance.ts": "3208633b1fb055fc9590c1651fc234e9e8f88dd07ff745b338a08584b48fb9a7",
   "services/api/src/company-transfer/company-transfer.domain.ts": "70e856b0dbc2887cd35e3d3f61188432ea43aaaf172428aebe5b9849102fbb9f",
   "services/api/src/company-transfer/company-transfer.service.ts": "ed3943d51bf8f792cacdff2d87ab4279b3d3d769e4edc547dbe6403e0dc6d3dc",
-  "services/api/src/operational-write-freeze/operational-write-freeze.registry.ts": "d7c0316b15a660992bd6b626f9cbf26efb8ef11075c3de515bbc9a32bce40e81",
-  "apps/web-admin/src/api/history-expense.api.ts": "c883e66ea775f626c9d1227b3862f19e786606f9b691936ba6b95f780ca45102",
-  "apps/web-admin/src/pages/projects/HistoryExpensePage.vue": "a209f9c0907413d59ef67a8374a1b8e88d577ec808a029b6a8860eb78ac9f656",
+  "services/api/src/database/task16-real-browser-scope.spec.ts": "a91555e2433d3dc34f841bee9027bc96ab0e4fc1cfe8c0502e62eb99055af2bc",
+  "services/api/src/database/task16-real-browser-scope.ts": "1fe2ebe644c8832ac7d8dd7fceeceb5edca14e5a0a0e500a20c77b1d547ed8fa",
   "services/api/src/history-expense/history-expense-excel.ts": "f26e06db9d3188a0551977b8ac98332036583af9f1406fe44131d1fa0e112c84",
-  "services/api/src/history-expense/history-expense.service.ts": "83e3563dc0f811fb0fd2b88b413a87a39378600ea3926a5706d7db5aa3bc7e6d"
+  "services/api/src/history-expense/history-expense.service.ts": "83e3563dc0f811fb0fd2b88b413a87a39378600ea3926a5706d7db5aa3bc7e6d",
+  "services/api/src/operational-write-freeze/operational-write-freeze.registry.ts": "d7c0316b15a660992bd6b626f9cbf26efb8ef11075c3de515bbc9a32bce40e81"
 }
