@@ -108,9 +108,21 @@ async function main(){
       const result=spawnSync(file,args,{cwd,encoding:'utf8',timeout:timeoutMs,maxBuffer:16*1024*1024,
         env:{PATH:'/usr/local/bin:/usr/bin:/bin:/usr/lib/postgresql/16/bin',LANG:'C',LC_ALL:'C',TZ:'UTC',
           HOME:context.workDir,TMPDIR:context.workDir,...extra}});
-      if(result.status!==0&&!allowFailure)throw Object.assign(new Error('FINANCE_ADJACENT_COMMAND_FAILED'),{
-        exit:result.status,prismaCode:/\bP[0-9]{4}\b/u.exec(result.stderr??'')?.[0],
-        sqlstate:/(?:Database error code:\s*|ERROR:\s+)([0-9A-Z]{5})(?=[:\s]|$)/u.exec(result.stderr??'')?.[1]});
+      if(result.status!==0&&!allowFailure) {
+        const stderr=result.stderr??'';
+        const seedLocation=/\b(seed\.cjs|seed-auth-runtime\.js|seed-layout-preview\.cjs):(\d{1,5}):\d{1,5}/u.exec(stderr);
+        const seedKind=['PrismaClientKnownRequestError','PrismaClientUnknownRequestError',
+          'PrismaClientInitializationError','MODULE_NOT_FOUND','EACCES','ENOSPC','Seed project cash is insufficient',
+          'Seed project funds mismatch','SQLITE_BUSY'].find(value=>stderr.includes(value));
+        throw Object.assign(new Error('FINANCE_ADJACENT_COMMAND_FAILED'),{
+          exit:result.status,prismaCode:/\bP[0-9]{4}\b/u.exec(stderr)?.[0],
+          sqlstate:/(?:Database error code:\s*|ERROR:\s+)([0-9A-Z]{5})(?=[:\s]|$)/u.exec(stderr)?.[1],
+          ...(receipt.stages.at(-1)==='FRESH_OWNER_SEED' && { seedDiagnostic: {
+            ...(seedKind && {kind:seedKind}), ...(seedLocation && {file:seedLocation[1],line:Number(seedLocation[2])}),
+            stderrSha256:createHash('sha256').update(stderr).digest('hex')
+          } })
+        });
+      }
       return {stdout:result.stdout??'',code:result.status};
     }
     const run=require('./'+profile.runner)[profile.method];
@@ -180,6 +192,6 @@ main().catch(error=>{
   receipt.failure={stage:receipt.stages.at(-1),
     code:typeof code==='string'&&/^[A-Z0-9_]+$/u.test(code)?code:'ORIGINAL_FINANCE_ADJACENT_295_FAILED',
     sqlstate:error.sqlstate,prismaCode:error.prismaCode,migrationCause:error.migrationCause,
-    prismaOutput:error.prismaOutput,migrationLedger:error.migrationLedger,exit:error.exit};
+    prismaOutput:error.prismaOutput,migrationLedger:error.migrationLedger,exit:error.exit,seedDiagnostic:error.seedDiagnostic};
   process.exitCode=1;
 }).finally(()=>console.log(JSON.stringify(receipt)));
