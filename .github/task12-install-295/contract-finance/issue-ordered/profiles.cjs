@@ -448,6 +448,18 @@ profiles.issue426_a01_349 = {
   ...precisionBaseline
 };
 
+profiles.issue434_349 = {
+  file: 'src/database/general-procurement-http-postgres.spec.ts',
+  sourceDigest: 'f15a36a770d87d0728a2a2efe770cd07d4a5ffae69252b0f2f77c1e74410bce9',
+  fixtureDigest: 'bf35633e59a524370df96a7f566238460d03d9b0dab63a95ed510ad03b2f6af0',
+  orderedDatabaseKey: 'JG_ISSUE434_ORDERED_DATABASE',
+  enableKey: 'RUN_GENERAL_PROCUREMENT_PG16',
+  stage: 'ISSUE434_ACTUAL_PURCHASE_APPROVAL_HTTP',
+  requiresOperatingLedgerWriteSecret: true,
+  titles: ['实际综合采购批次付款四岗同时待办，审批单按冻结岗位签署顺序呈现'],
+  ...precisionBaseline
+};
+
 const issue418OperatingScopes = Object.freeze([
   'issue418_recognized_dedup', 'issue418_signed_operating', 'issue418_paired_funds',
   'issue418_cash_attribution', 'issue418_source_unique', 'issue418_guard', 'issue418_contract_drilldown'

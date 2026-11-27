@@ -101,7 +101,7 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
   const secret = () => randomBytes(32).toString('hex');
   receipt.stages.push(profile.stage);
   const writeSecret = profile.requiresOperatingLedgerWriteSecret ? secret() : undefined;
-  if (scope === 'issue426_a01_349' || scope === 'issue426_a01_350') {
+  if (scope === 'issue426_a01_349' || scope === 'issue426_a01_350' || scope === 'issue434_349') {
     await sql(`INSERT INTO public."OperatingLedgerWriteSecret" ("id", "secretHash")
       VALUES (1, public.crypt('${writeSecret}', public.gen_salt('bf')));`);
   }
@@ -129,7 +129,16 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
       rows.length === titles.length && rows.every((row, index) => row.title === titles[index] && row.status === 'passed') };
   const firstFailed = rows.find(row => row.status === 'failed');
   if (firstFailed) {
-    receipt.suite.firstFailure = summarizeFirstFailure(file, firstFailed, scope === 'issue418_recognized_dedup_349' || scope === 'issue418_recognized_dedup_350');
+    receipt.suite.firstFailure = summarizeFirstFailure(file, firstFailed,
+      scope === 'issue418_recognized_dedup_349' || scope === 'issue418_recognized_dedup_350' || scope === 'issue434_349');
+    if (scope === 'issue434_349') {
+      const { failureMessages = [] } = firstFailed;
+      const review = failureMessages.join('\n').match(
+        /\bISSUE434_APPROVAL_DUTY_([0-3])_HTTP_([1-5]\d{2})_(LEDGER_NOT_ACTIVE|COMPANY_NOT_PARTICIPATING|OTHER)\b/u);
+      if (review) Object.assign(receipt.suite.firstFailure, {
+        approvalDutyIndex: Number(review[1]), expectedStatus: 201, receivedStatus: Number(review[2]), reason: review[3]
+      });
+    }
   }
   if (scope === 'issue404' || scope === 'issue404_349' || scope === 'issue404_350') {
     const failedCases = rows.slice(0, titles.length).flatMap((row, index) =>
