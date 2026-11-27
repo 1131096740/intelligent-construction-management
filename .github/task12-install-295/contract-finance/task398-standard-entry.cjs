@@ -5,15 +5,16 @@ const {sourceSha} = source;
 const current320=source.mode==='current-320';
 const textDirect=source.mode==='text-direct-330';
 const paymentRemainder=source.mode==='payment-remainder-331';
+const company=source.mode==="company-history-352"?require("./company-history-352-profile.cjs"):null;
 const precision=source.mode==="expense-witness-349"?require("./expense-witness-349-profile.cjs"):null;
-const expenseWitness=precision??(source.mode==="expense-witness-346"?require("./expense-witness-346-profile.cjs"):null);
+const expenseWitness=company??precision??(source.mode==="expense-witness-346"?require("./expense-witness-346-profile.cjs"):null);
 const historical=expenseWitness||source.mode==="historical-settlement-334"?require("./historical-settlement-334-profile.cjs"):null;
 const upwardArchive=source.mode==='upward-archive-332';
 const count=expenseWitness?expenseWitness.count:historical?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
 const standard=process.argv[2]===`standard-${count}`;
 const explicitTextFinance=Boolean(expenseWitness)&&process.argv[2]===`text-direct-${count}`;
-const ledgerLoss=(!historical||(expenseWitness!==null&&!precision))&&process.argv[2]===`ledger-loss-${count}`;
-const competition=(!historical||(expenseWitness!==null&&!precision))&&count>=331&&process.argv[2]===`competition-${count}`;
+const ledgerLoss=(!historical||(expenseWitness!==null&&!precision&&!company))&&process.argv[2]===`ledger-loss-${count}`;
+const competition=(!historical||(expenseWitness!==null&&!precision&&!company))&&count>=331&&process.argv[2]===`competition-${count}`;
 assert.ok((!expenseWitness||standard||explicitTextFinance||ledgerLoss||competition)&&(process.argv.length===2||(process.argv.length===3&&count>=330&&(standard||explicitTextFinance||ledgerLoss||competition))));
 const textFinance=count>=330&&!standard&&!ledgerLoss&&!competition;
 const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness} = require('./installer.cjs');
@@ -37,12 +38,12 @@ async function run(){
     const historicalSource=expenseWitness?{...source,tails:source.tails.slice(0,39)}:source;
     historical?.assertFinanceInstallation(receipt,historicalSource);
     if(expenseWitness){
-      const installed=precision?receipt.expenseWitnessPrecisionForward:receipt.expenseWitnessForward;
+      const installed=company?receipt.companyHistoryForward:precision?receipt.expenseWitnessPrecisionForward:receipt.expenseWitnessForward;
       assert.equal(installed.count,count);
       assert.equal(installed.ledgerSha256,source.ledgerSha256);
       assert.equal(installed.sourceTree,source.sourceTree);
       assert.equal(installed.sameIdentity,true);
-      const prefixCount=precision?source.predecessor346.migrationCount-source.predecessor.migrationCount:historicalSource.tails.length;
+      const prefixCount=company?source.predecessor350.migrationCount-source.predecessor.migrationCount:precision?source.predecessor346.migrationCount-source.predecessor.migrationCount:historicalSource.tails.length;
       assert.deepEqual(installed.tails,source.tails.slice(prefixCount).map(({name,sha256})=>({name,sha256})));
     }
     return runTask398Owned282Voucher(context,textFinance?`text-direct-${count}`:process.argv[2]??'standard-'+count,receipt);
@@ -55,8 +56,8 @@ async function run(){
     const material={
       sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails
     };
-    if(precision){
-      const installation=require('./payment-execution-349.cjs');
+    if(precision||company){
+      const installation=require(company?'./payment-execution-352.cjs':'./payment-execution-349.cjs');
       await installation.install(receipt,consume,source);
       installation.assertInstallation(receipt,source);
     }else if(expenseWitness){

@@ -1,0 +1,56 @@
+--- predecessor/fixture
++++ forward/fixture
+@@ -198,12 +198,13 @@
+  if(command("git",["rev-parse","HEAD"],{quiet:true})!==candidate||command("git",["status","--porcelain"],{quiet:true})!=="")throw new Error("TASK398_CANDIDATE_CHANGED");
+ }
+ async function runBusiness(options,{candidate,short,storage,url,sql,env,current280=false,readPostgresLog,ownedMigrationBaseline,correctionCatalog,standard290,textDirectReceipt}){
++ const textDirect352=textDirectReceipt?.purpose==="TASK425_TEXT_DIRECT_FINANCE_352";
+  const textDirect349=textDirectReceipt?.purpose==="TASK425_TEXT_DIRECT_FINANCE_349";
+  const textDirect346=textDirectReceipt?.purpose==="TASK425_TEXT_DIRECT_FINANCE_346";
+  const textDirect334=textDirectReceipt?.purpose==="TASK425_TEXT_DIRECT_FINANCE_334";
+  const textDirect332=textDirectReceipt?.purpose==="TASK425_TEXT_DIRECT_FINANCE_332";
+  const textDirect331=textDirectReceipt?.purpose==="TASK425_TEXT_DIRECT_FINANCE_331";
+- const textDirectFinance=textDirect349||textDirect346||textDirect334||textDirect332||textDirect331||textDirectReceipt?.purpose==="TASK425_TEXT_DIRECT_FINANCE_330";
++ const textDirectFinance=textDirect352||textDirect349||textDirect346||textDirect334||textDirect332||textDirect331||textDirectReceipt?.purpose==="TASK425_TEXT_DIRECT_FINANCE_330";
+  const {scenario,overpayScenario,ledgerLossScenario,transferRejection,transferBrowser,handoverScenario,advanceScenario,principalRoleCoverage,principalScenario,companyProxyScenario,usesAdvanceRuntime,advanceExcludedReads,transferScenario,browserScenario}=options;
+  if(!current280){
+  const files=["registered-funding.sql","registered-history-revision.sql","registered-write-authority.sql","registered-canonical-proof.sql","registered-intercompany.sql","registered-canonical-adapter.sql","registered-voucher.sql"].map(file=>readFileSync(path.join(__dirname,"prepared/task16",file),"utf8"));
+@@ -352,6 +353,7 @@
+  if(textDirect331)env.TASK425_TEXT_FINANCE_331="1";
+  if(textDirect332)env.TASK425_TEXT_FINANCE_332="1";
+  if(textDirect334)env.TASK425_TEXT_FINANCE_334="1";
++ if(textDirect352)env.TASK425_TEXT_FINANCE_352="1";
+  if(textDirect349)env.TASK425_TEXT_FINANCE_349="1";
+  if(textDirect346)env.TASK425_TEXT_FINANCE_346="1";
+  if(overpayScenario)env.TASK398_OVERPAY_MODE="1";
+@@ -548,16 +550,17 @@
+  `);
+ }
+ async function runTask398Owned282Voucher(context, mode="standard", receipt){
+- const modes=new Map([["text-direct-349",["--text-direct-finance"]],["standard-349",[]],["text-direct-346",["--text-direct-finance"]],["standard-346",[]],["text-direct-334",["--text-direct-finance"]],["standard-334",[]],["text-direct-332",["--text-direct-finance"]],["standard-332",[]],["text-direct-331",["--text-direct-finance"]],["standard-331",[]],["text-direct-330",["--text-direct-finance"]],["standard-330",[]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["text-direct-352",["--text-direct-finance"]],["standard-352",[]],["text-direct-349",["--text-direct-finance"]],["standard-349",[]],["text-direct-346",["--text-direct-finance"]],["standard-346",[]],["text-direct-334",["--text-direct-finance"]],["standard-334",[]],["text-direct-332",["--text-direct-finance"]],["standard-332",[]],["text-direct-331",["--text-direct-finance"]],["standard-331",[]],["text-direct-330",["--text-direct-finance"]],["standard-330",[]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+  const standard295=mode==="standard-295";
+  const standard320=mode==="standard-329";
++ const company=mode==="text-direct-352"||mode==="standard-352"?require("/qualification/company-history-352-profile.cjs"):null;
+  const precision=mode==="text-direct-349"||mode==="standard-349"?require("/qualification/expense-witness-349-profile.cjs"):null;
+- const expenseWitness=precision??(mode==="text-direct-346"||mode==="standard-346"?require("/qualification/expense-witness-346-profile.cjs"):null);
++ const expenseWitness=company??precision??(mode==="text-direct-346"||mode==="standard-346"?require("/qualification/expense-witness-346-profile.cjs"):null);
+  const current334=mode==="text-direct-334"||mode==="standard-334";
+  const current332=current334||mode==="text-direct-332"||mode==="standard-332";
+  const current331=current332||mode==="text-direct-331"||mode==="standard-331";
+- const textDirect=mode==="text-direct-349"||mode==="text-direct-346"||mode==="text-direct-334"||mode==="text-direct-330"||mode==="text-direct-331"||mode==="text-direct-332";
+- const standard=mode==="standard-349"||mode==="standard-346"||mode==="standard-334"||mode==="standard-330"||mode==="standard-331"||mode==="standard-332";
++ const textDirect=mode==="text-direct-352"||mode==="text-direct-349"||mode==="text-direct-346"||mode==="text-direct-334"||mode==="text-direct-330"||mode==="text-direct-331"||mode==="text-direct-332";
++ const standard=mode==="standard-352"||mode==="standard-349"||mode==="standard-346"||mode==="standard-334"||mode==="standard-330"||mode==="standard-331"||mode==="standard-332";
+  const current330=textDirect||standard;
+  const paymentCount=expenseWitness?.count??(current334?334:current332?332:current331?331:330);
+  if(standard&&receipt?.purpose!=="TASK398_STANDARD_EXACT_"+paymentCount)throw Error("TASK398_STANDARD_SCOPE");
+@@ -571,7 +574,7 @@
+  const fences=ownedCashFenceProfile(options.principalScenario);
+  const {candidateTree,sourceBaseSha: candidate,runId,database,workDir,sql:ownerSql,readPostgresLog}=context;
+  const short=runId.replaceAll("-","");
+- if(candidateTree!==(expenseWitness?(precision?receipt.expenseWitnessPrecisionForward:receipt.expenseWitnessForward)?.sourceTree:standard320||current330?receipt.forward320?.sourceTree:standard295?"67644d9465a0ab4ee80ede099139d9c129d66f14":(mode==="correction-catalog"||mode==="standard-290")?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
++ if(candidateTree!==(expenseWitness?(company?receipt.companyHistoryForward:precision?receipt.expenseWitnessPrecisionForward:receipt.expenseWitnessForward)?.sourceTree:standard320||current330?receipt.forward320?.sourceTree:standard295?"67644d9465a0ab4ee80ede099139d9c129d66f14":(mode==="correction-catalog"||mode==="standard-290")?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
+    ||!path.isAbsolute(workDir)||typeof ownerSql!=="function"||typeof readPostgresLog!=="function")throw new Error("TASK398_OWNED_280_IDENTITY");
+  const roleUrls={jg_task01_owner:context.ownerUrl,jg_task01_runtime:context.runtimeUrl,jg_task01_observer:context.observerUrl};
+  const urls=Object.entries(roleUrls).map(([role,value])=>{
