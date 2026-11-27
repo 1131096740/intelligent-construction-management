@@ -8,7 +8,7 @@ from pathlib import Path
 archive, common, stage = map(Path, sys.argv[1:4])
 mode_args = sys.argv[4:]
 assert mode_args in ([], ['--historical-settlement-334'], ['--expense-witness-346'],
-                     ['--expense-witness-349'], ['--signed-settlement-350'])
+                     ['--expense-witness-349'], ['--signed-settlement-350'], ['--company-history-352'])
 plan = Path(__file__).parent
 pins = json.loads((archive / 'material.json').read_text())
 for mode, scope in pins.items():
@@ -53,7 +53,7 @@ if mode_args:
     profiles['receipt']['sha256'] = overlays[-1][-1]
     (app / 'profiles.json').write_text(json.dumps(profiles, indent=2) + '\n')
 
-if mode_args in (['--expense-witness-346'], ['--expense-witness-349'], ['--signed-settlement-350']):
+if mode_args in (['--expense-witness-346'], ['--expense-witness-349'], ['--signed-settlement-350'], ['--company-history-352']):
     historical = stage / 'installer-historical.cjs'
     shutil.copyfile(installer, historical)
     forward = json.loads((plan / 'expense-346-fixtures.json').read_text())
@@ -70,7 +70,7 @@ if mode_args in (['--expense-witness-346'], ['--expense-witness-349'], ['--signe
             raise SystemExit(f'EXPENSE_346_POSTIMAGE {name}')
     key = 'app/receipt/' + profiles['receipt']['spec']
     # Each precision profile builds on its pinned predecessor.
-    versions = {'--expense-witness-349': (349,), '--signed-settlement-350': (349, 350)}
+    versions = {'--expense-witness-349': (349,), '--signed-settlement-350': (349, 350), '--company-history-352': (349, 350, 352)}
     for version in versions.get(mode_args[0], ()):
         forward = json.loads((plan / f'expense-{version}-fixtures.json').read_text())
         for name, (before, _) in forward.items():

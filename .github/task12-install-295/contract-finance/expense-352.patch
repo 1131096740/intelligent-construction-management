@@ -1,0 +1,221 @@
+--- a/installer.cjs
++++ b/installer.cjs
+@@ -961,6 +961,7 @@
+       if (a28) batches.push(tails.slice(37,38));
+       const precision = forward320.expenseWitnessPrecision;
+       const signedPrecision = forward320.signedSettlementPrecision;
++      const companyHistory = forward320.companyHistory;
+       const expenseWitness = forward320.expenseWitness;
+       const precisionCatalog = {};
+       let priorExpenseCatalog;
+@@ -968,7 +969,8 @@
+       if (expenseWitness) batches.push(...tails.slice(39).map(row=>[row]));
+       for (const batch of batches) {
+         for (const row of batch) {
+-          if (signedPrecision && qualifiedLedger.length===precision.count) enter('SIGNED_SETTLEMENT_PRECISION_MIGRATE_350');
++          if (companyHistory && qualifiedLedger.length>=signedPrecision.count) enter('COMPANY_HISTORY_MIGRATE_'+(qualifiedLedger.length+1));
++          else if (signedPrecision && qualifiedLedger.length===precision.count) enter('SIGNED_SETTLEMENT_PRECISION_MIGRATE_350');
+           else if (precision && qualifiedLedger.length>=expenseWitness.count) enter('EXPENSE_PRECISION_MIGRATE_'+(qualifiedLedger.length+1));
+           const index = tails.indexOf(row);
+           const source=tailSources[index];
+@@ -1038,7 +1040,7 @@
+         }
+         if (expenseWitness) {
+           const count=qualifiedLedger.length;
+-          if (count>=334) (signedPrecision ?? precision ?? expenseWitness).assertPrefix(count,hash(JSON.stringify(qualifiedLedger)));
++          if (count>=334) (companyHistory ?? signedPrecision ?? precision ?? expenseWitness).assertPrefix(count,hash(JSON.stringify(qualifiedLedger)));
+           if ([334,341,342,343,344,345,expenseWitness.count].includes(count)) {
+             const observed=await jsonSql(expenseWitness.catalogSql);
+             expenseWitness.assertCatalog(count,observed,priorExpenseCatalog);
+@@ -1070,12 +1072,16 @@
+               receipt.signedSettlementCatalogBefore=before;
+             }
+           }
++          if (companyHistory && count===companyHistory.count) {
++            receipt.companyHistoryForward={count,ledgerSha256:companyHistory.ledgerSha256,
++              sameIdentity:true,sourceTree,tails:tails.slice(signedPrecision.count-295)};
++          }
+           if (signedPrecision && count===signedPrecision.count) {
+             const after=await jsonSql(signedPrecision.catalogSql);
+             signedPrecision.assertCatalog(after,receipt.signedSettlementCatalogBefore);
+             receipt.signedSettlementCatalog=after;
+             receipt.signedSettlementForward={count,ledgerSha256:signedPrecision.ledgerSha256,
+-              sameIdentity:true,sourceTree,tails:tails.slice(precision.count-295)};
++              sameIdentity:true,sourceTree,tails:tails.slice(precision.count-295,signedPrecision.count-295)};
+           }
+         }
+       }
+@@ -1189,7 +1195,8 @@
+         const signed=forward320.historicalSettlement ? require('./historical-settlement-334-profile.cjs') : null;
+         const precision=forward320.expenseWitnessPrecision;
+         const signedPrecision=forward320.signedSettlementPrecision;
+-        need(hash(JSON.stringify(qualifiedLedger))===(signedPrecision?.ledgerSha256 ?? precision?.ledgerSha256 ?? forward320.expenseWitness?.ledgerSha256 ?? signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
++        const companyHistory=forward320.companyHistory;
++        need(hash(JSON.stringify(qualifiedLedger))===(companyHistory?.ledgerSha256 ?? signedPrecision?.ledgerSha256 ?? precision?.ledgerSha256 ?? forward320.expenseWitness?.ledgerSha256 ?? signed?.ledgerSha256 ?? a28.ledgerSha256),'A28_LEDGER_AFTER_CONSUMER');
+         need(equal(await jsonSql(a28.catalogSql),receipt.historicalTakeover333Catalog),'A28_333_CATALOG_AFTER_CONSUMER');
+         receipt.historicalTakeoverCatalogAfterBusiness=true;
+         if (signed) {
+@@ -1627,9 +1634,10 @@
+   const upwardArchive=target>=332;
+   const historicalTakeover=target>=333;
+   const historicalSettlement=target>=334;
+-  const signedSettlementPrecision=target===350 ? require('./signed-settlement-350-profile.cjs') : null;
+-  const expenseWitnessPrecision=[349,350].includes(target) ? require('./expense-witness-349-profile.cjs') : null;
+-  const expenseWitness=[346,349,350].includes(target) ? require('./expense-witness-346-profile.cjs') : null;
++  const companyHistory=target===352 ? require('./company-history-352-profile.cjs') : null;
++  const signedSettlementPrecision=[350,352].includes(target) ? require('./signed-settlement-350-profile.cjs') : null;
++  const expenseWitnessPrecision=[349,350,352].includes(target) ? require('./expense-witness-349-profile.cjs') : null;
++  const expenseWitness=[346,349,350,352].includes(target) ? require('./expense-witness-346-profile.cjs') : null;
+   need(typeof sourceTree==='string' && /^[0-9a-f]{40}$/u.test(sourceTree) &&
+     typeof migrations==='string' && path.isAbsolute(migrations) &&
+     Array.isArray(tails) && tails.length===target-295,'FORWARD_320_SOURCE');
+@@ -1668,7 +1676,7 @@
+     need(hash(bytes)===row.sha256,'FORWARD_320_TAIL_DIGEST');
+     return bytes;
+   });
+-  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement,expenseWitness,expenseWitnessPrecision,signedSettlementPrecision};
++  return {sourceTree,tails:rows,sql,textDirect,paymentRemainder,upwardArchive,historicalTakeover,historicalSettlement,expenseWitness,expenseWitnessPrecision,signedSettlementPrecision,companyHistory};
+ }
+ 
+ module.exports.withCombined320ContractPayment = (receipt,consume,material) => {
+@@ -1773,9 +1781,10 @@
+ const installExpenseWitness = async (receipt,consume,material) => {
+   const source=require('./contract-finance-source.json');
+   const expense=require('./expense-witness-346-profile.cjs');
+-  const signed=material.mode==='signed-settlement-350'?require('./signed-settlement-350-profile.cjs'):undefined;
++  const company=material.mode==='company-history-352'?require('./company-history-352-profile.cjs'):undefined;
++  const signed=company||material.mode==='signed-settlement-350'?require('./signed-settlement-350-profile.cjs'):undefined;
+   const precision=signed||material.mode==='expense-witness-349'?require('./expense-witness-349-profile.cjs'):undefined;
+-  const profile=signed??precision??expense;
++  const profile=company??signed??precision??expense;
+   const historical=require('./historical-settlement-334-profile.cjs');
+   profile.assertSource(source,require('./multi-witness.cjs').final);
+   profile.assertRuntimeBaseline(require('./workspace/services/api/prisma/migration-baseline.cjs'));
+@@ -1797,13 +1806,17 @@
+       need(receipt.installOnly295.nonOwnerDenied===true,'EXPENSE_350_PREDECESSOR_NON_OWNER');
+       need(equal(receipt.signedSettlementForward,{
+         count:signed.count,ledgerSha256:signed.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
+-        tails:source.tails.slice(precisionEnd).map(({name,sha256})=>({name,sha256}))
++        tails:source.tails.slice(precisionEnd,signed.count-295).map(({name,sha256})=>({name,sha256}))
+       }),'EXPENSE_350_SUCCESSOR');
+     }
++    if(company) need(equal(receipt.companyHistoryForward,{
++      count:company.count,ledgerSha256:company.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
++      tails:source.tails.slice(signed.count-295).map(({name,sha256})=>({name,sha256}))
++    }),'EXPENSE_352_SUCCESSOR');
+     await consume(context);
+   },exactMultiWitness295,false,readForward320(material,profile.count));
+   if(precision) need(receipt.expenseWitnessPrecisionCatalogAfterBusiness===true,'EXPENSE_349_POST_BUSINESS');
+-  if(signed) signed.assertInstallation(receipt,source);
++  if(signed) (company??signed).assertInstallation(receipt,source);
+   need(receipt.combinedAfterBusiness?.count===profile.count&&
+     receipt.combinedAfterBusiness?.ledgerSha256===profile.ledgerSha256&&
+     receipt.combinedAfterBusiness?.sameIdentity===true&&receipt.combinedAfterBusiness?.exactB7===true&&
+@@ -1826,6 +1839,7 @@
+     'expense-witness-346':installExpenseWitness,
+     'expense-witness-349':installExpenseWitness,
+     'signed-settlement-350':installExpenseWitness,
++    'company-history-352':installExpenseWitness,
+   })[material.mode] : module.exports.withCombined295MultiWitness;
+   need(typeof install==='function','EXPENSE_295_INSTALL_MODE');
+   need(!material || mode!=='ORIGINAL_EXPENSE_HISTORICAL_NEGATIVES_295_SOURCE','EXPENSE_320_NEGATIVE_MUST_RETAIN_HISTORY');
+@@ -1838,7 +1852,7 @@
+       need(receipt.expenseRecovery?.PrismaResolve===true&&receipt.expenseRecovery?.expectedFailure===true,
+         'EXPENSE_RECOVERY_COMPLETION');
+       assertOutsideWitness(289,JSON.parse((await context.sql(outsideWitnessSql(289,Boolean(material),
+-        ['upward-archive-332','historical-settlement-334','expense-witness-346','expense-witness-349','signed-settlement-350'].includes(material?.mode)))).stdout.trim()));
++        ['upward-archive-332','historical-settlement-334','expense-witness-346','expense-witness-349','signed-settlement-350','company-history-352'].includes(material?.mode)))).stdout.trim()));
+       return;
+     }
+     need(mode==='ORIGINAL_EXPENSE_295_RETAINED_VALID_ONLY','EXPENSE_NEGATIVE_UNEXPECTED_CONTINUATION');
+@@ -1850,7 +1864,7 @@
+       need(context.database===receipt.retainedFinanceValid.identity.database,'FINANCE_RETAINED_VALID_CONTEXT');
+       const material=require('./task12-expense-finance-retained-valid.json');
+       await verifyRetainedFinanceValid(material,context.sql);
+-      receipt.retainedFinanceValid['after'+(receipt.signedSettlementForward?.count??receipt.expenseWitnessPrecisionForward?.count??receipt.expenseWitnessForward?.count??receipt.forward320?.count??295)]=material.expected;
++      receipt.retainedFinanceValid['after'+(receipt.companyHistoryForward?.count??receipt.signedSettlementForward?.count??receipt.expenseWitnessPrecisionForward?.count??receipt.expenseWitnessForward?.count??receipt.forward320?.count??295)]=material.expected;
+     }else{
+       const legacyKey=await context.sql(`SELECT COALESCE("receiptConfirmationIdempotencyKey", '<NULL>')
+         FROM "ProjectExpenseRequest" WHERE "id"='receipt_valid_request'`);
+--- a/app/entry.cjs
++++ b/app/entry.cjs
+@@ -3,7 +3,7 @@
+ const lane=process.argv[2];
+ assert.ok(process.argv.length===3 && Object.hasOwn(require('./profiles.json'),lane));
+ const source=require('./contract-finance-source.json');
+-const count=source.mode==='signed-settlement-350'?350:source.mode==='expense-witness-349'?349:source.mode==='expense-witness-346'?346:source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
++const count=source.mode==='company-history-352'?352:source.mode==='signed-settlement-350'?350:source.mode==='expense-witness-349'?349:source.mode==='expense-witness-346'?346:source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
+ const forward=count>295;
+ const material=forward?{mode:source.mode,sourceTree:source.sourceTree,
+   migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails}:undefined;
+@@ -13,7 +13,7 @@
+   assert.equal(receipt.combinedAfterBusiness?.count,count);
+   assert.equal(receipt.combinedAfterBusiness?.ledgerSha256,source.ledgerSha256);
+   if(forward){
+-    const applied=receipt.signedSettlementForward??receipt.expenseWitnessPrecisionForward??receipt.expenseWitnessForward??receipt.forward320;
++    const applied=receipt.companyHistoryForward??receipt.signedSettlementForward??receipt.expenseWitnessPrecisionForward??receipt.expenseWitnessForward??receipt.forward320;
+     assert.equal(applied?.count,count);
+     assert.equal(applied?.sameIdentity,true);
+     assert.equal(receipt.forward320?.sameBaseB7,true);
+--- a/valid/entry.cjs
++++ b/valid/entry.cjs
+@@ -3,7 +3,7 @@
+ const lane=process.argv[2];
+ assert.ok(process.argv.length===3 && ['execution','finance','receipt'].includes(lane));
+ const source=require('./contract-finance-source.json');
+-const count=source.mode==='signed-settlement-350'?350:source.mode==='expense-witness-349'?349:source.mode==='expense-witness-346'?346:source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
++const count=source.mode==='company-history-352'?352:source.mode==='signed-settlement-350'?350:source.mode==='expense-witness-349'?349:source.mode==='expense-witness-346'?346:source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
+ const forward=count>295;
+ const material=forward?{mode:source.mode,sourceTree:source.sourceTree,
+   migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails}:undefined;
+@@ -13,7 +13,7 @@
+   assert.equal(receipt.combinedAfterBusiness?.count,count);
+   assert.equal(receipt.combinedAfterBusiness?.ledgerSha256,source.ledgerSha256);
+   if(forward){
+-    const applied=receipt.signedSettlementForward??receipt.expenseWitnessPrecisionForward??receipt.expenseWitnessForward??receipt.forward320;
++    const applied=receipt.companyHistoryForward??receipt.signedSettlementForward??receipt.expenseWitnessPrecisionForward??receipt.expenseWitnessForward??receipt.forward320;
+     assert.equal(applied?.count,count);
+     assert.equal(applied?.sameIdentity,true);
+     assert.equal(receipt.forward320?.sameBaseB7,true);
+--- a/recovery/entry.cjs
++++ b/recovery/entry.cjs
+@@ -3,7 +3,7 @@
+ const lane=process.argv[2];
+ assert.ok(process.argv.length===3 && ['execution','finance'].includes(lane));
+ const source=require('./contract-finance-source.json');
+-const count=source.mode==='signed-settlement-350'?350:source.mode==='expense-witness-349'?349:source.mode==='expense-witness-346'?346:source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
++const count=source.mode==='company-history-352'?352:source.mode==='signed-settlement-350'?350:source.mode==='expense-witness-349'?349:source.mode==='expense-witness-346'?346:source.mode==='historical-settlement-334'?334:source.mode==='upward-archive-332'?332:source.mode==='payment-remainder-331'?331:source.mode==='text-direct-330'?330:source.mode==='current-320'?329:295;
+ const forward=count>295;
+ const material=forward?{mode:source.mode,sourceTree:source.sourceTree,
+   migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails}:undefined;
+@@ -17,7 +17,7 @@
+   assert.equal(receipt.combinedAfterBusiness?.count,count);
+   assert.equal(receipt.combinedAfterBusiness?.ledgerSha256,source.ledgerSha256);
+   if(forward){
+-    const applied=receipt.signedSettlementForward??receipt.expenseWitnessPrecisionForward??receipt.expenseWitnessForward??receipt.forward320;
++    const applied=receipt.companyHistoryForward??receipt.signedSettlementForward??receipt.expenseWitnessPrecisionForward??receipt.expenseWitnessForward??receipt.forward320;
+     assert.equal(applied?.count,count);
+     assert.equal(applied?.sameIdentity,true);
+     assert.equal(receipt.forward320?.sameBaseB7,true);
+--- a/app/expense-app.cjs
++++ b/app/expense-app.cjs
+@@ -37,7 +37,7 @@
+   assert.equal(state.ownerOid,10);
+   assert.equal(state.tls,true);
+   assert.equal(state.database,context.database);
+-  const forward=receipt.signedSettlementForward??receipt.expenseWitnessPrecisionForward??receipt.expenseWitnessForward??receipt.forward320;
++  const forward=receipt.companyHistoryForward??receipt.signedSettlementForward??receipt.expenseWitnessPrecisionForward??receipt.expenseWitnessForward??receipt.forward320;
+   assert.equal(state.ledger.length,forward?.count??295);
+   assert.equal(digest(JSON.stringify(state.ledger.slice(0,295))),expectedLedgerSha256);
+   if(forward) {
+--- a/app/receipt/project-expense-receipt-concurrency.spec.ts
++++ b/app/receipt/project-expense-receipt-concurrency.spec.ts
+@@ -160,7 +160,7 @@
+     `;
+     return row;
+   }));
+-  const expectedCount = [329, 330, 331, 332, 334, 346, 349, 350].find(
++  const expectedCount = [329, 330, 331, 332, 334, 346, 349, 350, 352].find(
+     count => String(count) === process.env.JG_CONTRACT_FINANCE_LEDGER) ?? 295;
+   assert(EXPECTED_MIGRATION_COUNT === expectedCount && identity.every(row => row?.ok === true) &&
+     new Set(identity.map(row => row?.oid)).size === 1 && new Set(identity.map(row => row?.pid)).size === clients.length,
