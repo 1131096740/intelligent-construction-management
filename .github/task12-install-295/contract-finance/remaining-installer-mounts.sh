@@ -6,7 +6,11 @@ append_remaining_installer() {
   local retained=${2:-}
   local installer="$common/installer.cjs"
   if [[ $source_mode == signed-settlement-350 ]]; then
-    [[ $retained == retained && ${GITHUB_ACTIONS:-} != true ]] || return 64
+    [[ ${GITHUB_ACTIONS:-} != true ]] || return 64
+    case $retained in
+      retained|owner) ;;
+      *) return 64 ;;
+    esac
   fi
   if [[ $source_mode == expense-witness-346 || $source_mode == expense-witness-349 || $source_mode == signed-settlement-350 ]]; then
     local count=${source_mode##*-}
