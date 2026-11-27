@@ -2,7 +2,7 @@
 
 const assert=require('node:assert/strict');
 const {admitSource}=require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness,withCombinedExpenseWitness349}=require('./installer.cjs');
 const {final,digest}=require('./multi-witness.cjs');
 const plan=require('./contract-adjacent-profiles.json');
 const {verify}=require('./contract-ci.cjs');
@@ -10,13 +10,15 @@ const source=require('./contract-finance-source.json');
 const root='/qualification';
 const lane=process.argv[2];
 const mode=process.argv[3];
-const expenseWitness=mode==='--expense-witness-346'?require('./expense-witness-346-profile.cjs'):null;
+const precision=mode==='--expense-witness-349'?require('./expense-witness-349-profile.cjs'):null;
+const expenseWitness=(precision||mode==='--expense-witness-346')?require('./expense-witness-346-profile.cjs'):null;
+const expenseProfile=precision??expenseWitness;
 const historical=mode==='--historical-settlement-334'||expenseWitness?require('./historical-settlement-334-profile.cjs'):null;
 const upwardArchive=mode==='--upward-archive-332';
 const paymentRemainder=mode==='--payment-remainder-331';
 const textDirect=mode==='--text-direct-330';
 const current320=Boolean(historical)||upwardArchive||paymentRemainder||textDirect||mode==='--current-320';
-const count=expenseWitness?expenseWitness.count:historical?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
+const count=expenseProfile?expenseProfile.count:historical?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
 const receipt={schemaVersion:1,purpose:'ORIGINAL_CONTRACT_ADJACENT_EXACT_'+count,lane,sourceSha:source.sourceSha,
   migrationSha256:current320?source.tails.at(-1).sha256:digest,business:'NOT_ENTERED',stages:['INPUTS'],status:'STOPPED'};
 
@@ -27,7 +29,7 @@ async function main(){
   assert.match(source.sourceSha,/^[a-f0-9]{40}$/u);
   assert.equal(source.migrationCount,count);
   if(expenseWitness){
-    expenseWitness.assertSource(source,final);
+    expenseProfile.assertSource(source,final);
   } else if(historical){
     historical.assertSource(source,final);
   } else if(upwardArchive){
@@ -47,14 +49,14 @@ async function main(){
   const fs=require('node:fs'),{createHash}=require('node:crypto');
   const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
   assert.equal(hash(root+'/contract-ci.cjs'),expenseWitness&&lane==='draft'?plan.draft346RunnerSha256:plan.runnerSha256);
-  if(historical) assert.equal(hash(root+'/installer.cjs'),(expenseWitness??historical).installerSha256);
+  if(historical) assert.equal(hash(root+'/installer.cjs'),(expenseProfile??historical).installerSha256);
   for(const file of ['task12-owned-280.test-support.ts',...profile.specs]){
-    const fixtureHash=expenseWitness&&lane==='draft'&&file===profile.specs[0]?plan.draft346FixtureSha256:plan.fixtures[file];
+    const fixtureHash=expenseWitness&&lane==='draft'&&file===profile.specs[0]?(precision?plan.draft349FixtureSha256:plan.draft346FixtureSha256):plan.fixtures[file];
     assert.equal(hash(root+'/workspace/services/api/src/database/'+file),fixtureHash);
   }
   const baselineModule=require('./workspace/services/api/prisma/migration-baseline.cjs');
   if(expenseWitness) {
-    expenseWitness.assertRuntimeBaseline(baselineModule);
+    expenseProfile.assertRuntimeBaseline(baselineModule);
   } else {
     const baseline=baselineModule.loadCanonicalMigrationBaseline();
     assert.equal(baseline.expectedDirectoryCount,count);
@@ -68,8 +70,12 @@ async function main(){
       const historyTails=source.tails.slice(0,source.predecessor334.migrationCount-source.predecessor.migrationCount);
       historical.assertFinanceInstallation(receipt,{...source,tails:historyTails});
       assert.deepEqual(receipt.expenseWitnessForward,{
+        count:expenseWitness.count,ledgerSha256:expenseWitness.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
+        tails:source.tails.slice(historyTails.length,expenseWitness.count-295).map(({name,sha256})=>({name,sha256}))
+      });
+      if(precision) assert.deepEqual(receipt.expenseWitnessPrecisionForward,{
         count,ledgerSha256:source.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
-        tails:source.tails.slice(historyTails.length).map(({name,sha256})=>({name,sha256}))
+        tails:source.tails.slice(expenseWitness.count-295).map(({name,sha256})=>({name,sha256}))
       });
     } else {
       historical?.assertFinanceInstallation(receipt,source);
@@ -81,7 +87,8 @@ async function main(){
     const installCurrent=expenseWitness?withCombinedExpenseWitness:historical?withCombined334HistoricalSettlement:upwardArchive?withCombined332UpwardArchive:
       paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
     const material={sourceTree:source.sourceTree,migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails};
-    if(expenseWitness) await installCurrent(receipt,consume,material,count);
+    if(precision) await withCombinedExpenseWitness349(receipt,consume,{...source,...material});
+    else if(expenseWitness) await installCurrent(receipt,consume,material,count);
     else await installCurrent(receipt,consume,material);
     assert.equal(receipt.forward320.count,expenseWitness?source.predecessor334.migrationCount:count);
     assert.equal(receipt.forward320.sourceTree,source.sourceTree);
@@ -113,6 +120,7 @@ async function main(){
     assert.equal(receipt.historicalSettlementCatalogAfterBusiness,true);
   }
   if(expenseWitness) assert.equal(receipt.expenseWitnessCatalogAfterBusiness,true);
+  if(precision) assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness,true);
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
   receipt.status='ORIGINAL_CONTRACT_ADJACENT_'+count+'_PASSED';

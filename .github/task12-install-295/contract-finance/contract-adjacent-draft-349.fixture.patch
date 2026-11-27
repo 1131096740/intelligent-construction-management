@@ -1,0 +1,9 @@
+--- a/settlement-draft-lifecycle-concurrency.spec.ts
++++ b/settlement-draft-lifecycle-concurrency.spec.ts
+@@ -32,3 +32,3 @@
+-// The Draft 346 runner validates the exact source ledger before mounting this fixture.
+-if (EXPECTED_MIGRATION_COUNT !== 346) {
+-  throw new Error("结算草稿生命周期并发测试要求完整 346 个迁移");
++// The Draft 349 runner validates the exact source ledger before mounting this fixture.
++if (EXPECTED_MIGRATION_COUNT !== 349) {
++  throw new Error("结算草稿生命周期并发测试要求完整 349 个迁移");
