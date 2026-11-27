@@ -404,6 +404,13 @@ profiles.issue404_349 = {
   ...precisionBaseline
 };
 
+profiles.issue416_his_349 = {
+  ...profiles.issue416_his_346,
+  fixturePatch: 'issue416-his-349.fixture.patch',
+  fixtureDigest: 'f3d473f0a238d458f3b3f22bf2ca690fe07b5757721c05340d1d48d6e582566e',
+  ...precisionBaseline
+};
+
 profiles.issue421_349 = {
   ...profiles.issue421_346,
   sourceDigest: '2591cfb1fc6ca2830122064f8b0228b5e7b5b622d165efcb2dbe184cac21e9de',
@@ -455,7 +462,6 @@ for (const [scope, predecessor] of Object.entries({
   issue413_349: 'issue413_346',
   issue414_349: 'issue414_346',
   issue416_handover_349: 'issue416_handover_346',
-  issue416_his_349: 'issue416_his_346',
   issue420_349: 'issue420_346',
   issue422_349: 'issue422_346',
   ...Object.fromEntries(issue418OperatingScopes.map(scope => [scope + '_349', scope]))
