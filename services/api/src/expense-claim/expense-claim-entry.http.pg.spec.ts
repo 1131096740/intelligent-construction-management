@@ -344,6 +344,32 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
         expect((await prisma.operatingFact.findUniqueOrThrow({ where: { id: fact.id } })).amountYuan?.toFixed(4)).toBe("100.0050");
       }
     }
+
+    const projectionPath = `/operating-projections/project/${projectId}`;
+    const projection = await request(projectionPath + "?numericProtocolVersion=2", undefined, financeToken);
+    expect(projection).toMatchObject({ status: 200, body: {
+      schema: "operating_projection/V2",
+      operating: { confirmedCostCents: null, confirmedCostYuan: "100.0151", payableCents: "1" },
+      costAttribution: { unattributedCostCents: null, unattributedCostYuan: "0.0001" }
+    } });
+    const detail = await request(projectionPath + "/details?numericProtocolVersion=2&sourceType=expense_claim_approval", undefined, financeToken);
+    expect(detail).toMatchObject({ status: 200, body: {
+      items: expect.arrayContaining(["0.0050", "0.0100", "100.0050", "100.0100", "0.0001"].map(signedImpactYuan =>
+        expect.objectContaining({ numericProtocolVersion: 2, signedImpactCents: null, signedImpactYuan })))
+    } });
+    const rows = (detail.body as unknown as { items: Array<{ signedImpactYuan: string }> }).items;
+    expect(rows.map(item => item.signedImpactYuan).sort()).toEqual(
+      ["0.0001", "0.0050", "0.0050", "0.0100", "100.0050", "100.0100"].sort()
+    );
+    const exportResponse = await fetch(baseUrl + "/operating-projections/export", {
+      method: "POST", headers: { authorization: `Bearer ${financeToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ numericProtocolVersion: "2", scopeKind: "project", projectId,
+        sourceType: "expense_claim_approval", confirmationPassword: accountPassword, exportKind: "project_operating_ledger_detail" })
+    });
+    expect(exportResponse.ok).toBe(true);
+    expect(exportResponse.headers.get("content-type")).toContain("text/csv");
+    const csv = await exportResponse.text();
+    for (const amount of ["0.0001", "0.0050", "100.0050"]) expect(csv).toContain(`"${amount}"`);
   }, 60_000);
 
   function seedHistoricalLoan(status: "draft" | "approved_pending_disbursement" | "disbursed", reason: string, loanProjectId = projectId, requestedAmountCents = 1n) {
