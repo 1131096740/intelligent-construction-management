@@ -2,10 +2,11 @@
 set -euo pipefail
 umask 077
 if [[ ${5-} == --signed-settlement-350 ]]; then
-  [[ $4 == restore && ${GITHUB_ACTIONS:-} != true ]] || exit 64
-  case $# in
-    6) ;;
-    7) [[ $7 == --host-only ]] || exit 64 ;;
+  [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
+  case "$4:$#" in
+    bank:5|restore:6) ;;
+    bank:6) [[ $6 == --host-only ]] || exit 64 ;;
+    restore:7) [[ $7 == --host-only ]] || exit 64 ;;
     *) exit 64 ;;
   esac
 else
@@ -19,6 +20,10 @@ prepared=$(cd "$1" && pwd -P)
 sha=$2
 lane=$4
 mode=${5-}
+precision_bank=false
+if [[ $lane == bank && ( $mode == --expense-witness-34[69] || $mode == --signed-settlement-350 ) ]]; then
+  precision_bank=true
+fi
 precision_restore=false
 if [[ $lane == restore && ( $mode == --expense-witness-34[69] || $mode == --signed-settlement-350 ) ]]; then
   precision_restore=true
@@ -43,7 +48,7 @@ node - "$prepared/source.json" "$sha" "$plan" ${bank_args[@]+"${bank_args[@]}"} 
 const [source,sha,plan,mode]=process.argv.slice(2);
 const candidate=require(source),m=require(plan+'/common/multi-witness.cjs');
 if(candidate.sourceSha!==sha)process.exit(65);
-if(['--expense-witness-346','--expense-witness-349'].includes(mode)) {
+if(['--expense-witness-346','--expense-witness-349','--signed-settlement-350'].includes(mode)) {
   require(plan+'/'+mode.slice(2)+'-profile.cjs').assertSource(candidate,m.final);
 } else if(mode==='--historical-settlement-334') {
   require(plan+'/historical-settlement-334-profile.cjs').assertSource(candidate,m.final);
@@ -60,7 +65,7 @@ if(['--expense-witness-346','--expense-witness-349'].includes(mode)) {
       candidate.ledgerSha256!=='3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2')process.exit(65);
 } else if(candidate.migrationCount!==295||candidate.ledgerSha256!==m.final) process.exit(65);
 JS
-if [[ $lane == bank && $mode == --expense-witness-34[69] ]]; then
+if [[ $precision_bank == true ]]; then
   repo=$(git -C "$plan" rev-parse --show-toplevel)
   [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
   [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan") ]] || exit 65
@@ -116,7 +121,7 @@ if [[ ${7-} != --host-only && ${6-} != --host-only ]]; then
   image=$(cat "$image_dir/image.id")
   context_sha=$(cat "$image_dir/context.sha256")
   [[ $image =~ ^sha256:[a-f0-9]{64}$ && $context_sha =~ ^[a-f0-9]{64}$ ]] || exit 65
-  if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 || $mode == --historical-settlement-334 || $mode == --expense-witness-34[69] || $precision_restore == true ]]; then
+  if [[ $mode == --text-direct-330 || $mode == --payment-remainder-331 || $mode == --upward-archive-332 || $mode == --historical-settlement-334 || $precision_bank == true || $precision_restore == true ]]; then
     [[ $(node "$plan/context-sha.cjs" "$prepared/prepared/context" "$image_dir/Dockerfile" "$prepared/source.json") == "$context_sha" ]] || exit 65
   fi
   [[ $(docker image inspect "$image" --format '{{.Id}} {{.Os}}/{{.Architecture}} {{index .Config.Labels "org.jiangkong.contract-finance.source-sha"}} {{index .Config.Labels "org.jiangkong.contract-finance.context-sha256"}}') == "$image linux/amd64 $sha $context_sha" ]] || exit 65
@@ -128,13 +133,13 @@ printf '%s\n' "$out"
 overlay="$out/overlay"
 python3 "$plan/stage-overlays.py" "$prepared/prepared/context/workspace" "$overlay" "$lane" ${bank_args[@]+"${bank_args[@]}"}
 installer="$plan/common/installer.cjs"
-if [[ $mode == --historical-settlement-334 || $mode == --expense-witness-34[69] || $precision_restore == true ]]; then
+if [[ $mode == --historical-settlement-334 || $precision_bank == true || $precision_restore == true ]]; then
   installer_mode=historical-settlement-334
   if [[ $lane == restore && $precision_restore != true ]]; then installer_mode+=-restore; fi
   node "$plan/stage-historical-takeover-333.cjs" "$out" "$installer_mode"
   installer="$out/installer.cjs"
 fi
-if [[ $mode == --expense-witness-34[69] || $precision_restore == true ]]; then
+if [[ $precision_bank == true || $precision_restore == true ]]; then
   git -C "$out" apply --unidiff-zero "$plan/expense-witness/installer.patch"
   if [[ $mode == --expense-witness-349 || $mode == --signed-settlement-350 ]]; then
     git -C "$out" apply --unidiff-zero "$plan/expense-witness/installer-349.patch"
@@ -161,7 +166,7 @@ JS
 fi
 if [[ $lane == bank && ${6-} == --host-only ]]; then
   count=334
-  if [[ $mode == --expense-witness-34[69] ]]; then count="${mode##*-}"; fi
+  if [[ $precision_bank == true ]]; then count="${mode##*-}"; fi
   printf 'BANK_%s_HOST_READY sha=%s\n' "$count" "$sha"
   exit 0
 fi
@@ -228,14 +233,17 @@ if [[ $lane == bank ]]; then
   for file in named-bank-ci.cjs original-titles.json failure-projection.cjs; do
     readonly_mount "$plan/bank/$file" "/qualification/$file"
   done
-  if [[ $mode == --expense-witness-34[69] ]]; then
+  if [[ $precision_bank == true ]]; then
     for profile in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
       readonly_mount "$plan/$profile" "/qualification/$profile"
     done
     bank_env=(--env "JG_BANK_SOURCE_SHA=$sha")
     count="${mode##*-}"
-    if [[ $count == 349 ]]; then
+    if [[ $count == 349 || $count == 350 ]]; then
       readonly_mount "$plan/expense-witness-349-profile.cjs" /qualification/expense-witness-349-profile.cjs
+    fi
+    if [[ $count == 350 ]]; then
+      readonly_mount "$plan/signed-settlement-350-profile.cjs" /qualification/signed-settlement-350-profile.cjs
     fi
     readonly_mount "$plan/bank/staging-$count.json" "/qualification/bank-staging-$count.json"
     readonly_mount "$plan/bank/migration-inputs-346.cjs" /qualification/migration-inputs-346.cjs
@@ -325,7 +333,7 @@ capture(){
     node - "$out/$mode.stdout" "$out/$mode.json" "$mode" "$sha" ${bank_args[@]+"${bank_args[@]}"} <<'JS' || proof_status=$?
 const [file,receipt,mode,sha,sourceMode]=process.argv.slice(2);
 const r=JSON.parse(require('node:fs').readFileSync(file,'utf8').trimEnd().split('\n').at(-1));
-const count=sourceMode==='--expense-witness-349'?349:sourceMode==='--expense-witness-346'?346:sourceMode==='--historical-settlement-334'?334:sourceMode==='--upward-archive-332'?332:sourceMode==='--payment-remainder-331'?331:sourceMode==='--text-direct-330'?330:sourceMode==='--current-320'?329:295;
+const count=sourceMode==='--signed-settlement-350'?350:sourceMode==='--expense-witness-349'?349:sourceMode==='--expense-witness-346'?346:sourceMode==='--historical-settlement-334'?334:sourceMode==='--upward-archive-332'?332:sourceMode==='--payment-remainder-331'?331:sourceMode==='--text-direct-330'?330:sourceMode==='--current-320'?329:295;
 const result=mode==='preflight'?'DIAGNOSTIC_NO_DATABASE_PREFLIGHT_PASSED':'ORIGINAL_FULL_12_PASSED';
 const expected='BANK_'+count+'_'+result;
 require('node:fs').writeFileSync(receipt,JSON.stringify(r,null,2)+'\n',{flag:'wx',mode:0o600});

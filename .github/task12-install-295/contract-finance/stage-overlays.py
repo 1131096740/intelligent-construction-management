@@ -18,6 +18,7 @@ bank_profiles = {
     '--historical-settlement-334': ('staging-330.json', 'staging-331.json', 'staging-332.json', 'staging-334.json'),
     '--expense-witness-346': ('staging-330.json', 'staging-331.json', 'staging-332.json', 'staging-334.json', 'staging-346.json'),
     '--expense-witness-349': ('staging-330.json', 'staging-331.json', 'staging-332.json', 'staging-334.json', 'staging-346.json', 'staging-349.json'),
+    '--signed-settlement-350': ('staging-330.json', 'staging-331.json', 'staging-332.json', 'staging-334.json', 'staging-346.json', 'staging-349.json', 'staging-350.json'),
     '--upward-archive-332': ('staging-330.json', 'staging-331.json', 'staging-332.json'),
 }
 assert mode == [] or (lane == 'bank' and len(mode) == 1 and mode[0] in bank_profiles)
