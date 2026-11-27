@@ -13,7 +13,7 @@ for option in "${@:5}"; do
     --payment-remainder-331) [[ $mode == 295 ]] || exit 64; mode=331 ;;
     --upward-archive-332) [[ $mode == 295 ]] || exit 64; mode=332 ;;
     --historical-settlement-334) [[ $mode == 295 ]] || exit 64; mode=334 ;;
-    --expense-witness-346) [[ $mode == 295 ]] || exit 64; mode=346 ;;
+    --expense-witness-346|--expense-witness-349) [[ $mode == 295 ]] || exit 64; mode=${option##*-} ;;
     --host-only) [[ -z $host_only ]] || exit 64; host_only=1 ;;
     --*) exit 64 ;;
     *) [[ -z $selected_lane ]] || exit 64; selected_lane=$option ;;
@@ -34,12 +34,12 @@ case $mode in
   331) profile="$plan/../payment-remainder-331-profile.cjs" ;;
   332) profile="$plan/../upward-archive-332-profile.cjs" ;;
   334) profile="$plan/../historical-settlement-334-profile.cjs" ;;
-  346) profile="$plan/../expense-witness-346-profile.cjs" ;;
+  346|349) profile="$plan/../expense-witness-$mode-profile.cjs" ;;
 esac
 node - "$prepared/source.json" "$sha" "$mode" "$plan" "$profile" <<'JS'
 const [file,sha,mode,plan,profile]=process.argv.slice(2);
 const source=require(file);
-if(mode==='334'||mode==='346') {
+if(mode==='334'||mode==='346'||mode==='349') {
   if(source.sourceSha!==sha) process.exit(65);
   require(profile).assertSource(source,require(plan+'/../common/multi-witness.cjs').final);
 } else if(profile) {
@@ -52,8 +52,12 @@ if [[ -n $profile ]]; then
   [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
   [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$common/installer.cjs" "$profile") ]] || exit 65
 fi
-if [[ $mode == 346 ]]; then
+if [[ $mode == 346 || $mode == 349 ]]; then
   [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan/.." "$repo/.github/task12-install-290/onboarding") ]] || exit 65
+  if [[ $mode == 349 ]]; then
+    [[ $plan == "$repo/.github/task12-install-295/contract-finance/onboarding" ]] || exit 65
+    cmp -s "$prepared/source.json" <(node "$plan/../check-ledger.cjs" "$repo" "$sha" --expense-witness-349) || exit 65
+  fi
   node - "$prepared" "$(git -C "$repo" rev-parse "$sha^{tree}")" "$profile" <<'JS'
 const assert=require('node:assert/strict');
 const [prepared,tree,profile]=process.argv.slice(2);
@@ -78,9 +82,10 @@ const receipt={status:'ONBOARDING_'+mode+'_HOST_INPUTS_VERIFIED',sourceSha,
   lanes:Object.fromEntries(lanes.map(name=>[name,profiles[name].caseCount])),
   workspaceInputsSha256:sha('workspace-inputs.json'),installerSha256:sha('installer.cjs'),
   laneProfilesSha256:sha('lanes.json'),database:'NOT_STARTED'};
-if(mode==='346') {
-  const {sourceTree,migrationCount,ledgerSha256,predecessor334,tails}=require(sourceFile);
+if(mode==='346'||mode==='349') {
+  const {sourceTree,migrationCount,ledgerSha256,predecessor334,predecessor346,tails}=require(sourceFile);
   Object.assign(receipt,{sourceTree,migrationCount,ledgerSha256,predecessor334,terminal:tails.at(-1)});
+  if(mode==='349') receipt.predecessor346=predecessor346;
 } else if(mode==='334') {
   const {ledgerSha256,predecessor332,predecessor333}=require(sourceFile);
   Object.assign(receipt,{ledgerSha256,predecessor332,predecessor333});
@@ -133,15 +138,18 @@ args+=(--mount "type=bind,src=$plan/onboarding-preflight.cjs,dst=/qualification/
 if [[ -n $profile ]]; then
   args+=(--mount "type=bind,src=$profile,dst=/qualification/${profile##*/},readonly")
 fi
-if [[ $mode == 334 || $mode == 346 ]]; then
+if [[ $mode == 334 || $mode == 346 || $mode == 349 ]]; then
   for profile_file in historical-takeover-333-profile.cjs upward-archive-332-profile.cjs; do
     args+=(--mount "type=bind,src=$plan/../$profile_file,dst=/qualification/$profile_file,readonly")
   done
 fi
-if [[ $mode == 346 ]]; then
-  for profile_file in historical-settlement-334-profile.cjs expense-witness-345-profile.cjs expense-witness-prefixes.json payment-execution-346.cjs; do
+if [[ $mode == 346 || $mode == 349 ]]; then
+  for profile_file in historical-settlement-334-profile.cjs expense-witness-345-profile.cjs expense-witness-prefixes.json "payment-execution-$mode.cjs"; do
     args+=(--mount "type=bind,src=$plan/../$profile_file,dst=/qualification/$profile_file,readonly")
   done
+fi
+if [[ $mode == 349 ]]; then
+  args+=(--mount "type=bind,src=$plan/../expense-witness-346-profile.cjs,dst=/qualification/expense-witness-346-profile.cjs,readonly")
 fi
 while IFS= read -r lane; do
   case "$lane" in
@@ -151,7 +159,7 @@ while IFS= read -r lane; do
     *) exit 65 ;;
   esac
   memory=4g
-  if [[ $mode == 346 && ( $lane == roster || $lane == reset-case12 ) ]] ||
+  if [[ ( $mode == 346 || $mode == 349 ) && ( $lane == roster || $lane == reset-case12 ) ]] ||
     [[ $lane == reset-case12 && ${GITHUB_ACTIONS-} == true && ( $mode == 331 || $mode == 332 || $mode == 334 ) ]]; then
     memory=6g
   fi
