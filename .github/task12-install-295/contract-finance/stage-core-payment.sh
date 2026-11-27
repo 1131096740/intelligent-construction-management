@@ -63,10 +63,6 @@ if [[ $mode == payment-remainder-331 || $mode == upward-archive-332 || $mode == 
   for file in payment-execution-concurrency.spec.ts contract-finance-owned.test-support.ts; do
     patch --batch --forward --fuzz=0 --silent -p0 -d "$fixtures" < "$plan/payment-execution-331-$file.patch"
   done
-  if [[ $precision == company-history-352 ]]; then
-    (cd "$fixtures" && git apply -p0 --include=contract-finance-owned.test-support.ts "$plan/payment-execution-352-fixtures.patch")
-    [[ $(sha256sum "$fixtures/contract-finance-owned.test-support.ts" | cut -d' ' -f1) == d12ddb8a4d8a898f5f33f6e166e1b7fbdc6884ebde4a0a153e0dacd6819c515c ]] || exit 65
-  fi
   chmod 0644 "$fixtures/contract-finance-owned.test-support.ts"
   node - "$plan" "$fixtures" <<'JS'
 const {readFileSync}=require('node:fs');
