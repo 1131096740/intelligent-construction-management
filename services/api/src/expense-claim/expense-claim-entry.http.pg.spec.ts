@@ -243,6 +243,7 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
     const { amountCents, ...line } = legacyLines![0];
     for (const scenario of [
       { exact: "0.0100", payable: "1", amounts: ["0.0050", "0.0050"], status: "approved_pending_payment", costBearingCompanyEntityId: company.id },
+      { exact: "100.0050", payable: "10001", amounts: ["100.0050"], status: "approved_pending_payment", costBearingCompanyEntityId: company.id },
       { exact: "0.0001", payable: "0", amounts: ["0.0001"], status: "offset_completed", costBearingCompanyEntityId: null }
     ]) {
       const created = await request("/expense-claims", { ...claim, costBearingCompanyEntityId: scenario.costBearingCompanyEntityId,
@@ -267,8 +268,52 @@ describe("费用统一录入真实 HTTP 与 PostgreSQL 16", () => {
       expect(fact).toMatchObject({ numericProtocolVersion: 2, amountCents: null, costBearingCompanySubjectId: scenario.costBearingCompanyEntityId });
       expect(fact.amountYuan?.toFixed(4)).toBe(scenario.exact);
       expect(fact.impacts.filter(impact => impact.impactKind === "confirmed_cost").map(impact => impact.amountYuan?.toFixed(4))).toEqual(scenario.amounts);
-      expect(fact.impacts.filter(impact => impact.impactKind === "payable_increase").map(impact => impact.amountYuan?.toFixed(4))).toEqual(scenario.payable === "0" ? [] : ["0.0100"]);
+      expect(fact.impacts.filter(impact => impact.impactKind === "payable_increase").map(impact => impact.amountYuan?.toFixed(4))).toEqual(scenario.payable === "0" ? [] : scenario.payable === "1" ? ["0.0100"] : ["100.0100"]);
       expect(await prisma.expenseClaimPaymentExecution.count({ where: { expenseClaimId: created.body.id } })).toBe(0);
+      if (scenario.exact === "100.0050") {
+        const scopeKey = `company:${companyEntityId}`;
+        const account = await prisma.registeredFundAccount.create({
+          data: { scopeKey, kind: "company", companyEntityId }
+        });
+        const registration = await prisma.fundAccountBalanceRegistration.create({
+          data: { accountId: account.id, version: 1, kind: "opening", status: "confirmed", balanceYuan: "200.0000",
+            asOfDate: "2026-11-01", evidenceReference: "合成余额凭证", reconciliationNote: "已核对",
+            reason: "合成期初", idempotencyKey: randomUUID(), payloadFingerprint: "b".repeat(64),
+            createdByUserId: applicantUserId, confirmedByUserId: applicantUserId, confirmedAt: effectiveFrom,
+            sources: { create: [{ lineNo: 1, amountYuan: "200.0000", sourceStatus: "known",
+              sourceName: "合成项目资金", projectStatus: "project", projectId }] } },
+          include: { sources: true }
+        });
+        const voucher = new FormData();
+        voucher.append("file", new Blob([Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=", "base64")],
+          { type: "image/png" }), "合成付款凭证.png");
+        voucher.append("idempotencyKey", randomUUID());
+        const upload = await fetch(baseUrl + path + "/payment-voucher-file-uploads", {
+          method: "POST", headers: { authorization: `Bearer ${financeToken}` }, body: voucher
+        });
+        expect(upload.status).toBe(201);
+        const { id: voucherFileId } = await upload.json() as { id: string };
+        const pay = (amountCents: string) => request(path + "/payments", {
+          amountCents, paidAt: "2026-11-26", paymentMethod: "银行转账", confirmationPassword: accountPassword, voucherFileId,
+          registeredFunding: { scopeKey, expectedRegistrationId: registration.id,
+            sourceAllocations: [{ sourceBatchId: registration.sources[0]!.id, amountCents }] }
+        }, financeToken);
+        expect((await pay("10002")).status).toBe(400);
+        expect(await prisma.expenseClaimPaymentExecution.count({ where: { expenseClaimId: created.body.id } })).toBe(0);
+        const paid = await pay("10001");
+        if (paid.status !== 201) throw new Error(`四位报销实付 ${paid.status} ${JSON.stringify(paid.body)}`);
+        expect(paid).toMatchObject({ status: 201, body: { status: "paid", paidAmountCents: "10001" } });
+        expect(await request(path)).toMatchObject({ status: 200, body: {
+          status: "paid", requestedAmountYuan: "100.0050", fundedAmountCents: "10001"
+        } });
+        const cashFact = await prisma.operatingFact.findFirstOrThrow({
+          where: { sourceType: "expense_claim_payment_execution", sourceBusinessId: paid.body.id }, include: { impacts: true }
+        });
+        expect(cashFact.amountCents).toBe(10001n);
+        expect(cashFact.impacts.filter(impact => impact.impactKind === "payable_decrease").map(impact => impact.amountCents)).toEqual([10001n]);
+        expect(cashFact.impacts.filter(impact => impact.impactKind === "confirmed_cost")).toEqual([]);
+        expect((await prisma.operatingFact.findUniqueOrThrow({ where: { id: fact.id } })).amountYuan?.toFixed(4)).toBe("100.0050");
+      }
     }
   }, 60_000);
 
