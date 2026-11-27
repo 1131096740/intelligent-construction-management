@@ -4,6 +4,7 @@ umask 077
 
 [[ $# == 5 || ( $# == 6 && $6 == --host-only ) ]] || exit 64
 scope=$5
+if [[ $scope == *_350 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
 sha=$3
@@ -21,14 +22,17 @@ assert.equal(source.sourceTree,tree);
 const ledgerFiles={
   'historical-settlement-334':'historical-settlement-334-profile.cjs',
   'expense-witness-346':'expense-witness-346-profile.cjs',
-  'expense-witness-349':'expense-witness-349-profile.cjs'
+  'expense-witness-349':'expense-witness-349-profile.cjs',
+  'signed-settlement-350':'signed-settlement-350-profile.cjs'
 };
 assert.ok(Object.hasOwn(ledgerFiles,source.mode),'ISSUE_ORDERED_MIGRATION_SCOPE');
 const ledger=require(base+'/'+ledgerFiles[source.mode]);
+const signed=source.mode==='signed-settlement-350';
 const precision=source.mode==='expense-witness-349';
-const combined=precision||source.mode==='expense-witness-346';
+const combined=signed||precision||source.mode==='expense-witness-346';
 assert.equal(combined,Boolean(profile.requiredMigrationCount),'ISSUE_ORDERED_MIGRATION_SCOPE');
 assert.equal(precision,profile.requiredMigrationCount===349,'ISSUE_ORDERED_PRECISION_SCOPE');
+assert.equal(signed,profile.requiredMigrationCount===350,'ISSUE_ORDERED_SIGNED_SCOPE');
 ledger.assertSource(source,require(base+'/common/multi-witness.cjs').final);
 if(profile.requiredMigrationCount){
   const required=source.tails[profile.requiredMigrationCount-296];
@@ -38,6 +42,15 @@ if(profile.requiredMigrationCount){
 console.log(source.mode);
 JS
 )
+if [[ $mode == signed-settlement-350 ]]; then
+  [[ $plan == "$repo/.github/task12-install-295/contract-finance/issue-ordered" ]] || exit 65
+  cmp -s "$prepared/source.json" <(node "$base/check-ledger.cjs" "$repo" "$sha" --signed-settlement-350) || exit 65
+  node - "$prepared" "$base" <<'JS'
+const [prepared,base]=process.argv.slice(2);
+require(base+'/signed-settlement-350-profile.cjs').assertRuntimeBaseline(
+  require(prepared+'/prepared/context/workspace/services/api/prisma/migration-baseline.cjs'));
+JS
+fi
 profile=$(node -e '
 const scope = process.argv[2];
 const { file, sourceDigest, fixtureDigest, fixturePatch = scope + ".fixture.patch" } = require(process.argv[1]).profileFor(scope);
@@ -52,16 +65,21 @@ if [[ -n $fixture_digest ]]; then
   install -m 0644 "$source_spec" "$work/fixture.ts"
   git -C "$work" apply --unidiff-zero "$plan/$fixture_patch"
   [[ $(sha256sum "$work/fixture.ts" | cut -d' ' -f1) == "$fixture_digest" ]] || exit 65
-  if [[ $mode == expense-witness-* ]]; then chmod 0644 "$work/fixture.ts"; fi
+  if [[ $mode == expense-witness-* || $mode == signed-settlement-350 ]]; then chmod 0644 "$work/fixture.ts"; fi
 fi
 node "$base/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
-if [[ $mode == expense-witness-346 || $mode == expense-witness-349 ]]; then
+if [[ $mode == expense-witness-346 || $mode == expense-witness-349 || $mode == signed-settlement-350 ]]; then
   git -C "$work" apply --unidiff-zero "$base/expense-witness/installer.patch"
   expected=$(node -e 'console.log(require(process.argv[1]).installerSha256)' "$base/expense-witness-346-profile.cjs")
   [[ $(sha256sum "$work/installer.cjs" | cut -d' ' -f1) == "$expected" ]] || exit 65
-  if [[ $mode == expense-witness-349 ]]; then
+  if [[ $mode == expense-witness-349 || $mode == signed-settlement-350 ]]; then
     git -C "$work" apply --unidiff-zero "$base/expense-witness/installer-349.patch"
     expected=$(node -p 'require(process.argv[1]).installerSha256' "$base/expense-witness-349-profile.cjs")
+    [[ $(sha256sum "$work/installer.cjs" | cut -d' ' -f1) == "$expected" ]] || exit 65
+  fi
+  if [[ $mode == signed-settlement-350 ]]; then
+    git -C "$work" apply --unidiff-zero "$base/expense-witness/installer-350.patch"
+    expected=$(node -p 'require(process.argv[1]).installerSha256' "$base/signed-settlement-350-profile.cjs")
     [[ $(sha256sum "$work/installer.cjs" | cut -d' ' -f1) == "$expected" ]] || exit 65
   fi
   # git apply recreates the bind source under umask 077.
@@ -96,13 +114,16 @@ fi
 for file in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs; do
   args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
 done
-if [[ $mode == expense-witness-346 || $mode == expense-witness-349 ]]; then
+if [[ $mode == expense-witness-346 || $mode == expense-witness-349 || $mode == signed-settlement-350 ]]; then
   for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
     args+=(--mount "type=bind,src=$base/$file,dst=/qualification/$file,readonly")
   done
 fi
-if [[ $mode == expense-witness-349 ]]; then
+if [[ $mode == expense-witness-349 || $mode == signed-settlement-350 ]]; then
   args+=(--mount "type=bind,src=$base/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
+fi
+if [[ $mode == signed-settlement-350 ]]; then
+  args+=(--mount "type=bind,src=$base/signed-settlement-350-profile.cjs,dst=/qualification/signed-settlement-350-profile.cjs,readonly")
 fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
@@ -112,7 +133,7 @@ if pgrep -x postgres >/dev/null; then exit 65; fi
 status=0
 docker run "${args[@]}" --entrypoint node "$image" /qualification/issue-ordered-entry.cjs "$scope" >"$work/receipt.json" 2>"$work/private.stderr" || status=$?
 [[ ! -s "$work/receipt.json" ]] || cat "$work/receipt.json"
-if [[ $mode == expense-witness-* && $status != 0 && ! -s "$work/receipt.json" ]]; then
+if [[ ( $mode == expense-witness-* || $mode == signed-settlement-350 ) && $status != 0 && ! -s "$work/receipt.json" ]]; then
   printf 'ISSUE_ORDERED_%s_NO_RECEIPT scope=%s exit=%s\n' "${mode##*-}" "$scope" "$status" >&2
 fi
 (( status == 0 )) || exit "$status"

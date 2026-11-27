@@ -474,9 +474,32 @@ for (const [scope, predecessor] of Object.entries({
   };
 }
 
+const signedBaseline = {
+  requiredMigrationCount: 350,
+  requiredTerminalMigration: '20261129019000_signed_settlement_exact_operating_cost',
+  requiredTerminalMigrationSha256: '86ad90ea7fad6231f1d8b24dd8e4eb25d5ba0b1696d3544f5999680ebaa4c6e4'
+};
+const issue418OperatingScopes350 = Object.freeze(issue418OperatingScopes.map(scope => scope + '_350'));
+const issueOrderedScopes350 = Object.freeze([
+  'issue400_350', 'issue403_350', 'issue404_350', 'issue405_350', 'issue411_350', 'issue413_350',
+  'issue414_350', 'issue416_handover_350', 'issue416_his_350', 'issue420_350', 'issue421_350',
+  'issue421b_350', 'issue422_350', 'issue426_a01_350', ...issue418OperatingScopes350
+]);
+
+for (const scope of issueOrderedScopes350) {
+  const predecessor = scope.replace(/_350$/u, '_349');
+  profiles[scope] = { ...profiles[predecessor], ...signedBaseline };
+}
+profiles.issue416_his_350 = {
+  ...profiles.issue416_his_350,
+  fixturePatch: 'issue416-his-350.fixture.patch',
+  fixtureDigest: 'eb629ac5831f1d43f1285535a680da26bf00c44c3337edd2726a19c9a48f54f7'
+};
+
 function profileFor(scope) {
   assert.ok(Object.hasOwn(profiles, scope), 'ORDERED_334_SCOPE');
   return profiles[scope];
 }
 
-module.exports = { profileFor, issue418OperatingScopes, issue418OperatingScopes349 };
+module.exports = { profileFor, issue418OperatingScopes, issue418OperatingScopes349,
+  issue418OperatingScopes350, issueOrderedScopes350 };

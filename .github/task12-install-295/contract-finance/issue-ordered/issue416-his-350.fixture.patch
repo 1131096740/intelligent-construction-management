@@ -1,0 +1,18 @@
+--- a/fixture.ts
++++ b/fixture.ts
+@@ -534 +534 @@
+-      AND (SELECT count(*) = 334
++      AND (SELECT count(*) = 350
+@@ -538,0 +539,12 @@
++        ) = 1
++        AND count(*) FILTER (
++          WHERE migration_name = '20261129015000_expense_public_cash_operating_source'
++            AND checksum = 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a'
++        ) = 1
++        AND count(*) FILTER (
++          WHERE migration_name = '20261129018000_reimbursement_exact_cash_cost_links'
++            AND checksum = '58b3cc0404a85a97dbb484654245d4bd042e5fb2014f32997244b2597cb5110b'
++        ) = 1
++        AND count(*) FILTER (
++          WHERE migration_name = '20261129019000_signed_settlement_exact_operating_cost'
++            AND checksum = '86ad90ea7fad6231f1d8b24dd8e4eb25d5ba0b1696d3544f5999680ebaa4c6e4'
