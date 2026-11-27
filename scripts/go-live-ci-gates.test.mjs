@@ -473,7 +473,7 @@ test("the hosted 334 step routes only prepared exact groups and rejects unadmitt
     ]);
     else assert.match(result.stdout, /334 PostgreSQL gate has no admitted runner/u);
   }
-  for (const count of [335, 347]) {
+  for (const count of [335, 347, 349]) {
     const repinned = executable.replace(/^count=.*$/mu, `count=${count}`);
     const result = spawnSync("bash", ["-c", `exec () { exit 99; }\n${repinned}`], {
       cwd: root, encoding: "utf8",
@@ -488,8 +488,15 @@ test("the hosted 346 step routes the complete automatic matrix through isolated 
   const workflow = await readFile(join(root, ".github/workflows/ci.yml"), "utf8");
   const job = jobBlock(workflow, "postgresql16-dynamic-gates");
   const [, command] = /      - name: Run exact-SHA PostgreSQL dynamic gate shard\n[\s\S]*?        run: \|\n([\s\S]*?)(?=\n      - name:)/u.exec(job);
-  const executable = command.replace(/^          /gmu, "").replaceAll('exec bash "${exact_args[@]}"',
-    'printf "%s\\n" "${exact_args[@]}"; exit 0');
+  const executable = command.replace(/^          /gmu, "")
+    .replace(/^count=.*$/mu, "count=346")
+    .replace(
+      "require('./services/api/prisma/database-dynamic-gate-manifest.json')",
+      "({ migrationBaseline: { expectedDirectoryCount: 346, " +
+        "terminalMigration: '20261129015000_expense_public_cash_operating_source', " +
+        "terminalMigrationChecksum: 'd2f1419df6337020ad7dc5385b4b52a2997f276656dd3ff90f71d8c62f5c8b9a' } })"
+    )
+    .replaceAll('exec bash "${exact_args[@]}"', 'printf "%s\\n" "${exact_args[@]}"; exit 0');
   const manifest = JSON.parse(await readFile(join(root, "services/api/prisma/database-dynamic-gate-manifest.json")));
   const sha = "d".repeat(40);
   for (const { id, ciExecution } of manifest.coveredGroups) {
