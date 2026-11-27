@@ -4,6 +4,7 @@
   "draft346FixtureSha256": "c91c2bef2e05bd453824abe7631495b680511331d59412f73fce919ff93b418c",
   "draft349FixtureSha256": "7d7e6a12173200e8eea481b2b767c7cc44e0a49791e808099d626e39f582fb79",
   "draft350FixtureSha256": "d3d63cad4a26a5265290c9323a8e878057134c6e059516f93a86fc7b76b970ba",
+  "draft352FixtureSha256": "6de7271fc2405a4be3a579f9de628a99bfeea6fc496c85cf8aa28ae4949449d5",
   "profiles": {
     "settlement": {
       "verifyMode": "--contract-settlement-ci",

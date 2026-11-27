@@ -87,6 +87,11 @@ for(const name of ['task12-owned-280.test-support.ts',...pins.profiles[lane].spe
       require('node:child_process').execFileSync('git',['apply','--unidiff-zero',patch350],{cwd:work,stdio:'inherit'});
       assert.equal(hash(mounted),pins.draft350FixtureSha256);
     }
+    if(mode==='--company-history-352') {
+      const patch352=require('node:path').join(require('node:path').dirname(profiles),'contract-adjacent-draft-352.fixture.patch');
+      require('node:child_process').execFileSync('git',['apply','--unidiff-zero',patch352],{cwd:work,stdio:'inherit'});
+      assert.equal(hash(mounted),pins.draft352FixtureSha256);
+    }
     fs.chmodSync(mounted,0o644);
   }
   console.log(mounted+'\t'+'src/database/'+name);

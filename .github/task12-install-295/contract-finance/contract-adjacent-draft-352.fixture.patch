@@ -1,0 +1,15 @@
+--- a/settlement-draft-lifecycle-concurrency.spec.ts
++++ b/settlement-draft-lifecycle-concurrency.spec.ts
+@@ -29,9 +29,9 @@
+     deriveMigrationBaseline: () => { expectedDirectoryCount: number };
+   }
+ ).deriveMigrationBaseline().expectedDirectoryCount;
+-// The Draft 350 runner validates the exact source ledger before mounting this fixture.
+-if (EXPECTED_MIGRATION_COUNT !== 350) {
+-  throw new Error("结算草稿生命周期并发测试要求完整 350 个迁移");
++// The Draft 352 runner validates the exact source ledger before mounting this fixture.
++if (EXPECTED_MIGRATION_COUNT !== 352) {
++  throw new Error("结算草稿生命周期并发测试要求完整 352 个迁移");
+ }
+ 
+ describe("settlement draft lifecycle database concurrency", () => {
