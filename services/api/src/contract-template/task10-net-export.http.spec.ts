@@ -118,7 +118,7 @@ describe("task10 adopted eight-column net draft actual dual-format preview", () 
       await writeFile(join(directory, "receipt.json"), JSON.stringify({ purpose: "draft", legalSigningAcceptance: false, sourceSha256: layout.sha256,
         generation, output, members, docxSha256: createHash("sha256").update(files.docx!).digest("hex"), pdfSha256: createHash("sha256").update(files.pdf!).digest("hex"), verdict: "PENDING" }, null, 2));
       // Only these source members contain bound fields. Watermark replacement
-      // is intentional; styles/fontTable/themes/relationships remain byte-equal.
+      // is intentional; V4 fills the existing footer page fields, while unrelated parts remain byte-equal.
       const boundParts = new Set(["word/document.xml", "word/settings.xml", "word/header-contract-watermark.xml", "word/header1.xml"]);
       for (const name of Object.keys(originalZip.files).filter(name => !boundParts.has(name) && !originalZip.files[name].dir)) {
         const originalPart = originalZip.file(name)!.asNodeBuffer(), actualPart = zip.file(name)!.asNodeBuffer();
@@ -130,6 +130,11 @@ describe("task10 adopted eight-column net draft actual dual-format preview", () 
           const after = new DOMParser().parseFromString(actualPart.toString("utf8"), "application/xml");
           expect(new XMLSerializer().serializeToString(after)).toBe(new XMLSerializer().serializeToString(before));
           for (const part of [before, after]) for (const tag of ["t", "instrText"]) expect(part.getElementsByTagNameNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main", tag).length).toBe(0);
+        } else if (/^word\/footer\d*\.xml$/.test(name)) {
+          const before = originalPart.toString("utf8");
+          expect(before.match(/<w:r><w:t xml:space="preserve">第\s+页 \/ 共\s+页<\/w:t><\/w:r>/g)).toHaveLength(1);
+          const expected = before.replace(/<w:r><w:t xml:space="preserve">第\s+页 \/ 共\s+页<\/w:t><\/w:r>/g, '<w:r><w:t xml:space="preserve">第 </w:t></w:r><w:fldSimple w:instr="PAGE"><w:r><w:t>1</w:t></w:r></w:fldSimple><w:r><w:t xml:space="preserve"> 页 / 共 </w:t></w:r><w:fldSimple w:instr="NUMPAGES"><w:r><w:t>1</w:t></w:r></w:fldSimple><w:r><w:t> 页</w:t></w:r>');
+          expect(actualPart.toString("utf8")).toBe(expected);
         } else expect(actualPart).toEqual(originalPart);
       }
       expect(zip.file("word/header1.xml")!.asText()).toContain("草稿");
