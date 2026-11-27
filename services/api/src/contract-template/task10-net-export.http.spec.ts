@@ -51,7 +51,7 @@ describe("task10 adopted eight-column net draft actual dual-format preview", () 
       expect(factResponse.status).toBe(200);
       const facts = await factResponse.json() as { version: { amountYuan: string | null; draftData: Record<string, unknown> }; bills: Array<Record<string, unknown>> };
       expect(facts.version).toMatchObject({ amountYuan: "1.5340", draftData: {
-        contractBasics: { amountBasis: "tax_exclusive" }
+        contractBasics: { amountBasis: "tax_exclusive", invoiceStatus: "pending" }
       } });
       expect(facts.bills[0]).toMatchObject({ pricingMode: "tax_exclusive", taxExclusiveAmountYuan: "1.5340", taxInclusiveAmountYuan: null, taxAmountYuan: null });
       const row = (facts.bills[0].rows as Array<Record<string, unknown>>)[0];
