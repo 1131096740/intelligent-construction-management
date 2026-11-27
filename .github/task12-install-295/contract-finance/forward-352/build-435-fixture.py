@@ -1,17 +1,19 @@
 from pathlib import Path
-import subprocess, tempfile, re, sys
+import hashlib, subprocess, tempfile, re, sys
 assert len(sys.argv) in (3, 4), 'usage: build-435-fixture.py CANDIDATE_SHA OUTPUT [issue411|issue435]'
 mode=sys.argv[3] if len(sys.argv)==4 else 'combined'
 assert mode in ('combined','issue411','issue435')
 repo=str(Path(__file__).resolve().parents[4])
-base='1d10eb5a5d4759a4fe6f39e4de31135be3393d8d'
 target=sys.argv[1]
 file='services/api/src/database/issue411-third-company-repayment.pg.spec.ts'
 def show(sha): return subprocess.check_output(['git','-C',repo,'show',f'{sha}:{file}'],text=True)
+original_path=Path(__file__).with_name('issue411-original.fixture.ts')
+original_bytes=original_path.read_bytes()
+assert hashlib.sha256(original_bytes).hexdigest() == '46f2bf46d6b1de968da67fd60fea9d90e249870db283210c330c9f59e4c4d86e', 'ISSUE411_ORIGINAL_FIXTURE_PIN'
+original=original_bytes.decode()
 with tempfile.TemporaryDirectory(prefix='jg435-patch-') as d:
- p=Path(d)/'fixture.ts';p.write_text(show(base));subprocess.run(['git','-C',d,'apply','--unidiff-zero',repo+'/.github/task12-install-295/contract-finance/issue-ordered/issue411.fixture.patch'],check=True); initial=p.read_text()
+ p=Path(d)/'fixture.ts';p.write_text(original);subprocess.run(['git','-C',d,'apply','--unidiff-zero',repo+'/.github/task12-install-295/contract-finance/issue-ordered/issue411.fixture.patch'],check=True); initial=p.read_text()
 source=show(target)
-original=show(base)
 first='  it("moves A-B debt to A-C'
 end='  const settledReturnCase = process.env.RUN_ISSUE435_SETTLED_RETURN'
 assert original[original.index(first):original.rindex('\n});')].rstrip() == source[source.index(first):source.index(end)].rstrip(), 'ISSUE411_ORIGINAL_CASES_CHANGED'

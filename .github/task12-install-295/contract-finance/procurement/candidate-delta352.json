@@ -113,5 +113,15 @@
     "path": "services/api/src/database/task16-real-browser-scope.ts",
     "expected": "c4e7517be9efbe27e42f595d3cdc6f2d5d9da7677720f8d4f0cdf60a0132adc1",
     "candidate": "1fe2ebe644c8832ac7d8dd7fceeceb5edca14e5a0a0e500a20c77b1d547ed8fa"
+  },
+  {
+    "path": "services/api/prisma/run-database-dynamic-gate-local.cjs",
+    "expected": "ec39311717c5e8a4bc93910fe5a0443c3fdb45a1b40477ce39222a79effe8a89",
+    "candidate": "b76712e690a49826d3186439adc275f67b407ee02d033ac6ea0c52b65fde3d97"
+  },
+  {
+    "path": "services/api/src/expense-claim/expense-claim.service.spec.ts",
+    "expected": "509550e06797e74897e0c471211f3b046c7af5e6a9dda1677d691518ee1fb3a1",
+    "candidate": "8ced58d671f3ef35cfb8ef48a321f3788276a06749e10e9b6e87979c72e55de8"
   }
 ]

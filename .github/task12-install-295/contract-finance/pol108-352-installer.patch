@@ -26,6 +26,7 @@
    const precision=require('./expense-witness-349-profile.cjs');
    precision.assertSource(material,require('./multi-witness.cjs').final);
    return withCombinedOrdinaryLoan(receipt,consume,exactMultiWitness295,false,readForward320(material,precision.count));
+ };
 +
 +
 +module.exports.withPol108At352 = (receipt,shard,material) => {
@@ -47,6 +48,5 @@
 +    return require('./pol108-289.cjs').runPol108(context,shard,receipt,runCommand,baseEnv,need);
 +  },material);
 +};
- };
  
  

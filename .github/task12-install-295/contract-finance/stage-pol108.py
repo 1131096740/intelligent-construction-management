@@ -103,7 +103,7 @@ if count in {'346', '349', '350', '352'}:
         '346': 'fd1c86f6bc0654199efdeed8ba3753ad8376d99d2b660e9a70e1cf3564110719',
         '349': '6c49a48ceb13a8c04b1cc6ab135de854dcdfef8dd7117070b2881cf1e3e137e5',
         '350': '049c6c7959490d8e33e38104cb250e8f3a32c31a3e7623d455708d6fe0968b66',
-        '352': 'f6c64721f9dc38501dd2c77cdfa28bbf8912da5439382b40db6d3d3b07338398',
+        '352': 'c4914cbbe9b2bd46799775cac7f84eb425a2587d7ea91dff1dff63038e463105',
     }
     if digest(installer) != installer_fingerprints[count]:
         raise SystemExit('POL108_'+count+'_INSTALLER_POSTIMAGE')
