@@ -14,40 +14,52 @@ source="$prepared/source.json"
 
 node -e '
   const source=require(process.argv[1]);
-  const count=({"current-320":329,"text-direct-330":330,"payment-remainder-331":331,"upward-archive-332":332,"historical-takeover-333":333,"historical-settlement-334":334,"expense-witness-346":346})[source.mode];
+  const count=({"current-320":329,"text-direct-330":330,"payment-remainder-331":331,"upward-archive-332":332,"historical-takeover-333":333,"historical-settlement-334":334,"expense-witness-346":346,"expense-witness-349":349})[source.mode];
   if(!count||source.migrationCount!==count||source.sourceSha!==process.argv[2])process.exit(65);
 ' "$source" "$sha"
 entry=line-a-entry.cjs
 mode=$(node -p 'require(process.argv[1]).mode' "$source")
 case "$mode:${4:-}:${5:-}" in
+  expense-witness-349:original:|expense-witness-349:original:--host-only) ;;
+  expense-witness-349:--a28-continuation:|expense-witness-349:--a28-continuation:--host-only)
+    entry=historical-takeover-333-entry.cjs ;;
   expense-witness-346:original:|expense-witness-346:original:--host-only|historical-settlement-334:original:) ;;
   expense-witness-346:--a28-continuation:|expense-witness-346:--a28-continuation:--host-only|\
   expense-witness-346:--a29-opening:|expense-witness-346:--a29-opening:--host-only|\
   historical-settlement-334::|historical-settlement-334:--a29-opening:|historical-settlement-334:--a28-unknown-overpay:|\
   historical-takeover-333::)
     entry=historical-takeover-333-entry.cjs ;;
-  expense-witness-346:*|historical-settlement-334:*|historical-takeover-333:*) exit 64 ;;
+  expense-witness-346:*|expense-witness-349:*|historical-settlement-334:*|historical-takeover-333:*) exit 64 ;;
   *::) ;;
   *) exit 64 ;;
 esac
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-line-a.XXXXXXXX")
 installer="$common/installer.cjs"
-if [[ "$mode" == expense-witness-346 ]]; then
+if [[ "$mode" == expense-witness-346 || "$mode" == expense-witness-349 ]]; then
+  if [[ "$mode" == expense-witness-349 ]]; then
+    root=$(git -C "$plan" rev-parse --show-toplevel)
+    [[ $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
+    [[ -z $(git -C "$root" status --porcelain --untracked-files=all -- "$plan") ]] || exit 65
+    cmp -s "$source" <(node "$plan/check-ledger.cjs" "$root" "$sha" --expense-witness-349) || exit 65
+  fi
   node - "$plan" "$source" "$prepared" "$work" "$4" <<'JS'
 const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const [plan, sourceFile, prepared, work, lane] = process.argv.slice(2);
-const profile = require(path.join(plan, 'expense-witness-346-profile.cjs'));
+const source = require(sourceFile);
+const profile = require(path.join(plan, source.mode + '-profile.cjs'));
 const historical = require(path.join(plan, 'historical-settlement-334-profile.cjs'));
 const { final } = require(path.join(plan, 'common/multi-witness.cjs'));
-profile.assertSource(require(sourceFile), final);
+profile.assertSource(source, final);
 
 const workspace = path.join(prepared, 'prepared/context/workspace');
-if (lane !== 'original') {
-  const api = path.join(workspace, 'services/api');
+const api = path.join(workspace, 'services/api');
+if (lane !== 'original' || profile.count === 349) {
   profile.assertRuntimeBaseline(require(path.join(api, 'prisma/migration-baseline.cjs')));
+}
+if (lane !== 'original') {
   assert.ok(fs.statSync(path.join(api, 'src/contract-takeover/contract-takeover-a28.http.pg.spec.ts')).isFile());
   process.exit(0);
 }
@@ -66,13 +78,18 @@ fs.chmodSync(output, 0o644);
 JS
   node "$plan/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
   git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer.patch"
+  if [[ "$mode" == expense-witness-349 ]]; then
+    git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer-349.patch"
+  fi
   chmod 644 "$work/installer.cjs"
   node -e '
     const fs=require("node:fs"),hash=require("node:crypto").createHash("sha256");
     if(hash.update(fs.readFileSync(process.argv[1])).digest("hex")!==require(process.argv[2]).installerSha256)process.exit(65);
-  ' "$work/installer.cjs" "$plan/expense-witness-346-profile.cjs"
+  ' "$work/installer.cjs" "$plan/$mode-profile.cjs"
   installer="$work/installer.cjs"
   if [[ ${5:-} == --host-only ]]; then
+    node --check "$installer"
+    node --check "$plan/$entry"
     printf '%s\n' "$work"
     exit 0
   fi
@@ -109,10 +126,13 @@ if [[ "$mode" == historical-takeover-333 || "$mode" == historical-settlement-334
   fi
 fi
 
-if [[ "$mode" == expense-witness-346 ]]; then
+if [[ "$mode" == expense-witness-346 || "$mode" == expense-witness-349 ]]; then
   for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
+  if [[ "$mode" == expense-witness-349 ]]; then
+    args+=(--mount "type=bind,src=$plan/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
+  fi
   if [[ $4 == original ]]; then
     args+=(--mount "type=bind,src=$work/line-a-real-db.http.pg.spec.ts,dst=/qualification/workspace/services/api/src/database/line-a-real-db.http.pg.spec.ts,readonly")
   fi
@@ -134,8 +154,9 @@ node -e '
   const expected=({"current-320":"LINE_A_EXACT_329_PASSED","text-direct-330":"LINE_A_TEXT_DIRECT_330_PASSED",
     "payment-remainder-331":"LINE_A_PAYMENT_REMAINDER_331_PASSED",
     "upward-archive-332":"LINE_A_UPWARD_ARCHIVE_332_PASSED","historical-takeover-333":"HISTORICAL_TAKEOVER_A28_333_PASSED","historical-settlement-334":"HISTORICAL_TAKEOVER_A28_334_PASSED"})[source.mode];
-  const required=({"original":source.mode==="expense-witness-346"?"LINE_A_EXPENSE_WITNESS_346_PASSED":"LINE_A_HISTORICAL_SETTLEMENT_334_PASSED",
-    "--a28-continuation":"HISTORICAL_TAKEOVER_A28_346_PASSED",
+  const required=({"original":source.mode.startsWith("expense-witness-")
+      ?"LINE_A_EXPENSE_WITNESS_"+source.migrationCount+"_PASSED":"LINE_A_HISTORICAL_SETTLEMENT_334_PASSED",
+    "--a28-continuation":"HISTORICAL_TAKEOVER_A28_"+source.migrationCount+"_PASSED",
     "--a29-opening":"HISTORICAL_TAKEOVER_A29_OPENING_"+source.migrationCount+"_PASSED",
     "--a28-unknown-overpay":"HISTORICAL_TAKEOVER_A28_UNKNOWN_OVERPAY_334_PASSED"})[process.argv[4]]??expected;
   if(proof.status!==required||proof.sourceSha!==process.argv[2])process.exit(65);

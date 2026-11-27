@@ -13,9 +13,11 @@ const source = require('./contract-finance-source.json');
 const root = '/qualification';
 const api = path.join(root, 'workspace/services/api');
 const spec = 'src/contract-takeover/contract-takeover-a28.http.pg.spec.ts';
-const expenseWitness = source.mode === 'expense-witness-346';
+const precision = source.mode === 'expense-witness-349';
+const expenseWitness = precision || source.mode === 'expense-witness-346';
 const historicalSettlement = expenseWitness || source.mode === 'historical-settlement-334';
-const profile = expenseWitness ? require('./expense-witness-346-profile.cjs')
+const profile = precision ? require('./expense-witness-349-profile.cjs')
+  : expenseWitness ? require('./expense-witness-346-profile.cjs')
   : historicalSettlement ? require('./historical-settlement-334-profile.cjs') : require('./historical-takeover-333-profile.cjs');
 const count = source.migrationCount;
 const scenario = process.env.JG_HISTORICAL_ACCEPTANCE_SCENARIO ?? '';
@@ -106,7 +108,8 @@ async function consume({ ownerUrl, database, workDir, candidateTree }) {
 
 async function main() {
   assert.equal(process.argv.length, 2);
-  assert.ok(expenseWitness ? ['a28-continuation', 'a29-opening'].includes(scenario)
+  assert.ok(precision ? scenario === 'a28-continuation'
+    : expenseWitness ? ['a28-continuation', 'a29-opening'].includes(scenario)
     : !scenario || (historicalSettlement && (opening || unknownOverpay)));
   assert.notEqual(process.getuid(), 0);
   assert.equal(process.env.DATABASE_URL, undefined);
@@ -126,15 +129,28 @@ async function main() {
   receipt.input = admitSource(root, root + '/source/services/api/prisma', root + '/source-seal.txt');
   const material = { sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails };
   if (expenseWitness) {
-    await installer.withCombinedExpenseWitness(receipt, consume, material, profile.count);
+    if (precision) {
+      await installer.withCombinedExpenseWitness349(receipt, consume, { ...source, ...material });
+    } else {
+      await installer.withCombinedExpenseWitness(receipt, consume, material, profile.count);
+    }
     const historical = require('./historical-settlement-334-profile.cjs');
     historical.assertFinanceInstallation(receipt, { ...source, tails: source.tails.slice(0, 39) });
-    const forward = receipt.expenseWitnessForward;
+    const forward = precision ? receipt.expenseWitnessPrecisionForward : receipt.expenseWitnessForward;
     assert.equal(forward.count, count);
     assert.equal(forward.sourceTree, source.sourceTree);
     assert.equal(forward.ledgerSha256, profile.ledgerSha256);
     assert.equal(forward.sameIdentity, true);
-    assert.deepEqual(forward.tails, source.tails.slice(39).map(({ name, sha256 }) => ({ name, sha256 })));
+    const tails = source.tails.map(({ name, sha256 }) => ({ name, sha256 }));
+    const boundary = precision ? source.predecessor346.migrationCount - source.predecessor.migrationCount : 39;
+    assert.deepEqual(forward.tails, tails.slice(boundary));
+    if (precision) {
+      assert.deepEqual(receipt.expenseWitnessForward, {
+        count: source.predecessor346.migrationCount, ledgerSha256: source.predecessor346.ledgerSha256,
+        sameIdentity: true, sourceTree: source.sourceTree, tails: tails.slice(39, boundary)
+      });
+      assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness, true);
+    }
     assert.equal(receipt.expenseWitnessCatalogAfterBusiness, true);
   } else {
     const install = historicalSettlement ? installer.withCombined334HistoricalSettlement : installer.withCombined333HistoricalTakeover;

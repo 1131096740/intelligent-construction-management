@@ -8,7 +8,7 @@ const { spawnSync } = require('node:child_process');
 const { admitSource } = require('./install-only292.cjs');
 const {
   withCombined320ContractPayment, withCombined330TextAgreement, withCombined331PaymentRemainder, withCombined332UpwardArchive,
-  withCombined334HistoricalSettlement, withCombinedExpenseWitness
+  withCombined334HistoricalSettlement, withCombinedExpenseWitness, withCombinedExpenseWitness349
 } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
 const source = require('./contract-finance-source.json');
@@ -16,7 +16,9 @@ const source = require('./contract-finance-source.json');
 const root = '/qualification';
 const api = path.join(root, 'workspace/services/api');
 const spec = 'src/database/line-a-real-db.http.pg.spec.ts';
-const expenseWitness = source.mode === 'expense-witness-346' ? require('./expense-witness-346-profile.cjs') : null;
+const precision = source.mode === 'expense-witness-349';
+const expenseWitness = precision ? require('./expense-witness-349-profile.cjs')
+  : source.mode === 'expense-witness-346' ? require('./expense-witness-346-profile.cjs') : null;
 const historicalSettlement = source.mode === 'historical-settlement-334' || expenseWitness !== null;
 const upwardArchive = source.mode === 'upward-archive-332' || historicalSettlement;
 const paymentRemainder = source.mode === 'payment-remainder-331' || upwardArchive;
@@ -24,7 +26,7 @@ const textDirect = source.mode === 'text-direct-330' || paymentRemainder;
 const migrationCount = expenseWitness ? expenseWitness.count
   : historicalSettlement ? 334 : upwardArchive ? 332 : paymentRemainder ? 331 : textDirect ? 330 : 329;
 const tests = paymentRemainder ? 18 : textDirect ? 17 : 16;
-const purpose = expenseWitness ? 'LINE_A_EXPENSE_WITNESS_346'
+const purpose = expenseWitness ? 'LINE_A_EXPENSE_WITNESS_' + migrationCount
   : historicalSettlement ? 'LINE_A_HISTORICAL_SETTLEMENT_334'
   : upwardArchive ? 'LINE_A_UPWARD_ARCHIVE_332' : paymentRemainder ? 'LINE_A_PAYMENT_REMAINDER_331'
   : textDirect ? 'LINE_A_TEXT_DIRECT_330' : 'LINE_A_EXACT_329';
@@ -299,7 +301,9 @@ async function main() {
   if (expenseWitness) {
     expenseWitness.assertRuntimeBaseline(baseline);
     const fixtureHash = createHash('sha256').update(fs.readFileSync(path.join(api, spec))).digest('hex');
-    assert.equal(fixtureHash, '48bdef111ee82b8a6a622578eaac69586c0cae68f0851d17c1d60fe2921ea1e6', 'LINE_A_346_FIXTURE_FINGERPRINT');
+    const expected = precision ? '076382343c2fb3712ad7e8512b58b4442ac146ee0f12d343e7000c85df3c22fc'
+      : '48bdef111ee82b8a6a622578eaac69586c0cae68f0851d17c1d60fe2921ea1e6';
+    assert.equal(fixtureHash, expected, 'LINE_A_' + migrationCount + '_FIXTURE_FINGERPRINT');
     receipt.fixtureSha256 = fixtureHash;
   } else {
     const admitted = baseline.loadCanonicalMigrationBaseline();
@@ -312,13 +316,16 @@ async function main() {
     : upwardArchive ? withCombined332UpwardArchive : paymentRemainder ? withCombined331PaymentRemainder
     : textDirect ? withCombined330TextAgreement : withCombined320ContractPayment;
   const material = { sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails };
-  if (expenseWitness) {
+  if (precision) {
+    await withCombinedExpenseWitness349(receipt, consume, { ...source, ...material });
+  } else if (expenseWitness) {
     await withCombinedExpenseWitness(receipt, consume, material, expenseWitness.count);
   } else {
     await install(receipt, consume, material);
   }
   const legacyTails = expenseWitness ? source.tails.slice(0, 39) : source.tails;
-  const installed = expenseWitness ? receipt.expenseWitnessForward : receipt.forward320;
+  const installed = precision ? receipt.expenseWitnessPrecisionForward
+    : expenseWitness ? receipt.expenseWitnessForward : receipt.forward320;
   if (textDirect) {
     assert.deepEqual(receipt.textDirectPredecessor, {
       count: 329, ledgerSha256: '3e88a4a2ad3ebb128572fafd29f08a816bada6d61795ce35c6c8a4b73ba08bd2',
@@ -346,7 +353,16 @@ async function main() {
   if (expenseWitness) {
     const historical = require('./historical-settlement-334-profile.cjs');
     historical.assertFinanceInstallation(receipt, { ...source, tails: legacyTails });
-    assert.deepEqual(installed.tails, source.tails.slice(39).map(({ name, sha256 }) => ({ name, sha256 })));
+    const tails = source.tails.map(({ name, sha256 }) => ({ name, sha256 }));
+    const boundary = precision ? source.predecessor346.migrationCount - source.predecessor.migrationCount : 39;
+    assert.deepEqual(installed.tails, tails.slice(boundary));
+    if (precision) {
+      assert.deepEqual(receipt.expenseWitnessForward, {
+        count: source.predecessor346.migrationCount, ledgerSha256: source.predecessor346.ledgerSha256,
+        sameIdentity: true, sourceTree: source.sourceTree, tails: tails.slice(39, boundary)
+      });
+      assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness, true);
+    }
     assert.equal(receipt.expenseWitnessCatalogAfterBusiness, true);
   }
   assert.equal(receipt.forward320.sameIdentity, true);
