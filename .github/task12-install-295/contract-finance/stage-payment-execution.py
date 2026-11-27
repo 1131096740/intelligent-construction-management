@@ -27,6 +27,9 @@ if options == ['--company-history-352']:
     }.items():
         if hashlib.sha256((stage / name).read_bytes()).hexdigest() != digest:
             raise SystemExit(f'PAYMENT_352_POSTIMAGE {name}')
+    for file in stage.rglob('*'):
+        if file.is_file():
+            file.chmod(0o644)
     raise SystemExit(0)
 modes = ([], ['--text-direct-330'], ['--payment-remainder-331'], ['--upward-archive-332'], ['--historical-settlement-334'], ['--expense-witness-346'], ['--expense-witness-349'], ['--signed-settlement-350'])
 if options not in modes:

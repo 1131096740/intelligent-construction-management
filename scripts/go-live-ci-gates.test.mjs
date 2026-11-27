@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import "../.github/task12-install-295/contract-finance/payment-execution-352-permissions.test.cjs";
+import "../.github/task12-install-295/contract-finance/pol108-352-export.test.cjs";
 import pol113Pol115Shards from "../services/api/prisma/pol113-pol115-shards.cjs";
 import { mkdtemp, readFile, readdir, rm, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
