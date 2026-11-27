@@ -1,0 +1,69 @@
+--- fresh.cjs
++++ fresh.cjs
+@@ -8,12 +8,12 @@
+ const tree="67644d9465a0ab4ee80ede099139d9c129d66f14";
+ const suite="src/database/payment-execution-concurrency.spec.ts";
+ const source=require('./contract-finance-source.json');
+-const expenseWitness=source.mode==='signed-settlement-350' ? require('./payment-execution-350.cjs') : null;
++const expenseWitness=source.mode==='company-history-352' ? require('./payment-execution-352.cjs') : source.mode==='signed-settlement-350' ? require('./payment-execution-350.cjs') : null;
+ const historicalSettlement=source.mode==='historical-settlement-334';
+ const upwardArchive=source.mode==='upward-archive-332';
+ const paymentRemainder=source.mode==='payment-remainder-331';
+ const forward=expenseWitness||historicalSettlement||upwardArchive||paymentRemainder||source.mode==='current-320'||source.mode==='text-direct-330';
+-const count=expenseWitness?350:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
++const count=expenseWitness?(source.mode==='company-history-352'?352:350):historicalSettlement?334:upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
+ const install=(receipt,consume)=>expenseWitness
+   ? expenseWitness.install(receipt,consume,source)
+   : forward
+--- valid.cjs
++++ valid.cjs
+@@ -2,12 +2,12 @@
+ const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement}=require("./installer.cjs");
+ const {load,verifyFacts}=require("./retained-payment.cjs");
+ const source=require('./contract-finance-source.json');
+-const expenseWitness=source.mode==='signed-settlement-350' ? require('./payment-execution-350.cjs') : null;
++const expenseWitness=source.mode==='company-history-352' ? require('./payment-execution-352.cjs') : source.mode==='signed-settlement-350' ? require('./payment-execution-350.cjs') : null;
+ const historicalSettlement=source.mode==='historical-settlement-334';
+ const upwardArchive=source.mode==='upward-archive-332';
+ const paymentRemainder=source.mode==='payment-remainder-331';
+ const forward=expenseWitness||historicalSettlement||upwardArchive||paymentRemainder||source.mode==='current-320'||source.mode==='text-direct-330';
+-const count=expenseWitness?350:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
++const count=expenseWitness?(source.mode==='company-history-352'?352:350):historicalSettlement?334:upwardArchive?332:paymentRemainder?331:source.mode==='text-direct-330'?330:forward?329:295;
+ const install=(receipt,consume)=>expenseWitness
+   ? expenseWitness.install(receipt,consume,source)
+   : forward
+--- payment-execution-concurrency.spec.ts
++++ payment-execution-concurrency.spec.ts
+@@ -192,7 +192,7 @@
+ async function assertFullyMigrated(client: PrismaClientType) {
+   const target = new URL(process.env.DATABASE_URL!);
+   if (isOwned280ContractDatabase(target)) {
+-    if (["332", "334", "346", "349", "350"].includes(process.env.JG_CONTRACT_FINANCE_LEDGER ?? "")) {
++    if (["332", "334", "346", "349", "350", "352"].includes(process.env.JG_CONTRACT_FINANCE_LEDGER ?? "")) {
+       if (!await assertOwnedContractFinanceLedger(client, "payment")) {
+         throw new Error("PAYMENT_CONCURRENCY_OWNED_LEDGER_IDENTITY");
+       }
+--- contract-finance-owned.test-support.ts
++++ contract-finance-owned.test-support.ts
+@@ -41,7 +41,7 @@
+   `;
+   const ledger = observed?.ledger.map(({ name, sha256, finished, rolledBack }) => ({ name, sha256, finished, rolledBack }));
+   const configured = process.env.JG_CONTRACT_FINANCE_LEDGER;
+-  if (configured !== undefined && configured !== "329" && configured !== "330" && configured !== "331" && configured !== "332" && configured !== "334" && configured !== "346" && configured !== "349" && configured !== "350") {
++  if (configured !== undefined && configured !== "329" && configured !== "330" && configured !== "331" && configured !== "332" && configured !== "334" && configured !== "346" && configured !== "349" && configured !== "350" && configured !== "352") {
+     throw new Error("CONTRACT_FINANCE_LEDGER_MODE");
+   }
+   const count = Number(configured ?? 295);
+@@ -70,8 +70,10 @@
+         "bdddd170728d7c28c1b5a4f4a4b2b8981aa1ba2d041590475d695427502d8225") ||
+       (count >= 349 && createHash("sha256").update(JSON.stringify(ledger.slice(0,349))).digest("hex") !==
+         "8bfe19831eeb7da7c38c8a4f8c4cda98b9b1a165bf4013f0e39816c0fd340679") ||
+-      (count === 350 && createHash("sha256").update(JSON.stringify(ledger)).digest("hex") !==
+-        "6dd4b8f7c484e4afeacd893991256275b087e2ae1ee2c940df87f812dc60a860")) {
++      (count >= 350 && createHash("sha256").update(JSON.stringify(ledger.slice(0,350))).digest("hex") !==
++        "6dd4b8f7c484e4afeacd893991256275b087e2ae1ee2c940df87f812dc60a860") ||
++      (count === 352 && createHash("sha256").update(JSON.stringify(ledger)).digest("hex") !==
++        "155903a7032c978e10b8d73f48a0621bf9561ae69ef58a0128d2455f1ccfa5f8")) {
+     throw new Error("CONTRACT_FINANCE_OWNED_LEDGER_MISMATCH");
+   }
+   return true;

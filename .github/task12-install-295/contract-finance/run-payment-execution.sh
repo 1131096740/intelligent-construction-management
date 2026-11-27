@@ -13,28 +13,29 @@ scope=payment-execution
 
 count=$(node -e '
   const source=require(process.argv[1]);
-  const counts=new Map([["signed-settlement-350",350],["expense-witness-349",349],["expense-witness-346",346],["historical-settlement-334",334],["upward-archive-332",332],
+  const counts=new Map([["company-history-352",352],["signed-settlement-350",350],["expense-witness-349",349],["expense-witness-346",346],["historical-settlement-334",334],["upward-archive-332",332],
     ["payment-remainder-331",331],["text-direct-330",330],["current-320",329],[undefined,295]]);
   const count=counts.get(source.mode);
   if(!count||source.sourceSha!==process.argv[2]||source.migrationCount!==count)process.exit(65);
   if(count===332) require(process.argv[3]).assertSource(source,process.argv[2],require(process.argv[4]).final);
   if(count===334) require(process.argv[5]).assertSource(source,require(process.argv[4]).final);
-  if(count===346||count===349||count===350) require(process.argv[6]+"/"+source.mode+"-profile.cjs").assertSource(source,require(process.argv[4]).final);
+  if(count===346||count===349||count===350||count===352) require(process.argv[6]+"/"+source.mode+"-profile.cjs").assertSource(source,require(process.argv[4]).final);
   console.log(count);
 '  "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan")
-if [[ $count == 350 && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
+if [[ ( $count == 350 || $count == 352 ) && ${GITHUB_ACTIONS:-} == true ]]; then exit 64; fi
 host_only=false
 if [[ ${5-} == --host-only ]]; then
-  [[ $count == 346 || $count == 349 || $count == 350 ]] || exit 64
+  [[ $count == 346 || $count == 349 || $count == 350 || $count == 352 ]] || exit 64
   host_only=true
 fi
-if [[ $count == 346 || $count == 349 || $count == 350 ]]; then
+if [[ $count == 346 || $count == 349 || $count == 350 || $count == 352 ]]; then
   [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
   [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$repo/.github/task12-install-290/payment") ]] || exit 65
-  if [[ $count == 349 || $count == 350 ]]; then
+  if [[ $count == 349 || $count == 350 || $count == 352 ]]; then
     [[ $plan == "$repo/.github/task12-install-295/contract-finance" ]] || exit 65
     mode=--expense-witness-349
     if [[ $count == 350 ]]; then mode=--signed-settlement-350; fi
+    if [[ $count == 352 ]]; then mode=--company-history-352; fi
     cmp -s "$prepared/source.json" <(node "$plan/check-ledger.cjs" "$repo" "$sha" "$mode") || exit 65
   fi
   node - "$prepared" "$(git -C "$repo" rev-parse "$sha^{tree}")" "$plan" <<'JS'
@@ -65,6 +66,7 @@ case "$count" in
   334) portable_args=(--historical-settlement-334) ;;
   346|349) portable_args=("--expense-witness-$count") ;;
   350) portable_args=(--signed-settlement-350) ;;
+  352) portable_args=(--company-history-352) ;;
 esac
 python3 "$plan/stage-payment-execution.py" "$repo/.github/task12-install-290/payment" "$common" "$material" ${portable_args[@]+"${portable_args[@]}"}
 
@@ -121,12 +123,12 @@ for lane in fresh valid paid other; do
   if [[ $count == 332 && ( $lane == fresh || $lane == valid ) ]]; then
     lane_args+=(--mount "type=bind,src=$plan/upward-archive-332-profile.cjs,dst=/qualification/upward-archive-332-profile.cjs,readonly")
   fi
-  if [[ ( $count == 334 || $count == 346 || $count == 349 || $count == 350 ) && ( $lane == fresh || $lane == valid ) ]]; then
+  if [[ ( $count == 334 || $count == 346 || $count == 349 || $count == 350 || $count == 352 ) && ( $lane == fresh || $lane == valid ) ]]; then
     for file in upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
       lane_args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
     done
   fi
-  if [[ ( $count == 346 || $count == 349 || $count == 350 ) && ( $lane == fresh || $lane == valid ) ]]; then
+  if [[ ( $count == 346 || $count == 349 || $count == 350 || $count == 352 ) && ( $lane == fresh || $lane == valid ) ]]; then
     for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json "payment-execution-$count.cjs"; do
       lane_args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
     done
@@ -134,10 +136,13 @@ for lane in fresh valid paid other; do
   if [[ $count == 349 && ( $lane == fresh || $lane == valid ) ]]; then
     lane_args+=(--mount "type=bind,src=$plan/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
   fi
-  if [[ $count == 350 && ( $lane == fresh || $lane == valid ) ]]; then
+  if [[ ( $count == 350 || $count == 352 ) && ( $lane == fresh || $lane == valid ) ]]; then
     for file in expense-witness-349-profile.cjs signed-settlement-350-profile.cjs; do
       lane_args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
     done
+  fi
+  if [[ $count == 352 && ( $lane == fresh || $lane == valid ) ]]; then
+    lane_args+=(--mount "type=bind,src=$plan/company-history-352-profile.cjs,dst=/qualification/company-history-352-profile.cjs,readonly")
   fi
   exit_code=0
   docker run "${lane_args[@]}" --entrypoint node "$image" "/qualification/$entry" \
@@ -166,7 +171,7 @@ for lane in fresh valid paid other; do
       if(row.combinedAfterBusiness?.sameIdentity!==true||row.combinedAfterBusiness?.ledgerSha256!==source.ledgerSha256||
          row.historicalTakeoverCatalogAfterBusiness!==true||row.historicalSettlementCatalogAfterBusiness!==true)process.exit(1);
     }
-    if(positive&&(count==="346"||count==="349"||count==="350")) require(process.argv[10]+"/payment-execution-"+count+".cjs").assertInstallation(row,require(process.argv[7]));
+    if(positive&&(count==="346"||count==="349"||count==="350"||count==="352")) require(process.argv[10]+"/payment-execution-"+count+".cjs").assertInstallation(row,require(process.argv[7]));
     if(code!=="0"||row.status!==expected||row.cleanup!=="POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT"||
       (positive&&(row.sourceSha!==sha||row.installOnly295?.count!==295||row.combinedAfterBusiness?.count!==Number(count)||row.combinedAfterBusiness?.exactB7!==true))||
       (!positive&&(row.retainedPaymentNegatives?.length!==(lane==="paid"?1:13)||row.installOnly295!==undefined)))process.exit(1);

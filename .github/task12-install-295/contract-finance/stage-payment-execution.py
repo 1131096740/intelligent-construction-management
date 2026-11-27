@@ -6,6 +6,28 @@ import sys
 from pathlib import Path
 
 archive_arg, common_arg, stage_arg, *options = sys.argv[1:]
+if options == ['--company-history-352']:
+    subprocess.run([sys.executable, __file__, archive_arg, common_arg, stage_arg, '--signed-settlement-350'], check=True)
+    stage = Path(stage_arg)
+    plan = Path(__file__).parent
+    for patch in ('expense-witness/installer-352.patch', 'payment-execution-352-fixtures.patch'):
+        subprocess.run(['git', 'apply', '--unidiff-zero', '-p0' if patch.startswith('payment-') else '-p1', str((plan / patch).resolve())], cwd=stage, check=True)
+    installer = stage / 'installer.cjs'
+    old = b'PAYMENT_EXECUTION_ORIGINAL_RETAINED_VALID_(295|329|330|331|332|334|346|349|350)'
+    contents = installer.read_bytes()
+    if contents.count(old) != 1:
+        raise SystemExit('PAYMENT_352_RETAINED_VALID_PREIMAGE')
+    installer.write_bytes(contents.replace(old, old[:-1] + b'|352)'))
+    for name, digest in {
+        'installer.cjs': 'f51860f93670e10534cad3173d8a5d1e415a3e31ac0c5cf5d4355dbf8d38674a',
+        'fresh.cjs': 'b2a8367928d1f9656ac3146710fe613c6b5ca7aced79736760585083c5bef2ec',
+        'valid.cjs': 'a2ba2d80cb43a52baa0cf0debf02f18d8b204fa9569d5bcaeb0ead6134645f3d',
+        'payment-execution-concurrency.spec.ts': 'ec78af354d1c0904ea6e7e3e87a5f92e5fa62b3fd3f27ed5875dfa6a9be3d916',
+        'contract-finance-owned.test-support.ts': 'd12ddb8a4d8a898f5f33f6e166e1b7fbdc6884ebde4a0a153e0dacd6819c515c',
+    }.items():
+        if hashlib.sha256((stage / name).read_bytes()).hexdigest() != digest:
+            raise SystemExit(f'PAYMENT_352_POSTIMAGE {name}')
+    raise SystemExit(0)
 modes = ([], ['--text-direct-330'], ['--payment-remainder-331'], ['--upward-archive-332'], ['--historical-settlement-334'], ['--expense-witness-346'], ['--expense-witness-349'], ['--signed-settlement-350'])
 if options not in modes:
     raise SystemExit('PAYMENT_STAGE_MODE')
