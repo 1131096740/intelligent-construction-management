@@ -46,9 +46,9 @@ function matchesBaseline346(baseline) {
     baseline.terminalMigrationChecksum === terminal.sha256;
 }
 
-function issue418Tests346() {
+function issue418Tests346(scopes = issue418OperatingScopes) {
   const counts = new Map();
-  for (const scope of issue418OperatingScopes) {
+  for (const scope of scopes) {
     const { file, titles } = profileFor(scope);
     counts.set(file, (counts.get(file) ?? 0) + titles.length);
   }

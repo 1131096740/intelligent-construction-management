@@ -24,6 +24,14 @@ const {
 
 const gate334 = require("./dynamic-gate-334.cjs");
 const gate346 = require("./dynamic-gate-346.cjs");
+const gate349 = require("./dynamic-gate-349.cjs");
+const exactGates = new Map([
+  [334, { commandFor: gate334.commandFor334, unadmittedGroups: gate334.unadmittedGroups334 }],
+  [346, { commandFor: gate346.commandFor346, unadmittedGroups: gate346.unadmittedGroups346,
+    matchesBaseline: gate346.matchesBaseline346, issue418Tests: gate346.issue418Tests346 }],
+  [349, { commandFor: gate349.commandFor349, unadmittedGroups: gate349.unadmittedGroups349,
+    matchesBaseline: gate349.matchesBaseline349, issue418Tests: gate349.issue418Tests349 }]
+]);
 
 const root = path.resolve(__dirname, "../../..");
 const manifestPath = path.join(
@@ -132,12 +140,13 @@ function validateRunner(runner, groupId, rootPackage, apiPackage, migrationCount
   if (!runner || !RUNNER_KINDS.has(runner.kind)) {
     fail(`coveredGroups.${groupId}.runner.kind 不受支持`);
   }
-  if (migrationCount === 346 && groupId === "issue418_operating_dedup") {
-    const [expected] = gate346.commandFor346(groupId);
+  const exactGate = exactGates.get(migrationCount);
+  if (exactGate?.issue418Tests && groupId === "issue418_operating_dedup") {
+    const [expected] = exactGate.commandFor(groupId);
     if (runner.kind !== "exactLedgerShell" || runner.path !== expected ||
         Object.keys(runner).sort().join(",") !== "kind,path" ||
-        !statSync(resolveRepositoryPath(expected, "346 PostgreSQL 隔离入口"), { throwIfNoEntry: false })?.isFile()) {
-      fail("#418 只允许固定的 346 PostgreSQL 隔离入口");
+        !statSync(resolveRepositoryPath(expected, `${migrationCount} PostgreSQL 隔离入口`), { throwIfNoEntry: false })?.isFile()) {
+      fail(`#418 只允许固定的 ${migrationCount} PostgreSQL 隔离入口`);
     }
     return;
   }
@@ -285,11 +294,12 @@ function validateManifest(manifest) {
       fail(`coveredGroups.${group.id} pendingTests 与文件小计不一致`);
     }
     if (group.id === POL113_POL115_GROUP) assertPol113Pol115Coverage(group);
-    if (migrationBaseline.expectedDirectoryCount === 346 && group.id === "issue418_operating_dedup") {
-      const expected = gate346.issue418Tests346();
+    const issue418Tests = exactGates.get(migrationBaseline.expectedDirectoryCount)?.issue418Tests;
+    if (issue418Tests && group.id === "issue418_operating_dedup") {
+      const expected = issue418Tests();
       if (group.testFiles.length !== expected.length || expected.some(({ path, pendingTests, suiteStatus }) =>
         !group.testFiles.some(file => file.path === path && file.pendingTests === pendingTests && file.suiteStatus === suiteStatus))) {
-        fail("#418 的 346 测试清单与实际执行分片不一致");
+        fail(`#418 的 ${migrationBaseline.expectedDirectoryCount} 测试清单与实际执行分片不一致`);
       }
     }
     validateRunner(group.runner, group.id, rootPackage, apiPackage, migrationBaseline.expectedDirectoryCount);
@@ -687,15 +697,15 @@ const current330Lanes = Object.freeze({
 });
 
 function assertAutomaticBaselineAdmitted(migrationCount) {
-  if (migrationCount > 334 && migrationCount !== 346) fail(`${migrationCount} PostgreSQL 动态基线未准入`);
+  if (migrationCount > 334 && !exactGates.has(migrationCount)) fail(`${migrationCount} PostgreSQL 动态基线未准入`);
 }
 
 function resolveGroupCommand(group, options = {}) {
   if (group.id !== TASK01_GROUP) assertAutomaticBaselineAdmitted(options.migrationCount);
   const { migrationCount } = options;
-  if (migrationCount === 334 || (migrationCount === 346 && group.id !== TASK01_GROUP)) {
-    const commandForBaseline = migrationCount === 346 ? gate346.commandFor346 : gate334.commandFor334;
-    const dispatch = commandForBaseline(group.id, options.candidateSha, group.pol113Pol115Shard);
+  const exactGate = exactGates.get(migrationCount);
+  if (exactGate && (migrationCount === 334 || group.id !== TASK01_GROUP)) {
+    const dispatch = exactGate.commandFor(group.id, options.candidateSha, group.pol113Pol115Shard);
     if (!dispatch) fail(`${migrationCount} PostgreSQL 动态组未接入：${group.id}`);
     if (!/^[a-f0-9]{40}$/u.test(options.candidateSha ?? "")) fail(`${migrationCount} 运行必须提供完整候选 SHA`);
     const [runner, ...args] = dispatch;
@@ -820,13 +830,12 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
   }
   const migrationCount = manifest.migrationBaseline.expectedDirectoryCount;
   assertAutomaticBaselineAdmitted(migrationCount);
-  if (migrationCount === 346 && !gate346.matchesBaseline346(manifest.migrationBaseline)) {
-    fail("346 PostgreSQL 动态基线摘要未准入");
+  const exactGate = exactGates.get(migrationCount);
+  if (exactGate?.matchesBaseline && !exactGate.matchesBaseline(manifest.migrationBaseline)) {
+    fail(`${migrationCount} PostgreSQL 动态基线摘要未准入`);
   }
-  if (migrationCount === 334 || migrationCount === 346) {
-    const unadmitted = migrationCount === 346
-      ? gate346.unadmittedGroups346(coveredGroups)
-      : gate334.unadmittedGroups334(coveredGroups);
+  if (exactGate) {
+    const unadmitted = exactGate.unadmittedGroups(coveredGroups);
     if (unadmitted.length) fail(`${migrationCount} PostgreSQL 动态组未接入：${unadmitted.join(", ")}`);
   }
   const temporaryRoot = await mkdtemp(
@@ -856,7 +865,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
     childEnvironment.DATABASE_DYNAMIC_GATE_CANDIDATE_SHA = candidateSha;
     // The remaining runner owns preparation for both standalone and CI use.
     // No environment flag or persisted cache can bypass that preparation.
-    if (migrationCount !== 334 && migrationCount !== 346 && coveredGroups.some(group => group.id !== "remaining_dynamic_postgresql16" &&
+    if (!exactGate && coveredGroups.some(group => group.id !== "remaining_dynamic_postgresql16" &&
         !(migrationCount === 330 && Object.hasOwn(current330Lanes, group.id)))) {
       await runPreflight(childEnvironment);
     }
@@ -907,7 +916,7 @@ async function executeGate({ manifest, options, sourceEnv = process.env }) {
       migrationCount: manifest.migrationBaseline.expectedDirectoryCount,
       terminalMigration: manifest.migrationBaseline.terminalMigration,
       terminalMigrationChecksum: manifest.migrationBaseline.terminalMigrationChecksum,
-      ...(migrationCount === 346 ? {
+      ...(exactGate?.matchesBaseline ? {
         preflightContainerImage: manifest.migrationBaseline.containerImage,
         preflightContainerImageId: dockerReceipt.imageId
       } : {

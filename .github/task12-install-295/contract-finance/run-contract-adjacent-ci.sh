@@ -7,7 +7,7 @@ issue_lane=false
 if [[ ${2:-} == issue* ]]; then
   [[ $# == 3 ]] || exit 64
   case "$2:$3" in
-    issue417:--expense-witness-349|issue418-operating:--expense-witness-349) ;;
+    issue404_matrix_349:--expense-witness-349|issue417:--expense-witness-349|issue418-operating:--expense-witness-349) ;;
     *:--expense-witness-349)
       node -e 'const p=require(process.argv[1]).profileFor(process.argv[2]); if(p.requiredMigrationCount!==349) process.exit(65)' "$plan/issue-ordered/profiles.cjs" "$2" >/dev/null 2>&1 || exit 64 ;;
     issue403:--expense-witness-346|issue404:--expense-witness-346|issue417:--expense-witness-346|issue418-operating:--expense-witness-346) ;;
@@ -110,6 +110,11 @@ if [[ $issue_lane == true ]]; then profile=api; fi
 bash "$plan/build.sh" "$work/source" "$sha" "$profile" "$work/browser"
 if [[ $issue_lane == true ]]; then
   case "$lane" in
+    issue404_matrix_349)
+      for scope in issue404_349 issue426_a01_349; do
+        bash "$plan/issue-ordered/run.sh" "$root" "$work/source" "$sha" "$work/browser" "$scope"
+      done
+      ;;
     issue417)
       bash "$plan/expense-witness/run.sh" "$root" "$work/source" "$sha" "$work/browser" --issue417-history-expense
       ;;

@@ -2,11 +2,12 @@
 
 const prior = require("./dynamic-gate-346.cjs");
 const { count, terminal } = require("../../../.github/task12-install-295/contract-finance/expense-witness-349-profile.cjs");
+const { issue418OperatingScopes349 } = require("../../../.github/task12-install-295/contract-finance/issue-ordered/profiles.cjs");
 const mode = "--expense-witness-349";
 const scopeOverrides = Object.freeze({
   issue400_346: "issue400_349",
   issue403: "issue403_349",
-  issue404: "issue404_349",
+  issue404: "issue404_matrix_349",
   issue405_346: "issue405_349",
   issue411_346: "issue411_349",
   issue413_346: "issue413_349",
@@ -36,4 +37,8 @@ function matchesBaseline349(baseline) {
     baseline.terminalMigrationChecksum === terminal.sha256;
 }
 
-module.exports = { commandFor349, unadmittedGroups349, matchesBaseline349 };
+function issue418Tests349() {
+  return prior.issue418Tests346(issue418OperatingScopes349);
+}
+
+module.exports = { commandFor349, unadmittedGroups349, matchesBaseline349, issue418Tests349 };

@@ -26,12 +26,12 @@
     ]
   },
   "inventory": {
-    "pendingFiles": 111,
-    "fullyPendingSuites": 91,
+    "pendingFiles": 112,
+    "fullyPendingSuites": 92,
     "partiallyPendingSuites": 20,
-    "pendingTests": 637,
-    "coveredFiles": 111,
-    "coveredTests": 637,
+    "pendingTests": 639,
+    "coveredFiles": 112,
+    "coveredTests": 639,
     "remainingFiles": 0,
     "remainingTests": 0
   },
@@ -957,12 +957,17 @@
     },
     {
       "id": "issue404_reimbursement",
-      "pendingTests": 3,
+      "pendingTests": 5,
       "testFiles": [
         {
           "path": "services/api/src/database/issue404-reimbursement.pg.spec.ts",
           "pendingTests": 3,
           "suiteStatus": "partial_pending"
+        },
+        {
+          "path": "services/api/src/expense-claim/expense-claim-a01-precision.http.pg.spec.ts",
+          "pendingTests": 2,
+          "suiteStatus": "fully_pending"
         }
       ],
       "runner": {
@@ -1157,8 +1162,8 @@
   "executionInventory": {
     "ciEligible": {
       "groups": 45,
-      "files": 110,
-      "tests": 636
+      "files": 111,
+      "tests": 638
     },
     "manualOnly": {
       "groups": 1,
