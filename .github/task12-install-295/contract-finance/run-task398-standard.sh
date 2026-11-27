@@ -130,7 +130,7 @@ if (( count >= 330 )); then
       fi
       if (( count == 352 )); then
         patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-standard-352.patch"
-        [[ $(runner_sha) == 57beaa6ff97e2eccc18e5fc81d05ec357e48ec9bd63f219c5366516d32c3c6e0 ]] || exit 65
+        [[ $(runner_sha) == 90827d89e52a47c6a11ab90a2ebe18b3ca2612b2eed185594360f5ee15b823b3 ]] || exit 65
       fi
       if [[ -z $variant || $variant == text-direct-346 || $variant == text-direct-349 || $variant == text-direct-352 ]]; then
         relative=services/api/src/database/task16-text-agreement-payments.http.pg.spec.ts

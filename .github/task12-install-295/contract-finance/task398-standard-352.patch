@@ -15,7 +15,27 @@
   const {scenario,overpayScenario,ledgerLossScenario,transferRejection,transferBrowser,handoverScenario,advanceScenario,principalRoleCoverage,principalScenario,companyProxyScenario,usesAdvanceRuntime,advanceExcludedReads,transferScenario,browserScenario}=options;
   if(!current280){
   const files=["registered-funding.sql","registered-history-revision.sql","registered-write-authority.sql","registered-canonical-proof.sql","registered-intercompany.sql","registered-canonical-adapter.sql","registered-voucher.sql"].map(file=>readFileSync(path.join(__dirname,"prepared/task16",file),"utf8"));
-@@ -352,6 +353,7 @@
+@@ -239,7 +240,8 @@
+  const check=await sql("jiangkong",`SELECT CASE WHEN NOT EXISTS(SELECT FROM pg_catalog.pg_roles r WHERE r.rolname IN ('jg_task01_runtime','jg_task01_observer') AND (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolreplication OR r.rolbypassrls OR r.rolinherit)) AND NOT EXISTS(SELECT FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles r ON r.oid=m.member OR r.oid=m.roleid WHERE r.rolname IN ('jg_task01_runtime','jg_task01_observer')) AND NOT has_table_privilege('jg_task01_runtime','public."OperatingLedgerWriteSecret"','SELECT,INSERT,UPDATE,DELETE') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingLedgerWriteSecret"','SELECT,INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingFact"','INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_runtime','public."OperatingImpactEntry"','INSERT,UPDATE,REFERENCES') AND NOT has_any_column_privilege('jg_task01_observer','public."OperatingFact"','INSERT,UPDATE,REFERENCES') AND NOT has_schema_privilege('jg_task01_runtime','public','CREATE') AND NOT has_schema_privilege('jg_task01_observer','public','CREATE') AND (${technicalDeleteCheckSql()}) AND (${signatureBindingCheckSql()}) AND (${approvalDependencyCheckSql()}) AND (${spotGuardCheckSql()}) AND (${businessReadCheckSql(advanceExcludedReads,current280)}) AND (${observerReadCheckSql(browserScenario||overpayScenario||ledgerLossScenario,ledgerLossScenario,transferScenario,handoverScenario)}) AND (${meSensitiveReadCheckSql()}) THEN 'TASK398_ROLE_CHECK_OK' ELSE 'TASK398_ROLE_CHECK_FAILED' END;`);
+  if(!check.includes("TASK398_ROLE_CHECK_OK"))throw new Error("TASK398_ROLE_CHECK");
+  if(textDirectFinance){
+-  const refundRead='"id","idempotencyKey","executionType","paymentExecutionId","spotProcurementPaymentExecutionId","expenseClaimPaymentExecutionId","paymentRequestId","projectId","accountId","fundRegistrationId","amountCents","receivedAt","reason","evidenceReference","recordedByUserId","payloadFingerprint","createdAt"';
++  const companyRefundColumns=textDirect352?',"companyTransferIncomingEventId","companyTransferReturnEventId","companyTransferDebtCorrectionId"':'';
++  const refundRead='"id","idempotencyKey","executionType","paymentExecutionId","spotProcurementPaymentExecutionId","expenseClaimPaymentExecutionId","paymentRequestId","projectId","accountId","fundRegistrationId","amountCents","receivedAt","reason","evidenceReference","recordedByUserId","payloadFingerprint","createdAt"'+companyRefundColumns;
+   const refundWrite='"id","idempotencyKey","executionType","paymentExecutionId","paymentRequestId","projectId","accountId","fundRegistrationId","amountCents","receivedAt","reason","evidenceReference","recordedByUserId","payloadFingerprint","createdAt"';
+   await sql("jg_task01_owner",`
+    GRANT SELECT (${refundRead}), INSERT (${refundWrite}) ON public."PaymentExecutionRefund" TO jg_task01_runtime;
+@@ -249,6 +251,9 @@
+    DO $$ BEGIN
+      IF has_table_privilege('jg_task01_runtime','public."PaymentExecutionRefund"','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER')
+         OR has_any_column_privilege('jg_task01_runtime','public."PaymentExecutionRefund"','UPDATE,REFERENCES')
++        ${textDirect352?`OR has_column_privilege('jg_task01_runtime','public."PaymentExecutionRefund"','companyTransferIncomingEventId','INSERT')
++        OR has_column_privilege('jg_task01_runtime','public."PaymentExecutionRefund"','companyTransferReturnEventId','INSERT')
++        OR has_column_privilege('jg_task01_runtime','public."PaymentExecutionRefund"','companyTransferDebtCorrectionId','INSERT')`:""}
+         OR has_column_privilege('jg_task01_runtime','public."PaymentExecutionRefund"','spotProcurementPaymentExecutionId','INSERT')
+         OR has_column_privilege('jg_task01_runtime','public."PaymentExecutionRefund"','expenseClaimPaymentExecutionId','INSERT')
+         OR has_table_privilege('jg_task01_runtime','public."PaymentExecutionCorrection"','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,TRIGGER')
+@@ -352,6 +357,7 @@
   if(textDirect331)env.TASK425_TEXT_FINANCE_331="1";
   if(textDirect332)env.TASK425_TEXT_FINANCE_332="1";
   if(textDirect334)env.TASK425_TEXT_FINANCE_334="1";
@@ -23,7 +43,7 @@
   if(textDirect349)env.TASK425_TEXT_FINANCE_349="1";
   if(textDirect346)env.TASK425_TEXT_FINANCE_346="1";
   if(overpayScenario)env.TASK398_OVERPAY_MODE="1";
-@@ -548,16 +550,17 @@
+@@ -548,16 +554,17 @@
   `);
  }
  async function runTask398Owned282Voucher(context, mode="standard", receipt){
@@ -45,7 +65,7 @@
   const current330=textDirect||standard;
   const paymentCount=expenseWitness?.count??(current334?334:current332?332:current331?331:330);
   if(standard&&receipt?.purpose!=="TASK398_STANDARD_EXACT_"+paymentCount)throw Error("TASK398_STANDARD_SCOPE");
-@@ -571,7 +574,7 @@
+@@ -571,7 +578,7 @@
   const fences=ownedCashFenceProfile(options.principalScenario);
   const {candidateTree,sourceBaseSha: candidate,runId,database,workDir,sql:ownerSql,readPostgresLog}=context;
   const short=runId.replaceAll("-","");
