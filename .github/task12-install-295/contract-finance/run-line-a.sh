@@ -14,12 +14,13 @@ source="$prepared/source.json"
 
 node -e '
   const source=require(process.argv[1]);
-  const count=({"current-320":329,"text-direct-330":330,"payment-remainder-331":331,"upward-archive-332":332,"historical-takeover-333":333,"historical-settlement-334":334,"expense-witness-346":346,"expense-witness-349":349,"signed-settlement-350":350})[source.mode];
+  const count=({"current-320":329,"text-direct-330":330,"payment-remainder-331":331,"upward-archive-332":332,"historical-takeover-333":333,"historical-settlement-334":334,"expense-witness-346":346,"expense-witness-349":349,"signed-settlement-350":350,"company-history-352":352})[source.mode];
   if(!count||source.migrationCount!==count||source.sourceSha!==process.argv[2])process.exit(65);
 ' "$source" "$sha"
 entry=line-a-entry.cjs
 mode=$(node -p 'require(process.argv[1]).mode' "$source")
 case "$mode:${4:-}:${5:-}" in
+  company-history-352:original:|company-history-352:original:--host-only|\
   signed-settlement-350:original:|signed-settlement-350:original:--host-only|\
   signed-settlement-350:--a01-signed-subcent-350:|signed-settlement-350:--a01-signed-subcent-350:--host-only)
     [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64 ;;
@@ -32,13 +33,13 @@ case "$mode:${4:-}:${5:-}" in
   historical-settlement-334::|historical-settlement-334:--a29-opening:|historical-settlement-334:--a28-unknown-overpay:|\
   historical-takeover-333::)
     entry=historical-takeover-333-entry.cjs ;;
-  expense-witness-346:*|expense-witness-349:*|signed-settlement-350:*|historical-settlement-334:*|historical-takeover-333:*) exit 64 ;;
+  expense-witness-346:*|expense-witness-349:*|signed-settlement-350:*|company-history-352:*|historical-settlement-334:*|historical-takeover-333:*) exit 64 ;;
   *::) ;;
   *) exit 64 ;;
 esac
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-line-a.XXXXXXXX")
 installer="$common/installer.cjs"
-if [[ "$mode" == expense-witness-346 || "$mode" == expense-witness-349 || "$mode" == signed-settlement-350 ]]; then
+if [[ "$mode" == expense-witness-346 || "$mode" == expense-witness-349 || "$mode" == signed-settlement-350 || "$mode" == company-history-352 ]]; then
   if [[ "$mode" != expense-witness-346 ]]; then
     root=$(git -C "$plan" rev-parse --show-toplevel)
     [[ $(git -C "$root" rev-parse HEAD) == "$sha" ]] || exit 65
@@ -59,7 +60,7 @@ profile.assertSource(source, final);
 
 const workspace = path.join(prepared, 'prepared/context/workspace');
 const api = path.join(workspace, 'services/api');
-const signedSubcent = source.mode === 'signed-settlement-350';
+const signedSubcent = source.mode === 'signed-settlement-350' || source.mode === 'company-history-352';
 if (lane !== 'original' || profile.count === 349 || signedSubcent) {
   profile.assertRuntimeBaseline(require(path.join(api, 'prisma/migration-baseline.cjs')));
 }
@@ -83,7 +84,7 @@ if (signedSubcent) {
   assert.equal(sha256(fragment), 'c05defe651512e2d98aaed8cf3d13ba20d5a657e54f0eb811b2cade7165398bf');
   fixture = fixture.replace(anchor, fragment + '\n' + anchor);
   const fixtureSha256 = sha256(fixture);
-  assert.equal(fixtureSha256, '71d0f8004a04acdf5947ce196c39695983caab36a83afd25aad36ba4670909ea');
+  assert.equal(fixtureSha256, source.mode === 'company-history-352' ? 'c2e5ab20b4853386a050db4c619bbf654103926ef21b363d511902de176197b5' : '71d0f8004a04acdf5947ce196c39695983caab36a83afd25aad36ba4670909ea');
   fs.writeFileSync(path.join(work, 'a01-admission.json'), JSON.stringify({
     status: 'HOST_MATERIAL_ONLY', sourceSha: source.sourceSha, sourceTree: source.sourceTree,
     predecessor349: source.predecessor349, migrationCount: profile.count, ledgerSha256: source.ledgerSha256,
@@ -100,8 +101,11 @@ JS
   if [[ "$mode" != expense-witness-346 ]]; then
     git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer-349.patch"
   fi
-  if [[ "$mode" == signed-settlement-350 ]]; then
+  if [[ "$mode" == signed-settlement-350 || "$mode" == company-history-352 ]]; then
     git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer-350.patch"
+  fi
+  if [[ "$mode" == company-history-352 ]]; then
+    git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer-352.patch"
   fi
   chmod 644 "$work/installer.cjs"
   node -e '
@@ -148,15 +152,18 @@ if [[ "$mode" == historical-takeover-333 || "$mode" == historical-settlement-334
   fi
 fi
 
-if [[ "$mode" == expense-witness-346 || "$mode" == expense-witness-349 || "$mode" == signed-settlement-350 ]]; then
+if [[ "$mode" == expense-witness-346 || "$mode" == expense-witness-349 || "$mode" == signed-settlement-350 || "$mode" == company-history-352 ]]; then
   for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json upward-archive-332-profile.cjs historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
   if [[ "$mode" != expense-witness-346 ]]; then
     args+=(--mount "type=bind,src=$plan/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
   fi
-  if [[ "$mode" == signed-settlement-350 ]]; then
+  if [[ "$mode" == signed-settlement-350 || "$mode" == company-history-352 ]]; then
     args+=(--mount "type=bind,src=$plan/signed-settlement-350-profile.cjs,dst=/qualification/signed-settlement-350-profile.cjs,readonly")
+  fi
+  if [[ "$mode" == company-history-352 ]]; then
+    args+=(--mount "type=bind,src=$plan/company-history-352-profile.cjs,dst=/qualification/company-history-352-profile.cjs,readonly")
   fi
   if [[ $4 == original || $4 == --a01-signed-subcent-350 ]]; then
     args+=(--mount "type=bind,src=$work/line-a-real-db.http.pg.spec.ts,dst=/qualification/workspace/services/api/src/database/line-a-real-db.http.pg.spec.ts,readonly")
@@ -170,7 +177,7 @@ esac
 [[ -z $(docker ps -q) ]] || exit 65
 if pgrep -x postgres >/dev/null; then exit 65; fi
 entry_args=()
-if [[ "$mode" == signed-settlement-350 && ${4:-} == original ]]; then entry_args=(original); fi
+if [[ ( "$mode" == signed-settlement-350 || "$mode" == company-history-352 ) && ${4:-} == original ]]; then entry_args=(original); fi
 exit_code=0
 docker run "${args[@]}" --entrypoint node "$image" /qualification/"$entry" ${entry_args[@]+"${entry_args[@]}"} > "$work/receipt.json" 2> "$work/private.stderr" || exit_code=$?
 [[ ! -s "$work/receipt.json" ]] || cat "$work/receipt.json"
@@ -179,15 +186,16 @@ node -e '
   const assert=require("node:assert/strict");
   const proof=require(process.argv[1]);
   const source=require(process.argv[3]);
-  if (source.mode === "signed-settlement-350") {
+  if (source.mode === "signed-settlement-350" || source.mode === "company-history-352") {
     const full = process.argv[4] === "original";
-    assert.equal(proof.status, full ? "LINE_A_SIGNED_SETTLEMENT_350_PASSED" : "LINE_A_A01_SIGNED_SUBCENT_350_PASSED");
+    assert.equal(proof.status, full ? "LINE_A_SIGNED_SETTLEMENT_" + source.migrationCount + "_PASSED" : "LINE_A_A01_SIGNED_SUBCENT_350_PASSED");
     assert.equal(proof.lineA.registered, 19);
     assert.equal(proof.lineA.passed, full ? 19 : 1);
     assert.equal(proof.lineA.skipped, full ? 0 : 18);
     assert.equal(proof.sourceSha, process.argv[2]);
     assert.equal(proof.signedSettlementForward.count, 350);
-    assert.equal(proof.signedSettlementForward.ledgerSha256, source.ledgerSha256);
+    assert.equal(proof.signedSettlementForward.ledgerSha256, source.predecessor350?.ledgerSha256 ?? source.ledgerSha256);
+    if (source.mode === "company-history-352") require(process.argv[5]).assertInstallation(proof, source);
     assert.equal(proof.signedSettlementForward.sameIdentity, true);
     assert.equal(proof.signedSettlementCatalogAfterBusiness, true);
     assert.equal(proof.combinedAfterBusiness.sameIdentity, true);
@@ -206,4 +214,4 @@ node -e '
     "--a29-opening":"HISTORICAL_TAKEOVER_A29_OPENING_"+source.migrationCount+"_PASSED",
     "--a28-unknown-overpay":"HISTORICAL_TAKEOVER_A28_UNKNOWN_OVERPAY_334_PASSED"})[process.argv[4]]??expected;
   if(proof.status!==required||proof.sourceSha!==process.argv[2])process.exit(65);
-' "$work/receipt.json" "$sha" "$source" "${4:-}"
+' "$work/receipt.json" "$sha" "$source" "${4:-}" "$plan/company-history-352-profile.cjs"

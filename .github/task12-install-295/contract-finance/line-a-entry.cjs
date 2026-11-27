@@ -8,7 +8,7 @@ const { spawnSync } = require('node:child_process');
 const { admitSource } = require('./install-only292.cjs');
 const {
   withCombined320ContractPayment, withCombined330TextAgreement, withCombined331PaymentRemainder, withCombined332UpwardArchive,
-  withCombined334HistoricalSettlement, withCombinedExpenseWitness, withCombinedExpenseWitness349, withCombinedSignedSettlement350
+  withCombined334HistoricalSettlement, withCombinedExpenseWitness, withCombinedExpenseWitness349, withCombinedSignedSettlement350, withCombinedCompanyHistory352
 } = require('./installer.cjs');
 const { final } = require('./multi-witness.cjs');
 const source = require('./contract-finance-source.json');
@@ -16,12 +16,13 @@ const source = require('./contract-finance-source.json');
 const root = '/qualification';
 const api = path.join(root, 'workspace/services/api');
 const spec = 'src/database/line-a-real-db.http.pg.spec.ts';
-const signedSubcent = source.mode === 'signed-settlement-350';
+const company = source.mode === 'company-history-352';
+const signedSubcent = source.mode === 'signed-settlement-350' || company;
 const fullSignedSuite = signedSubcent && process.argv[2] === 'original';
 const signedSubcentOnly = signedSubcent && !fullSignedSuite;
-const signedProfile = signedSubcent ? require('./signed-settlement-350-profile.cjs') : null;
+const signedProfile = signedSubcent ? require(company ? './company-history-352-profile.cjs' : './signed-settlement-350-profile.cjs') : null;
 const signedSubcentTitle = 'line A contract candidate on real PostgreSQL and HTTP A01 已签结算不足一分冲减在确认后保留经营原值';
-const signedSubcentFixture = '71d0f8004a04acdf5947ce196c39695983caab36a83afd25aad36ba4670909ea';
+const signedSubcentFixture = company ? 'c2e5ab20b4853386a050db4c619bbf654103926ef21b363d511902de176197b5' : '71d0f8004a04acdf5947ce196c39695983caab36a83afd25aad36ba4670909ea';
 const precision = source.mode === 'expense-witness-349' || signedSubcent;
 const expenseWitness = precision ? require('./expense-witness-349-profile.cjs')
   : source.mode === 'expense-witness-346' ? require('./expense-witness-346-profile.cjs') : null;
@@ -32,7 +33,7 @@ const textDirect = source.mode === 'text-direct-330' || paymentRemainder;
 const migrationCount = signedProfile?.count ?? (expenseWitness ? expenseWitness.count
   : historicalSettlement ? 334 : upwardArchive ? 332 : paymentRemainder ? 331 : textDirect ? 330 : 329);
 const tests = paymentRemainder ? 18 : textDirect ? 17 : 16;
-const purpose = fullSignedSuite ? 'LINE_A_SIGNED_SETTLEMENT_350'
+const purpose = fullSignedSuite ? 'LINE_A_SIGNED_SETTLEMENT_' + migrationCount
   : signedSubcentOnly ? 'LINE_A_A01_SIGNED_SUBCENT_350'
   : expenseWitness ? 'LINE_A_EXPENSE_WITNESS_' + migrationCount
   : historicalSettlement ? 'LINE_A_HISTORICAL_SETTLEMENT_334'
@@ -360,7 +361,9 @@ async function main() {
     : upwardArchive ? withCombined332UpwardArchive : paymentRemainder ? withCombined331PaymentRemainder
     : textDirect ? withCombined330TextAgreement : withCombined320ContractPayment;
   const material = { sourceTree: source.sourceTree, migrations: path.join(api, 'prisma/migrations'), tails: source.tails };
-  if (signedSubcent) {
+  if (company) {
+    await withCombinedCompanyHistory352(receipt, consume, { ...source, ...material });
+  } else if (signedSubcent) {
     await withCombinedSignedSettlement350(receipt, consume, { ...source, ...material });
   } else if (precision) {
     await withCombinedExpenseWitness349(receipt, consume, { ...source, ...material });
@@ -406,8 +409,8 @@ async function main() {
     if (signedSubcent) {
       assert.equal(receipt.combinedAfterBusiness.count, migrationCount);
       assert.deepEqual(receipt.signedSettlementForward, {
-        count: migrationCount, ledgerSha256: source.ledgerSha256, sameIdentity: true, sourceTree: source.sourceTree,
-        tails: tails.slice(precisionBoundary)
+        count: company ? 350 : migrationCount, ledgerSha256: company ? source.predecessor350.ledgerSha256 : source.ledgerSha256, sameIdentity: true, sourceTree: source.sourceTree,
+        tails: tails.slice(precisionBoundary, company ? 350 - source.predecessor.migrationCount : undefined)
       });
       assert.equal(receipt.signedSettlementCatalogAfterBusiness, true);
       assert.equal(receipt.a01?.confirmationHttpStatus, 201);
@@ -432,6 +435,7 @@ async function main() {
     assert.equal(receipt.historicalTakeoverCatalogAfterBusiness, true);
     assert.equal(receipt.historicalSettlementCatalogAfterBusiness, true);
   }
+  if (company) signedProfile.assertInstallation(receipt, source);
   assert.equal(receipt.testWitnessesCleared, true);
   assert.equal(receipt.cleanup, 'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
   receipt.status = purpose + '_PASSED';
