@@ -2,8 +2,8 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 ) ) ||
-  ( $# == 6 && $5 == --expense-witness-346 && $6 == --host-only ) ]] || exit 64
+[[ $# == 4 || ( $# == 5 && ( $5 == --current-320 || $5 == --text-direct-330 || $5 == --payment-remainder-331 || $5 == --upward-archive-332 || $5 == --historical-settlement-334 || $5 == --expense-witness-346 || $5 == --expense-witness-349 ) ) ||
+  ( $# == 6 && ( $5 == --expense-witness-346 || $5 == --expense-witness-349 ) && $6 == --host-only ) ]] || exit 64
 count=295
 mode=()
 case ${5-} in
@@ -13,6 +13,7 @@ case ${5-} in
   --upward-archive-332) mode=(--upward-archive-332); count=332 ;;
   --historical-settlement-334) mode=(--historical-settlement-334); count=334 ;;
   --expense-witness-346) mode=(--expense-witness-346); count=346 ;;
+  --expense-witness-349) mode=(--expense-witness-349); count=349 ;;
 esac
 repo=$(cd "$1" && pwd -P)
 prepared=$(cd "$2" && pwd -P)
@@ -24,26 +25,28 @@ archive_profile="$plan/upward-archive-332-profile.cjs"
 historical_profile="$plan/historical-settlement-334-profile.cjs"
 source_tree=$(git -C "$repo" rev-parse "$sha^{tree}")
 scope=pfq
+expense_profile=
+if (( count >= 346 )); then expense_profile="$plan/${mode[0]#--}-profile.cjs"; fi
 
 node -e '
   const [file,sha,count,tree,archiveProfile,historicalProfile,terminal,expenseProfile]=process.argv.slice(1);
   const source=require(file);
   const modes={"329":"current-320","330":"text-direct-330","331":"payment-remainder-331"};
   if(source.sourceSha!==sha||source.migrationCount!==Number(count)||(modes[count]&&source.mode!==modes[count]))process.exit(1);
-  if(count==="332"||count==="334"||count==="346") require("node:assert/strict").equal(source.sourceTree,tree);
+  if(count==="332"||count==="334"||expenseProfile) require("node:assert/strict").equal(source.sourceTree,tree);
   if(count==="332") {
     require(archiveProfile).assertSource(source,sha,require(terminal).final);
   }
   if(count==="334") require(historicalProfile).assertSource(source,require(terminal).final);
-  if(count==="346") require(expenseProfile).assertSource(source,require(terminal).final);
-' "$prepared/source.json" "$sha" "$count" "$source_tree" "$archive_profile" "$historical_profile" "$common/multi-witness.cjs" "$plan/expense-witness-346-profile.cjs"
-if (( count == 346 )); then
+  if(expenseProfile) require(expenseProfile).assertSource(source,require(terminal).final);
+' "$prepared/source.json" "$sha" "$count" "$source_tree" "$archive_profile" "$historical_profile" "$common/multi-witness.cjs" "$expense_profile"
+if (( count >= 346 )); then
   [[ $plan == "$repo/.github/task12-install-295/contract-finance" ]] || exit 65
   [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$repo/.github/task12-install-289/pfq" "$repo/.github/task12-install-290") ]] || exit 65
-  cmp -s "$prepared/source.json" <(node "$plan/check-ledger.cjs" "$repo" "$sha" --expense-witness-346) || exit 65
-  node - "$plan" "$prepared/prepared/context/workspace" <<'JS'
-const [plan,workspace]=process.argv.slice(2);
-require(plan+'/expense-witness-346-profile.cjs').assertRuntimeBaseline(
+  cmp -s "$prepared/source.json" <(node "$plan/check-ledger.cjs" "$repo" "$sha" "${mode[0]}") || exit 65
+  node - "$expense_profile" "$prepared/prepared/context/workspace" <<'JS'
+const [profile,workspace]=process.argv.slice(2);
+require(profile).assertRuntimeBaseline(
   require(workspace+'/services/api/prisma/migration-baseline.cjs'));
 JS
 fi
@@ -62,7 +65,7 @@ if [[ ${6-} == --host-only ]]; then
   for file in "$material"/*.cjs; do
     node --check "$file"
   done
-  printf 'PFQ_346_HOST_READY sha=%s material=%s\n' "$sha" "$material"
+  printf 'PFQ_%s_HOST_READY sha=%s material=%s\n' "$count" "$sha" "$material"
   exit 0
 fi
 build=$(cd "$4" && pwd -P)
@@ -91,10 +94,13 @@ if (( count >= 334 )); then
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
 fi
-if (( count == 346 )); then
+if (( count >= 346 )); then
   for file in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
     args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/$file,readonly")
   done
+fi
+if (( count == 349 )); then
+  args+=(--mount "type=bind,src=$expense_profile,dst=/qualification/expense-witness-349-profile.cjs,readonly")
 fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
