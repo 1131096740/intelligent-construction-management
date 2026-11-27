@@ -44,7 +44,7 @@ fi
     $2 == pfq || $2 == task398-standard || $2 == cash-transfer || $2 == project-advance || $issue_lane == true ) && $3 == --expense-witness-346 ) ||
   ( $# == 3 && ( $issue_lane == true || $2 == pol115-full || $2 == pol115-workbench ||
     $2 == payment-execution || $2 == expense-execution || $2 == expense-finance || $2 == expense-receipt ||
-    $2 == onboarding || $2 == procurement ||
+    $2 == onboarding || $2 == procurement || $2 == task398-standard || $2 == browser-partial || $2 == browser-completion ||
     $2 == cash-handover || $2 == principal-return || $2 == company-proxy || $2 == line-a || $2 == historical-takeover-a28 || $2 == pfq || $2 == settlement || $2 == template || $2 == draft || $2 == v7 || $2 == invoice || $2 == pol279 || $2 == pol280 ||
     $2 == pol108-core || $2 == pol108-facts || $2 == pol108-impacts || $2 == pol109 ) && $3 == --expense-witness-349 ) ||
   ( $# == 4 && ( $2 == payment-execution || $2 == task398-competition || $2 == pol109 || $2 == cash-transfer || $2 == project-advance ) &&
@@ -153,8 +153,9 @@ case "$lane" in
   task398-competition)
     bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work/browser" competition-346 ;;
   task398-standard)
-    if [[ ${3:-} == --expense-witness-346 ]]; then
-      for variant in standard-346 text-direct-346; do
+    if [[ ${3:-} == --expense-witness-34[69] ]]; then
+      count=${3##*-}
+      for variant in "standard-$count" "text-direct-$count"; do
         bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work/browser" "$variant"
       done
       exit 0
@@ -180,7 +181,7 @@ case "$lane" in
   company-proxy) bash "$plan/run-task410-company-proxy.sh" "$root" "$work/source" "$sha" "$work/browser" ;;
   browser-partial|browser-completion)
     browser_args=()
-    if [[ ${3:-} == --expense-witness-346 ]]; then browser_args=("$3"); fi
+    if [[ ${3:-} == --expense-witness-34[69] ]]; then browser_args=("$3"); fi
     bash "$plan/$lane/run-$lane.sh" "$root" "$work/source" "$sha" "$work/browser" ${browser_args[@]+"${browser_args[@]}"}
     ;;
   v7|invoice|pol279|pol280) bash "$plan/run-finance-adjacent.sh" "$root" "$work/source" "$sha" "$work/browser" "$lane" ${mode_args[@]+"${mode_args[@]}"} ;;
