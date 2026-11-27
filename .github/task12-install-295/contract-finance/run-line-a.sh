@@ -189,7 +189,7 @@ node -e '
   const assert=require("node:assert/strict");
   const proof=require(process.argv[1]);
   const source=require(process.argv[3]);
-  if (source.mode === "signed-settlement-350" || source.mode === "company-history-352") {
+  if ((source.mode === "signed-settlement-350" || source.mode === "company-history-352") && process.argv[4] !== "--a28-continuation") {
     const full = process.argv[4] === "original";
     assert.equal(proof.status, full ? "LINE_A_SIGNED_SETTLEMENT_" + source.migrationCount + "_PASSED" : "LINE_A_A01_SIGNED_SUBCENT_350_PASSED");
     assert.equal(proof.lineA.registered, 19);
@@ -217,4 +217,11 @@ node -e '
     "--a29-opening":"HISTORICAL_TAKEOVER_A29_OPENING_"+source.migrationCount+"_PASSED",
     "--a28-unknown-overpay":"HISTORICAL_TAKEOVER_A28_UNKNOWN_OVERPAY_334_PASSED"})[process.argv[4]]??expected;
   if(proof.status!==required||proof.sourceSha!==process.argv[2])process.exit(65);
+  if(source.mode === "company-history-352" && process.argv[4] === "--a28-continuation") {
+    require(process.argv[5]).assertInstallation(proof,source);
+    assert.equal(proof.a28.complete,true);
+    assert.equal(proof.a28.passed,3);
+    assert.equal(proof.a28.skipped,0);
+    assert.equal(proof.cleanup,"POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT");
+  }
 ' "$work/receipt.json" "$sha" "$source" "${4:-}" "$plan/company-history-352-profile.cjs"
