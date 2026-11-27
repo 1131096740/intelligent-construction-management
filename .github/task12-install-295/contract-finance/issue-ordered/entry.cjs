@@ -125,7 +125,9 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
       counts.registered === titles.length && counts.passed === titles.length && counts.skipped === 0 &&
       rows.length === titles.length && rows.every((row, index) => row.title === titles[index] && row.status === 'passed') };
   const firstFailed = rows.find(row => row.status === 'failed');
-  if (firstFailed) receipt.suite.firstFailure = summarizeFirstFailure(file, firstFailed);
+  if (firstFailed) {
+    receipt.suite.firstFailure = summarizeFirstFailure(file, firstFailed, scope === 'issue418_recognized_dedup_349');
+  }
   if (scope === 'issue404' || scope === 'issue404_349') {
     const failedCases = rows.slice(0, titles.length).flatMap((row, index) =>
       row.status === 'failed' ? [{ index, ...summarizeFirstFailure(file, row, true) }] : []);
