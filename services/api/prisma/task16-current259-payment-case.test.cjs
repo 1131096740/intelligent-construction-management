@@ -1,6 +1,6 @@
 'use strict';
 const {test}=require('node:test'),assert=require('node:assert/strict');
-const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto');
+const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto'),{types}=require('node:util');
 const cancelOutcome=Object.freeze({mode:'cancel-commit',state:'commit-cancelled',transactionId:'9101',executionAllowed:false,nativeAdmission:false});
 const noop=()=>{};
 function owned(t,options={}){
@@ -402,7 +402,8 @@ for(const [name,code] of [['TimeoutError','TIMEOUT'],['AbortError','HTTP_ABORTED
  const m=paymentModel(f,{onCase(){throw new DOMException('private native response details',name);}});
  await assert.rejects(f.api.withCurrent259OwnedApplication(f.proof,f.handle,new AbortController().signal,app=>
   f.caseApi.runCurrent259PaymentCase(app,f.handle,f.issue(app,{scenario:'normal',paidAt:m.plan.paidAt,openingDate:m.plan.openingDate}))));
- assert.deepEqual(seen,[['SELECTED_CASE',code,undefined,undefined,{caseGate:'COMPILED_CASE',errorKind:'NON_NATIVE_THROWN'}]]);
+ const kind=types.isNativeError(new DOMException('',name))?'OTHER_NATIVE_ERROR':'NON_NATIVE_THROWN';
+ assert.deepEqual(seen,[['SELECTED_CASE',code,undefined,undefined,{caseGate:'COMPILED_CASE',errorKind:kind}]]);
  assert.deepEqual(m.counts(),{builds:1,seeds:1,consumers:1});
 });
 

@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import gate334 from "../../services/api/prisma/dynamic-gate-334.cjs";
 import gate346 from "../../services/api/prisma/dynamic-gate-346.cjs";
 import gate349 from "../../services/api/prisma/dynamic-gate-349.cjs";
+import gate352 from "../../services/api/prisma/dynamic-gate-352.cjs";
 
 const requireFromApiWorkspace = createRequire(
   new URL("../../services/api/package.json", import.meta.url)
@@ -166,8 +167,10 @@ export function inspectPol21CrossDomainAcceptance({
     blockers.push("POL21_DYNAMIC_INVENTORY_INCOMPLETE");
   }
   const migrationCount = dynamicGateManifest?.migrationBaseline?.expectedDirectoryCount;
-  if (migrationCount === 346 || migrationCount === 349) {
-    const { matchesBaseline, unadmittedGroups } = migrationCount === 349
+  if (migrationCount === 346 || migrationCount === 349 || migrationCount === 352) {
+    const { matchesBaseline, unadmittedGroups } = migrationCount === 352
+      ? { matchesBaseline: gate352.matchesBaseline352, unadmittedGroups: gate352.unadmittedGroups352 }
+      : migrationCount === 349
       ? { matchesBaseline: gate349.matchesBaseline349, unadmittedGroups: gate349.unadmittedGroups349 }
       : { matchesBaseline: gate346.matchesBaseline346, unadmittedGroups: gate346.unadmittedGroups346 };
     if (!matchesBaseline(dynamicGateManifest.migrationBaseline) ||

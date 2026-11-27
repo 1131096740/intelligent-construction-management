@@ -169,7 +169,7 @@ test("fails closed when the exact-SHA PostgreSQL gate or one of the six global r
   );
 });
 
-test("repository POL-21 resolves all 15 mainlines against the admitted 349 matrix", async () => {
+test("repository POL-21 resolves all 15 mainlines against the admitted current matrix", async () => {
   const report = await runPol21CrossDomainAcceptanceCli(["--check", "--require-ready"], { root });
   assert.equal(report.status, "ready");
   assert.equal(report.mainlineCount, 15);
@@ -177,7 +177,7 @@ test("repository POL-21 resolves all 15 mainlines against the admitted 349 matri
 });
 
 test("POL-21 blocks an unadmitted forward baseline even with complete evidence inventory", () => {
-  for (const expectedDirectoryCount of [335, 346, 349, 350]) {
+  for (const expectedDirectoryCount of [335, 346, 349, 350, 352]) {
     const fixture = readyFixture();
     fixture.dynamicGateManifest.migrationBaseline = { expectedDirectoryCount };
 
