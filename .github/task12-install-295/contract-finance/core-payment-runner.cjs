@@ -18,9 +18,9 @@ const profiles = Object.freeze({
 });
 
 async function verify(scope, context, ledgerCount = 295, settlementReadKey) {
-  if (![295, 329, 330, 331, 332, 334, 346, 349].includes(ledgerCount)) throw new Error("CONTRACT_FINANCE_LEDGER");
+  if (![295, 329, 330, 331, 332, 334, 346, 349, 350].includes(ledgerCount)) throw new Error("CONTRACT_FINANCE_LEDGER");
   const profile = Object.hasOwn(profiles, scope) ? profiles[scope] : undefined;
-  if (!profile || ([346, 349].includes(ledgerCount) && scope !== "core")) throw new Error("CONTRACT_FINANCE_MODE");
+  if (!profile || ([346, 349, 350].includes(ledgerCount) && scope !== "core")) throw new Error("CONTRACT_FINANCE_MODE");
   const storage = path.join(context.workDir, "contract-finance-files");
   mkdirSync(storage, { mode: 0o700 });
   const env = {

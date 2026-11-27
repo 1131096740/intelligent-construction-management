@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const {createHash,randomBytes} = require('node:crypto');
 const {readFileSync} = require('node:fs');
 const {admitSource} = require('./install-only292.cjs');
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness,withCombinedExpenseWitness349} = require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness,withCombinedExpenseWitness349,withCombinedSignedSettlement350} = require('./installer.cjs');
 const {final, digest} = require('./multi-witness.cjs');
 const {verify} = require('./workspace/services/api/prisma/core-payment-runner.cjs');
 
@@ -16,9 +16,10 @@ const textDirect330=source.mode==='text-direct-330';
 const upwardArchive332=source.mode==='upward-archive-332';
 const paymentRemainder331=source.mode==='payment-remainder-331';
 const historicalSettlement334=source.mode==='historical-settlement-334';
-const precision=source.mode==='expense-witness-349'?require('./expense-witness-349-profile.cjs'):undefined;
+const signed=source.mode==='signed-settlement-350'?require('./signed-settlement-350-profile.cjs'):undefined;
+const precision=signed||source.mode==='expense-witness-349'?require('./expense-witness-349-profile.cjs'):undefined;
 const expenseWitness346=(precision||source.mode==='expense-witness-346')?require('./expense-witness-346-profile.cjs'):undefined;
-const expenseProfile=precision??expenseWitness346;
+const expenseProfile=signed??precision??expenseWitness346;
 const historical=historicalSettlement334||expenseWitness346?require('./historical-settlement-334-profile.cjs'):undefined;
 const forward=current320||textDirect330||paymentRemainder331||upwardArchive332||historicalSettlement334||Boolean(expenseWitness346);
 const profile=upwardArchive332?require('./upward-archive-332-profile.cjs'):
@@ -64,8 +65,8 @@ async function main() {
         tails:source.tails.slice(historyTails.length,expenseWitness346.count-295).map(({name,sha256})=>({name,sha256}))
       });
       if(precision) assert.deepEqual(receipt.expenseWitnessPrecisionForward,{
-        count,ledgerSha256:precision.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
-        tails:source.tails.slice(expenseWitness346.count-295).map(({name,sha256})=>({name,sha256}))
+        count:precision.count,ledgerSha256:precision.ledgerSha256,sameIdentity:true,sourceTree:source.sourceTree,
+        tails:source.tails.slice(expenseWitness346.count-295,precision.count-295).map(({name,sha256})=>({name,sha256}))
       });
     } else {
       historical?.assertFinanceInstallation(receipt,source);
@@ -116,7 +117,8 @@ async function main() {
     const install=expenseWitness346?withCombinedExpenseWitness:historicalSettlement334?withCombined334HistoricalSettlement:upwardArchive332?withCombined332UpwardArchive:paymentRemainder331?withCombined331PaymentRemainder:
       textDirect330?withCombined330TextAgreement:withCombined320ContractPayment;
     const material={sourceTree:source.sourceTree,migrations:root+'/workspace/services/api/prisma/migrations',tails:source.tails};
-    if(precision) await withCombinedExpenseWitness349(receipt,consume,{...source,...material});
+    if(signed) await withCombinedSignedSettlement350(receipt,consume,{...source,...material});
+    else if(precision) await withCombinedExpenseWitness349(receipt,consume,{...source,...material});
     else if(expenseWitness346) await install(receipt,consume,material,count);
     else await install(receipt,consume,material);
     assert.equal(receipt.forward320.sourceTree,source.sourceTree);
@@ -142,6 +144,7 @@ async function main() {
     assert.equal(receipt.settlementReadWitnessCleared,true);
   }
   if(precision) assert.equal(receipt.expenseWitnessPrecisionCatalogAfterBusiness,true);
+  signed?.assertInstallation(receipt,source);
   assert.equal(receipt.business,'CALLBACK_COMPLETED');
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
   receipt.status='CONTRACT_FINANCE_'+mode.toUpperCase()+'_'+count+'_PASSED';

@@ -2,7 +2,11 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || ( $# == 5 && $5 == --expense-witness-34[69] ) ]] || exit 64
+if [[ ${5-} == --signed-settlement-350 ]]; then
+  [[ $# == 5 && $4 == core && ${GITHUB_ACTIONS:-} != true ]] || exit 64
+else
+  [[ $# == 4 || ( $# == 5 && $5 == --expense-witness-34[69] ) ]] || exit 64
+fi
 prepared=$(cd "$1" && pwd -P)
 sha=$2
 build=$3
@@ -20,7 +24,7 @@ workspace="$prepared/prepared/context/workspace"
 mode=$(node - "$prepared/source.json" "$sha" "$plan" "$requested_profile" "$scope" <<'JS'
 const [file,sha,plan,requestedProfile,scope]=process.argv.slice(2);
 const source=require(file);
-const modes=['expense-witness-346','expense-witness-349'];
+const modes=['expense-witness-346','expense-witness-349','signed-settlement-350'];
 const expense=modes.includes(source.mode);
 if(expense!==(modes.includes(requestedProfile.slice(2)))||source.sourceSha!==sha) process.exit(65);
 if(expense) {
@@ -42,7 +46,7 @@ process.stdout.write(source.mode??'legacy');
 JS
 )
 
-if [[ $mode == expense-witness-34[69] ]]; then
+if [[ $mode == expense-witness-34[69] || $mode == signed-settlement-350 ]]; then
   repo=$(git -C "$plan" rev-parse --show-toplevel)
   [[ $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
   [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan") ]] || exit 65
@@ -63,14 +67,17 @@ tests=(
 bash "$plan/stage-core-payment.sh" "$workspace" "$work" "$mode"
 
 installer="$common/installer.cjs"
-if [[ $mode == historical-settlement-334 || $mode == expense-witness-34[69] ]]; then
+if [[ $mode == historical-settlement-334 || $mode == expense-witness-34[69] || $mode == signed-settlement-350 ]]; then
   node "$plan/stage-historical-takeover-333.cjs" "$work" historical-settlement-334
   installer="$work/installer.cjs"
 fi
-if [[ $mode == expense-witness-34[69] ]]; then
+if [[ $mode == expense-witness-34[69] || $mode == signed-settlement-350 ]]; then
   (cd "$work" && git apply --unidiff-zero "$plan/expense-witness/installer.patch")
-  if [[ $mode == expense-witness-349 ]]; then
+  if [[ $mode == expense-witness-349 || $mode == signed-settlement-350 ]]; then
     git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer-349.patch"
+  fi
+  if [[ $mode == signed-settlement-350 ]]; then
+    git -C "$work" apply --unidiff-zero "$plan/expense-witness/installer-350.patch"
   fi
   node - "$installer" "$plan" "$mode" <<'JS'
 const assert=require('node:assert/strict');
@@ -84,7 +91,7 @@ JS
   tests=("${tests[@]:0:2}")
 fi
 if [[ $build == --host-only ]]; then
-  if [[ $mode == expense-witness-34[69] ]]; then
+  if [[ $mode == expense-witness-34[69] || $mode == signed-settlement-350 ]]; then
     node --check "$installer"
     node --check "$plan/core-payment-entry.cjs"
     node --check "$plan/core-payment-runner.cjs"
@@ -117,7 +124,7 @@ args=(--platform linux/amd64 --rm --pull never --network none --read-only --cap-
   --mount "type=bind,src=$installer,dst=/qualification/installer.cjs,readonly")
 if [[ $mode == text-direct-330 ]]; then
   args+=(--mount "type=bind,src=$plan/text-direct-330-profile.cjs,dst=/qualification/text-direct-330-profile.cjs,readonly")
-elif [[ $mode == historical-settlement-334 || $mode == expense-witness-34[69] ]]; then
+elif [[ $mode == historical-settlement-334 || $mode == expense-witness-34[69] || $mode == signed-settlement-350 ]]; then
   for profile in historical-takeover-333-profile.cjs historical-settlement-334-profile.cjs upward-archive-332-profile.cjs; do
     args+=(--mount "type=bind,src=$plan/$profile,dst=/qualification/$profile,readonly")
   done
@@ -126,13 +133,16 @@ elif [[ $mode == upward-archive-332 ]]; then
 elif [[ $mode == payment-remainder-331 ]]; then
   args+=(--mount "type=bind,src=$plan/payment-remainder-331-profile.cjs,dst=/qualification/payment-remainder-331-profile.cjs,readonly")
 fi
-if [[ $mode == expense-witness-34[69] ]]; then
+if [[ $mode == expense-witness-34[69] || $mode == signed-settlement-350 ]]; then
   for profile in expense-witness-345-profile.cjs expense-witness-346-profile.cjs expense-witness-prefixes.json; do
     args+=(--mount "type=bind,src=$plan/$profile,dst=/qualification/$profile,readonly")
   done
 fi
-if [[ $mode == expense-witness-349 ]]; then
+if [[ $mode == expense-witness-349 || $mode == signed-settlement-350 ]]; then
   args+=(--mount "type=bind,src=$plan/expense-witness-349-profile.cjs,dst=/qualification/expense-witness-349-profile.cjs,readonly")
+fi
+if [[ $mode == signed-settlement-350 ]]; then
+  args+=(--mount "type=bind,src=$plan/signed-settlement-350-profile.cjs,dst=/qualification/signed-settlement-350-profile.cjs,readonly")
 fi
 for file in install-only292.cjs checkout.cjs successor.cjs scope.json tree-proof.json   terminal.cjs terminal.json payout-terminal.cjs multi-witness.cjs multi-witness-diagnostic.cjs owner-observation.cjs; do
   args+=(--mount "type=bind,src=$common/$file,dst=/qualification/$file,readonly")
@@ -141,7 +151,7 @@ for file in core-payment-runner.cjs contract-finance-stage-web.cjs task12-pol109
   args+=(--mount "type=bind,src=$plan/$file,dst=/qualification/workspace/services/api/prisma/$file,readonly")
 done
 ledger_support="$plan/contract-finance-owned.test-support.ts"
-if [[ $mode == payment-remainder-331 || $mode == upward-archive-332 || $mode == historical-settlement-334 || $mode == expense-witness-34[69] ]]; then
+if [[ $mode == payment-remainder-331 || $mode == upward-archive-332 || $mode == historical-settlement-334 || $mode == expense-witness-34[69] || $mode == signed-settlement-350 ]]; then
   ledger_support="$work/services/api/src/database/contract-finance-owned.test-support.ts"
 fi
 args+=(--mount "type=bind,src=$ledger_support,dst=/qualification/workspace/services/api/src/database/contract-finance-owned.test-support.ts,readonly"
