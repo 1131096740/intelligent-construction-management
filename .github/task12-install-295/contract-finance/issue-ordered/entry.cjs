@@ -112,6 +112,7 @@ async function consume({ ownerUrl, database, runId, workDir, candidateTree, sql 
     env: { PATH: '/usr/local/bin:/usr/bin:/bin', HOME: workDir, TMPDIR: workDir,
       NODE_ENV: 'test', CI: 'true', DATABASE_URL: ownerUrl, [profile.orderedDatabaseKey]: database,
       [profile.enableKey]: '1',
+      ...(profile.enableSettledReturn && { RUN_ISSUE435_SETTLED_RETURN: '1' }),
       ...(profile.databaseUrlKey && { [profile.databaseUrlKey]: ownerUrl }),
       ...(writeSecret && { OPERATING_LEDGER_DB_WRITE_SECRET: writeSecret }),
       FILE_STORAGE_DRIVER: 'local', FILE_STORAGE_ROOT: path.join(work, 'files'),

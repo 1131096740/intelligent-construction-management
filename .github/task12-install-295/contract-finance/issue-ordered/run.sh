@@ -56,17 +56,22 @@ JS
 fi
 profile=$(node -e '
 const scope = process.argv[2];
-const { file, sourceDigest, fixtureDigest, fixturePatch = scope + ".fixture.patch" } = require(process.argv[1]).profileFor(scope);
-console.log([file, sourceDigest, ...(fixtureDigest ? [fixtureDigest, fixturePatch] : [])].join(" "));
+const { file, sourceDigest, fixtureDigest, fixturePatch = scope + ".fixture.patch", fixtureGenerator } = require(process.argv[1]).profileFor(scope);
+console.log([file, sourceDigest, ...(fixtureDigest ? [fixtureDigest, fixturePatch, fixtureGenerator ?? "-"] : [])].join(" "));
 ' "$plan/profiles.cjs" "$scope") || exit 64
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-$scope-334.XXXXXXXX")
-read -r file source_digest fixture_digest fixture_patch <<< "$profile"
+read -r file source_digest fixture_digest fixture_patch fixture_generator <<< "$profile"
 spec=services/api/$file
 source_spec="$prepared/prepared/context/workspace/$spec"
 [[ $(sha256sum "$source_spec" | cut -d' ' -f1) == "$source_digest" ]] || exit 65
 if [[ -n $fixture_digest ]]; then
-  install -m 0644 "$source_spec" "$work/fixture.ts"
-  git -C "$work" apply --unidiff-zero "$plan/$fixture_patch"
+  if [[ ${fixture_generator:--} != - ]]; then
+    [[ $mode == company-history-352 && ( $fixture_generator == issue411 || $fixture_generator == issue435 ) ]] || exit 65
+    python3 "$base/forward-352/build-435-fixture.py" "$sha" "$work/fixture.ts" "$fixture_generator"
+  else
+    install -m 0644 "$source_spec" "$work/fixture.ts"
+    git -C "$work" apply --unidiff-zero "$plan/$fixture_patch"
+  fi
   [[ $(sha256sum "$work/fixture.ts" | cut -d' ' -f1) == "$fixture_digest" ]] || exit 65
   if [[ $mode == expense-witness-* || $mode == signed-settlement-350 || $mode == company-history-352 ]]; then chmod 0644 "$work/fixture.ts"; fi
 fi

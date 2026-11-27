@@ -509,18 +509,28 @@ profiles.issue416_his_350 = {
 };
 
 // The 352 matrix stays local-only while the remaining CI lanes are adapted.
-// #411 changed its source and is deliberately excluded until its original and
-// settled-return cases have a separately sealed 352 fixture.
 const companyHistoryBaseline = {
   requiredMigrationCount: 352,
   requiredTerminalMigration: '20261129021000_company_history_expense',
   requiredTerminalMigrationSha256: '8cb43f1ae9a6fb6108280f1ea08df4d2d2edf7c060b39b37dfbeeaff7ae368e5'
 };
-const issueOrderedScopes352 = Object.freeze(issueOrderedScopes350
-  .filter(scope => scope !== 'issue411_350').map(scope => scope.replace(/_350$/u, '_352')));
+const issueOrderedScopes352 = Object.freeze(issueOrderedScopes350.map(scope => scope.replace(/_350$/u, '_352')));
 for (const scope of issueOrderedScopes352) {
   profiles[scope] = { ...profiles[scope.replace(/_352$/u, '_350')], ...companyHistoryBaseline };
 }
+
+profiles.issue411_352 = { ...profiles.issue411_352,
+  sourceDigest: 'a8fc660fd21530909405238b2711872509a567041e2a0d86705717d05a485d86',
+  fixtureDigest: '3f1268ce742078f27bf0ae4c77ad2f99c86a7e60bdf5a439e40fa194b783ca21', fixtureGenerator: 'issue411'
+};
+profiles.issue435_352 = { ...profiles.issue411_352,
+  fixtureDigest: 'e848b3f741ea41b60e3b98486c8f4d373de08a259f0eab3ce8d40bbec2665d0f',
+  fixtureGenerator: 'issue435', enableSettledReturn: true, stage: 'ISSUE435_SETTLED_RETURN_JEST',
+  titles: [
+    'issue 435 posts pre-arrival and settled returns, restores both debts, and rolls back a failed posting',
+    'issue 435 keeps the debt correction net and freezes the target for a later refund'
+  ]
+};
 
 function profileFor(scope) {
   assert.ok(Object.hasOwn(profiles, scope), 'ORDERED_334_SCOPE');

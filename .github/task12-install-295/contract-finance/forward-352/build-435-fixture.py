@@ -1,6 +1,8 @@
 from pathlib import Path
 import subprocess, tempfile, re, sys
-assert len(sys.argv) == 3, 'usage: build-435-fixture.py CANDIDATE_SHA OUTPUT'
+assert len(sys.argv) in (3, 4), 'usage: build-435-fixture.py CANDIDATE_SHA OUTPUT [issue411|issue435]'
+mode=sys.argv[3] if len(sys.argv)==4 else 'combined'
+assert mode in ('combined','issue411','issue435')
 repo=str(Path(__file__).resolve().parents[4])
 base='1d10eb5a5d4759a4fe6f39e4de31135be3393d8d'
 target=sys.argv[1]
@@ -9,6 +11,15 @@ def show(sha): return subprocess.check_output(['git','-C',repo,'show',f'{sha}:{f
 with tempfile.TemporaryDirectory(prefix='jg435-patch-') as d:
  p=Path(d)/'fixture.ts';p.write_text(show(base));subprocess.run(['git','-C',d,'apply','--unidiff-zero',repo+'/.github/task12-install-295/contract-finance/issue-ordered/issue411.fixture.patch'],check=True); initial=p.read_text()
 source=show(target)
+original=show(base)
+first='  it("moves A-B debt to A-C'
+end='  const settledReturnCase = process.env.RUN_ISSUE435_SETTLED_RETURN'
+assert original[original.index(first):original.rindex('\n});')].rstrip() == source[source.index(first):source.index(end)].rstrip(), 'ISSUE411_ORIGINAL_CASES_CHANGED'
+if mode=='issue411':
+ Path(sys.argv[2]).write_text(initial)
+ raise SystemExit(0)
+if mode=='issue435':
+ initial=initial[:initial.index(first)]+'\n});\n'
 missing=[line for line in source.splitlines() if line.startswith('import ') and line not in initial]
 missing.append('import { Prisma } from "@prisma/client";')
 initial=initial.replace('import "reflect-metadata";\n', 'import "reflect-metadata";\n'+'\n'.join(missing)+'\n', 1)
