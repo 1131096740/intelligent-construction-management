@@ -5,6 +5,7 @@ umask 077
 plan=$(cd "$(dirname "$0")" && pwd -P)
 issue_lane=false
 signed_350=false
+company_352=false
 signed_issue_ordered=false
 if [[ ${3-} == --signed-settlement-350 ]]; then
   [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
@@ -38,6 +39,28 @@ JS
       ;;
   esac
 fi
+if [[ ${3-} == --company-history-352 ]]; then
+  [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
+  [[ $# == 3 || ( $# == 4 && $4 == --host-only ) ]] || exit 64
+  scopes=$(node - "$plan/issue-ordered/profiles.cjs" "$2" <<'JS'
+const [file,lane]=process.argv.slice(2);
+const {issueOrderedScopes352}=require(file);
+const allowed=[...issueOrderedScopes352,'issue435_352'];
+const groups={
+  'issue-matrix-352':issueOrderedScopes352,
+  'issue404_matrix_352':['issue404_352','issue426_a01_352'],
+  'issue418-operating':issueOrderedScopes352.filter(scope=>scope.startsWith('issue418_'))
+};
+const selected=Object.hasOwn(groups,lane)?groups[lane]:[lane];
+if(selected.length===0 || selected.some(scope=>!allowed.includes(scope))) process.exit(64);
+process.stdout.write(selected.join(' '));
+JS
+  ) || exit 64
+  read -r -a signed_issue_scopes <<< "$scopes"
+  company_352=true
+  issue_lane=true
+  signed_issue_ordered=true
+fi
 if [[ $issue_lane == false && ${2:-} == issue* ]]; then
   [[ $# == 3 ]] || exit 64
   case "$2:$3" in
@@ -57,7 +80,7 @@ if [[ $issue_lane == false && ${2:-} == issue* ]]; then
   issue_lane=true
 fi
 
-[[ $signed_350 == true || $# == 2 || ( $# == 3 && ( $3 == --current-320 || $3 == --text-direct-330 ) && $2 != pol275 ) ||
+[[ $signed_350 == true || $company_352 == true || $# == 2 || ( $# == 3 && ( $3 == --current-320 || $3 == --text-direct-330 ) && $2 != pol275 ) ||
   ( $# == 3 && $3 == --payment-remainder-331 && $2 != pol275 ) ||
   ( $# == 3 && $3 == --historical-settlement-334 && ( $2 == settlement || $2 == template || $2 == draft ||
     $2 == task398-standard || $2 == cash-handover || $2 == principal-return ||
