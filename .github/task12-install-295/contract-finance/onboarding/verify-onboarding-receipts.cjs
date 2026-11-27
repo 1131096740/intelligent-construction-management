@@ -9,7 +9,7 @@ const textDirect330=source?.mode==='text-direct-330';
 const paymentRemainder331=source?.mode==='payment-remainder-331';
 const upwardArchive332=source?.mode==='upward-archive-332';
 const historical=source?.mode==='historical-settlement-334'?require('../historical-settlement-334-profile.cjs'):undefined;
-const expenseWitness=['expense-witness-346','expense-witness-349'].includes(source?.mode)
+const expenseWitness=['expense-witness-346','expense-witness-349','signed-settlement-350'].includes(source?.mode)
   ?require('../'+source.mode+'-profile.cjs'):undefined;
 const forward=expenseWitness||current320||textDirect330||paymentRemainder331||upwardArchive332||historical;
 const profile=upwardArchive332?require('../upward-archive-332-profile.cjs'):
