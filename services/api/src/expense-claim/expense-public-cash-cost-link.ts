@@ -3,6 +3,14 @@ import { Prisma } from "@prisma/client";
 
 const COST_SOURCE = "expense_claim_approval";
 
+export function expenseCashCostBudgetCents(cost: { amountCents: bigint | null; amountYuan: Prisma.Decimal | null }): bigint {
+  if (cost.amountCents !== null) return cost.amountCents;
+  if (cost.amountYuan === null) return 0n;
+  // A rounded-up payment cent is not part of the original cost and cannot be assigned.
+  const [yuan, fraction] = cost.amountYuan.toFixed(4).split(".");
+  return BigInt(yuan) * 100n + BigInt(fraction.slice(0, 2));
+}
+
 /** Called inside the original expense payment transaction with the claim locked. */
 export async function linkExpensePublicCashCost(
   tx: Prisma.TransactionClient,
@@ -23,7 +31,7 @@ export async function linkExpensePublicCashCost(
       projectId,
       impactKind: "confirmed_cost",
       direction: "increase",
-      numericProtocolVersion: 1,
+      numericProtocolVersion: { in: [1, 2] },
       fact: {
         sourceType: COST_SOURCE,
         sourceBusinessId: execution.expenseClaimId,
@@ -35,9 +43,9 @@ export async function linkExpensePublicCashCost(
         adjustments: { none: { status: "confirmed" } }
       }
     },
-    select: { id: true, amountCents: true }
+    select: { id: true, amountCents: true, amountYuan: true }
   });
-  const available = new Map(costImpacts.map(impact => [impact.id, impact.amountCents ?? 0n]));
+  const available = new Map(costImpacts.map(impact => [impact.id, expenseCashCostBudgetCents(impact)]));
   const prior = await tx.expensePublicCashCostLink.groupBy({
     by: ["costImpactId"],
     where: { costImpactId: { in: costImpacts.map(impact => impact.id) } },

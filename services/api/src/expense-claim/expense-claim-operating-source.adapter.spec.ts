@@ -85,6 +85,29 @@ describe("POL-06 expense operating source adapters", () => {
     ]);
   });
 
+  it("retains the established cash-link cents protocol when each exact-input line is cent-exact", () => {
+    const approved = snapshot("expense_claim_approval", "claim-exact-cent", {
+      claimType: "reimbursement",
+      companyEntityId: "company-1",
+      applicantUserId: "employee-1",
+      applicantNameSnapshot: "合成报销人",
+      requestedAmountCents: "1234",
+      requestedAmountYuan: "12.3400",
+      companyPayableAmountCents: "1234",
+      approvedAt: "2026-08-15T01:00:00.000Z",
+      confirmedAt: "2026-08-15T02:00:00.000Z",
+      confirmedByUserId: "approver",
+      reimbursementLines: [{ id: "line-1", sortOrder: "1", expenseCategory: "办公费",
+        occurredOn: "2026-08-14T00:00:00.000Z", purpose: "验收", amountYuan: "12.3400", amountCents: "1234" }]
+    });
+    const { input } = new ExpenseClaimApprovalOperatingSourceAdapter().toOperatingFactInput(approved);
+    expect(input.amountCents).toBe(1234n);
+    expect(input.impacts).toMatchObject([
+      { impactKind: "confirmed_cost", amountCents: 1234n },
+      { impactKind: "payable_increase", amountCents: 1234n }
+    ]);
+  });
+
   it.each([undefined, null, "bearing-company"])("confirms the cost once with the bearing decision %s", companyId => {
     const mapped = new ExpenseClaimApprovalOperatingSourceAdapter().toOperatingFactInput(
       snapshot("expense_claim_approval", "claim-bearing", {

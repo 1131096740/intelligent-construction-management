@@ -23,7 +23,7 @@ function expenseCashCostImpactEligibility(projectId: string): Prisma.OperatingIm
     projectId,
     impactKind: "confirmed_cost",
     direction: "increase",
-    numericProtocolVersion: 1,
+    numericProtocolVersion: { in: [1, 2] },
     subjectId: null,
     subjectKind: null,
     fact: {

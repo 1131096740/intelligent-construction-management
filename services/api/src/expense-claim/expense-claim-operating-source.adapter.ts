@@ -176,10 +176,17 @@ export class ExpenseClaimApprovalOperatingSourceAdapter
     const claimType = requiredJsonText(source, "claimType", "费用确认");
     const payee = claimPayee(source, claimType, "费用确认");
     const batchLinked = typeof source.actualPurchaseBatchId === "string" && source.actualPurchaseBatchId.trim().length > 0;
-    const exactAmountYuan = claimType === "reimbursement" && !batchLinked && typeof source.requestedAmountYuan === "string"
+    const exactHeader = claimType === "reimbursement" && !batchLinked && typeof source.requestedAmountYuan === "string"
       ? positiveSourceAmount(source.requestedAmountYuan) : null;
+    // A cent-exact cost already round-trips through the established cash-link protocol.
+    const lines = source.reimbursementLines;
+    const exactAmountYuan = exactHeader && Array.isArray(lines) && lines.some((entry) => {
+      const line = requiredJsonRecord(entry, "报销费用明细");
+      return positiveSourceAmount(requiredJsonText(line, "amountYuan", "报销费用明细")) !==
+        businessAmountFromLegacyCents(requiredJsonMoney(line, "amountCents", "报销费用明细"));
+    }) ? exactHeader : null;
     if ((exactAmountYuan === null && amountCents <= 0n) ||
-      (exactAmountYuan !== null && businessAmountToLegacyCents(exactAmountYuan) !== amountCents.toString()) ||
+      (exactHeader !== null && businessAmountToLegacyCents(exactHeader) !== amountCents.toString()) ||
       payableCents < 0n || payableCents > amountCents) {
       throw new BadRequestException("费用确认金额或待付金额不正确");
     }
