@@ -3,15 +3,16 @@ const assert=require('node:assert/strict');
 const source=require('./contract-finance-source.json');
 const {sourceSha}=source;
 const mode=process.argv.at(-1);
-const precision=mode==='--expense-witness-349'?require('./expense-witness-349-profile.cjs'):undefined;
-const expenseWitness=precision??(mode==='--expense-witness-346'?require('./expense-witness-346-profile.cjs'):undefined);
+const signed=mode==='--signed-settlement-350'?require('./signed-settlement-350-profile.cjs'):undefined;
+const precision=signed||mode==='--expense-witness-349'?require('./expense-witness-349-profile.cjs'):undefined;
+const expenseWitness=signed??precision??(mode==='--expense-witness-346'?require('./expense-witness-346-profile.cjs'):undefined);
 const historicalSettlement=mode==='--historical-settlement-334';
 const upwardArchive=mode==='--upward-archive-332';
 const paymentRemainder=mode==='--payment-remainder-331';
 const textDirect=mode==='--text-direct-330';
 const current320=Boolean(expenseWitness)||historicalSettlement||upwardArchive||paymentRemainder||textDirect||mode==='--current-320';
 const count=expenseWitness?expenseWitness.count:historicalSettlement?334:upwardArchive?332:paymentRemainder?331:textDirect?330:current320?329:295;
-const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness,withCombinedExpenseWitness349}=require('./installer.cjs');
+const {withCombined295MultiWitness,withCombined320ContractPayment,withCombined330TextAgreement,withCombined331PaymentRemainder,withCombined332UpwardArchive,withCombined334HistoricalSettlement,withCombinedExpenseWitness,withCombinedExpenseWitness349,withCombinedSignedSettlement350}=require('./installer.cjs');
 const historicalProfile=historicalSettlement||expenseWitness?require('./historical-settlement-334-profile.cjs'):undefined;
 const upwardArchiveProfile=upwardArchive?require('./upward-archive-332-profile.cjs'):undefined;
 const receipt={schemaVersion:1,sourceSha,purpose:'ORIGINAL_POL109_EXACT_'+count,business:'NOT_ENTERED',stages:[]};
@@ -46,7 +47,8 @@ Promise.resolve().then(()=>{
       });
       assert.deepEqual(receipt.expenseWitnessForward,forward(source.predecessor334,checkpoint));
       if(precision) assert.deepEqual(receipt.expenseWitnessPrecisionForward,
-        forward(checkpoint,{migrationCount:count,ledgerSha256:source.ledgerSha256}));
+        forward(checkpoint,{migrationCount:precision.count,ledgerSha256:precision.ledgerSha256}));
+      if(signed) assert.deepEqual(receipt.signedSettlementForward,forward(source.predecessor349,source));
     } else {
       historicalProfile?.assertFinanceInstallation(receipt,source);
     }
@@ -55,6 +57,7 @@ Promise.resolve().then(()=>{
   };
   if(!current320) return withCombined295MultiWitness(receipt,consume);
   const material={sourceTree:source.sourceTree,migrations:'/qualification/workspace/services/api/prisma/migrations',tails:source.tails};
+  if(signed) return withCombinedSignedSettlement350(receipt,consume,{...source,...material});
   if(precision) return withCombinedExpenseWitness349(receipt,consume,{...source,...material});
   if(expenseWitness) return withCombinedExpenseWitness(receipt,consume,material,count);
   const install=historicalSettlement?withCombined334HistoricalSettlement:upwardArchive?withCombined332UpwardArchive:paymentRemainder?withCombined331PaymentRemainder:textDirect?withCombined330TextAgreement:withCombined320ContractPayment;
@@ -93,6 +96,7 @@ Promise.resolve().then(()=>{
       });
     }
   }
+  signed?.assertInstallation(receipt,source);
   assert.equal(receipt.combinedAfterBusiness?.exactB7,true);
   assert.equal(receipt.cleanup,'POSTMASTER_STOPPED_TMPFS_REMOVED_BY_CONTAINER_EXIT');
   receipt.status='ORIGINAL_POL109_'+count+'_PASSED';
