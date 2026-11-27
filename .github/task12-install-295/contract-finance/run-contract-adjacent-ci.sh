@@ -43,7 +43,7 @@ if [[ ${3-} == --company-history-352 ]]; then
   [[ ${GITHUB_ACTIONS:-} != true ]] || exit 64
   [[ $# == 3 || ( $# == 4 && $4 == --host-only ) ]] || exit 64
   company_352=true
-  if [[ $2 != procurement && $2 != line-a && $2 != core-payment && $2 != payment-execution && $2 != settlement && $2 != template && $2 != draft && $2 != v7 && $2 != invoice && $2 != pol279 && $2 != pol280 && $2 != expense-execution && $2 != expense-finance && $2 != expense-receipt ]]; then
+  if [[ $2 != onboarding && $2 != procurement && $2 != line-a && $2 != core-payment && $2 != payment-execution && $2 != settlement && $2 != template && $2 != draft && $2 != v7 && $2 != invoice && $2 != pol279 && $2 != pol280 && $2 != expense-execution && $2 != expense-finance && $2 != expense-receipt ]]; then
     scopes=$(node - "$plan/issue-ordered/profiles.cjs" "$2" <<'JS'
 const [file,lane]=process.argv.slice(2);
 const {issueOrderedScopes352}=require(file);
@@ -143,6 +143,7 @@ if [[ ${4-} == --host-only || ( $signed_350 == true && $lane == pol275 && ${5-} 
     done
   elif [[ $company_352 == true ]]; then
     case "$lane" in
+      onboarding) bash "$plan/onboarding/run-onboarding295.sh" "$root" "$work/source" "$sha" "$work" "$3" --host-only ;;
       procurement)
         for kind in general16 project11; do
           bash "$plan/procurement/run-procurement295.sh" "$root" "$work/source" "$sha" "$work" "$kind" "$3" --host-only

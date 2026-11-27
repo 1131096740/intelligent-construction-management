@@ -16,14 +16,15 @@ source_record=json.loads(source.read_text())
 count=source_record['migrationCount']
 mode=source_record.get('mode')
 text_direct=mode=='text-direct-330'
-signed_settlement=mode=='signed-settlement-350'
+company=mode=='company-history-352'
+signed_settlement=company or mode=='signed-settlement-350'
 precision=signed_settlement or mode=='expense-witness-349'
 expense_witness=precision or mode=='expense-witness-346'
 historical_settlement=mode=='historical-settlement-334' or expense_witness
 upward_archive=mode=='upward-archive-332' or historical_settlement
 payment_remainder=mode=='payment-remainder-331' or upward_archive
 forward=mode=='current-320' or text_direct or payment_remainder
-if count!={'signed-settlement-350':350,'expense-witness-349':349,'expense-witness-346':346,'historical-settlement-334':334,'upward-archive-332':332,'payment-remainder-331':331,'text-direct-330':330,'current-320':329}.get(mode,295):
+if count!={'company-history-352':352,'signed-settlement-350':350,'expense-witness-349':349,'expense-witness-346':346,'historical-settlement-334':334,'upward-archive-332':332,'payment-remainder-331':331,'text-direct-330':330,'current-320':329}.get(mode,295):
     raise SystemExit('ONBOARDING_SOURCE_LEDGER')
 application_tree=source_record['sourceTree'] if forward else '67644d9465a0ab4ee80ede099139d9c129d66f14'
 if forward:
@@ -47,6 +48,8 @@ if payment_remainder:
         candidate_drift.update(json.loads((plan/'onboarding-349-source-drift.json').read_text()))
     if signed_settlement:
         candidate_drift.update(json.loads((plan/'onboarding-350-source-drift.json').read_text()))
+    if company:
+        candidate_drift.update(json.loads((plan/'onboarding-352-source-drift.json').read_text()))
     expected_drift.update({name:digest for name,digest in candidate_drift.items() if name in old['files']})
     # Also pin reviewed files absent from the sealed inventory.
     additional={name:digest for name,digest in candidate_drift.items() if name not in old['files']}
@@ -123,7 +126,7 @@ for lane in pins['lanes']:
             raise SystemExit('ONBOARDING_329_ROSTER_FAILURE_FRAME_ANCHOR')
         text=text.replace(anchor, frame+'\n'+anchor+'\n            ...(frame&&{frame:[Number(frame[1]),Number(frame[2])]}),',1)
     runner.write_text(text)
-    if count in (331, 332, 334, 346, 349, 350) and lane=='reset-case12':
+    if count in (331, 332, 334, 346, 349, 350, 352) and lane=='reset-case12':
         subprocess.run(['patch','--batch','--forward','--fuzz=0','--no-backup-if-mismatch','--silent',
                         str(runner),str(plan/'reset-case12-memory-observation.patch')],check=True)
     if lane=='roster':
@@ -181,6 +184,10 @@ if historical_settlement:
                            cwd=out,check=True)
             if hashlib.sha256(installer.read_bytes()).hexdigest()!='092c7fc57d3c8c9a065264cee5b0253b2b91497448198ab02ed46362be6ee2c0':
                 raise SystemExit('ONBOARDING_350_INSTALLER_PREIMAGE')
+        if company:
+            subprocess.run(['git','apply','--unidiff-zero',str((plan/'../expense-witness/installer-352.patch').resolve())], cwd=out,check=True)
+            if hashlib.sha256(installer.read_bytes()).hexdigest()!='ff94f00f81a0610558e405d0c7dbf17536c4db663276f12fe31fd336777ee98c':
+                raise SystemExit('ONBOARDING_352_INSTALLER_PREIMAGE')
 else:
     installer.write_bytes((common/'installer.cjs').read_bytes())
 if text_direct or payment_remainder:
@@ -246,6 +253,7 @@ expense_installer_pins = {
     346: '24c6a40b9c09729661eeb8dac4916b8e2c3249489c264b355c3c59d41f4b2e04',
     349: 'ffc7376f8c65a98b5ddb8b3da01254c10957f306e4abe83531c38221e79b5238',
     350: '21fc66adb737dcdfff3f32377eba14c650b87101b16599a73d92f4fa03b7c98f',
+    352: '3cce2c252194bba5842bc1a5fce254022b383d9a7bc6f4da42d73d5682516730',
 }
 if expense_witness and hashlib.sha256(installer.read_bytes()).hexdigest() != expense_installer_pins[count]:
     raise SystemExit(f'ONBOARDING_{count}_INSTALLER_POSTIMAGE')

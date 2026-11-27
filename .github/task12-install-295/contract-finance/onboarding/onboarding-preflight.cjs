@@ -7,8 +7,8 @@ const {verify}=require('./verify-application-source.cjs');
 const {withInstalled295Onboarding}=require('./installer.cjs');
 const count=require('./contract-finance-source.json').migrationCount;
 assert.equal(typeof withInstalled295Onboarding,'function');
-if(count===350) {
-  const {install,assertInstallation}=require('./payment-execution-350.cjs');
+if(count===350||count===352) {
+  const {install,assertInstallation}=require('./payment-execution-'+count+'.cjs');
   assert.equal(typeof install,'function');
   assert.equal(typeof assertInstallation,'function');
 }
