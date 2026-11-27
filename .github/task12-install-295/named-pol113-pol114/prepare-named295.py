@@ -349,6 +349,12 @@ for name,pin in pins['workspace'].items():
                    'base': '2c336da20dd664b623f2b715c49d1963b6c0f3253df433145fa762daf9cfb37b',
                    'result': 'f7153477589137d7cb5bd624686c3926d2a6e676cf04bb05a79cb95862de4343'}
         staged = overlay(material,pin)
+        if company and name == 'services/api/src/database/contract-business-entry-http.spec.ts':
+            guard = (workspace/'services/api/src/retired-write-entry/retired-write-entry.guard.ts').read_text()
+            assert '  { controller: "ProjectController", handler: "requestProjectFinancingQuota" },' in guard
+            assert digest(staged) == '06d1f605177ea7eace47aade609bdc08eed1c00343e8a45a8a5f0eb3c55f9dff'
+            staged = patch(staged,read_pinned(common.parent/'core-payment-fnd05-history.patch','2cc5cbd8dffd8b4762fa9242c4469c9691c7b99157f010fae534bbe042461719'))
+            assert digest(staged) == 'ebf78bc54bd3f9a32c0228e795017768271d26ea50010bf0bbbf471c0dce84da'
         if precision and name == 'apps/web-admin/playwright.pol113-project-real.config.ts':
             assert digest(staged) == '8f3be3ab6820f979b5ed7d764726f0ad999a96a97f5e04fc7689e672b85c1641'
             staged = patch(staged,read_pinned(plan/'pol113-progress-config-349.patch','21dcdcbf00503d075823a11a1031eed7b1e537e8b5a3fdb25520fca6dfc91ec2'))
