@@ -336,13 +336,17 @@ describe("PaymentExecutionOperatingSourceAdapter", () => {
     });
     tx.paymentExecution.aggregate.mockResolvedValue({ _sum: { amountCents: 1_200_00n } });
     const refunds = jest.fn().mockResolvedValue({ _sum: { amountCents: 200_00n } });
+    const corrections = jest.fn().mockResolvedValue({ _sum: { amountDeltaCents: null } });
     Object.assign(tx, {
       paymentExecutionRefund: { aggregate: refunds },
-      paymentExecutionCorrection: { aggregate: jest.fn().mockResolvedValue({ _sum: { amountDeltaCents: null } }) }
+      paymentExecutionCorrection: { aggregate: corrections }
     });
     const source = { projectId: "project-1", sourceType: adapter.sourceType, sourceBusinessId: "execution-1" };
     await expect(adapter.readSourceSnapshot(tx as never, source)).resolves.toBeDefined();
     refunds.mockResolvedValue({ _sum: { amountCents: 199_99n } });
+    await expect(adapter.readSourceSnapshot(tx as never, source)).rejects.toThrow("超过付款申请批复金额");
+    refunds.mockResolvedValue({ _sum: { amountCents: 200_00n } });
+    corrections.mockResolvedValue({ _sum: { amountDeltaCents: 1n } });
     await expect(adapter.readSourceSnapshot(tx as never, source)).rejects.toThrow("超过付款申请批复金额");
   });
 
