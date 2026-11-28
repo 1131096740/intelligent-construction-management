@@ -589,7 +589,16 @@ async function main(args) {
       receipt.a24Installation = a24Installation;
       assert.deepEqual(a24Installation, receipt.a24ExpectedPrefixes.map(prefix => ({ ...prefix, sameIdentity: true })));
     }
-    if (historicalCatalog) receipt.a24HistoricalCatalog = historicalCatalog.snapshots;
+    const readTakeoverCatalog = a08Is352 ? () => JSON.parse(sql("BEGIN READ ONLY; SET LOCAL search_path=pg_catalog,pg_temp;" +
+      require("../../.." + "/.github/task12-install-295/contract-finance/historical-takeover-333-profile.cjs").catalogSql + "ROLLBACK;")) : null;
+    if (historicalCatalog) {
+      receipt.a24HistoricalCatalog = historicalCatalog.snapshots;
+      if (a08Is352) {
+        receipt.a24HistoricalCatalog.beforeBusiness352 = readTakeoverCatalog();
+        assert.deepEqual(receipt.a24HistoricalCatalog.beforeBusiness352, historicalCatalog.snapshots.beforeBusiness346.takeover,
+          "NATIVE_A08_352_TAKEOVER_CATALOG_TERMINAL");
+      }
+    }
     if (pendingExpense) {
       receipt.a24ExpenseFactCatalog = expenseFactCatalog;
       if (a08Is352) {
@@ -810,7 +819,11 @@ async function main(args) {
     }
     if (historicalCatalog) {
       stage("A24_HISTORICAL_CATALOG_AFTER_BUSINESS");
-      receipt.a24HistoricalCatalog["afterBusiness" + source.ledger.length] = historicalCatalog.verifyAfterBusiness();
+      if (a08Is352) {
+        const after = readTakeoverCatalog();
+        assert.deepEqual(after, receipt.a24HistoricalCatalog.beforeBusiness352, "NATIVE_A08_352_TAKEOVER_CATALOG_AFTER_BUSINESS");
+        receipt.a24HistoricalCatalog.afterBusiness352 = after;
+      } else receipt.a24HistoricalCatalog["afterBusiness" + source.ledger.length] = historicalCatalog.verifyAfterBusiness();
     }
     if (a24Assignment) {
       stage("A24_STANDALONE_ASSIGNMENT_AFTER_BUSINESS");
