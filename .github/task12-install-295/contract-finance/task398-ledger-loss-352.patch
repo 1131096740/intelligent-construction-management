@@ -1,0 +1,26 @@
+--- predecessor/runner
++++ forward/runner
+@@ -538,11 +538,12 @@
+  `);
+ }
+ async function runTask398Owned282Voucher(context, mode="standard", receipt){
+- const modes=new Map([["text-direct-330",["--text-direct-finance"]],["standard-330",[]],["ledger-loss-330",["--ledger-loss-real"]],["ledger-loss-331",["--ledger-loss-real"]],["ledger-loss-332",["--ledger-loss-real"]],["ledger-loss-346",["--ledger-loss-real"]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
++ const modes=new Map([["text-direct-330",["--text-direct-finance"]],["standard-330",[]],["ledger-loss-330",["--ledger-loss-real"]],["ledger-loss-331",["--ledger-loss-real"]],["ledger-loss-332",["--ledger-loss-real"]],["ledger-loss-352",["--ledger-loss-real"]],["ledger-loss-346",["--ledger-loss-real"]],["standard-329",[]],["standard-295",[]],["standard-290",[]],["standard",[]],["principal-return",["--principal-return-real"]],["cash-handover",["--cash-handover-real"]],["correction-catalog",["--cash-handover-real"]]]);
+  const standard295=mode==="standard-295";
+  const standard320=mode==="standard-329";
+  const textDirect=mode==="text-direct-330";
+- const expenseWitness=mode==="ledger-loss-346"?require("/qualification/expense-witness-346-profile.cjs"):null;
++ const company=mode==="ledger-loss-352"?require("/qualification/company-history-352-profile.cjs"):null;
++ const expenseWitness=company??(mode==="ledger-loss-346"?require("/qualification/expense-witness-346-profile.cjs"):null);
+  const ledgerLoss332=mode==="ledger-loss-332";
+  const ledgerLoss331=mode==="ledger-loss-331";
+  const ledgerLoss=expenseWitness!==null||ledgerLoss332||ledgerLoss331||mode==="ledger-loss-330";
+@@ -561,7 +562,7 @@
+  const fences=ownedCashFenceProfile(options.principalScenario);
+  const {candidateTree,sourceBaseSha: candidate,runId,database,workDir,sql:ownerSql,readPostgresLog}=context;
+  const short=runId.replaceAll("-","");
+- if(candidateTree!==(expenseWitness?receipt.expenseWitnessForward?.sourceTree:standard320||current330?receipt.forward320?.sourceTree:standard295?"67644d9465a0ab4ee80ede099139d9c129d66f14":(mode==="correction-catalog"||mode==="standard-290")?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
++ if(candidateTree!==(expenseWitness?(company?receipt.companyHistoryForward:receipt.expenseWitnessForward)?.sourceTree:standard320||current330?receipt.forward320?.sourceTree:standard295?"67644d9465a0ab4ee80ede099139d9c129d66f14":(mode==="correction-catalog"||mode==="standard-290")?"23b1c98bc15f36e986d17059579e6673315b9be8":"8d3e50a0c525a68e717b74fbecbcceabc80840f7")||candidate!=="0a5b607cf912ffbb50237af2608ac8b2a5360c16"||containerName(runId)===""||database!==`jg_task01_${short}`
+    ||!path.isAbsolute(workDir)||typeof ownerSql!=="function"||typeof readPostgresLog!=="function")throw new Error("TASK398_OWNED_280_IDENTITY");
+  const roleUrls={jg_task01_owner:context.ownerUrl,jg_task01_runtime:context.runtimeUrl,jg_task01_observer:context.observerUrl};
+  const urls=Object.entries(roleUrls).map(([role,value])=>{

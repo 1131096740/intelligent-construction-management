@@ -47,7 +47,7 @@ if [[ ${3-} == --company-history-352 ]]; then
   fi
   company_352=true
   if [[ $2 == issue417 ]]; then issue_lane=true; fi
-  if [[ $2 != historical-takeover-a28 && $2 != historical-takeover-a29 && $2 != browser-partial && $2 != browser-completion && $2 != task398-standard && $2 != pol115-full && $2 != pol115-workbench && $2 != pol115-original && $2 != pol115-spot && $2 != issue417 && $2 != pol275 && $2 != bank && $2 != cash-handover && $2 != principal-return && $2 != company-proxy && $2 != pfq && $2 != pol109 && $2 != pol108-core && $2 != pol108-facts && $2 != pol108-impacts && $2 != onboarding && $2 != procurement && $2 != line-a && $2 != core-payment && $2 != payment-execution && $2 != settlement && $2 != template && $2 != draft && $2 != v7 && $2 != invoice && $2 != pol279 && $2 != pol280 && $2 != expense-execution && $2 != expense-finance && $2 != expense-receipt ]]; then
+  if [[ $2 != task398-ledger-loss && $2 != task398-competition && $2 != historical-takeover-a28 && $2 != historical-takeover-a29 && $2 != browser-partial && $2 != browser-completion && $2 != task398-standard && $2 != pol115-full && $2 != pol115-workbench && $2 != pol115-original && $2 != pol115-spot && $2 != issue417 && $2 != pol275 && $2 != bank && $2 != cash-handover && $2 != principal-return && $2 != company-proxy && $2 != pfq && $2 != pol109 && $2 != pol108-core && $2 != pol108-facts && $2 != pol108-impacts && $2 != onboarding && $2 != procurement && $2 != line-a && $2 != core-payment && $2 != payment-execution && $2 != settlement && $2 != template && $2 != draft && $2 != v7 && $2 != invoice && $2 != pol279 && $2 != pol280 && $2 != expense-execution && $2 != expense-finance && $2 != expense-receipt ]]; then
     scopes=$(node - "$plan/issue-ordered/profiles.cjs" "$2" <<'JS'
 const [file,lane]=process.argv.slice(2);
 const {issueOrderedScopes352}=require(file);
@@ -135,8 +135,8 @@ if [[ $lane == historical-takeover-a28 && ${3:-} != --historical-settlement-334 
 if [[ $lane == historical-takeover-a29 && ${3:-} != --expense-witness-346 && $company_352 != true ]]; then exit 64; fi
 if [[ $lane == pol115-full && ${3:-} != --historical-settlement-334 && ${3:-} != --expense-witness-346 && ${3:-} != --expense-witness-349 && ${3:-} != --company-history-352 ]]; then exit 64; fi
 if [[ ( $lane == cash-transfer || $lane == project-advance ) && ${3:-} != --upward-archive-332 && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
-if [[ $lane == task398-ledger-loss && ${3:-} != --text-direct-330 && ${3:-} != --payment-remainder-331 && ${3:-} != --upward-archive-332 && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
-if [[ $lane == task398-competition && ${3:-} != --expense-witness-346 ]]; then exit 64; fi
+if [[ $lane == task398-ledger-loss && ${3:-} != --text-direct-330 && ${3:-} != --payment-remainder-331 && ${3:-} != --upward-archive-332 && ${3:-} != --expense-witness-346 && $company_352 != true ]]; then exit 64; fi
+if [[ $lane == task398-competition && ${3:-} != --expense-witness-346 && $company_352 != true ]]; then exit 64; fi
 root=$(git rev-parse --show-toplevel)
 work=$(mktemp -d "${RUNNER_TEMP:-/tmp}/jg-contract-adjacent.XXXXXXXX")
 if [[ ${4-} == --host-only || ( ( $signed_350 == true || $company_352 == true ) && $lane == pol275 && ${5-} == --host-only ) ]]; then
@@ -152,6 +152,8 @@ if [[ ${4-} == --host-only || ( ( $signed_350 == true || $company_352 == true ) 
       browser-partial|browser-completion)
         kind=${lane#browser-}
         bash "$plan/browser-$kind/run-browser-$kind.sh" "$root" "$work/source" "$sha" "$work" "$3" --host-only ;;
+      task398-ledger-loss|task398-competition)
+        bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work" "${lane#task398-}-352" --host-only ;;
       task398-standard)
         for variant in standard-352 text-direct-352; do
           bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work" "$variant" --host-only
@@ -259,7 +261,7 @@ trap 'exit 143' TERM
 bash "$plan/prepare.sh" "$root" "$sha" "$work/source" ${mode_args[@]+"${mode_args[@]}"}
 profile=browser
 case "$lane" in pol115-original|pol115-spot|pol115-workbench|pol115-full|onboarding|procurement) profile=mobile ;; line-a|historical-takeover-a28|historical-takeover-a29) profile=api ;; esac
-if [[ ( $lane == task398-ledger-loss || $lane == task398-competition ) && $3 == --expense-witness-346 ]]; then profile=api; fi
+if [[ ( $lane == task398-ledger-loss || $lane == task398-competition ) && ( $3 == --expense-witness-346 || $company_352 == true ) ]]; then profile=api; fi
 if [[ $issue_lane == true ]]; then profile=api; fi
 bash "$plan/build.sh" "$work/source" "$sha" "$profile" "$work/browser"
 if [[ $signed_issue_ordered == true ]]; then
@@ -313,10 +315,11 @@ case "$lane" in
       --payment-remainder-331) variant=ledger-loss-331 ;;
       --upward-archive-332) variant=ledger-loss-332 ;;
       --expense-witness-346) variant=ledger-loss-346 ;;
+      --company-history-352) variant=ledger-loss-352 ;;
     esac
     bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work/browser" "$variant" ;;
   task398-competition)
-    bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work/browser" competition-346 ;;
+    bash "$plan/run-task398-standard.sh" "$root" "$work/source" "$sha" "$work/browser" "$(if [[ $company_352 == true ]]; then printf %s competition-352; else printf %s competition-346; fi)" ;;
   task398-standard)
     if [[ ${3:-} == --expense-witness-34[69] || $company_352 == true ]]; then
       count=${3##*-}

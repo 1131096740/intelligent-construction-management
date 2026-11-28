@@ -2,10 +2,10 @@
 set -euo pipefail
 umask 077
 
-[[ $# == 4 || $# == 5 || ( $# == 6 && ( $5 == ledger-loss-346 || $5 == competition-346 || $5 == standard-346 || $5 == text-direct-346 || $5 == standard-349 || $5 == text-direct-349 || $5 == standard-352 || $5 == text-direct-352 ) && $6 == --host-only ) ]] || exit 64
+[[ $# == 4 || $# == 5 || ( $# == 6 && ( $5 == ledger-loss-346 || $5 == competition-346 || $5 == ledger-loss-352 || $5 == competition-352 || $5 == standard-346 || $5 == text-direct-346 || $5 == standard-349 || $5 == text-direct-349 || $5 == standard-352 || $5 == text-direct-352 ) && $6 == --host-only ) ]] || exit 64
 variant=${5-}
 case "$variant" in
-  ''|standard-330|standard-331|standard-332|standard-334|standard-346|text-direct-346|standard-349|text-direct-349|standard-352|text-direct-352|ledger-loss-330|ledger-loss-331|ledger-loss-332|ledger-loss-346|competition-331|competition-332|competition-346) ;;
+  ''|standard-330|standard-331|standard-332|standard-334|standard-346|text-direct-346|standard-349|text-direct-349|standard-352|text-direct-352|ledger-loss-330|ledger-loss-331|ledger-loss-332|ledger-loss-346|ledger-loss-352|competition-331|competition-332|competition-346|competition-352) ;;
   *) exit 64 ;;
 esac
 [[ $# == 4 || -n $variant ]] || exit 64
@@ -28,7 +28,7 @@ count=$(node -e '
   console.log(count);
 ' "$prepared/source.json" "$sha" "$plan/upward-archive-332-profile.cjs" "$common/multi-witness.cjs" "$plan/historical-settlement-334-profile.cjs" "$plan")
 if [[ $count == 346 && $variant != ledger-loss-346 && $variant != competition-346 && $variant != standard-346 && $variant != text-direct-346 ]]; then exit 64; fi
-if [[ $count == 352 && $variant != standard-352 && $variant != text-direct-352 ]]; then exit 64; fi
+if [[ $count == 352 && $variant != standard-352 && $variant != text-direct-352 && $variant != ledger-loss-352 && $variant != competition-352 ]]; then exit 64; fi
 if [[ $count == 349 && $variant != standard-349 && $variant != text-direct-349 ]]; then exit 64; fi
 if [[ $count == 334 && -n $variant && $variant != standard-334 ]]; then exit 64; fi
 variant_args=()
@@ -43,7 +43,7 @@ case "$variant" in
   text-direct-346|text-direct-349|text-direct-352) purpose=TASK425_TEXT_DIRECT_FINANCE_$count ;;
   '') if (( count >= 330 )); then purpose=TASK425_TEXT_DIRECT_FINANCE_$count; fi ;;
 esac
-if [[ $variant == standard-346 || $variant == text-direct-346 || $variant == standard-349 || $variant == text-direct-349 || $variant == standard-352 || $variant == text-direct-352 ]]; then
+if [[ $variant == standard-346 || $variant == text-direct-346 || $variant == standard-349 || $variant == text-direct-349 || $variant == standard-352 || $variant == text-direct-352 || $variant == ledger-loss-352 || $variant == competition-352 ]]; then
   [[ $plan == "$repo/.github/task12-install-295/contract-finance" && $(git -C "$repo" rev-parse HEAD) == "$sha" ]] || exit 65
   [[ -z $(git -C "$repo" status --porcelain --untracked-files=all -- "$plan" "$repo/.github/task12-install-290/standard/fixtures") ]] || exit 65
   cmp -s "$prepared/source.json" <(node "$plan/check-ledger.cjs" "$repo" "$sha" "$(if [[ $count == 352 ]]; then printf %s --company-history-352; else printf %s "--expense-witness-$count"; fi)") || exit 65
@@ -87,13 +87,17 @@ if (( count >= 330 )); then
       patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-331.patch"
       [[ $(runner_sha) == af42b4c2fb8489cd6560b8dfb2775f4880ed806730e9e00d36073ebd1bb89b29 ]] || exit 65
     fi
-    if [[ $count == 332 || $count == 346 ]]; then
+    if [[ $count == 332 || $count == 346 || $count == 352 ]]; then
       patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-332.patch"
       [[ $(runner_sha) == f999f4eeeecee567a8391c5aa9d46e9102648bb285d6e849af720491c38878db ]] || exit 65
     fi
-    if [[ $count == 346 ]]; then
+    if [[ $count == 346 || $count == 352 ]]; then
       patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-346.patch"
       [[ $(runner_sha) == 2987bc05d395030c264c4a55def4e6b0e771e851dac47c13935fded0648d9ce2 ]] || exit 65
+    fi
+    if [[ $count == 352 ]]; then
+      patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-ledger-loss-352.patch"
+      [[ $(runner_sha) == c95fda992ce629d1fdf415a4508b46c381da1537f3e3129583ce7d03ce6baa34 ]] || exit 65
     fi
   elif (( count >= 331 )); then
     patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-standard-331.patch"
@@ -105,13 +109,17 @@ if (( count >= 330 )); then
       patch --batch --forward --fuzz=0 --silent "$spec" < "$plan/task398-competition-spec-331.patch"
       [[ $(runner_sha) == e5bc00fab58ecac6786b9bc6a8228f6af3906c8a093bedea2a052bcd9a02973b ]] || exit 65
       [[ $(sha256sum "$spec" | cut -d' ' -f1) == 05bfdec5b4e12815b6ca7c3ea9345d44b4c27ab77a52223f62ccbda18187ad1c ]] || exit 65
-      if [[ $count == 332 || $count == 346 ]]; then
+      if [[ $count == 332 || $count == 346 || $count == 352 ]]; then
         patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-competition-runner-332.patch"
         [[ $(runner_sha) == 75de360063ce1d7a60abacaf015e2718aab99fc871995bea9e127fe6adeba924 ]] || exit 65
       fi
-      if [[ $count == 346 ]]; then
+      if [[ $count == 346 || $count == 352 ]]; then
         patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-competition-runner-346.patch"
         [[ $(runner_sha) == 4838c88e40550af557caadd31cb1d4a6c6b3ab83fa306bc551dec5a7687c2193 ]] || exit 65
+      fi
+      if [[ $count == 352 ]]; then
+        patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-competition-352.patch"
+        [[ $(runner_sha) == 5544bb7445e1f80cc3a80d7f5df31edda25b2083b4e110db54a3e665183c21a4 ]] || exit 65
       fi
     elif (( count >= 332 )); then
       patch --batch --forward --fuzz=0 --silent "$runner" < "$plan/task398-standard-332.patch"
@@ -202,7 +210,7 @@ if (( count >= 334 )); then
     fi
     chmod 0644 "$installer"
     if [[ ${6:-} == --host-only ]]; then
-      if [[ $variant == standard-346 || $variant == text-direct-346 || $variant == standard-349 || $variant == text-direct-349 || $variant == standard-352 || $variant == text-direct-352 ]]; then
+      if [[ $variant == standard-346 || $variant == text-direct-346 || $variant == standard-349 || $variant == text-direct-349 || $variant == standard-352 || $variant == text-direct-352 || $variant == ledger-loss-352 || $variant == competition-352 ]]; then
         node --check "$runner"
         node --check "$installer"
         node --check "$plan/task398-standard-entry.cjs"
