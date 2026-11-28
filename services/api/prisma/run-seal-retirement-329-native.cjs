@@ -289,6 +289,7 @@ async function migrate({ source, archive, database, directory, sql, url, run, st
       paymentRemainderPredecessor = { count: size, ledgerSha256, sameIdentity: true };
     }
   }
+  if (signed350) assert.deepEqual(readSigned350(), signed350After, "NATIVE_A08_352_SIGNED_GUARDS_TERMINAL");
   const verifyAfterBusiness = () => {
     const final = inspect();
     verify(final, source.ledger.length);
@@ -580,7 +581,13 @@ async function main(args) {
       assert.deepEqual(a24Installation, receipt.a24ExpectedPrefixes.map(prefix => ({ ...prefix, sameIdentity: true })));
     }
     if (historicalCatalog) receipt.a24HistoricalCatalog = historicalCatalog.snapshots;
-    if (pendingExpense) receipt.a24ExpenseFactCatalog = expenseFactCatalog;
+    if (pendingExpense) {
+      receipt.a24ExpenseFactCatalog = expenseFactCatalog;
+      if (a08Is352) {
+        stage("A24_PENDING_COST_FACT_CATALOG_352_BEFORE_BUSINESS");
+        receipt.a24ExpenseFactCatalog.beforeBusiness352 = JSON.parse(sql(pendingExpense.readOperatingFactValidator(app)));
+      }
+    }
     if (cashVoucher) receipt.a24CashVoucherCatalog = cashVoucherCatalog;
     if (operatingCash) receipt.a24OperatingCashCatalog = operatingCashCatalog;
     if (paymentRemainder) {
@@ -791,9 +798,13 @@ async function main(args) {
       receipt.ledgerAfterBusiness = verifyAfterBusiness();
       assert.equal(receipt.ledgerAfterBusiness.ledgerSha256, source.ledgerDigest);
     }
-    if (historicalCatalog && !a08Is352) {
+    if (historicalCatalog) {
       stage("A24_HISTORICAL_CATALOG_AFTER_BUSINESS");
-      receipt.a24HistoricalCatalog["afterBusiness" + source.ledger.length] = historicalCatalog.verifyAfterBusiness();
+      if (a08Is352) {
+        // verifyAfterBusiness above rechecks the complete 350 signed/historical catalog,
+        // which was verified against 349 and rechecked at the 352 terminal.
+        receipt.a24HistoricalCatalog.afterBusiness352 = "VERIFIED_BY_SIGNED_350_TERMINAL_CATALOG";
+      } else receipt.a24HistoricalCatalog["afterBusiness" + source.ledger.length] = historicalCatalog.verifyAfterBusiness();
     }
     if (a24Assignment) {
       stage("A24_STANDALONE_ASSIGNMENT_AFTER_BUSINESS");
@@ -801,16 +812,17 @@ async function main(args) {
       assert.deepEqual(result, receipt.a24AssignmentLockBefore, "NATIVE_A24_341_ASSIGNMENT_CATALOG_DRIFT");
       receipt.a24AssignmentLockAfter = result;
     }
-    if (pendingExpense && !a08Is352) {
+    if (pendingExpense) {
       stage("A24_PENDING_COST_FACT_CATALOG_AFTER_BUSINESS");
-      const result = pendingExpense.verifyOperatingFactValidator(JSON.parse(sql(pendingExpense.readOperatingFactValidator(app))),
-        expenseFactCatalog[341]);
-      assert.deepEqual(result, expenseFactCatalog[342], "NATIVE_A24_342_CATALOG_AFTER_BUSINESS");
+      const observed = JSON.parse(sql(pendingExpense.readOperatingFactValidator(app)));
+      const result = a08Is352 ? observed : pendingExpense.verifyOperatingFactValidator(observed, expenseFactCatalog[341]);
+      assert.deepEqual(result, a08Is352 ? expenseFactCatalog.beforeBusiness352 : expenseFactCatalog[342],
+        "NATIVE_A24_PENDING_COST_CATALOG_AFTER_BUSINESS");
       expenseFactCatalog.afterBusiness = result;
-      if (checkLegacyWriterAcl) {
-        stage("A24_V1_WRITER_ACL_AFTER_BUSINESS");
-        receipt.a24LegacyWriterAclAfterBusiness = checkLegacyWriterAcl();
-      }
+    }
+    if (checkLegacyWriterAcl) {
+      stage("A24_V1_WRITER_ACL_AFTER_BUSINESS");
+      receipt.a24LegacyWriterAclAfterBusiness = checkLegacyWriterAcl();
     }
     if (cashVoucher) {
       stage("A24_CASH_VOUCHER_CATALOG_AFTER_BUSINESS");
